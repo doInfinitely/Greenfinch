@@ -1,6 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   serverExternalPackages: ['snowflake-sdk'],
+  allowedDevOrigins: ['*'],
   async headers() {
     return [
       {
