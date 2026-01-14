@@ -1,0 +1,2802 @@
+openapi: 3.0.0
+info:
+  title: Regrid OpenAPI Specification
+  version: 2.0.0
+  description: Integrate Regrid's parcel data in your tech stack with over 156M parcels records with associated spatial and tabular data including over 120 fields.
+
+externalDocs:
+  description: Regrid Parcel documentation and extended examples
+  url: https://support.regrid.com/api
+
+servers:
+- url: https://app.regrid.com/api/v2
+  description: Regrid API server
+
+security:
+  - APIKeyQueryParam: []
+
+paths:
+  /parcels/point:
+    get:
+      tags:
+        - Search by
+      summary: Point - Latitude and Longitude
+      description: >-
+        This endpoint delivers parcels using latitude and longitude points. You can add a radius zone to the point or
+        points and limit the amount of parcels returned in the response. Parameter 'geojson' takes priority if Lat/Lon is
+        used in same request. This endpoint allows access to test all of our premium matched datasets.
+        **Attention API Trial Token Users:** Data is restricted to 7 counties. Please only use data from one of the restricted counties.
+      parameters:
+        - $ref: '#/components/parameters/longitudeParam'
+        - $ref: '#/components/parameters/latitudeParam'
+        - $ref: '#/components/parameters/radiusParam'
+        - name: geojson
+          in: query
+          schema:
+            type: string
+          description: >-
+            Geographic data structure for Point and MultiPoint only. This parameter takes priority if Lat/Lon is used in same request
+          example: >-
+            {"type":"Feature","geometry":{"coordinates":[-96.563861, 32.834967],"type":"Point"}}
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Search by
+      summary: Point - Latitude and Longitude
+      description: >-
+        This endpoint delivers parcels using latitude and longitude points. You can add a radius zone to the point or points and
+        limit the amount of parcels returned in the response. Parameter 'geojson' takes priority if Lat/Lon is used in same request.
+        This endpoint allows access to test all of our premium matched datasets. **Attention API Trial Token Users:** Data is restricted
+        to 7 counties. Please only use data from one of the restricted counties.
+      requestBody:
+        description: >
+          * Geographic data structure for Point and MultiPoint only.
+
+          * Example "coordinates": [[-96.77737790638413, 32.8277929786983],[-96.563861, 32.834967]]
+        required: true
+        content:
+          application/json:
+            schema:
+              properties:
+                geojson:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      example: Feature
+                    geometry:
+                      type: object
+                      properties:
+                        coordinates:
+                          description: '[[-96.77737790638413, 32.8277929786983],[-96.563861, 32.834967]]'
+                          type: array
+                          minItems: 2
+                          maxItems: 2
+                          items:
+                            type: array
+                            minItems: 2
+                            maxItems: 2
+                            items:
+                              type: number
+                              example:
+                                - -96.77737790638413
+                                - 32.8277929786983
+                                - -96.563861
+                                - 32.834967
+                          example: [[-96.77737790638413, 32.8277929786983],[-96.563861, 32.834967]]
+                        type:
+                          type: string
+                          example: MultiPoint
+
+
+      parameters:
+        - $ref: '#/components/parameters/longitudeParam'
+        - $ref: '#/components/parameters/latitudeParam'
+        - $ref: '#/components/parameters/radiusParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+ 
+  /parcels/address:
+    get:
+      tags:
+        - Search by
+      summary: Address Search
+      description: >-
+        This endpoint delivers parcels using an address within the United States and Puerto Rico. There can be multiple locations
+        within the United States and Puerto Rico with similar addresses and therefore we suggest specifying the location within a State,
+        County and/or City by using the `path` parameter.
+
+      parameters:
+        - $ref: '#/components/parameters/queryParam'
+        # - $ref: '#/components/parameters/confidenceScoreParam' # Feature coming soon
+        - $ref: '#/components/parameters/pathParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /parcels/apn:
+    get:
+      tags:
+        - Search by
+      summary: Assessor Parcel Number (APN) Search
+      description: >-
+        This endpoint delivers parcels using the Assessor Parcel Number (APN) which is assigned to each parcel by the respective county.
+        Multiple parcels can be returned depending on the APN, therefore specify the location within a State, County and/or City by using
+        the parameter `path`.
+        **Attention API Trial Token Users:** Data is restricted to 7 counties. Please only use data
+        from one of the restricted counties.
+      parameters:
+        - name: parcelnumb
+          in: query
+          schema:
+            type: integer
+            description: >-
+              The assessor's parcel number to look up. Non-alphanumeric characters will be removed when searching.
+          required: true
+          example: '26447580030140000'
+        - $ref: '#/components/parameters/pathParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /parcels/owner:
+    get:
+      tags:
+        - Search by
+      summary: Owner Name Search
+      description: >-
+        This endpoint delivers parcels using the owner name, either an individual or entity. Multiple parcels can be returned so limit 
+        the response by using parameter `limit` and specify the location within a State, County and/or City using the parameter `path`. 
+        This endpoint allows access to test all of our premium matched datasets.
+      parameters:
+        - name: owner
+          in: query
+          schema:
+            type: string
+          description: >-
+            The owner name in Last, First format. Matches by prefix, you can pass just a last name to get any name beginning with that string. 
+            (Case insensitive, minimum 4 characters)
+          required: true
+          example: 7 ELEVEN INC
+        - $ref: '#/components/parameters/pathParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /parcels/query:
+    get:
+      tags:
+        - Query by field
+      summary: Overview
+      description: >-
+        In addition to the primary identifiers in our dataset, our API is also queryable at a nationwide level using a subset of our 120+
+        schema fields that have been optimized for queries at scale. The following is the general form for this endpoint. See additional
+        query endpoints for examples on each field type. Multiple fields can be used in a single query (up to 4), to refine results.
+        [<i>See full list of fields</i>](https://support.regrid.com/articles/using-the-api/#query-by-additional-parcel-data-fields).
+        See full list of fields. Check out Sample Use Case Scenarios in this section. This endpoint allows access to test all of our premium
+        matched datasets.
+      externalDocs:
+        url: https://support.regrid.com/articles/using-the-api/#query-by-additional-parcel-data-fields
+      parameters:
+        - name: fields[:field_name][:operator]
+          in: query
+          schema:
+            type: string
+          description: Use a supported field name and operator, and value to perform a query.
+
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/geojsonParam'
+        - $ref: '#/components/parameters/radiusParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/pathParam'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/FieldsErrorResponse'
+
+  /parcels/query?fields[geoid][eq]=48113&fields[owner][ilike]=7 ELEVEN INC:
+    get:
+      tags:
+        - Query by field
+      summary: Sample Use Case - FIPS code and Owner Name
+      description: >-
+        Find all parcels owned by 7-Eleven in Dallas County, Texas. Limit your result with the `limit` parameter.
+         Dallas County has additional fields from the county that we provide users, set `return_custom` to true to view all
+         fields. **Attention API Trial Token Users:** Data is restricted to 7 counties. Please only use data from one of the restricted counties.
+      parameters:
+        - name: fields[geoid][eq]
+          in: query
+          schema:
+            type: string
+          description: Using the county FIPS code
+          required: true
+          example: '48113'
+
+        - name: fields[owner][ilike]
+          in: query
+          schema:
+            type: string
+          description: Using the owner name for the search. This is case sensitive, so use `ilike`.
+          required: true
+          example: '7 ELEVEN INC'
+
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/pathParam'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/FieldsErrorResponse'
+
+  /parcels/query?fields[szip][eq]=46202&fields[lbcs_activity][between]=[2000,2999]&fields[state2][eq]=IN:
+    get:
+      tags:
+        - Query by field
+      summary: Sample Use Case - Zip Code, Land Use Code and State
+      description: >-
+        Find businesses in Downtown Indianapolis within a specific zip code. These are parcels marked as Shopping, business, or trade activities. Limit your result with the `limit` parameter
+        **Attention API Trial Token Users:** Data is restricted
+        to 7 counties. Please only use data from one of the restricted counties.
+      parameters:
+        - name: fields[szip][eq]
+          in: query
+          schema:
+            type: string
+          description: Using the parcel situs zip code to search.
+          required: true
+          example: '46202'
+
+        - name: fields[lbcs_activity][between]
+          in: query
+          schema:
+            type: string
+          description: You can look up all of our land base use codes [here](https://support.regrid.com/parcel-data/lbcs-keys).
+          required: true
+          example: '[2000,2999]'
+
+        - name: fields[state2][eq]
+          in: query
+          schema:
+            type: string
+          description: Using the parcel situs state to search.
+          required: true
+          example: 'IN'
+
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/limitParam'
+
+        - name: path
+          in: query
+          schema:
+            type: string
+          description: >-
+            Represents the path for the /country/state/county. This restricts the search to this area.
+          example: /us/in/marion
+
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/FieldsErrorResponse'
+
+  /parcels/query?fields[lbcs_activity][eq]=4340&fields[geoid][eq]=48113:
+    get:
+      tags:
+        - Query by field
+      summary: Sample Use Case - Land Use Code and FIPS Code
+      description: >-
+        Find all the telecommunication parcels in Dallas County, Texas. Want to double check the count, use `return_count` parameter to get the total
+        **Attention API Trial Token Users:** Data is restricted
+        to 7 counties. Please only use data from one of the restricted counties.
+      parameters:
+        - name: fields[lbcs_activity][eq]
+          in: query
+          description: You can look up all of our land base use codes [here](https://support.regrid.com/parcel-data/lbcs-keys).
+          required: true
+          schema:
+            type: number
+          example: 4340
+        - name: fields[geoid][eq]
+          in: query
+          description: Using the county FIPS code
+          required: true
+          schema:
+            type: number
+          example: 48113
+
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/pathParam'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/FieldsErrorResponse'
+
+  /parcels/query?fields[lbcs_activity][eq]=1100&fields[landval][gte]=100000:
+    get:
+      tags:
+        - Query by field
+      summary: Sample Use Case - Polygon Area, Land Use Code and Land Value
+      description: >-
+        Locate all the residential properties in a polygon area where the land value is greater or equal to $100,000. 
+        **Attention API Trial Token Users:** Data is restricted to 7 counties. Please only use data from one of the 
+        restricted counties.
+      parameters:
+        - name: geojson
+          in: query
+          schema:
+            type: string
+          description: >-
+            Geographic data structure for Polygon. Can use Point and Multipoint in combination with radius in a separate request.
+          required: true
+          example: >-
+            {"type":"Polygon","coordinates":[[ [ -96.77737790638413, 32.8277929786983], [-96.77476147447638, 32.82780540015257], [-96.77614360093615, 32.82905995805102]]]}
+        - name: fields[lbcs_activity][eq]
+          in: query
+          description: You can look up all of our land base use codes [here](https://support.regrid.com/parcel-data/lbcs-keys).
+          required: true
+          schema:
+            type: number
+          example: 1100
+        - name: fields[landval][gte]
+          in: query
+          description: Using parcel land value field.
+          required: true
+          schema:
+            type: number
+          example: 100000
+
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/pathParam'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/FieldsErrorResponse'
+
+
+  /parcels/area:
+    get:
+      tags:
+        - Area
+      summary: 'Area Geometry Search'
+      description: >-
+        Search for parcels in a specific geographical area. This endpoint allows access to test all our premium matched datasets with
+        applicable API token. Accepted formats vary from GeoJSON Feature Collection of geometries (Polygon, MultiPolygon, Point, MultiPoint,
+        LineString and/or MultiLineString), or a Feature with a GeoJSON geometry or a direct GeoJSON geometry. Parameter 'geojson' takes
+        priority if Lat/Long used in same request. These parameters also accept an optional radius parameter in meters to create a buffer
+        around the given geometries. Note adding a radius can increase the overall area of the request reaching the area size limit per
+        request.
+      parameters:
+        - name: geojson
+          in: query
+          schema:
+            type: string
+          description: >-
+            A GeoJSON object with at least one geometry to filter results. The geometries can be no larger than 80 sq miles. Accepted
+            GeoJSON formats are: FeatureCollection, Feature or geometry. Supported geometries: Polygon, MultiPolygon, Point, MultiPoint,
+            LineString and MultiLineString. Variations of geometry types are allowed in a FeatureCollection.
+          required: true
+          example: >-
+            {"type":"Polygon","coordinates":[[ [ -96.77737790638413, 32.8277929786983], [-96.77476147447638, 32.82780540015257],
+            [-96.77614360093615, 32.82905995805102]]]}
+        - $ref: '#/components/parameters/radiusParam'
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/FeaturesResponse'
+                - $ref: '#/components/schemas/countResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Area
+      summary: 'Area Geometry Search'
+      description: >-
+        Search for parcels in a specific geographical area. This endpoint allows access to test all our premium matched
+        datasets with applicable API token. Accepted formats vary from GeoJSON Feature Collection of geometries (Polygon, MultiPolygon,
+        Point, MultiPoint, LineString and/or MultiLineString), or a Feature with a GeoJSON geometry or a direct GeoJSON geometry.
+        These parameters also accept an optional radius parameter in meters to create a buffer around the given geometries.
+        Note adding a radius can increase the overall area of the request reaching the area size limit per request.
+      requestBody:
+        description: >
+          * "The polygon's GeoJSON geometry (the area being searched). The polygon can not be larger than 80 sq miles."
+
+          * "Three geo coordinates to use: [ -96.77737790638413, 32.8277929786983], [-96.77476147447638, 32.82780540015257], [-96.77614360093615, 32.82905995805102]"
+        required: true
+        content:
+          application/json:
+            schema:
+              properties:
+                geojson:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      example: Polygon
+                    coordinates:
+                      type: array
+                      minItems: 1
+                      maxItems: 1
+                      items:
+                        type: array
+                        description: Array of lat/lon point pairs
+                        example: '[ -96.77737790638413, 32.8277929786983]'
+                        items:
+                          type: array
+                          description: '[ -96.77737790638413, 32.8277929786983]'
+                          minItems: 2
+                          maxItems: 2
+                          items:
+                            type: number
+                            example: 
+                              - -96.77737790638413
+                              - 32.8277929786983
+                      example: [[[-96.77737790638413,32.8277929786983],[-96.77476147447638,32.82780540015257],[-96.77614360093615,32.82905995805102]]]
+
+      parameters:
+        - $ref: '#/components/parameters/radiusParam'
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/FeaturesResponse'
+                - $ref: '#/components/schemas/countResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /parcels/typeahead:
+    get:
+      tags:
+        - Address Typeahead
+      summary: Typeahead
+      description: >-
+        This endpoint delivers a full address lookup and validation with corresponding unique identifier for each parcel based on matching the query.
+        This is a Regrid Enterprise product. **Attention API Trial Token Users:** Data is restricted to 7 counties.
+        Please only use data from one of the restricted counties.
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+          description: A street address or partial address, starting at the beginning
+          required: true
+          example: 5818 Diana Dr
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/typeaheadCentroidResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /parcels/path:
+    get:
+      tags:
+        - Additional Endpoints
+      summary: Parcel Path
+      description: >-
+        This endpoint delivers a single parcel record based on the unique path. This is best used in combination with the 
+        Typeahead API endpoint. This endpoint allows access to test all of our premium matched datasets with applicable API token.
+      parameters:
+        - name: path
+          in: query
+          schema:
+            type: string
+          description: The canonical path of the parcel in the Regrid system.
+          required: true
+          example: /us/tx/dallas/northeast-dallas/6471
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /parcels/{ll_uuid}:
+    get:
+      tags:
+        - Additional Endpoints
+      summary: Regrid ID
+      description: |-
+        This endpoint delivers a single parcel record based on the Regrid id (ll_uuid).
+      parameters:
+        - name: ll_uuid
+          in: path
+          schema:
+            type: string
+          description: The UUID retrieved from another Regrid API call
+          required: true
+          example: 8b6f4f51-58ad-4969-93b3-fdfb348a7084
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+        - $ref: '#/components/parameters/returnZoning'
+        - $ref: '#/components/parameters/matchedBuildings'
+        - $ref: '#/components/parameters/matchedAddresses'
+        - $ref: '#/components/parameters/enhancedOwnership'
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/FeaturesResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+          
+  /schemas/parcel:
+    get:
+      tags:
+        - Schemas
+      summary: Regrid Parcel Schema
+      description: >-
+        This endpoint retrieves the current Regrid Parcel Schema. You can use 'premium_only' to retrieve the schema listed for only premium fields.
+      parameters:
+        - name: premium_only
+          in: query
+          schema:
+            type: boolean
+          description: 'Default returns all. Set to True to returns schema for only premium fields and False to return only Standard'
+
+      responses:
+        '200':
+          description: 'A list of current Regrid attributes'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSchemaResponse'
+
+  /schemas/building:
+    get:
+      tags:
+        - Schemas
+      summary: Matched Buildings Schema
+      description: >-
+        This endpoint retrieves the current Regrid Matched Building Footprints schema.
+      responses:
+        '200':
+          description: 'A list of current Regrid building attributes'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: ["text", "numeric"]
+                  description:
+                    type: string
+
+  /schemas/address:
+    get:
+      tags:
+        - Schemas
+      summary: Matched Addresses Schema
+      description: >-
+        This endpoints retrieves the current Regrid Matched Secondary Addresses
+      responses:
+        '200':
+          description: 'A list of current Regrid address attributes'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: ["text"]
+                  description:
+                    type: string
+
+  /schemas/enhanced_ownership:
+    get:
+      tags:
+        - Schemas
+      summary: Enhanced Ownership Schema
+      description: >-
+        This endpoint retrieves the current Regrid Enhanced Ownership Schema.
+      responses:
+        '200':
+          description: 'A list of current Regrid enhanced ownership attributes'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: ["text"]
+                  description:
+                    type: string
+
+  /schemas/zoning:
+    get:
+      tags:
+        - Schemas
+      summary: Standardized Zoning Schema
+      description: >-
+        This endpoint retrieves the current Regrid Standardized Zoning Schema.
+      responses:
+        '200':
+          description: 'A list of current Regrid standardized zoning attributes'
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    enum: ["text"]
+                  description:
+                    type: string
+
+  /verse:
+    get:
+      tags:
+        - Metadata
+      summary: County Metadata (Verse)
+      description: >-
+        This endpoint retrieves all records from our verse schema. These records are counties in the United States
+        and Puerto Rico that tell the last time we did a full data pull from the source.
+      parameters:
+        - $ref: '#/components/parameters/returnGeometry'
+      responses:
+        '200':
+          description: 'A list of current Regrid attributes'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/VerseSchema'
+
+  /usage:
+    get:
+      tags:
+        - Metadata
+      summary: Usage
+      description: >-
+        Check your current API usage stats to see how many requests, parcel records, and tiles have been used.
+        You can see full history with using the parameter 'return_full_history' or specify a specific date range.
+      parameters:
+        - name: return_full_history
+          in: query
+          schema:
+            type: boolean
+          description: >-
+            Set to true if you would like the entire API usage history.
+          example: 'true'
+        - name: begin_date
+          in: query
+          schema:
+            type: string
+          description: >-
+            optional, datatype:date, YYYY/MM/DD returns the usage from the
+            specified beginning date to current date unless 'end_date' is used.
+          example: '2023-07-01'
+        - name: end_date
+          in: query
+          schema:
+            type: string
+          description: >-
+            optional, datatype: date, YYYY/MM/DD returns the usage for all usage
+            up until the specified ending date unless 'begin_date' is used and when.
+          example: '2023-07-31'
+        - name: return_by_token
+          in: query
+          schema:
+            type: boolean
+          description: >-
+            optional, returns usage by all available tokens. See `by_token` array in response of each token's usage data.
+          example: 'true'
+        - name: return_by_this_token
+          in: query
+          schema:
+            type: boolean
+          description: >-
+            optional, returns usage for only this token.
+          example: 'true'
+      responses:
+        '200':
+          $ref: '#/components/responses/UsageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /report:
+    post:
+      tags:
+        - Metadata
+      summary: Reporting Data Issues to Regrid
+      description: >-
+        You can report issues with specific parcels or general areas to us
+        using this report endpoint. Reports help us prioritize updates.
+        However, we cannot apply data received to this endpoint directly to our
+        parcel data or respond individually to specific reports.
+      requestBody:
+        content: {}
+      parameters:
+        - name: path
+          in: query
+          schema:
+            type: string
+          description: optional, A path to a specific parcel or place
+          example: /us/tx/dallas/northeast-dallas/6471
+        - name: ll_uuid
+          in: query
+          schema:
+            type: string
+          description: optional, A 'll_uuid' to a specific parcel or place
+          example: '8b6f4f51-58ad-4969-93b3-fdfb348a7084'
+        - name: comment
+          in: query
+          schema:
+            type: string
+          description: String describing the issue
+          example: Property has a new owner
+        - name: details
+          in: query
+          schema:
+            type: string
+          description: details on specific fields
+          example: '{"field_keys": "string"}'
+      responses:
+        '200':
+          description: 'Successful Response'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - properties:
+                      message:
+                        type: string
+                        example: "Report received"
+                      id:
+                        type: integer
+                        example: 123456
+        '400':
+          description: 'Invalid request'
+          content:
+            application/json: {}
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /schemas/ca:
+    get:
+      tags:
+        - Canada
+      summary: Standardized Canada Schema
+      description: >-
+        This endpoint retrieves the current Standardized Canada Schema.
+      responses:
+        '200':
+          description: 'A list of current Regrid standardized canada attributes.'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/StandardSchemaResponse'
+
+  /ca/parcels/point:
+    get:
+      tags:
+        - Canada
+      summary: Point - Latitude and Longitude
+      description: >-
+        This endpoint delivers parcels using latitude and longitude points. You can add a radius zone to the point or
+        points and limit the amount of parcels returned in the response. Parameter 'geojson' takes priority if Lat/Lon is
+        used in same request. This endpoint allows access to test all of our premium matched datasets.
+        **Attention API Trial Token Users:** Data is restricted to 7 counties. Please only use data from one of the restricted counties.
+      parameters:
+        - $ref: '#/components/parameters/canadaLongitudeParam'
+        - $ref: '#/components/parameters/canadaLatitudeParam'
+        - $ref: '#/components/parameters/radiusParam'
+        - name: geojson
+          in: query
+          schema:
+            type: string
+          description: >-
+            Geographic data structure for Point and MultiPoint only. This parameter takes priority if Lat/Lon is used in same request
+          example: >-
+            {"type":"Feature","geometry":{"coordinates":[-97.774811, 54.627318],"type":"Point"}}
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+      responses:
+        '200':
+          description: 'A list of parcel features.'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SimpleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Canada
+      summary: Point - Latitude and Longitude
+      description: >-
+        This endpoint delivers parcels using latitude and longitude points. You can add a radius zone to the point or points and
+        limit the amount of parcels returned in the response. Parameter 'geojson' takes priority if Lat/Lon is used in same request.
+        This endpoint allows access to test all of our premium matched datasets. **Attention API Trial Token Users:** Data is restricted
+        to 7 counties. Please only use data from one of the restricted counties.
+      requestBody:
+        description: >
+          * Geographic data structure for Point and MultiPoint only.
+
+          * Example "coordinates": [[-97.774811, 54.627318],[-97.77785381153151, 54.62696250754314]]
+        required: true
+        content:
+          application/json:
+            schema:
+              properties:
+                geojson:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      example: Feature
+                    geometry:
+                      type: object
+                      properties:
+                        coordinates:
+                          description: '[[-97.774811, 54.627318],[-97.77785381153151, 54.62696250754314]]'
+                          type: array
+                          minItems: 2
+                          maxItems: 2
+                          items:
+                            type: array
+                            minItems: 2
+                            maxItems: 2
+                            items:
+                              type: number
+                              example:
+                                - -97.774811
+                                - 54.627318
+                                - -97.77785381153151
+                                - 54.62696250754314
+                          example: [[-97.774811, 54.627318],[-97.77785381153151, 54.62696250754314]]
+                        type:
+                          type: string
+                          example: MultiPoint
+
+
+      parameters:
+        - $ref: '#/components/parameters/canadaLongitudeParam'
+        - $ref: '#/components/parameters/canadaLatitudeParam'
+        - $ref: '#/components/parameters/radiusParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+      responses:
+        '200':
+          description: 'A list of parcel features.'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SimpleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ca/parcels/area:
+    get:
+      tags:
+        - Canada
+      summary: 'Area Geometry Search'
+      description: >-
+        Search for parcels in a specific geographical area. This endpoint allows access to test all our premium matched datasets with
+        applicable API token. Accepted formats vary from GeoJSON Feature Collection of geometries (Polygon, MultiPolygon, Point, MultiPoint,
+        LineString and/or MultiLineString), or a Feature with a GeoJSON geometry or a direct GeoJSON geometry. Parameter 'geojson' takes
+        priority if Lat/Long used in same request. These parameters also accept an optional radius parameter in meters to create a buffer
+        around the given geometries. Note adding a radius can increase the overall area of the request reaching the area size limit per
+        request.
+      parameters:
+        - name: geojson
+          in: query
+          schema:
+            type: string
+          description: >-
+            A GeoJSON object with at least one geometry to filter results. The geometries can be no larger than 80 sq miles. Accepted
+            GeoJSON formats are: FeatureCollection, Feature or geometry. Supported geometries: Polygon, MultiPolygon, Point, MultiPoint,
+            LineString and MultiLineString. Variations of geometry types are allowed in a FeatureCollection.
+          required: true
+          example: >-
+            {
+              "coordinates": [
+                [
+                  [
+                    -97.77785381153151,
+                    54.62696250754314
+                  ],
+                  [
+                    -97.77727445438435,
+                    54.62599980717738
+                  ],
+                  [
+                    -97.77403434589417,
+                    54.62683828942136
+                  ],
+                  [
+                    -97.77551492527041,
+                    54.62785686682221
+                  ],
+                  [
+                    -97.77785381153151,
+                    54.62696250754314
+                  ]
+                ]
+              ],
+              "type": "Polygon"
+            }
+        - $ref: '#/components/parameters/radiusParam'
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+
+      responses:
+        '200':
+          description: 'A list of parcel features'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/SimpleResponse'
+                - $ref: '#/components/schemas/countResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Canada
+      summary: 'Area Geometry Search'
+      description: >-
+        Search for parcels in a specific geographical area. This endpoint allows access to test all our premium matched 
+        datasets with applicable API token. Accepted formats vary from GeoJSON Feature Collection of geometries (Polygon, MultiPolygon, 
+        Point, MultiPoint, LineString and/or MultiLineString), or a Feature with a GeoJSON geometry or a direct GeoJSON geometry. 
+        These parameters also accept an optional radius parameter in meters to create a buffer around the given geometries. 
+        Note adding a radius can increase the overall area of the request reaching the area size limit per request.
+      requestBody:
+        description: >
+          * "The polygon's GeoJSON geometry (the area being searched). The polygon can not be larger than 80 sq miles."
+
+          * "Sample coordinates to use:
+            [
+              -97.77785381153151,
+              54.62696250754314
+            ],
+            [
+              -97.77727445438435,
+              54.62599980717738
+            ],
+            [
+              -97.77403434589417,
+              54.62683828942136
+            ],
+            [
+              -97.77551492527041,
+              54.62785686682221
+            ],
+            [
+              -97.77785381153151,
+              54.62696250754314
+            ]"
+        required: true
+        content:
+          application/json:
+            schema:
+              properties:
+                geojson:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      example: Polygon
+                    coordinates:
+                      type: array
+                      minItems: 1
+                      maxItems: 1
+                      example: [[
+                        [
+                          -97.77785381153151,
+                          54.62696250754314
+                        ],
+                        [
+                          -97.77727445438435,
+                          54.62599980717738
+                        ],
+                        [
+                          -97.77403434589417,
+                          54.62683828942136
+                        ],
+                        [
+                          -97.77551492527041,
+                          54.62785686682221
+                        ],
+                        [
+                          -97.77785381153151,
+                          54.62696250754314
+                        ]]]
+
+      parameters:
+        - $ref: '#/components/parameters/radiusParam'
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+
+      responses:
+        '200':
+          description: 'A list of parcel features'
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - $ref: '#/components/schemas/SimpleResponse'
+                - $ref: '#/components/schemas/countResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ca/parcels/address:
+    get:
+      tags:
+        - Canada
+      summary: Address Search
+      description: >-
+        This endpoint delivers parcels using an address within Canada. There can be multiple locations
+        within Canada with similar addresses and therefore we suggest specifying the location within an
+        admin1 and/or admin2 by using the `path` parameter.
+
+      parameters:
+        - $ref: '#/components/parameters/canadaQueryParam'
+        # - $ref: '#/components/parameters/confidenceScoreParam' # Feature coming soon
+        - $ref: '#/components/parameters/canadaPathParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+      responses:
+        '200':
+          description: 'A list of parcel features.'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SimpleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ca/parcels/{ll_uuid}:
+    get:
+      tags:
+        - Canada
+      summary: Regrid ID
+      description: >-
+        This endpoint delivers a single parcel record based on the Regrid id (ll_uuid).
+      parameters:
+        - name: ll_uuid
+          in: path
+          schema:
+            type: string
+          description: The UUID retrieved from another Regrid API call
+          required: true
+          example: 13024dfa-dd7a-490e-8206-000868ad38ea
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with Canada access'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SimpleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  
+  /ca/parcels/apn:
+    get:
+      tags:
+        - Canada
+      summary: Assessor Parcel Number (APN) Search
+      description: >-
+        This endpoint delivers parcels using the Assessor Parcel Number (APN) which is assigned to each parcel by the respective admin2.
+        Multiple parcels can be returned depending on the APN, therefore specify the location within an admin1, admin2 admin3 by using
+        the parameter `path`.
+        **Attention API Trial Token Users:** Data is restricted to 7 counties. Please only use data
+        from one of the restricted counties.
+      parameters:
+        - name: parcelnumb
+          in: query
+          schema:
+            type: integer
+            description: >-
+              The assessor's parcel number to look up. Non-alphanumeric characters will be removed when searching.
+          required: true
+          example: '96376'
+        - $ref: '#/components/parameters/canadaPathParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+      responses:
+        '200':
+          description: 'A list of parcel features.'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SimpleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ca/parcels/query:
+    get:
+      tags:
+        - Canada
+      summary: Overview
+      description: >-
+        The Regrid API offers a flexible and dynamic set of features for querying Regrid Parcels by numerous fields, 
+        operators, geometries and allows for simple composition of API calls, from the output of one endpoint, to the 
+        input of another. Multiple fields can be used in a single query (up to 4), to refine results.
+        [<i>See full list of fields</i>](https://support.regrid.com/api/international-api).
+        Check out Sample Use Case Scenarios in this section
+      externalDocs:
+        url: https://support.regrid.com/api/international-api
+      parameters:
+        - name: fields[:field_name][:operator]
+          in: query
+          schema:
+            type: string
+          description: Use a supported field name and operator, and value to perform a query.
+        - name: geojson
+          in: query
+          schema:
+            type: string
+          description: >-
+            A GeoJSON object with at least one geometry to filter results.
+            The geometries can be no larger than 80 sq miles. If both `geojson` and `lat`-`lon`
+            are present, `geojson` takes precedence. Accepted GeoJSON formats are:
+            FeatureCollection, Feature or geometry. Supported geometries: Polygon, MultiPolygon,
+            Point, MultiPoint, LineString and MultiLineString. Variations of geometry types are
+            allowed in a FeatureCollection.
+          example: >-
+            {
+              "coordinates": [
+                [
+                  -97.77604936056943,
+                  54.62694509762045
+                ],
+                [
+                  -97.77474470499408,
+                  54.6273227269688
+                ]
+              ],
+              "type": "LineString"
+            }
+        - $ref: '#/components/parameters/offsetId'
+        - $ref: '#/components/parameters/radiusParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/canadaPathParam'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnGeometry'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+
+      responses:
+        '200':
+          description: 'A list of parcel features.'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SimpleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '400':
+          $ref: '#/components/responses/FieldsErrorResponse'
+
+  /ca/parcels/query?fields[geoid][eq]=4622&fields[postcode][eq]=R0B 0J0:
+    get:
+      tags:
+        - Canada
+      summary: Sample Use Case - FIPS geoid and Postcode
+      description: >-
+        Find all parcels with FIPS geoid 4622 and Postcode R0B 0J0. Limit your result with the `limit` parameter.
+      parameters:
+        - name: fields[geoid][eq]
+          in: query
+          schema:
+            type: string
+          description: Using the FIPS code
+          required: true
+          example: '4622'
+
+        - name: fields[postcode][eq]
+          in: query
+          schema:
+            type: string
+          description: Using the Postcode.
+          required: true
+          example: 'R0B 0J0'
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/countParam'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with Canada access'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SimpleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ca/parcels/path:
+    get:
+      tags:
+        - Canada
+      summary: Parcel Path
+      description: >-
+        This endpoint delivers a single parcel record based on the unique path. This is best used in combination with the 
+        Typeahead API endpoint. This endpoint allows access to test all of our premium matched datasets with applicable API token.
+      parameters:
+        - name: path
+          in: query
+          schema:
+            type: string
+          description: The canonical path of the parcel in the Regrid system.
+          required: true
+          example: /ca/mb/division-no-22/division-no-22-unorganized/2082
+        - $ref: '#/components/parameters/returnCustom'
+        - $ref: '#/components/parameters/returnFieldLabels'
+        - $ref: '#/components/parameters/returnStacked'
+      responses:
+        '200':
+          description: 'A list of parcel features. When supported by the account with buildings array and addresses property'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SimpleResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /ca/verse:
+    get:
+      tags:
+        - Canada
+      summary: County Metadata (Verse)
+      description: >-
+        This endpoint retrieves all Canadian records from our verse schema. These records are admins2's that tell the last time we did a full data pull from the source.
+      parameters:
+        - $ref: '#/components/parameters/returnGeometry'
+      responses:
+        '200':
+          description: 'A list of current Regrid attributes'
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/CanadaVerseSchema'
+
+  /ca/usage:
+    get:
+      tags:
+        - Canada
+      summary: Usage
+      description: >-
+        Check your current API usage stats to see how many requests, parcel records, and tiles have been used.
+        You can see full history with using the parameter 'return_full_history' or specify a specific date range.
+      parameters:
+        - name: return_full_history
+          in: query
+          schema:
+            type: boolean
+          description: >-
+            Set to true if you would like the entire API usage history.
+          example: 'true'
+        - name: begin_date
+          in: query
+          schema:
+            type: string
+          description: >-
+            optional, datatype:date, YYYY/MM/DD returns the usage from the
+            specified beginning date to current date unless 'end_date' is used.
+          example: '2023-07-01'
+        - name: end_date
+          in: query
+          schema:
+            type: string
+          description: >-
+            optional, datatype: date, YYYY/MM/DD returns the usage for all usage
+            up until the specified ending date unless 'begin_date' is used and when.
+          example: '2023-07-31'
+        - name: return_by_token
+          in: query
+          schema:
+            type: boolean
+          description: >-
+            optional, returns usage by all available tokens. See `by_token` array in response of each token's usage data.
+          example: 'true'
+        - name: return_by_this_token
+          in: query
+          schema:
+            type: boolean
+          description: >-
+            optional, returns usage for only this token.
+          example: 'true'
+      responses:
+        '200':
+          $ref: '#/components/responses/UsageResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+## Schema and Response Definitions ##
+components:
+  securitySchemes:
+   APIKeyQueryParam:
+     type: apiKey
+     in: query
+     name: token
+
+  schemas:
+    BasicResponse:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - error
+        message:
+          type: string
+
+    FeaturesResponse:
+      properties:
+        parcels:
+          type: object
+          properties:
+            type:
+              type: string
+              example: "FeatureCollection"
+            features:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "Feature"
+                  geometry:
+                    allOf:
+                      - nullable: true
+                      - anyOf:
+                        - "$ref": "#/components/schemas/Polygon"
+                        - "$ref": "#/components/schemas/MultiPolygon"
+                  properties:
+                    type: object
+                    properties:
+                      headline:
+                        type: string
+                        description: "A human-friendly display address for the parcel. If no address is available, it falls back to the parcel number."
+                      path:
+                        type: string
+                        description: "The parcel's unique identifier"
+                      fields:
+                        type: object
+                        description: "Standard Schema keys and values. Columns from the parcel table. These include standard column names wherever fields are available, plus additional columns varying by the particular county & data available."
+                      field_labels:
+                        type: object
+                        description: "Human-friendly labels for each key in fields"
+                      context:
+                        type: object
+                        description: "A bit of info about the city or county where this parcel is found, including a path one can use as context for further searches."
+                      addresses:
+                        $ref: "#/components/schemas/AddressesSchemaList"
+                      ll_uuid:
+                        type: string
+                      score:
+                        type: number
+                        example: 86.75966
+                  id:
+                    type: integer
+
+        buildings:
+          description: "Matched buildings are returned when supported by an account."
+          type: object
+          properties:
+            type:
+              type: string
+              example: "FeatureCollection"
+            features:
+              type: array
+              items:
+                $ref: "#/components/schemas/BuildingsSchema"
+
+        zoning:
+          description: "Zoning details are returned when supported by an account."
+          type: object
+          properties:
+            type:
+              type: string
+              example: "FeatureCollection"
+            features:
+              type: array
+              items:
+                $ref: "#/components/schemas/ZoningSchema"
+
+    countResponse:
+      type: object
+      properties:
+        count:
+          type: integer
+          example: 145
+        area:
+          type: object
+          properties:
+            sq_meters:
+              type: number
+              example: 3453.3452
+            acres:
+              type: number
+              example: 34.664
+            sq_miles:
+              type: number
+              example: 2.56
+
+    SimpleResponse:
+      properties:
+        parcels:
+          type: object
+          properties:
+            type:
+              type: string
+              example: "FeatureCollection"
+            features:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "Feature"
+                  geometry:
+                    allOf:
+                      - nullable: true
+                      - anyOf:
+                        - "$ref": "#/components/schemas/Polygon"
+                        - "$ref": "#/components/schemas/MultiPolygon"
+                  properties:
+                    type: object
+                    properties:
+                      headline:
+                        type: string
+                        description: "A human-friendly display address for the parcel. If no address is available, it falls back to the parcel number."
+                      path:
+                        type: string
+                        description: "The parcel's unique identifier"
+                      fields:
+                        type: object
+                        description: "Standard Schema keys and values. Columns from the parcel table. These include standard column names wherever fields are available, plus additional columns varying by the particular county & data available."
+                      field_labels:
+                        type: object
+                        description: "Human-friendly labels for each key in fields"
+                      context:
+                        type: object
+                        description: "A bit of info about the city or county where this parcel is found, including a path one can use as context for further searches."
+                      ll_uuid:
+                        type: string
+                  ll_uuid:
+                    type: string
+
+    typeaheadCentroidResponse:
+      properties:
+        parcel_centroids:
+          type: object
+          properties:
+            type:
+              type: string
+              example: "FeatureCollection"
+            features:
+              type: array
+              items:
+                type: object
+                properties:
+                  type:
+                    type: string
+                    example: "Feature"
+                  geometry:
+                    allOf:
+                      - nullable: true
+                      - anyOf:
+                        - "$ref": "#/components/schemas/Polygon"
+                        - "$ref": "#/components/schemas/MultiPolygon"
+                  properties:
+                    type: object
+                    properties:
+                      ll_uuid:
+                        type: string
+                      score:
+                        type: number
+                        example: 86.75966
+                      context:
+                        type: object
+                        description: "A bit of info about the city or county where this parcel is found, including a path one can use as context for further searches."
+                      path:
+                        type: string
+                        description: "The parcel's unique identifier"
+                      address:
+                        type: string
+                        description: "123 E Some Street"
+                  id:
+                    type: integer
+
+    AddressesSchemaList:
+      description: "Regrid Matched Addresses. This array is included in responses when an account has Matched Addresses enabled."
+      type: array
+      items:
+        $ref: "#/components/schemas/AddressSchema"
+
+    AddressSchema:
+      type: object
+      properties:
+        a_id:
+          type: string
+        a_address:
+          type: string
+        a_saddno:
+          type: string
+        a_saddpref:
+          type: string
+        a_saddstr:
+          type: string
+        a_saddsttyp:
+          type: string
+        a_saddstsuf:
+          type: string
+          format: nullable
+        a_sunit:
+          type: string
+          format: nullable
+        a_szip5:
+          type: string
+        a_szip:
+          type: string
+        a_carte:
+          type: string
+        a_crtype:
+          type: string
+        a_scity:
+          type: string
+        a_state2:
+          type: string
+        a_county:
+          type: string
+        a_delvseqno:
+          type: string
+        a_usps_elotseq:
+          type: string
+        a_usps_elotsort:
+          type: string
+        a_resbus:
+          type: string
+        a_pmbdesc:
+          type: string
+          format: nullable
+        a_pmbno:
+          type: string
+          format: nullable
+        a_dpv_confirm:
+          type: string
+        a_dpv_footnotes:
+          type: string
+        a_default_match:
+          type: string
+        a_lacsflag:
+          type: string
+        a_usps_vacancy:
+          type: string
+        a_nostats:
+          type: string
+        a_error_code:
+          type: string
+        a_extrainfo:
+          type: string
+          format: nullable
+        a_dpv_type:
+          type: string
+        a_geocodetype:
+          type: string
+        a_moddate:
+          type: string
+        a_census_blockgroup:
+          type: string
+        a_lat:
+          type: string
+        a_lon:
+          type: string
+        a_geoid:
+          type: string
+        ll_uuid:
+          type: string
+
+    ## Building Foot Print Schema ##
+    BuildingsSchema:
+      externalDocs:
+        description: Buildings schema
+        url: https://support.regrid.com/articles/buildings-schema
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          example: Feature
+        geometry:
+          allOf:
+          - nullable: true
+          - anyOf:
+            - "$ref": "#/components/schemas/Polygon"
+            - "$ref": "#/components/schemas/MultiPolygon"
+        properties:
+          type: object
+          properties:
+            ed_str_uuid:
+              description: Universally Unique ID of the entire structure
+              type: string
+            ed_bld_uuid:
+              description: Universal Unique ID of the building extracted from the structure
+              type: string
+            ed_geoid:
+              description: County FIPS code
+              type: string
+            ed_lat:
+              description: Latitude of a point in the shape, typically the centroid
+              type: number
+            ed_lon:
+              description: Longitude of a point in the shape, typically the centroid
+              type: number
+            ed_bldg_footprint_sqft:
+              description: Building footprint area in square feet
+              type: number
+            ed_largest:
+              description: An indicator of the largest building on a parcel
+              type: number
+            ed_source:
+              description: Source of the building footprint
+              type: string
+            ed_source_date:
+              description: Date of the building source imagery formatted as MM/DD/YYYY
+              type: string
+            ll_uuids:
+              description: Uniquely identifies a single parcel
+              type: array
+              items:
+                type: string
+            ed_mean_height:
+              description: Mean height of the structure in feet. Available with Matched Building Footprints with Height Addon.
+              type: number
+            ed_max_object_height:
+              description: Maximum height of the structure in ft, excluding potential clutter like an antenna, overhanging tree, etc.. Available with Matched Building Footprints with Height Addon.
+              type: number
+            ed_lag:
+              description: Lowest Adjacent Grade - lowest observed ground elevation above sea level around the boundary of the building. Available with Matched Building Footprints with Height Addon.
+              type: number
+            ed_hag:
+              description: Highest Adjacent Grade - highest observed ground elevation above sea level around the boundary of the building. Available with Matched Building Footprints with Height Addon.
+              type: number
+            ed_mean_elevation:
+              type: number
+              description: Mean ground elevation in ft under the structure footprint. Available with Matched Building Footprints with Height Addon.
+            ed_mean_slope:
+              description: Mean roof slope. Available with Matched Building Footprints with Height Addon.
+              type: integer
+            ed_stories:
+              description: Estimated number of stories based on building height. Available with Matched Building Footprints with Height Addon.
+              type: integer
+            ed_gross_area:
+              description: Estimated area of the building based on stories and square footage of the polygon. Available with Matched Building Footprints with Height Addon.
+              type: number
+            ed_volume:
+              description: Volume of the building based on square footage and the mean height of the polygon in cubic feet. Available with Matched Building Footprints with Height Addon.
+              type: number
+
+
+    ## Zoning Schema ##
+    ZoningSchema:
+      externalDocs:
+        description: Zoning schema
+        url: https://regrid.com/zoning 
+        
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          example: Feature
+        geometry:
+          allOf:
+          - nullable: true
+          - anyOf:
+            - "$ref": "#/components/schemas/Polygon"
+            - "$ref": "#/components/schemas/MultiPolygon"
+        properties:
+          type: object
+          properties:
+            ogc_fid:
+              type: integer
+            zoning_id:
+              type: integer
+            municipality_id:
+              type: integer
+            municipality_name:
+              type: string
+            zoning:
+              type: string
+            zoning_description:
+              type: string
+            zoning_type:
+              type: string
+            zoning_subtype:
+              type: string
+            zoning_guide:
+              type: string
+            zoning_code_link:
+              type: string
+              format: uri
+            land_use_flags_permitted:
+              type: string
+            land_use_flags_conditional:
+              type: string
+            landuse_classes:
+              type: object
+              additionalProperties:
+                type: array
+                items:
+                  type: string
+            min_lot_area_sq_ft:
+              type: number
+            min_lot_width_ft:
+              type: number
+            max_building_height_ft:
+              type: number
+            max_far:
+              type: number
+            max_coverage_pct:
+              type: number
+            min_front_setback_ft:
+              type: number
+            min_rear_setback_ft:
+              type: number
+            max_impervious_coverage_pct:
+              type: number
+            min_side_setback_ft:
+              type: number
+            min_landscaped_space_pct:
+              type: number
+            min_open_space_pct:
+              type: number
+            max_density_du_per_acre:
+              type: number
+            zoning_data_date:
+              type: string
+
+    # Regrid Standard Schema
+    StandardSchema:
+      type: object
+      properties:
+        'schema':
+          type: object
+          additionalProperties:
+            "$ref": "#/components/schemas/StandardSchemaObject"
+
+    StandardSchemaObject:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: ["serial primary key", "text", "boolean", "integer", "double precision", "date", "bigint", "uuid", "timestamp with time zone", "numeric"]
+        human:
+          type: string
+        tier:
+          type: string
+          enum: ["basic", "standard", "premium"]
+        description:
+          type: string
+        examples:
+          type: array
+          items:
+            type: string
+
+    StandardSchemaResponse:
+      allOf:
+        - "$ref": "#/components/schemas/StandardSchema"
+
+    ## Verse (county metadata) Feature ##
+    VerseSchema:
+      type: object
+      properties:
+        type:
+          type: string
+          example: Feature
+        geometry:
+          allOf:
+          - nullable: true
+          - "$ref": "#/components/schemas/Polygon"
+        properties:
+          type: object
+          properties:
+            id:
+              type: integer
+              format: int32
+            path:
+              type: string
+            county:
+              type: string
+            state:
+              type: string
+            seat:
+              type: string
+            population:
+              type: integer
+              format: int32
+            sqmi:
+              type: integer
+              format: int32
+            geoid:
+              type: string
+            city:
+              type: string
+              format: nullable
+            table_name:
+              type: string
+            total_objects:
+              type: integer
+              format: int32
+            last_refresh:
+              type: string
+              format: date
+            canonical_path:
+              type: string
+            filename_stem:
+              type: string
+            date_added:
+              type: string
+              format: nullable
+            shapefile_size_flag:
+              type: string
+              format: nullable
+            assessor_data_date:
+              type: string
+              format: date
+            usps_data_date:
+              type: string
+              format: date
+        id:
+          type: integer
+          format: int32
+
+    CanadaVerseSchema:
+      type: object
+      properties:
+        type:
+          type: string
+          example: Feature
+        geometry:
+          allOf:
+          - nullable: true
+          - "$ref": "#/components/schemas/Polygon"
+        properties:
+          type: object
+          properties:
+            id:
+              type: integer
+              format: int32
+            path:
+              type: string
+            admin0:
+              type: string
+            admin1:
+              type: string
+            admin2:
+              type: string
+            admin2_slug:
+              type: integer
+              format: int32
+            admin2_center:
+              type: integer
+              format: nullable
+            admin3:
+              type: string
+            sqmi:
+              type: integer
+              format: int32
+            sqkm:
+              type: integer
+              format: int32
+            geoid:
+              type: string
+            population:
+              type: string
+              format: nullable
+            table_name:
+              type: string
+            total_objects:
+              type: integer
+              format: int32
+            last_refresh:
+              type: string
+              format: date
+            canonical_path:
+              type: string
+            filename_stem:
+              type: string
+            date_added:
+              type: string
+              format: nullable
+            shapefile_size_flag:
+              type: string
+              format: nullable
+            assessor_data_date:
+              type: string
+              format: date
+            usps_data_date:
+              type: string
+              format: date
+        id:
+          type: integer
+          format: int32
+
+
+    ### GeoJSON Spec ###
+    # Inline for Readme.io import, all included for completeness. Primary Geometries are Point, Polygon and MultiPolygon
+    'GeoJsonObject':
+      description: >
+        GeoJSon object
+
+        The coordinate reference system for all GeoJSON coordinates is a
+        geographic coordinate reference system, using the World Geodetic System
+        1984 (WGS 84) datum, with longitude and latitude units of decimal
+        degrees.
+        This is equivalent to the coordinate reference system identified by the
+        Open Geospatial Consortium (OGC) URN
+        An OPTIONAL third-position element SHALL be the height in meters above
+        or below the WGS 84 reference ellipsoid.
+        In the absence of elevation values, applications sensitive to height or
+        depth SHOULD interpret positions as being at local ground or sea level.
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3'
+      type: object
+      properties:
+        'type':
+          type: string
+          enum:
+          - Feature
+          - FeatureCollection
+          - Point
+          - MultiPoint
+          - LineString
+          - MultiLineString
+          - Polygon
+          - MultiPolygon
+          - GeometryCollection
+        'bbox':
+          type: array
+          items:
+            type: number
+      required:
+      - type
+      discriminator:
+        propertyName: type
+
+    #---------------------------------------------------------------------------
+    'Geometry':
+      description: >
+        Abstract type for all GeoJSon object except Feature and
+        FeatureCollection
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3'
+      allOf:
+      - $ref: '#/components/schemas/GeoJsonObject'
+      - type: object
+        properties:
+          'type':
+            type: string
+            enum:
+            - Point
+            - MultiPoint
+            - LineString
+            - MultiLineString
+            - Polygon
+            - MultiPolygon
+            - GeometryCollection
+        required:
+        - type
+        discriminator:
+          propertyName: type
+
+    #---------------------------------------------------------------------------
+    'GeometryElement':
+      description: >
+        Abstract type for all GeoJSon 'Geometry' object the type of which is not
+        'GeometryCollection'
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3'
+      allOf:
+      - $ref: '#/components/schemas/Geometry'
+      - type: object
+        properties:
+          'type':
+            type: string
+            enum:
+            - Point
+            - MultiPoint
+            - LineString
+            - MultiLineString
+            - Polygon
+            - MultiPolygon
+        required:
+        - type
+        discriminator:
+          propertyName: type
+
+    #---------------------------------------------------------------------------
+    'Feature':
+      description: GeoJSon 'Feature' object
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3.2'
+      allOf:
+      - $ref: '#/components/schemas/GeoJsonObject'
+      - type: object
+        required:
+        - geometry
+        - properties
+        properties:
+          'geometry':
+            allOf:
+            - nullable: true
+            - $ref: '#/components/schemas/Geometry'
+          'properties':
+            type: object
+            nullable: true
+          'id':
+            oneOf:
+            - type: number
+            - type: string
+
+    #---------------------------------------------------------------------------
+    'FeatureCollection':
+      description: GeoJSon 'FeatureCollection' object
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3.3'
+      allOf:
+      - $ref: '#/components/schemas/GeoJsonObject'
+      - type: object
+        required:
+        - features
+        properties:
+          'features':
+            type: array
+            items:
+              $ref: '#/components/schemas/Feature'
+
+    #---------------------------------------------------------------------------
+    'Position':
+      description: >
+        GeoJSon fundamental geometry construct.
+
+        A position is an array of numbers. There MUST be two or more elements.
+        The first two elements are longitude and latitude, or easting and
+        northing, precisely in that order and using decimal numbers.
+        Altitude or elevation MAY be included as an optional third element.
+
+        Implementations SHOULD NOT extend positions beyond three elements
+        because the semantics of extra elements are unspecified and ambiguous.
+        Historically, some implementations have used a fourth element to carry
+        a linear referencing measure (sometimes denoted as "M") or a numerical
+        timestamp, but in most situations a parser will not be able to properly
+        interpret these values. The interpretation and meaning of additional
+        elements is beyond the scope of this specification, and additional
+        elements MAY be ignored by parsers.
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3.1.1'
+      type: array
+      minItems: 2
+      maxItems: 3
+      items:
+        type: number
+
+    #---------------------------------------------------------------------------
+    'LineStringCoordinates':
+      description: >
+        GeoJSon fundamental geometry construct, array of two or more positions.
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3.1.4'
+      type: array
+      items:
+        $ref: '#/components/schemas/Position'
+      minItems: 2
+
+    #---------------------------------------------------------------------------
+    'LinearRing':
+      description: >
+        A linear ring is a closed LineString with four or more positions.
+
+        The first and last positions are equivalent, and they MUST contain
+        identical values; their representation SHOULD also be identical.
+
+        A linear ring is the boundary of a surface or the boundary of a hole in
+        a surface.
+
+        A linear ring MUST follow the right-hand rule with respect to the area
+        it bounds, i.e., exterior rings are counterclockwise, and holes are
+        clockwise.
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3.1.6'
+      type: array
+      items:
+        $ref: '#/components/schemas/Position'
+      minItems: 4
+
+    #---------------------------------------------------------------------------
+    'Point':
+      description: GeoJSon geometry
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3.1.2'
+      allOf:
+      - $ref: '#/components/schemas/GeometryElement'
+      - type: object
+        required:
+        - coordinates
+        properties:
+          'coordinates':
+            $ref: '#/components/schemas/Position'
+
+    #---------------------------------------------------------------------------
+    'MultiPoint':
+      description: GeoJSon geometry
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3.1.3'
+      allOf:
+      - $ref: '#/components/schemas/GeometryElement'
+      - type: object
+        required:
+        - coordinates
+        properties:
+          'coordinates':
+            type: array
+            items:
+              $ref: '#/components/schemas/Position'
+
+    #---------------------------------------------------------------------------
+    'LineString':
+      description: GeoJSon geometry
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3.1.4'
+      allOf:
+      - $ref: '#/components/schemas/GeometryElement'
+      - type: object
+        required:
+        - coordinates
+        properties:
+          'coordinates':
+            $ref: '#/components/schemas/LineStringCoordinates'
+
+    #---------------------------------------------------------------------------
+    'MultiLineString':
+      description: GeoJSon geometry
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3.1.5'
+      allOf:
+      - $ref: '#/components/schemas/GeometryElement'
+      - type: object
+        required:
+        - coordinates
+        properties:
+          'coordinates':
+            type: array
+            items:
+              $ref: '#/components/schemas/LineStringCoordinates'
+
+    #---------------------------------------------------------------------------
+    'Polygon':
+      description: GeoJSon geometry
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3.1.6'
+      allOf:
+      - $ref: '#/components/schemas/GeometryElement'
+      - type: object
+        required:
+        - coordinates
+        properties:
+          'coordinates':
+            type: array
+            items:
+              $ref: '#/components/schemas/LinearRing'
+
+    #---------------------------------------------------------------------------
+    'MultiPolygon':
+      description: GeoJSon geometry
+      externalDocs:
+        url: 'https://tools.ietf.org/html/rfc7946#section-3.1.7'
+      allOf:
+      - $ref: '#/components/schemas/GeometryElement'
+      - type: object
+        required:
+        - coordinates
+        properties:
+          'coordinates':
+            type: array
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/LinearRing'
+
+    ########## GeoJSON end ##########
+
+    ## Response pieces ##
+    cycleDates:
+      type: object
+      properties:
+        begin:
+          type: number
+        end:
+          type: number
+    # originally used by cycle usage but really it's the usage data
+    usageData:
+      type: object
+      properties:
+        requests:
+          type: integer
+        results:
+          type: integer
+        tiles:
+          type: integer
+        features:
+          type: integer
+        typeahead:
+          type: integer
+        addresses:
+          type: integer
+        buildings:
+          type: integer
+        ownership:
+          type: integer
+        zoning:
+          type: integer
+        area:
+          type: object
+          properties:
+            sq_meters:
+              type: number
+            acres:
+              type: number
+            sq_miles:
+              type: number
+    dateRangeData:
+      type: object
+      properties:
+        begin_ts: 
+          type: number
+        begin:
+          type: string
+          format: date
+        end:
+          type: string
+          format: date
+        total:
+          $ref: '#/components/schemas/usageData'
+        #TODO Not sure these are included outside of full_history
+        #overage:
+        #  type: object
+        #current:
+        #  type: boolean
+        #paid:
+        #  type: boolean
+        #trial:
+        #  type: boolean
+        ## end of dateRangeData ##
+    fullHistory:
+      type: array
+      items:
+        $ref: '#/components/schemas/dateRangeData'
+
+  responses:
+    # on all API responses
+    Unauthorized:
+      description: "Unauthorized"
+      content:
+        application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  example: "error"
+                message:
+                  type: string
+                  example: "An access token is required."
+
+    FieldsErrorResponse:
+      description: 'Invalid requests return informative 400 error'
+      content:
+        application/json:
+          schema:
+            description: 'Error response body'
+            type: object
+            properties:
+              status:
+                type: string
+                example: error
+              message:
+                type: string
+                example: "At least one field name and operator are required in format 'fields[:field_name][:operator]=:value"
+    UsageResponse:
+      description: 'OK Usage response body'
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              usage:
+                type: object
+                properties:
+                  cycle_dates:
+                    $ref: '#/components/schemas/cycleDates'
+                  cycle_usage:
+                    $ref: '#/components/schemas/usageData'
+                  date_range:
+                    $ref: '#/components/schemas/dateRangeData'
+                  full_history:
+                    $ref: '#/components/schemas/fullHistory'
+                  by_token:
+                    type: array
+                    items:
+                      properties:
+                        name:
+                          type: string
+                        token_fragment:
+                          type: string
+                        cycle_usage:
+                          $ref: '#/components/schemas/usageData'
+                        full_history:
+                          $ref: '#/components/schemas/fullHistory'
+                  
+
+  parameters:
+    ## params on most endpoints ##
+    limitParam:
+      name: limit
+      in: query
+      description: 'Maximum number of Parcel Records to return.'
+      required: false
+      schema:
+        type: integer
+      example: 5
+
+    countParam:
+      name: return_count
+      in: query
+      description: 'Set to true to enable count of parcels in query.'
+      required: false
+      schema:
+        type: boolean
+
+    returnCustom:
+      name: return_custom
+      in: query
+      description: 'Default false: A true value allows county-specific fields to be passed through beyond standard schema fields only.'
+      required: false
+      schema:
+        type: boolean
+
+    returnFieldLabels:
+      name: return_field_labels
+      in: query
+      description: >-
+        Default false: A true value shows the naming convention for each standardized schema field.
+      schema:
+        type: boolean
+
+    returnStacked:
+      name: return_stacked
+      in: query
+      schema:
+        type: boolean
+      description: >-
+        Default true: A false value returns the first parcel if geometries are identical.
+
+    returnZoning:
+      name: return_zoning
+      in: query
+      description: 'Set to false to disable zoning data in the response. Default is true when supported by the account.'
+      required: false
+      schema:
+        type: boolean
+
+    matchedBuildings:
+      name: return_matched_buildings
+      in: query
+      description: 'Set to false to disable building footprint data in the response. Default is true when supported by the account.'
+      required: false
+      schema:
+        type: boolean
+
+    matchedAddresses:
+      name: return_matched_addresses
+      in: query
+      description: 'Set to false to matched addresses data in the response. Default is true when supported by the account.'
+      required: false
+      schema:
+        type: boolean
+
+    enhancedOwnership:
+      name: return_enhanced_ownership
+      in: query
+      description: 'Set to false to disable enhanced ownership data in the response. Default is true when supported by the account.'
+      required: false
+      schema:
+        type: boolean
+
+    returnGeometry:
+      name: return_geometry
+      in: query
+      description: Default true. A features are returned without geometry values.
+      required: false
+      schema:
+        type: boolean
+
+    pathParam:
+      name: path
+      in: query
+      schema:
+        type: string
+      description: >-
+        Represents the path for the /country/state/county. This restricts the search to this area.
+      example: /us/tx/dallas
+
+    canadaPathParam:
+      name: path
+      in: query
+      schema:
+        type: string
+      description: >-
+        Represents the path for the /admin0/admin1/admin2. This restricts the search to this area.
+      example: /ca/mb/division-no-22
+
+    offsetId:
+      name: offset_id
+      in: query
+      description: 'ID from a previous query exceeding the limit, returns the next set of results up to limit.'
+      required: false
+      schema:
+        type: integer
+      example: '12345'
+
+    radiusParam:
+      name: radius
+      in: query
+      schema:
+        type: integer
+      description: >-
+        (Default: 0, Maximum: 32000) Radius in meters for which all Parcel records will be returned if they
+        are within the radius zone from latitude and longitude point.
+      example: 100
+
+    latitudeParam:
+      name: lat
+      in: query
+      schema:
+        type: number
+      description: Latitude point
+      example: '32.834967'
+
+    canadaLatitudeParam:
+      name: lat
+      in: query
+      schema:
+        type: number
+      description: Latitude point
+      example: '54.627318'
+      
+    longitudeParam:
+      name: lon
+      in: query
+      schema:
+        type: number
+      description: Longitude point
+      example: '-96.563861'
+
+    canadaLongitudeParam:
+      name: lon
+      in: query
+      schema:
+        type: number
+      description: Longitude point
+      example: '-97.774811'
+
+    # query endpoint, area endpoint
+    geojsonParam:
+      name: geojson
+      in: query
+      schema:
+        type: string
+      description: >-
+        A GeoJSON object with at least one geometry to filter results.
+        The geometries can be no larger than 80 sq miles. If both `geojson` and `lat`-`lon`
+        are present, `geojson` takes precedence. Accepted GeoJSON formats are:
+        FeatureCollection, Feature or geometry. Supported geometries: Polygon, MultiPolygon,
+        Point, MultiPoint, LineString and MultiLineString. Variations of geometry types are
+        allowed in a FeatureCollection.
+      example: >-
+        {"type":"Polygon","coordinates":[[ [ -96.77737790638413,
+        32.8277929786983], [-96.77476147447638, 32.82780540015257],
+        [-96.77614360093615, 32.82905995805102]]]
+
+    queryParam:
+      name: query
+      in: query
+      schema:
+        type: string
+      description: A street address or partial address, starting at the beginning
+      required: true
+      example: 5818 Diana Dr, Dallas TX 75043-6627
+    
+    canadaQueryParam:
+      name: query
+      in: query
+      schema:
+        type: string
+      description: A street address or partial address, starting at the beginning
+      required: true
+      example: 500 CHASTELAINE ST, INCORPORATED COMMUNITY OF CROSS LAKE
+
+    confidenceScoreParam:
+      name: confidence_score
+      in: query
+      schema:
+        type: number
+      description: >-
+        Return parcels that matches the score or greater.
+      example: '0.95'
