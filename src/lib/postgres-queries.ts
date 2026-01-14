@@ -1,0 +1,215 @@
+import { db } from './db';
+import { properties, parcelToProperty } from './schema';
+import { and, or, ilike, gte, lte, eq, sql } from 'drizzle-orm';
+
+export interface PropertyResult {
+  id: string;
+  propertyKey: string;
+  address: string;
+  city: string;
+  state: string;
+  zip: string;
+  county: string;
+  lat: number;
+  lon: number;
+  owner: string;
+  primaryOwner: string | null;
+  usedesc: string[];
+  totalParval: number;
+  yearBuilt: number | null;
+  lotSqft: number | null;
+  buildingSqft: number | null;
+  numFloors: number | null;
+  assetCategory: string | null;
+  commonName: string | null;
+  enrichmentStatus: string | null;
+}
+
+function formatPropertyResult(row: typeof properties.$inferSelect): PropertyResult {
+  const rawParcels = row.rawParcelsJson as any[];
+  const firstParcel = rawParcels?.[0];
+  
+  let address = row.regridAddress || row.validatedAddress || '';
+  if (!address && firstParcel) {
+    const parts = [
+      firstParcel.address,
+      firstParcel.sunit
+    ].filter(Boolean);
+    address = parts.join(' ');
+  }
+  
+  const usedescList: string[] = [];
+  if (rawParcels) {
+    for (const p of rawParcels) {
+      if (p.usedesc && !usedescList.includes(p.usedesc)) {
+        usedescList.push(p.usedesc);
+      }
+    }
+  }
+
+  let totalParval = 0;
+  if (rawParcels) {
+    for (const p of rawParcels) {
+      totalParval += (p.parval || 0);
+    }
+  }
+
+  return {
+    id: row.id,
+    propertyKey: row.propertyKey,
+    address: address,
+    city: row.city || '',
+    state: row.state || '',
+    zip: row.zip || '',
+    county: row.county || '',
+    lat: row.lat || 0,
+    lon: row.lon || 0,
+    owner: row.regridOwner || '',
+    primaryOwner: row.regridOwner,
+    usedesc: usedescList,
+    totalParval: totalParval,
+    yearBuilt: row.yearBuilt,
+    lotSqft: row.lotSqft,
+    buildingSqft: row.buildingSqft,
+    numFloors: row.numFloors,
+    assetCategory: row.assetCategory,
+    commonName: row.commonName,
+    enrichmentStatus: row.enrichmentStatus,
+  };
+}
+
+export async function searchPropertiesFromPostgres(
+  query: string,
+  limit: number = 50
+): Promise<PropertyResult[]> {
+  const searchTerm = `%${query}%`;
+  
+  const results = await db
+    .select()
+    .from(properties)
+    .where(
+      and(
+        eq(properties.isActive, true),
+        or(
+          ilike(properties.regridAddress, searchTerm),
+          ilike(properties.validatedAddress, searchTerm),
+          ilike(properties.city, searchTerm),
+          ilike(properties.regridOwner, searchTerm),
+          ilike(properties.commonName, searchTerm),
+          ilike(properties.propertyKey, searchTerm)
+        )
+      )
+    )
+    .limit(limit);
+  
+  return results.map(formatPropertyResult);
+}
+
+export async function getPropertiesInBoundsFromPostgres(
+  minLat: number,
+  maxLat: number,
+  minLon: number,
+  maxLon: number,
+  limit: number = 50
+): Promise<PropertyResult[]> {
+  const results = await db
+    .select()
+    .from(properties)
+    .where(
+      and(
+        eq(properties.isActive, true),
+        gte(properties.lat, minLat),
+        lte(properties.lat, maxLat),
+        gte(properties.lon, minLon),
+        lte(properties.lon, maxLon)
+      )
+    )
+    .limit(limit);
+  
+  return results.map(formatPropertyResult);
+}
+
+export async function getPropertyByIdFromPostgres(
+  id: string
+): Promise<PropertyResult | null> {
+  const results = await db
+    .select()
+    .from(properties)
+    .where(eq(properties.id, id))
+    .limit(1);
+  
+  if (results.length === 0) return null;
+  return formatPropertyResult(results[0]);
+}
+
+export async function getPropertyByKeyFromPostgres(
+  propertyKey: string
+): Promise<PropertyResult | null> {
+  const results = await db
+    .select()
+    .from(properties)
+    .where(eq(properties.propertyKey, propertyKey))
+    .limit(1);
+  
+  if (results.length === 0) return null;
+  return formatPropertyResult(results[0]);
+}
+
+export async function resolveParcelToProperty(
+  llUuid: string
+): Promise<{ propertyKey: string; property: PropertyResult } | null> {
+  const parcelMapping = await db
+    .select()
+    .from(parcelToProperty)
+    .where(eq(parcelToProperty.llUuid, llUuid))
+    .limit(1);
+  
+  if (parcelMapping.length === 0) return null;
+  
+  const property = await getPropertyByKeyFromPostgres(parcelMapping[0].propertyKey);
+  if (!property) return null;
+  
+  return {
+    propertyKey: parcelMapping[0].propertyKey,
+    property,
+  };
+}
+
+export async function getPropertyStats(): Promise<{
+  totalProperties: number;
+  totalParcels: number;
+  enrichedCount: number;
+  pendingCount: number;
+}> {
+  const [propCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(properties)
+    .where(eq(properties.isActive, true));
+  
+  const [parcelCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(parcelToProperty);
+  
+  const [enrichedCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(properties)
+    .where(and(
+      eq(properties.isActive, true),
+      eq(properties.enrichmentStatus, 'enriched')
+    ));
+  
+  const [pendingCount] = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(properties)
+    .where(and(
+      eq(properties.isActive, true),
+      eq(properties.enrichmentStatus, 'pending')
+    ));
+  
+  return {
+    totalProperties: propCount?.count || 0,
+    totalParcels: parcelCount?.count || 0,
+    enrichedCount: enrichedCount?.count || 0,
+    pendingCount: pendingCount?.count || 0,
+  };
+}
