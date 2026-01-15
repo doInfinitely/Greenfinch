@@ -545,24 +545,24 @@ function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): 
   ]);
 }
 
-// Find LinkedIn URL using Gemini with web grounding (with 15s timeout)
+// Find LinkedIn URL using Gemini with web grounding (with 45s timeout)
 export async function findLinkedInUrl(
   name: string,
   title: string | null,
   company: string | null,
   domain: string | null
 ): Promise<{ linkedinUrl: string | null; confidence: number }> {
-  const prompt = `Find the LinkedIn profile URL for ${name}${title ? `, who works as ${title}` : ''}${company ? ` at ${company}` : ''}${domain ? ` (${domain})` : ''}.
+  const prompt = `Search for the LinkedIn profile of ${name}${title ? `, ${title}` : ''}${company ? ` at ${company}` : ''}.
 
-Return ONLY the LinkedIn URL in this exact format:
+If you find their LinkedIn profile, return ONLY the URL in this format:
 https://www.linkedin.com/in/username
 
-If you cannot find a matching profile with high confidence, return 'NOT_FOUND'.
-
-Important: Return only the URL or NOT_FOUND, no other text.`;
+If you cannot find a verified profile, return: NOT_FOUND`;
 
   try {
     const client = getGeminiClient();
+    
+    console.log(`[Enrichment] Calling Gemini for LinkedIn lookup: ${name}`);
     
     const response = await withTimeout(
       client.models.generateContent({
@@ -572,7 +572,7 @@ Important: Return only the URL or NOT_FOUND, no other text.`;
           tools: [{ googleSearch: {} }],
         },
       }),
-      15000,
+      45000,
       'LinkedIn lookup timed out'
     );
 
@@ -803,7 +803,8 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
     }
 
     const contactsWithEmails = await enrichContactsWithEmail(enrichedContacts);
-    const validatedContacts = await validateHighPriorityContacts(contactsWithEmails);
+    const contactsWithLinkedIn = await enrichContactsWithLinkedIn(contactsWithEmails);
+    const validatedContacts = await validateHighPriorityContacts(contactsWithLinkedIn);
 
     return {
       success: true,
