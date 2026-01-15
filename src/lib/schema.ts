@@ -48,7 +48,11 @@ export const properties = pgTable('properties', {
   
   // Physical characteristics
   lotSqft: integer('lot_sqft'),
+  lotSqftConfidence: real('lot_sqft_confidence'),
+  lotSqftSource: text('lot_sqft_source'),
   buildingSqft: integer('building_sqft'),
+  buildingSqftConfidence: real('building_sqft_confidence'),
+  buildingSqftSource: text('building_sqft_source'),
   yearBuilt: integer('year_built'),
   numFloors: integer('num_floors'),
   

@@ -101,6 +101,12 @@ export interface EnrichedProperty {
   propertyWebsite: string | null;
   propertyManagerWebsite: string | null;
   aiRationale: string | null;
+  buildingSqft: number | null;
+  buildingSqftConfidence: number | null;
+  buildingSqftSource: string | null;
+  lotSqft: number | null;
+  lotSqftConfidence: number | null;
+  lotSqftSource: string | null;
 }
 
 export interface EnrichmentResult {
@@ -262,7 +268,13 @@ Analyze this property and return a JSON object with the following structure:
     "management_confidence": 0.0-1.0,
     "property_website": "Property website URL if known (e.g., building website, leasing site)",
     "property_manager_website": "Property management company website URL if known",
-    "classification_rationale": "Overall summary combining category and class rationale"
+    "classification_rationale": "Overall summary combining category and class rationale",
+    "building_sqft": "Total building square footage (number or null if unknown)",
+    "building_sqft_confidence": 0.0-1.0,
+    "building_sqft_source": "Where this data came from (e.g., 'county records', 'property listing', 'estimated from floors and footprint')",
+    "lot_sqft": "Total lot/land square footage (number or null if unknown)",
+    "lot_sqft_confidence": 0.0-1.0,
+    "lot_sqft_source": "Where this data came from (e.g., 'county records', 'parcel data', 'estimated')"
   },
   "contacts": [
     {
@@ -399,6 +411,12 @@ function processEnrichmentResponse(
     propertyWebsite: prop.property_website || null,
     propertyManagerWebsite: prop.property_manager_website || null,
     aiRationale: combinedRationale || null,
+    buildingSqft: prop.building_sqft || null,
+    buildingSqftConfidence: prop.building_sqft_confidence || null,
+    buildingSqftSource: prop.building_sqft_source || null,
+    lotSqft: prop.lot_sqft || null,
+    lotSqftConfidence: prop.lot_sqft_confidence || null,
+    lotSqftSource: prop.lot_sqft_source || null,
   };
 
   const contacts: EnrichedContact[] = (rawResponse.contacts || [])
@@ -843,6 +861,12 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
         propertyWebsite: null,
         propertyManagerWebsite: null,
         aiRationale: null,
+        buildingSqft: null,
+        buildingSqftConfidence: null,
+        buildingSqftSource: null,
+        lotSqft: null,
+        lotSqftConfidence: null,
+        lotSqftSource: null,
       },
       contacts: [],
       organizations: [],
@@ -880,8 +904,21 @@ export async function storeEnrichmentResults(
     lat: aggregatedProperty.lat,
     lon: aggregatedProperty.lon,
     geocodeConfidence: result.property.geocodeConfidence,
-    lotSqft: aggregatedProperty.lotSqft,
-    buildingSqft: aggregatedProperty.buildingSqft,
+    // Prefer AI-returned values over Regrid when available with reasonable confidence
+    lotSqft: (result.property.lotSqft && result.property.lotSqftConfidence && result.property.lotSqftConfidence >= CONFIDENCE.MEDIUM) 
+      ? result.property.lotSqft 
+      : aggregatedProperty.lotSqft,
+    lotSqftConfidence: result.property.lotSqftConfidence || null,
+    lotSqftSource: (result.property.lotSqft && result.property.lotSqftConfidence && result.property.lotSqftConfidence >= CONFIDENCE.MEDIUM) 
+      ? result.property.lotSqftSource 
+      : 'regrid',
+    buildingSqft: (result.property.buildingSqft && result.property.buildingSqftConfidence && result.property.buildingSqftConfidence >= CONFIDENCE.MEDIUM) 
+      ? result.property.buildingSqft 
+      : aggregatedProperty.buildingSqft,
+    buildingSqftConfidence: result.property.buildingSqftConfidence || null,
+    buildingSqftSource: (result.property.buildingSqft && result.property.buildingSqftConfidence && result.property.buildingSqftConfidence >= CONFIDENCE.MEDIUM) 
+      ? result.property.buildingSqftSource 
+      : 'regrid',
     yearBuilt: aggregatedProperty.yearBuilt,
     numFloors: aggregatedProperty.numFloors,
     assetCategory: result.property.assetCategory,
