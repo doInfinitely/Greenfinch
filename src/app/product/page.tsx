@@ -34,6 +34,7 @@ export default function ProductPage() {
                 width={600}
                 height={450}
                 className="rounded-2xl shadow-xl"
+                style={{ width: '100%', height: 'auto' }}
               />
             </div>
             <div>
@@ -96,6 +97,7 @@ export default function ProductPage() {
                 width={600}
                 height={450}
                 className="rounded-2xl shadow-xl"
+                style={{ width: '100%', height: 'auto' }}
               />
             </div>
           </div>
@@ -112,6 +114,7 @@ export default function ProductPage() {
                 width={600}
                 height={450}
                 className="rounded-2xl shadow-xl"
+                style={{ width: '100%', height: 'auto' }}
               />
             </div>
             <div>

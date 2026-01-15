@@ -121,6 +121,7 @@ export default function LandingPage() {
                   width={800}
                   height={450}
                   className="rounded-xl"
+                  style={{ width: '100%', height: 'auto' }}
                   priority
                 />
               </div>
@@ -260,6 +261,7 @@ export default function LandingPage() {
                 width={600}
                 height={450}
                 className="rounded-2xl shadow-xl"
+                style={{ width: '100%', height: 'auto' }}
               />
             </div>
             <div>
@@ -318,6 +320,7 @@ export default function LandingPage() {
                 width={600}
                 height={450}
                 className="rounded-2xl shadow-xl"
+                style={{ width: '100%', height: 'auto' }}
               />
             </div>
           </div>
@@ -334,6 +337,7 @@ export default function LandingPage() {
                 width={600}
                 height={450}
                 className="rounded-2xl shadow-xl"
+                style={{ width: '100%', height: 'auto' }}
               />
             </div>
             <div>

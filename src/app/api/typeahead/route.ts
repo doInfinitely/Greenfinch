@@ -103,7 +103,37 @@ export async function GET(request: NextRequest) {
     }
 
     const proximity = searchParams.get('proximity') || '-96.797,32.777';
-    const [lon, lat] = proximity.split(',').map(Number);
+    const proximityParts = proximity.split(',');
+    
+    if (proximityParts.length !== 2) {
+      return NextResponse.json(
+        { error: 'Invalid proximity format. Expected "lon,lat"' },
+        { status: 400 }
+      );
+    }
+    
+    const [lon, lat] = proximityParts.map(Number);
+    
+    if (isNaN(lon) || isNaN(lat)) {
+      return NextResponse.json(
+        { error: 'Invalid proximity coordinates. Both lon and lat must be valid numbers' },
+        { status: 400 }
+      );
+    }
+    
+    if (lon < -180 || lon > 180) {
+      return NextResponse.json(
+        { error: 'Invalid longitude. Must be between -180 and 180' },
+        { status: 400 }
+      );
+    }
+    
+    if (lat < -90 || lat > 90) {
+      return NextResponse.json(
+        { error: 'Invalid latitude. Must be between -90 and 90' },
+        { status: 400 }
+      );
+    }
 
     const autocompleteResponse = await fetch(
       'https://places.googleapis.com/v1/places:autocomplete',
