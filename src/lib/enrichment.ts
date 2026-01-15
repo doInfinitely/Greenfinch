@@ -73,7 +73,7 @@ export interface EnrichedOrganization {
   name: string;
   domain: string | null;
   orgType: string;
-  role: string;
+  roles: string[];
 }
 
 export interface EnrichedProperty {
@@ -257,7 +257,7 @@ Analyze this property and return a JSON object with the following structure:
       "employer_name": "Company Name",
       "linkedin_url": null,
       "linkedin_confidence": null,
-      "role": "RELATIONSHIP TO THIS PROPERTY - MUST be one of: owner, property_manager, tenant",
+      "role": "RELATIONSHIP TO THIS PROPERTY - MUST be one of: property_manager, facilities_manager, owner, leasing, other",
       "role_confidence": 0.0-1.0
     }
   ],
@@ -266,7 +266,7 @@ Analyze this property and return a JSON object with the following structure:
       "name": "Organization name",
       "domain": "organization.com or null",
       "org_type": "owner, management, tenant, developer, other",
-      "role": "Description of relationship to THIS SPECIFIC property"
+      "roles": ["Array of relationships to THIS PROPERTY - each MUST be one of: property_manager, facilities_manager, owner, leasing, other"]
     }
   ]
 }
@@ -393,13 +393,22 @@ function processEnrichmentResponse(
       return contact;
     });
 
-  const orgs: EnrichedOrganization[] = (rawResponse.organizations || []).map((o: any) => ({
-    id: generateOrgId({ domain: o.domain, name: o.name }),
-    name: o.name,
-    domain: o.domain || null,
-    orgType: o.org_type || 'other',
-    role: o.role || '',
-  }));
+  const orgs: EnrichedOrganization[] = (rawResponse.organizations || []).map((o: any) => {
+    // Handle both old 'role' string and new 'roles' array format
+    let roles: string[] = [];
+    if (Array.isArray(o.roles)) {
+      roles = o.roles;
+    } else if (o.role) {
+      roles = [o.role];
+    }
+    return {
+      id: generateOrgId({ domain: o.domain, name: o.name }),
+      name: o.name,
+      domain: o.domain || null,
+      orgType: o.org_type || 'other',
+      roles,
+    };
+  });
 
   return { property, contacts, organizations: orgs };
 }
@@ -891,12 +900,12 @@ export async function storeEnrichmentResults(
     }
     orgIds.push(orgId);
 
-    // Link to property
+    // Link to property (store roles as comma-separated string)
     await db.insert(propertyOrganizations)
       .values({
         propertyId,
         orgId,
-        role: org.role,
+        role: org.roles.join(', '),
       })
       .onConflictDoNothing();
   }
