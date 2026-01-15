@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pLimit from 'p-limit';
-import { v4 as uuidv4 } from 'uuid';
-import { SearchBoxCore } from '@mapbox/search-js-core';
 import { getParcelByPoint } from '@/lib/regrid';
 import { resolveParcelToProperty } from '@/lib/postgres-queries';
 
@@ -54,6 +52,28 @@ async function resolvePoiToProperty(lat: number, lon: number): Promise<string | 
   }
 }
 
+function mapGoogleTypeToOurType(types: string[]): string {
+  if (types.includes('establishment') || types.includes('point_of_interest')) {
+    return 'poi';
+  }
+  if (types.includes('street_address') || types.includes('premise') || types.includes('subpremise')) {
+    return 'address';
+  }
+  if (types.includes('route')) {
+    return 'street';
+  }
+  if (types.includes('locality') || types.includes('administrative_area_level_1')) {
+    return 'place';
+  }
+  if (types.includes('neighborhood') || types.includes('sublocality')) {
+    return 'neighborhood';
+  }
+  if (types.includes('postal_code')) {
+    return 'postcode';
+  }
+  return 'poi';
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -73,9 +93,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ suggestions: cached.data });
     }
 
-    const mapboxToken = process.env.MAPBOX_API_KEY;
-    if (!mapboxToken) {
-      console.error('MAPBOX_API_KEY not configured');
+    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
+    if (!googleApiKey) {
+      console.error('GOOGLE_MAPS_API_KEY not configured');
       return NextResponse.json(
         { error: 'API configuration error' },
         { status: 500 }
@@ -85,67 +105,101 @@ export async function GET(request: NextRequest) {
     const proximity = searchParams.get('proximity') || '-96.797,32.777';
     const [lon, lat] = proximity.split(',').map(Number);
 
-    const searchBox = new SearchBoxCore({
-      accessToken: mapboxToken,
-      types: 'poi,address,street,place,neighborhood,postcode',
-      language: 'en',
-    });
+    const autocompleteResponse = await fetch(
+      'https://places.googleapis.com/v1/places:autocomplete',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': googleApiKey,
+        },
+        body: JSON.stringify({
+          input: sanitizedQuery,
+          locationBias: {
+            circle: {
+              center: {
+                latitude: lat,
+                longitude: lon,
+              },
+              radius: 50000.0,
+            },
+          },
+          includedPrimaryTypes: [
+            'establishment',
+            'geocode',
+          ],
+        }),
+      }
+    );
 
-    const result = await searchBox.suggest(sanitizedQuery, {
-      proximity: [lon, lat],
-      sessionToken: uuidv4(),
-      limit: 8,
-    });
+    if (!autocompleteResponse.ok) {
+      const errorText = await autocompleteResponse.text();
+      console.error('Google Places Autocomplete error:', errorText);
+      return NextResponse.json(
+        { error: 'Failed to fetch suggestions' },
+        { status: 500 }
+      );
+    }
 
-    let suggestions: TypeaheadSuggestion[] = (result.suggestions || [])
+    const autocompleteData = await autocompleteResponse.json();
+    const predictions = autocompleteData.suggestions || [];
+
+    let suggestions: TypeaheadSuggestion[] = predictions
       .slice(0, 8)
-      .map((suggestion: any) => {
-        const suggestionType = Array.isArray(suggestion.feature_type)
-          ? suggestion.feature_type
-          : suggestion.type || 'unknown';
+      .map((prediction: any) => {
+        const place = prediction.placePrediction;
+        if (!place) return null;
 
-        const name = suggestion.name || '';
-        const fullAddress = suggestion.full_address || suggestion.place_formatted || '';
-        const placeName = fullAddress 
-          ? `${name}, ${fullAddress}` 
-          : name;
+        const mainText = place.structuredFormat?.mainText?.text || place.text?.text || '';
+        const secondaryText = place.structuredFormat?.secondaryText?.text || '';
+        const types = place.types || [];
 
         return {
-          id: suggestion.mapbox_id || '',
-          text: name,
-          place_name: placeName,
-          address: fullAddress,
+          id: place.placeId || '',
+          text: mainText,
+          place_name: secondaryText ? `${mainText}, ${secondaryText}` : mainText,
+          address: secondaryText,
           lat: 0,
           lon: 0,
-          type: suggestionType,
-          _mapboxId: suggestion.mapbox_id,
+          type: mapGoogleTypeToOurType(types),
+          _placeId: place.placeId,
         };
-      });
+      })
+      .filter(Boolean);
 
-    // Retrieve coordinates for each suggestion
     const limit = pLimit(3);
-    const sessionToken = uuidv4();
     
-    const retrievePromises = suggestions.map((suggestion: any) => {
+    const detailPromises = suggestions.map((suggestion: any) => {
       return limit(async () => {
         try {
-          if (suggestion._mapboxId) {
-            const retrieved = await searchBox.retrieve(
-              { mapbox_id: suggestion._mapboxId } as any,
-              { sessionToken }
+          if (suggestion._placeId) {
+            const detailsResponse = await fetch(
+              `https://places.googleapis.com/v1/places/${suggestion._placeId}`,
+              {
+                method: 'GET',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'X-Goog-Api-Key': googleApiKey,
+                  'X-Goog-FieldMask': 'location,formattedAddress,types',
+                },
+              }
             );
-            
-            if (retrieved.features && retrieved.features.length > 0) {
-              const feature = retrieved.features[0];
-              const coords = feature.geometry?.coordinates;
-              if (coords) {
-                suggestion.lat = coords[1];
-                suggestion.lon = coords[0];
+
+            if (detailsResponse.ok) {
+              const details = await detailsResponse.json();
+              if (details.location) {
+                suggestion.lat = details.location.latitude;
+                suggestion.lon = details.location.longitude;
+              }
+              if (details.formattedAddress) {
+                suggestion.address = details.formattedAddress;
+              }
+              if (details.types) {
+                suggestion.type = mapGoogleTypeToOurType(details.types);
               }
             }
           }
           
-          // Resolve POI types to properties in our database
           if (suggestion.type === 'poi' && suggestion.lat && suggestion.lon) {
             const propertyKey = await resolvePoiToProperty(suggestion.lat, suggestion.lon);
             if (propertyKey) {
@@ -153,17 +207,17 @@ export async function GET(request: NextRequest) {
             }
           }
           
-          delete suggestion._mapboxId;
+          delete suggestion._placeId;
           return suggestion;
         } catch (error) {
-          console.warn('Failed to retrieve suggestion:', error);
-          delete suggestion._mapboxId;
+          console.warn('Failed to retrieve place details:', error);
+          delete suggestion._placeId;
           return suggestion;
         }
       });
     });
 
-    suggestions = await Promise.all(retrievePromises);
+    suggestions = await Promise.all(detailPromises);
 
     cache.set(cacheKey, {
       data: suggestions,
