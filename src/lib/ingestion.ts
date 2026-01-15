@@ -16,8 +16,8 @@ export const MVP_ZIP_CODE = process.env.MVP_ZIP_CODE || '75225';
 
 function createConnection() {
   return snowflake.createConnection({
-    account: process.env.SNOWFLAKE_ACCOUNT_GF!,
-    username: process.env.SNOWFLAKE_USER!,
+    account: process.env.SNOWFLAKE_ACCOUNT!,
+    username: process.env.SNOWFLAKE_USERNAME!,
     password: process.env.SNOWFLAKE_PASSWORD!,
     database: process.env.SNOWFLAKE_DATABASE!,
     warehouse: process.env.SNOWFLAKE_WAREHOUSE!,
@@ -337,6 +337,9 @@ export async function fetchParcelsFromZipCode(
       "zoning_description"
     FROM ${TABLE_NAME}
     WHERE "szip5" = '${zipCode}'
+      AND "ll_gisacre" > 0.5
+      AND "zoning" NOT ILIKE '%SF%'
+      AND "zoning" NOT ILIKE '%R-%'
     ORDER BY "ll_uuid"
     LIMIT ${limit}
     OFFSET ${offset}
@@ -380,7 +383,7 @@ export async function fetchParcelsFromZipCode(
 }
 
 export async function countParcelsInZipCode(zipCode: string = MVP_ZIP_CODE): Promise<number> {
-  const sql = `SELECT COUNT(*) as count FROM ${TABLE_NAME} WHERE "szip5" = '${zipCode}'`;
+  const sql = `SELECT COUNT(*) as count FROM ${TABLE_NAME} WHERE "szip5" = '${zipCode}' AND "ll_gisacre" > 0.5 AND "zoning" NOT ILIKE '%SF%' AND "zoning" NOT ILIKE '%R-%'`;
   const rows = await executeQuery<any>(sql);
   return rows[0]?.COUNT || rows[0]?.count || 0;
 }
