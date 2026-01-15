@@ -257,7 +257,7 @@ Analyze this property and return a JSON object with the following structure:
       "employer_name": "Company Name",
       "linkedin_url": null,
       "linkedin_confidence": null,
-      "role": "property_manager, facilities, asset_manager, owner, leasing, other",
+      "role": "RELATIONSHIP TO THIS PROPERTY: property_manager, facilities, asset_manager, owner, leasing, other",
       "role_confidence": 0.0-1.0
     }
   ],
@@ -266,7 +266,7 @@ Analyze this property and return a JSON object with the following structure:
       "name": "Organization name",
       "domain": "organization.com or null",
       "org_type": "owner, management, tenant, developer, other",
-      "role": "Description of relationship to property"
+      "role": "Description of relationship to THIS SPECIFIC property"
     }
   ]
 }
@@ -285,8 +285,11 @@ Target 5-10 contacts. For each contact, provide ALL available information:
 - Their email address (business email preferred, format: name@company.com)
 - Their phone number (business phone preferred)
 - Their company/employer and company website domain
-- Their job title
-- Their role at this property (property_manager, facilities, asset_manager, owner, leasing, other)
+- Their job title (this is the contact's general job title at their company)
+- Their ROLE AT THIS PROPERTY - this describes their relationship to THIS SPECIFIC PROPERTY, NOT their job title
+  * Example: A person from SNL Associates who manages this building should have role="property_manager"
+  * Example: Someone who owns this property should have role="owner"
+  * This role describes the edge/relationship between the contact and this property in a graph database
 
 CRITICAL REQUIREMENTS:
 1. Only include CURRENT, ACTIVE contacts - no deceased individuals, no historical/former employees
