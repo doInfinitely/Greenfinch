@@ -41,9 +41,12 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_gemini_ai_integrations:2.0.0"]
+<<<<<<< HEAD
 
 [userenv]
 
 [userenv.shared]
 MVP_ZIP = "77525"
 SNOWFLAKE_ACCOUNT = "YESDOTZ-MO61359"
+=======
+>>>>>>> 68353e6c4d02afe4af5bfba16e46ab2c38f72ea3

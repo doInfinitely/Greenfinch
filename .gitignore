@@ -7,3 +7,29 @@ out
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Next.js build output
+.next/
+out/
+
+# Turbopack
+.turbo/
+
+# Build cache
+*.tsbuildinfo
+
+# Environment files (keep .env.example if needed)
+.env*.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
