@@ -56,7 +56,9 @@ export const properties = pgTable('properties', {
   assetCategory: text('asset_category'),
   assetSubcategory: text('asset_subcategory'),
   categoryConfidence: real('category_confidence'),
+  categoryRationale: text('category_rationale'),
   propertyClass: text('property_class'),
+  propertyClassRationale: text('property_class_rationale'),
   
   // Names
   commonName: text('common_name'),
@@ -133,6 +135,7 @@ export const contacts = pgTable('contacts', {
   linkedinStatus: text('linkedin_status'),
   
   source: text('source').default('ai'),
+  contactRationale: text('contact_rationale'),
   needsReview: boolean('needs_review').default(false),
   reviewReason: text('review_reason'),
   

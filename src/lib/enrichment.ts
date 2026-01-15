@@ -63,6 +63,7 @@ export interface EnrichedContact {
   linkedinConfidence: number | null;
   role: string;
   roleConfidence: number;
+  contactRationale: string | null;
   source: string;
   needsReview: boolean;
   reviewReason: string | null;
@@ -83,7 +84,9 @@ export interface EnrichedProperty {
   assetCategory: string | null;
   assetSubcategory: string | null;
   categoryConfidence: number | null;
+  categoryRationale: string | null;
   propertyClass: string | null;
+  propertyClassRationale: string | null;
   commonName: string | null;
   commonNameConfidence: number | null;
   containingPlace: string | null;
@@ -187,7 +190,7 @@ function buildEnrichmentPrompt(property: AggregatedProperty): string {
     .map(([cat, subs]) => `${cat}: ${subs.join(', ')}`)
     .join('\n');
 
-  return `You are a commercial real estate data analyst. Analyze this property and provide enrichment data.
+  return `You are a commercial real estate data analyst helping sales representatives identify decision-makers for commercial properties. Analyze this property and provide enrichment data with detailed rationale.
 
 ## Property Data
 Address: ${property.address}, ${property.city}, ${property.state} ${property.zip}
@@ -219,6 +222,22 @@ ${JSON.stringify(property.rawParcelsJson?.slice(0, 5) || [], null, 2)}
 ## Asset Categories (use these exact values)
 ${categoryList}
 
+## UNDERSTANDING BUILDING CLASS VS CATEGORY
+
+**Asset Category/Subcategory** = WHAT the property IS (its use type)
+- Describes the property's PRIMARY USE: Office, Retail, Industrial, Multifamily, etc.
+- Determined by: zoning, tenant mix, building design, and actual use
+- Example: A shopping center is "Retail > Shopping Center"
+
+**Building Class (A, B, C, D)** = QUALITY GRADE within that category
+- Describes the property's QUALITY relative to other properties of the same type
+- Class A: Premium, newest, best location, highest rents, institutional quality
+- Class B: Good quality, well-maintained, competitive rents, solid tenants
+- Class C: Older, functional, lower rents, may need updates, value-add opportunity
+- Class D: Distressed, significant deferred maintenance, highest risk
+
+**Example**: Two office buildings can both be "Office > Office Building" (same category) but one is Class A (new, downtown, trophy asset) and one is Class C (1970s suburban, needs renovation).
+
 ## Instructions
 Analyze this property and return a JSON object with the following structure:
 
@@ -229,7 +248,9 @@ Analyze this property and return a JSON object with the following structure:
     "asset_category": "One of the main categories above",
     "asset_subcategory": "One of the subcategories for that category",
     "category_confidence": 0.0-1.0,
+    "category_rationale": "Explain WHY this category/subcategory. What evidence (zoning, use codes, building characteristics, tenants) supports this classification?",
     "property_class": "A, B, C, or D",
+    "property_class_rationale": "Explain WHY this class grade. Consider: age, location quality, building condition, rent levels, tenant quality, amenities. What makes it an A vs B vs C?",
     "common_name": "Building/property name if known, else null",
     "common_name_confidence": 0.0-1.0,
     "beneficial_owner": "True beneficial owner if different from registered owner",
@@ -241,7 +262,7 @@ Analyze this property and return a JSON object with the following structure:
     "management_confidence": 0.0-1.0,
     "property_website": "Property website URL if known (e.g., building website, leasing site)",
     "property_manager_website": "Property management company website URL if known",
-    "classification_rationale": "Brief explanation of why you classified this property as this category/subcategory"
+    "classification_rationale": "Overall summary combining category and class rationale"
   },
   "contacts": [
     {
@@ -251,14 +272,15 @@ Analyze this property and return a JSON object with the following structure:
       "email_confidence": null,
       "phone": null,
       "phone_confidence": null,
-      "title": "Job title",
+      "title": "Job title at their company",
       "title_confidence": 0.0-1.0,
       "company_domain": "company.com",
       "employer_name": "Company Name",
       "linkedin_url": null,
       "linkedin_confidence": null,
       "role": "RELATIONSHIP TO THIS PROPERTY - MUST be one of: property_manager, facilities_manager, owner, leasing, other",
-      "role_confidence": 0.0-1.0
+      "role_confidence": 0.0-1.0,
+      "contact_rationale": "WHY include this contact? What is their connection to this property? How did you find them?"
     }
   ],
   "organizations": [
@@ -272,6 +294,9 @@ Analyze this property and return a JSON object with the following structure:
 }
 
 ## Contact Discovery Instructions
+
+PURPOSE: Help sales reps identify WHO to contact about this property. Each contact should be someone who can make or influence decisions about the property.
+
 For contacts, search for and prioritize:
 1. PRIORITY 1 - Site-level operations (property manager, facilities manager/director for this specific property)
 2. PRIORITY 2 - Management company contacts (if third-party managed)
@@ -280,24 +305,32 @@ For contacts, search for and prioritize:
 5. PRIORITY 5 - Leasing agents and brokers
 6. PRIORITY 6 - Other stakeholders
 
-Target 5-10 contacts. For each contact, provide ALL available information:
-- Their full name
-- Their email address (business email preferred, format: name@company.com)
-- Their phone number (business phone preferred)
-- Their company/employer and company website domain
-- Their job title (this is the contact's general job title at their company)
-- Their ROLE AT THIS PROPERTY - this describes their relationship to THIS SPECIFIC PROPERTY, NOT their job title
-  * Example: A person from SNL Associates who manages this building should have role="property_manager"
-  * Example: Someone who owns this property should have role="owner"
-  * This role describes the edge/relationship between the contact and this property in a graph database
+Target 5-10 contacts. For EACH contact, you MUST provide:
+- **full_name**: Their complete name
+- **title**: Their job title AT THEIR COMPANY (e.g., "Property Manager", "Director of Facilities", "Principal")
+- **role**: Their RELATIONSHIP to THIS SPECIFIC PROPERTY (not their job title):
+  * property_manager = manages day-to-day operations of this building
+  * facilities_manager = oversees maintenance/facilities for this property
+  * owner = has ownership stake in this property
+  * leasing = handles tenant leasing for this property
+  * other = other relevant relationship
+- **contact_rationale**: Explain:
+  * How you found this person (ownership records, management company website, property listing, etc.)
+  * Why they're relevant to this property (they manage this building, their company owns it, etc.)
+  * What evidence connects them to this specific property
+
+**TITLE vs ROLE distinction**:
+- TITLE = their job at their employer (e.g., "Senior Property Manager at ABC Realty")
+- ROLE = their relationship to THIS property (e.g., "property_manager" because ABC Realty manages this building)
 
 CRITICAL REQUIREMENTS:
 1. Only include CURRENT, ACTIVE contacts - no deceased individuals, no historical/former employees
 2. Verify contacts are still active in their roles (check for recent activity)
-3. For each contact, try to find their business email and phone number
-4. If you cannot find a verified email, leave email as null
-5. If you cannot find a verified phone, leave phone as null
-6. Leave LinkedIn as null - this will be discovered separately
+3. Each contact MUST have a clear, documented connection to THIS property
+4. Provide contact_rationale explaining HOW you know they're connected
+5. If you cannot find a verified email, leave email as null
+6. If you cannot find a verified phone, leave phone as null
+7. Leave LinkedIn as null - this will be discovered separately
 
 Focus on finding real, currently active people associated with this property through the ownership structure, management company, or known business relationships.
 
@@ -331,6 +364,17 @@ function processEnrichmentResponse(
 ): { property: EnrichedProperty; contacts: EnrichedContact[]; organizations: EnrichedOrganization[] } {
   const prop = rawResponse.property || {};
   
+  // Build combined rationale from individual rationales if available
+  let combinedRationale = prop.classification_rationale || '';
+  if (prop.category_rationale && !combinedRationale.includes(prop.category_rationale)) {
+    combinedRationale = `Category: ${prop.category_rationale}`;
+  }
+  if (prop.property_class_rationale) {
+    combinedRationale = combinedRationale 
+      ? `${combinedRationale} | Class: ${prop.property_class_rationale}`
+      : `Class: ${prop.property_class_rationale}`;
+  }
+
   const property: EnrichedProperty = {
     validatedAddress: prop.validated_address || null,
     validatedAddressConfidence: prop.validated_address_confidence || null,
@@ -338,7 +382,9 @@ function processEnrichmentResponse(
     assetCategory: prop.asset_category || null,
     assetSubcategory: prop.asset_subcategory || null,
     categoryConfidence: prop.category_confidence || null,
+    categoryRationale: prop.category_rationale || null,
     propertyClass: prop.property_class || null,
+    propertyClassRationale: prop.property_class_rationale || null,
     commonName: prop.common_name || null,
     commonNameConfidence: prop.common_name_confidence || null,
     containingPlace: null,
@@ -352,7 +398,7 @@ function processEnrichmentResponse(
     managementConfidence: prop.management_confidence || null,
     propertyWebsite: prop.property_website || null,
     propertyManagerWebsite: prop.property_manager_website || null,
-    aiRationale: prop.classification_rationale || null,
+    aiRationale: combinedRationale || null,
   };
 
   const contacts: EnrichedContact[] = (rawResponse.contacts || [])
@@ -386,6 +432,7 @@ function processEnrichmentResponse(
         linkedinConfidence: c.linkedin_confidence || null,
         role: c.role || 'other',
         roleConfidence: c.role_confidence || 0.5,
+        contactRationale: c.contact_rationale || null,
         source: 'ai',
         needsReview,
         reviewReason: needsReview ? 'Low confidence contact information' : null,
@@ -778,7 +825,9 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
         assetCategory: null,
         assetSubcategory: null,
         categoryConfidence: null,
+        categoryRationale: null,
         propertyClass: null,
+        propertyClassRationale: null,
         commonName: null,
         commonNameConfidence: null,
         containingPlace: null,
@@ -837,7 +886,9 @@ export async function storeEnrichmentResults(
     assetCategory: result.property.assetCategory,
     assetSubcategory: result.property.assetSubcategory,
     categoryConfidence: result.property.categoryConfidence,
+    categoryRationale: result.property.categoryRationale,
     propertyClass: result.property.propertyClass,
+    propertyClassRationale: result.property.propertyClassRationale,
     commonName: result.property.commonName,
     commonNameConfidence: result.property.commonNameConfidence,
     containingPlace: result.property.containingPlace,
@@ -943,6 +994,7 @@ export async function storeEnrichmentResults(
           linkedinUrl: contact.linkedinUrl,
           linkedinConfidence: contact.linkedinConfidence,
           source: contact.source,
+          contactRationale: contact.contactRationale,
           needsReview: contact.needsReview,
           reviewReason: contact.reviewReason,
           updatedAt: new Date(),
@@ -968,6 +1020,7 @@ export async function storeEnrichmentResults(
           linkedinUrl: contact.linkedinUrl,
           linkedinConfidence: contact.linkedinConfidence,
           source: contact.source,
+          contactRationale: contact.contactRationale,
           needsReview: contact.needsReview,
           reviewReason: contact.reviewReason,
         })
