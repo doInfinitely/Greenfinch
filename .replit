@@ -46,3 +46,4 @@ integrations = ["javascript_gemini_ai_integrations:2.0.0"]
 
 [userenv.shared]
 MVP_ZIP = "77525"
+SNOWFLAKE_ACCOUNT = "YESDOTZ-MO61359"
