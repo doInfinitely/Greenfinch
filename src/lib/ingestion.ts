@@ -13,51 +13,6 @@ const TABLE_NAME = 'nationwide_parcel_data__premium_schema__free_sample.premium_
 
 export const MVP_ZIP_CODE = process.env.MVP_ZIP || '75225';
 
-// Snowflake returns column names in uppercase - helper to get value with fallback
-function getCol(row: any, ...keys: string[]): any {
-  for (const key of keys) {
-    if (row[key] !== undefined) return row[key];
-    if (row[key.toUpperCase()] !== undefined) return row[key.toUpperCase()];
-  }
-  return undefined;
-}
-
-function mapSnowflakeRowToParcel(row: any): RegridParcel {
-  return {
-    ll_uuid: getCol(row, 'll_uuid'),
-    ll_stack_uuid: getCol(row, 'll_stack_uuid'),
-    address: getCol(row, 'address'),
-    scity: getCol(row, 'scity'),
-    state2: getCol(row, 'state2'),
-    szip: getCol(row, 'szip'),
-    county: getCol(row, 'county'),
-    lat: getCol(row, 'lat'),
-    lon: getCol(row, 'lon'),
-    owner: getCol(row, 'owner'),
-    owner2: getCol(row, 'owner2'),
-    usedesc: getCol(row, 'usedesc'),
-    usecode: getCol(row, 'usecode'),
-    yearbuilt: getCol(row, 'yearbuilt') ? Number(getCol(row, 'yearbuilt')) : null,
-    parval: getCol(row, 'parval') || 0,
-    landval: getCol(row, 'landval') || 0,
-    improvval: getCol(row, 'improvval') || 0,
-    ll_gisacre: getCol(row, 'll_gisacre') || 0,
-    sqft: getCol(row, 'sqft') || 0,
-    area_building: Number(getCol(row, 'recrdareano')) || Number(getCol(row, 'll_bldg_footprint_sqft')) || null,
-    numstories: getCol(row, 'numstories') ? Number(getCol(row, 'numstories')) : null,
-    struct: getCol(row, 'struct'),
-    structno: getCol(row, 'structno'),
-    mailadd: getCol(row, 'mailadd'),
-    mail_city: getCol(row, 'mail_city'),
-    mail_state2: getCol(row, 'mail_state2'),
-    mail_zip: getCol(row, 'mail_zip'),
-    parcelnumb: getCol(row, 'parcelnumb'),
-    sunit: getCol(row, 'sunit'),
-    zoning: getCol(row, 'zoning'),
-    zoningDescription: getCol(row, 'zoning_description'),
-  };
-}
-
 
 function createConnection() {
   return snowflake.createConnection({
@@ -139,7 +94,7 @@ export function aggregateParcelsToProperties(parcels: RegridParcel[]): Map<strin
       existing.buildingSqft = Math.max(existing.buildingSqft || 0, parcel.area_building || 0) || null;
       existing.landval = Math.max(existing.landval, parcel.landval || 0);
       
-      if (parcel.yearbuilt && (!existing.yearBuilt || parcel.yearbuilt > existing.yearBuilt)) {
+      if (parcel.yearbuilt && (!existing.yearBuilt || parcel.yearbuilt < existing.yearBuilt)) {
         existing.yearBuilt = parcel.yearbuilt;
       }
       if (parcel.numstories && (!existing.numFloors || parcel.numstories > existing.numFloors)) {
@@ -305,7 +260,40 @@ export async function fetchRandomParcelsFromSnowflake(
   `;
 
   const rows = await executeQuery<any>(sql);
-  return rows.map(mapSnowflakeRowToParcel);
+
+  return rows.map(row => ({
+    ll_uuid: row.ll_uuid,
+    ll_stack_uuid: row.ll_stack_uuid,
+    address: row.address,
+    scity: row.scity,
+    state2: row.state2,
+    szip: row.szip,
+    county: row.county,
+    lat: row.lat,
+    lon: row.lon,
+    owner: row.owner,
+    owner2: row.owner2,
+    usedesc: row.usedesc,
+    usecode: row.usecode,
+    yearbuilt: row.yearbuilt ? Number(row.yearbuilt) : null,
+    parval: row.parval || 0,
+    landval: row.landval || 0,
+    improvval: row.improvval || 0,
+    ll_gisacre: row.ll_gisacre || 0,
+    sqft: row.sqft || 0,
+    area_building: Number(row.recrdareano) || Number(row.ll_bldg_footprint_sqft) || null,
+    numstories: row.numstories ? Number(row.numstories) : null,
+    struct: row.struct,
+    structno: row.structno,
+    mailadd: row.mailadd,
+    mail_city: row.mail_city,
+    mail_state2: row.mail_state2,
+    mail_zip: row.mail_zip,
+    parcelnumb: row.parcelnumb,
+    sunit: row.sunit,
+    zoning: row.zoning,
+    zoningDescription: row.zoning_description,
+  }));
 }
 
 export async function fetchParcelsFromZipCode(
@@ -358,7 +346,40 @@ export async function fetchParcelsFromZipCode(
   `;
 
   const rows = await executeQuery<any>(sql);
-  return rows.map(mapSnowflakeRowToParcel);
+
+  return rows.map(row => ({
+    ll_uuid: row.ll_uuid,
+    ll_stack_uuid: row.ll_stack_uuid,
+    address: row.address,
+    scity: row.scity,
+    state2: row.state2,
+    szip: row.szip,
+    county: row.county,
+    lat: row.lat,
+    lon: row.lon,
+    owner: row.owner,
+    owner2: row.owner2,
+    usedesc: row.usedesc,
+    usecode: row.usecode,
+    yearbuilt: row.yearbuilt ? Number(row.yearbuilt) : null,
+    parval: row.parval || 0,
+    landval: row.landval || 0,
+    improvval: row.improvval || 0,
+    ll_gisacre: row.ll_gisacre || 0,
+    sqft: row.sqft || 0,
+    area_building: Number(row.recrdareano) || Number(row.ll_bldg_footprint_sqft) || null,
+    numstories: row.numstories ? Number(row.numstories) : null,
+    struct: row.struct,
+    structno: row.structno,
+    mailadd: row.mailadd,
+    mail_city: row.mail_city,
+    mail_state2: row.mail_state2,
+    mail_zip: row.mail_zip,
+    parcelnumb: row.parcelnumb,
+    sunit: row.sunit,
+    zoning: row.zoning,
+    zoningDescription: row.zoning_description,
+  }));
 }
 
 export async function countParcelsInZipCode(zipCode: string = MVP_ZIP_CODE): Promise<number> {
