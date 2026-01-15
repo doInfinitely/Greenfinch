@@ -215,11 +215,17 @@ export default function OrganizationsPage() {
                       >
                         Type <SortIcon column="type" />
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Properties
+                      <th
+                        onClick={() => handleSort('propertyCount')}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      >
+                        Properties <SortIcon column="propertyCount" />
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Contacts
+                      <th
+                        onClick={() => handleSort('contactCount')}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      >
+                        Contacts <SortIcon column="contactCount" />
                       </th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
@@ -267,12 +273,19 @@ export default function OrganizationsPage() {
                             {org.contactCount}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+                          <Link
+                            href={`/organization/${org.id}`}
+                            className="text-green-600 hover:text-green-700"
+                            data-testid={`link-view-details-${org.id}`}
+                          >
+                            View Details
+                          </Link>
                           <Link
                             href={`/dashboard?org=${org.id}`}
-                            className="text-green-600 hover:text-green-700 mr-4"
+                            className="text-gray-500 hover:text-gray-700"
                           >
-                            View Properties
+                            Map
                           </Link>
                         </td>
                       </tr>

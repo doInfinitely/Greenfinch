@@ -286,8 +286,11 @@ export default function ContactsPage() {
                       >
                         Email Status <SortIcon column="emailStatus" />
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Associations
+                      <th
+                        onClick={() => handleSort('propertyCount')}
+                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      >
+                        Associations <SortIcon column="propertyCount" />
                       </th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions

@@ -39,15 +39,25 @@ export async function GET(request: NextRequest) {
       conditions.push(ilike(contacts.title, `%${title}%`));
     }
 
-    const orderColumn = sortBy === 'email' ? contacts.email : 
-                        sortBy === 'title' ? contacts.title :
-                        sortBy === 'employerName' ? contacts.employerName :
-                        sortBy === 'emailStatus' ? contacts.emailStatus :
-                        sortBy === 'createdAt' ? contacts.createdAt :
-                        contacts.fullName;
-    const orderDirection = sortOrder === 'desc' ? desc(orderColumn) : asc(orderColumn);
+    const propertyCountSubquery = db
+      .select({
+        contactId: propertyContacts.contactId,
+        count: sql<number>`count(*)::int`.as('property_count'),
+      })
+      .from(propertyContacts)
+      .groupBy(propertyContacts.contactId)
+      .as('property_counts');
 
-    let contactsQuery = db
+    const orgCountSubquery = db
+      .select({
+        contactId: contactOrganizations.contactId,
+        count: sql<number>`count(*)::int`.as('org_count'),
+      })
+      .from(contactOrganizations)
+      .groupBy(contactOrganizations.contactId)
+      .as('org_counts');
+
+    let baseQuery = db
       .select({
         id: contacts.id,
         fullName: contacts.fullName,
@@ -59,15 +69,38 @@ export async function GET(request: NextRequest) {
         linkedinUrl: contacts.linkedinUrl,
         source: contacts.source,
         createdAt: contacts.createdAt,
+        propertyCount: sql<number>`COALESCE(${propertyCountSubquery.count}, 0)`.as('property_count'),
+        organizationCount: sql<number>`COALESCE(${orgCountSubquery.count}, 0)`.as('org_count'),
       })
-      .from(contacts);
+      .from(contacts)
+      .leftJoin(propertyCountSubquery, eq(contacts.id, propertyCountSubquery.contactId))
+      .leftJoin(orgCountSubquery, eq(contacts.id, orgCountSubquery.contactId));
 
     if (conditions.length > 0) {
-      contactsQuery = contactsQuery.where(and(...conditions)) as typeof contactsQuery;
+      baseQuery = baseQuery.where(and(...conditions)) as typeof baseQuery;
     }
 
-    const contactsList = await contactsQuery
-      .orderBy(orderDirection)
+    let orderExpression;
+    if (sortBy === 'propertyCount') {
+      orderExpression = sortOrder === 'desc' 
+        ? sql`COALESCE(${propertyCountSubquery.count}, 0) DESC`
+        : sql`COALESCE(${propertyCountSubquery.count}, 0) ASC`;
+    } else if (sortBy === 'organizationCount') {
+      orderExpression = sortOrder === 'desc'
+        ? sql`COALESCE(${orgCountSubquery.count}, 0) DESC`
+        : sql`COALESCE(${orgCountSubquery.count}, 0) ASC`;
+    } else {
+      const orderColumn = sortBy === 'email' ? contacts.email : 
+                          sortBy === 'title' ? contacts.title :
+                          sortBy === 'employerName' ? contacts.employerName :
+                          sortBy === 'emailStatus' ? contacts.emailStatus :
+                          sortBy === 'createdAt' ? contacts.createdAt :
+                          contacts.fullName;
+      orderExpression = sortOrder === 'desc' ? desc(orderColumn) : asc(orderColumn);
+    }
+
+    const contactsList = await baseQuery
+      .orderBy(orderExpression)
       .limit(limit)
       .offset(offset);
 
@@ -101,9 +134,7 @@ export async function GET(request: NextRequest) {
 
         return {
           ...contact,
-          propertyCount: propertyRelations.length,
           properties: propertyRelations,
-          organizationCount: orgRelations.length,
           organizations: orgRelations,
         };
       })

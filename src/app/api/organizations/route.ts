@@ -18,30 +18,25 @@ export async function GET(request: NextRequest) {
     
     const offset = (page - 1) * limit;
 
-    const conditions = [];
+    const propertyCountSubquery = db
+      .select({
+        orgId: propertyOrganizations.orgId,
+        count: sql<number>`count(*)::int`.as('property_count'),
+      })
+      .from(propertyOrganizations)
+      .groupBy(propertyOrganizations.orgId)
+      .as('property_counts');
 
-    if (query) {
-      conditions.push(
-        or(
-          ilike(organizations.name, `%${query}%`),
-          ilike(organizations.domain, `%${query}%`)
-        )
-      );
-    }
+    const contactCountSubquery = db
+      .select({
+        orgId: contactOrganizations.orgId,
+        count: sql<number>`count(*)::int`.as('contact_count'),
+      })
+      .from(contactOrganizations)
+      .groupBy(contactOrganizations.orgId)
+      .as('contact_counts');
 
-    if (type) {
-      conditions.push(eq(organizations.orgType, type));
-    }
-
-    const whereClause = conditions.length > 0 ? sql`${conditions.reduce((acc, cond, i) => i === 0 ? cond : sql`${acc} AND ${cond}`, sql``)}` : undefined;
-
-    const orderColumn = sortBy === 'domain' ? organizations.domain : 
-                        sortBy === 'type' ? organizations.orgType :
-                        sortBy === 'createdAt' ? organizations.createdAt :
-                        organizations.name;
-    const orderDirection = sortOrder === 'desc' ? desc(orderColumn) : asc(orderColumn);
-
-    const orgsQuery = db
+    let baseQuery = db
       .select({
         id: organizations.id,
         name: organizations.name,
@@ -49,48 +44,47 @@ export async function GET(request: NextRequest) {
         orgType: organizations.orgType,
         createdAt: organizations.createdAt,
         updatedAt: organizations.updatedAt,
+        propertyCount: sql<number>`COALESCE(${propertyCountSubquery.count}, 0)`.as('property_count'),
+        contactCount: sql<number>`COALESCE(${contactCountSubquery.count}, 0)`.as('contact_count'),
       })
-      .from(organizations);
+      .from(organizations)
+      .leftJoin(propertyCountSubquery, eq(organizations.id, propertyCountSubquery.orgId))
+      .leftJoin(contactCountSubquery, eq(organizations.id, contactCountSubquery.orgId));
 
-    let filteredQuery = orgsQuery;
-    
     if (query) {
-      filteredQuery = filteredQuery.where(
+      baseQuery = baseQuery.where(
         or(
           ilike(organizations.name, `%${query}%`),
           ilike(organizations.domain, `%${query}%`)
         )
-      ) as typeof filteredQuery;
+      ) as typeof baseQuery;
     }
     
     if (type) {
-      filteredQuery = filteredQuery.where(eq(organizations.orgType, type)) as typeof filteredQuery;
+      baseQuery = baseQuery.where(eq(organizations.orgType, type)) as typeof baseQuery;
     }
 
-    const orgs = await filteredQuery
-      .orderBy(orderDirection)
+    let orderExpression;
+    if (sortBy === 'propertyCount') {
+      orderExpression = sortOrder === 'desc' 
+        ? sql`COALESCE(${propertyCountSubquery.count}, 0) DESC`
+        : sql`COALESCE(${propertyCountSubquery.count}, 0) ASC`;
+    } else if (sortBy === 'contactCount') {
+      orderExpression = sortOrder === 'desc'
+        ? sql`COALESCE(${contactCountSubquery.count}, 0) DESC`
+        : sql`COALESCE(${contactCountSubquery.count}, 0) ASC`;
+    } else {
+      const orderColumn = sortBy === 'domain' ? organizations.domain : 
+                          sortBy === 'type' ? organizations.orgType :
+                          sortBy === 'createdAt' ? organizations.createdAt :
+                          organizations.name;
+      orderExpression = sortOrder === 'desc' ? desc(orderColumn) : asc(orderColumn);
+    }
+
+    const orgs = await baseQuery
+      .orderBy(orderExpression)
       .limit(limit)
       .offset(offset);
-
-    const orgsWithCounts = await Promise.all(
-      orgs.map(async (org) => {
-        const [propertyCountResult] = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(propertyOrganizations)
-          .where(eq(propertyOrganizations.orgId, org.id));
-
-        const [contactCountResult] = await db
-          .select({ count: sql<number>`count(*)::int` })
-          .from(contactOrganizations)
-          .where(eq(contactOrganizations.orgId, org.id));
-
-        return {
-          ...org,
-          propertyCount: propertyCountResult?.count || 0,
-          contactCount: contactCountResult?.count || 0,
-        };
-      })
-    );
 
     let countQuery = db.select({ count: sql<number>`count(*)::int` }).from(organizations);
     
@@ -115,7 +109,7 @@ export async function GET(request: NextRequest) {
       .from(organizations);
 
     return NextResponse.json({
-      organizations: orgsWithCounts,
+      organizations: orgs,
       pagination: {
         page,
         limit,
