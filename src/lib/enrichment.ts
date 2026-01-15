@@ -153,13 +153,19 @@ function normalizeEmail(email: string): string {
   return email.toLowerCase().trim();
 }
 
-// Get Gemini client using Replit AI Integrations
+// Get Gemini client - prefer direct API key over Replit AI Integrations (which has issues)
 function getGeminiClient(): GoogleGenAI {
-  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
+  // Prefer direct Google API key if available (more reliable)
+  if (process.env.GOOGLE_GENAI_API_KEY) {
+    return new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY });
+  }
+  
+  // Fallback to Replit AI Integrations
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
   
   if (!apiKey) {
-    throw new Error("No Gemini API key found. AI_INTEGRATIONS_GEMINI_API_KEY should be set by Replit.");
+    throw new Error("No Gemini API key found. Set GOOGLE_GENAI_API_KEY or ensure Replit AI Integrations is configured.");
   }
   
   if (baseUrl) {
@@ -251,7 +257,7 @@ Analyze this property and return a JSON object with the following structure:
       "employer_name": "Company Name",
       "linkedin_url": null,
       "linkedin_confidence": null,
-      "role": "property_manager, facilities, asset_manager, owner, leasing, other",
+      "role": "RELATIONSHIP TO THIS PROPERTY: property_manager, facilities, asset_manager, owner, leasing, other",
       "role_confidence": 0.0-1.0
     }
   ],
@@ -260,7 +266,7 @@ Analyze this property and return a JSON object with the following structure:
       "name": "Organization name",
       "domain": "organization.com or null",
       "org_type": "owner, management, tenant, developer, other",
-      "role": "Description of relationship to property"
+      "role": "Description of relationship to THIS SPECIFIC property"
     }
   ]
 }
@@ -279,8 +285,11 @@ Target 5-10 contacts. For each contact, provide ALL available information:
 - Their email address (business email preferred, format: name@company.com)
 - Their phone number (business phone preferred)
 - Their company/employer and company website domain
-- Their job title
-- Their role at this property (property_manager, facilities, asset_manager, owner, leasing, other)
+- Their job title (this is the contact's general job title at their company)
+- Their ROLE AT THIS PROPERTY - this describes their relationship to THIS SPECIFIC PROPERTY, NOT their job title
+  * Example: A person from SNL Associates who manages this building should have role="property_manager"
+  * Example: Someone who owns this property should have role="owner"
+  * This role describes the edge/relationship between the contact and this property in a graph database
 
 CRITICAL REQUIREMENTS:
 1. Only include CURRENT, ACTIVE contacts - no deceased individuals, no historical/former employees

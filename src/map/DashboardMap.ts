@@ -30,6 +30,7 @@ export class DashboardMap {
   private currentStyle: string = LIGHT_STYLE;
   private styleReady = false;
   private pendingStyleSwitch: string | null = null;
+  private isAnimating = false;
 
   constructor(config: DashboardMapConfig) {
     this.config = config;
@@ -82,6 +83,9 @@ export class DashboardMap {
 
   private checkStyleSwitch() {
     if (!this.map || !this.styleReady) return;
+    
+    // Don't switch styles during animations - it interrupts flyTo
+    if (this.isAnimating) return;
 
     const zoom = this.map.getZoom();
     const shouldBeSatellite = zoom >= 15;
@@ -436,10 +440,21 @@ export class DashboardMap {
 
   flyTo(lat: number, lon: number, zoom: number = 16) {
     if (!this.map) return;
+    
+    // Prevent style switching during animation
+    this.isAnimating = true;
+    
     this.map.flyTo({
       center: [lon, lat],
       zoom,
       duration: 1500,
+    });
+    
+    // Re-enable style switching after animation completes
+    this.map.once('moveend', () => {
+      this.isAnimating = false;
+      // Check if we need to switch styles after animation
+      this.checkStyleSwitch();
     });
   }
 

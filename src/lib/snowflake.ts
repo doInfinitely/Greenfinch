@@ -68,8 +68,8 @@ export interface AggregatedProperty {
 
 function createConnection() {
   return snowflake.createConnection({
-    account: process.env.SNOWFLAKE_ACCOUNT_GF!,
-    username: process.env.SNOWFLAKE_USER!,
+    account: process.env.SNOWFLAKE_ACCOUNT!,
+    username: process.env.SNOWFLAKE_USERNAME!,
     password: process.env.SNOWFLAKE_PASSWORD!,
     database: process.env.SNOWFLAKE_DATABASE!,
     warehouse: process.env.SNOWFLAKE_WAREHOUSE!,

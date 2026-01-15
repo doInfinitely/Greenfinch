@@ -151,10 +151,10 @@ function ConfidenceBadge({ confidence, label }: { confidence: number | null | un
 
 function EnrichmentStatusBadge({ status }: { status: EnrichmentStatusType }) {
   const config: Record<EnrichmentStatusType, { color: string; label: string }> = {
-    not_enriched: { color: 'bg-gray-100 text-gray-600', label: 'Not Enriched' },
-    pending: { color: 'bg-yellow-100 text-yellow-700', label: 'Pending' },
-    completed: { color: 'bg-green-100 text-green-700', label: 'Enriched' },
-    failed: { color: 'bg-red-100 text-red-700', label: 'Failed' },
+    not_enriched: { color: 'bg-gray-100 text-gray-600', label: 'Not Researched' },
+    pending: { color: 'bg-yellow-100 text-yellow-700', label: 'Researching...' },
+    completed: { color: 'bg-green-100 text-green-700', label: 'Researched with AI' },
+    failed: { color: 'bg-red-100 text-red-700', label: 'Research Failed' },
   };
   
   const { color, label } = config[status];
@@ -283,9 +283,11 @@ export default function PropertyDetailPage() {
           
           // Collect owners from raw parcels for display (deduplicated, uppercase normalized)
           const ownersSet = new Set<string>();
+          const usedescSet = new Set<string>();
           for (const parcel of rawParcels) {
             if (parcel.owner) ownersSet.add(parcel.owner.toUpperCase());
             if (parcel.owner2) ownersSet.add(parcel.owner2.toUpperCase());
+            if (parcel.usedesc) usedescSet.add(parcel.usedesc);
           }
           
           // Also include property-level owners (normalized to uppercase for deduplication)
@@ -313,7 +315,7 @@ export default function PropertyDetailPage() {
             landval: 0,
             allOwners: Array.from(ownersSet),
             primaryOwner: prop.regridOwner || null,
-            usedesc: [],
+            usedesc: Array.from(usedescSet),
             usecode: [],
             parcelCount: rawParcels.length || 1,
           });
@@ -548,8 +550,10 @@ export default function PropertyDetailPage() {
                         {enrichedProperty.assetSubcategory}
                       </span>
                     )}
-                    {enrichedProperty?.categoryConfidence && (
-                      <ConfidenceBadge confidence={enrichedProperty.categoryConfidence} label="Category" />
+                    {enrichedProperty?.categoryConfidence !== null && enrichedProperty?.categoryConfidence !== undefined && enrichedProperty.categoryConfidence < 0.70 && (
+                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
+                        Low Confidence
+                      </span>
                     )}
                   </div>
                 </div>
@@ -613,48 +617,19 @@ export default function PropertyDetailPage() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Property Details</h3>
-                  <dl className="space-y-2">
-                    {property.lotAcres > 0 && (
-                      <div className="flex justify-between">
-                        <dt className="text-sm text-gray-500">Lot Size</dt>
-                        <dd className="text-sm text-gray-900">{formatLotSize(property.lotAcres)} acres</dd>
-                      </div>
-                    )}
-                    {property.yearBuilt && (
-                      <div className="flex justify-between">
-                        <dt className="text-sm text-gray-500">Year Built</dt>
-                        <dd className="text-sm text-gray-900">{property.yearBuilt}</dd>
-                      </div>
-                    )}
-                    {property.numFloors && (
-                      <div className="flex justify-between">
-                        <dt className="text-sm text-gray-500">Floors</dt>
-                        <dd className="text-sm text-gray-900">{property.numFloors}</dd>
-                      </div>
-                    )}
-                  </dl>
-                </div>
-
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3">Property Type</h3>
-                  {property.usedesc && property.usedesc.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {property.usedesc.map((desc, i) => (
-                        <span
-                          key={i}
-                          className="inline-block px-3 py-1 text-sm bg-blue-50 text-blue-700 rounded-full"
-                        >
-                          {desc}
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-sm text-gray-500">Not specified</p>
-                  )}
-                </div>
+              <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600">
+                {property.numFloors && property.numFloors > 1 && (
+                  <span><span className="font-medium">{property.numFloors}</span> floors</span>
+                )}
+                {!enrichedProperty?.assetCategory && property.usedesc && property.usedesc.length > 0 && (
+                  <div className="flex flex-wrap gap-1">
+                    {property.usedesc.slice(0, 3).map((desc, i) => (
+                      <span key={i} className="inline-block px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
+                        {desc}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
