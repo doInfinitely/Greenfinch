@@ -94,7 +94,7 @@ export function aggregateParcelsToProperties(parcels: RegridParcel[]): Map<strin
       existing.buildingSqft = Math.max(existing.buildingSqft || 0, parcel.area_building || 0) || null;
       existing.landval = Math.max(existing.landval, parcel.landval || 0);
       
-      if (parcel.yearbuilt && (!existing.yearBuilt || parcel.yearbuilt < existing.yearBuilt)) {
+      if (parcel.yearbuilt && (!existing.yearBuilt || parcel.yearbuilt > existing.yearBuilt)) {
         existing.yearBuilt = parcel.yearbuilt;
       }
       if (parcel.numstories && (!existing.numFloors || parcel.numstories > existing.numFloors)) {

@@ -149,6 +149,8 @@ export async function getPropertyByKey(propertyKey: string): Promise<AggregatedP
   const lotSqftFromAcres = (first.LL_GISACRE || 0) * 43560;
   const lotSqft = lotSqftFromAcres > 0 ? lotSqftFromAcres : (first.LOT_SQFT || 0);
   const buildingSqft = rows.reduce((max, r) => Math.max(max, r.RECRDAREANO || r.LL_BLDG_FOOTPRINT_SQFT || 0), 0) || null;
+  const yearBuilt = rows.reduce((max, r) => Math.max(max, r.YEAR_BUILT || 0), 0) || null;
+  const numFloors = rows.reduce((max, r) => Math.max(max, r.NUM_FLOORS || 0), 0) || null;
   
   return {
     propertyKey: first.PROPERTY_KEY,
@@ -163,8 +165,8 @@ export async function getPropertyByKey(propertyKey: string): Promise<AggregatedP
     lon: parseFloat(first.LON) || 0,
     lotSqft: lotSqft,
     buildingSqft: buildingSqft,
-    yearBuilt: first.YEAR_BUILT,
-    numFloors: first.NUM_FLOORS,
+    yearBuilt: yearBuilt,
+    numFloors: numFloors,
     totalParval: rows.reduce((sum, r) => sum + (r.TOTAL_PARVAL || 0), 0),
     totalImprovval: rows.reduce((sum, r) => sum + (r.TOTAL_IMPROVVAL || 0), 0),
     landval: first.LANDVAL || 0,
