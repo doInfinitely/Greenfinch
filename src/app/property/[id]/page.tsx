@@ -952,64 +952,66 @@ export default function PropertyDetailPage() {
             </div>
           </div>
 
-          <div className="lg:col-span-1 space-y-4">
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden sticky top-20">
-              <div className="h-64 lg:h-72">
-                {property.lat && property.lon && mapToken ? (
-                  <MapCanvas
-                    accessToken={mapToken}
-                    regridToken={regridToken}
-                    initialCenter={{ lat: property.lat, lon: property.lon }}
-                    initialZoom={17}
-                    properties={[{
-                      type: 'Feature',
-                      geometry: {
-                        type: 'Point',
-                        coordinates: [property.lon, property.lat],
-                      },
-                      properties: {
-                        propertyKey: property.propertyKey,
-                        address: property.address,
-                        commonName: enrichedProperty?.commonName || null,
-                      },
-                    }]}
-                  />
-                ) : property.lat && property.lon ? (
-                  <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-                  </div>
-                ) : (
-                  <div className="w-full h-full bg-gray-100 flex items-center justify-center">
-                    <p className="text-gray-500">No location data available</p>
-                  </div>
-                )}
-              </div>
-              <div className="p-3 border-t border-gray-100 flex items-center justify-between">
-                <p className="text-xs text-gray-500">
-                  <span className="font-medium">Map</span> with parcel boundaries
-                </p>
-                <p className="text-xs text-gray-400">
-                  {property.lat?.toFixed(5)}, {property.lon?.toFixed(5)}
-                </p>
-              </div>
-            </div>
-
-            {property.lat && property.lon && googleMapsApiKey && (
+          <div className="lg:col-span-1">
+            <div className="sticky top-20 space-y-4">
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                <div className="h-64 lg:h-72">
-                  <StreetView
-                    apiKey={googleMapsApiKey}
-                    lat={property.lat}
-                    lon={property.lon}
-                  />
+                <div className="h-48 lg:h-56">
+                  {property.lat && property.lon && mapToken ? (
+                    <MapCanvas
+                      accessToken={mapToken}
+                      regridToken={regridToken}
+                      initialCenter={{ lat: property.lat, lon: property.lon }}
+                      initialZoom={17}
+                      properties={[{
+                        type: 'Feature',
+                        geometry: {
+                          type: 'Point',
+                          coordinates: [property.lon, property.lat],
+                        },
+                        properties: {
+                          propertyKey: property.propertyKey,
+                          address: property.address,
+                          commonName: enrichedProperty?.commonName || null,
+                        },
+                      }]}
+                    />
+                  ) : property.lat && property.lon ? (
+                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+                    </div>
+                  ) : (
+                    <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                      <p className="text-gray-500">No location data available</p>
+                    </div>
+                  )}
                 </div>
-                <div className="p-3 border-t border-gray-100">
+                <div className="p-2 border-t border-gray-100 flex items-center justify-between">
                   <p className="text-xs text-gray-500">
-                    <span className="font-medium">Street View</span> - drag to explore
+                    <span className="font-medium">Map</span> with parcel boundaries
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {property.lat?.toFixed(5)}, {property.lon?.toFixed(5)}
                   </p>
                 </div>
               </div>
-            )}
+
+              {property.lat && property.lon && googleMapsApiKey && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                  <div className="h-48 lg:h-56">
+                    <StreetView
+                      apiKey={googleMapsApiKey}
+                      lat={property.lat}
+                      lon={property.lon}
+                    />
+                  </div>
+                  <div className="p-2 border-t border-gray-100">
+                    <p className="text-xs text-gray-500">
+                      <span className="font-medium">Street View</span> - drag to explore
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </main>
