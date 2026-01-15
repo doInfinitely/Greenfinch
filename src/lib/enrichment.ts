@@ -257,7 +257,7 @@ Analyze this property and return a JSON object with the following structure:
       "employer_name": "Company Name",
       "linkedin_url": null,
       "linkedin_confidence": null,
-      "role": "RELATIONSHIP TO THIS PROPERTY: property_manager, facilities, asset_manager, owner, leasing, other",
+      "role": "RELATIONSHIP TO THIS PROPERTY - MUST be one of: owner, property_manager, tenant",
       "role_confidence": 0.0-1.0
     }
   ],
