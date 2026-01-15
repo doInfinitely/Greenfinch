@@ -47,7 +47,7 @@ export async function GET(request: NextRequest) {
         operationalStatus: properties.operationalStatus,
         lastEnrichedAt: properties.lastEnrichedAt,
         lotSqft: properties.lotSqft,
-        rawParcelsJson: properties.rawParcelsJson,
+        propertyClass: properties.propertyClass,
       })
       .from(properties)
       .where(and(...conditions));
@@ -55,21 +55,7 @@ export async function GET(request: NextRequest) {
     const features = allProperties
       .filter(p => p.lat && p.lon)
       .map(p => {
-        const rawParcels = p.rawParcelsJson as any[] | null;
-        const firstParcel = rawParcels?.[0];
-        
-        let address = p.regridAddress || p.validatedAddress || '';
-        if (!address && firstParcel) {
-          address = firstParcel.address || '';
-        }
-
-        let totalParval = 0;
-        if (rawParcels) {
-          for (const parcel of rawParcels) {
-            totalParval += (parcel.parval || 0);
-          }
-        }
-
+        const address = p.regridAddress || p.validatedAddress || 'No Address';
         const isEnriched = !!p.lastEnrichedAt;
 
         return {
@@ -80,14 +66,14 @@ export async function GET(request: NextRequest) {
           },
           properties: {
             propertyKey: p.propertyKey,
-            address: address || 'No Address',
+            address,
             city: p.city || '',
             zip: p.zip || '',
-            totalParval: totalParval,
             primaryOwner: p.regridOwner || '',
             commonName: p.commonName || '',
             category: p.assetCategory || '',
             subcategory: p.assetSubcategory || '',
+            propertyClass: p.propertyClass || '',
             operationalStatus: p.operationalStatus || '',
             enriched: isEnriched,
             lotSqft: p.lotSqft || 0,
