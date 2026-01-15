@@ -3,6 +3,14 @@
 ## Overview
 Greenfinch is a commercial property prospecting tool designed to provide sales representatives with detailed commercial property information and validated contact details for decision-makers. It integrates Regrid parcel data, Mapbox POI enrichment, and email validation through LeadMagic, all presented on interactive maps. The platform aims to streamline commercial real estate prospecting, with a comprehensive, data-driven approach for nationwide expansion, starting with an MVP focused on a specific Dallas ZIP code.
 
+## Current Data Status (ZIP 75225 MVP)
+- **171 commercial properties** fully enriched with decision-maker information
+- **949 contacts** discovered (names, titles, emails, phones, LinkedIn profiles)
+- **459 organizations** identified (management companies, owners, leaseholders)
+- **Property categories**: 145 Retail, 26 Multifamily
+- **Contact relationship types**: Property Manager, Facilities Manager, Owner, Leasing, Other
+- **Organization relationship types**: Support multiple roles per organization (e.g., same company can be Owner + Property Manager)
+
 ## User Preferences
 - Preferred communication style: Simple, everyday language
 - Use only Standard Regrid fields (avoid Premium fields like zoning_type, zoning_subtype, homestead_exemption)
