@@ -24,11 +24,11 @@ interface PropertyFeature {
     address: string;
     city: string;
     zip: string;
-    totalParval: number;
     primaryOwner: string;
     commonName: string | null;
     category: string | null;
     subcategory: string | null;
+    propertyClass: string | null;
     operationalStatus: string | null;
     enriched: boolean;
     lotSqft: number;

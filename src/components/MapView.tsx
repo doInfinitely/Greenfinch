@@ -16,13 +16,14 @@ interface PropertyFeature {
     address: string;
     city: string;
     zip: string;
-    totalParval: number;
     primaryOwner: string;
     commonName: string;
     category: string;
     subcategory: string;
+    propertyClass: string;
     operationalStatus: string;
     enriched: boolean;
+    lotSqft: number;
   };
 }
 
