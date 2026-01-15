@@ -153,13 +153,19 @@ function normalizeEmail(email: string): string {
   return email.toLowerCase().trim();
 }
 
-// Get Gemini client using Replit AI Integrations
+// Get Gemini client - prefer direct API key over Replit AI Integrations (which has issues)
 function getGeminiClient(): GoogleGenAI {
-  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GOOGLE_GENAI_API_KEY;
+  // Prefer direct Google API key if available (more reliable)
+  if (process.env.GOOGLE_GENAI_API_KEY) {
+    return new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY });
+  }
+  
+  // Fallback to Replit AI Integrations
+  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
   const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
   
   if (!apiKey) {
-    throw new Error("No Gemini API key found. AI_INTEGRATIONS_GEMINI_API_KEY should be set by Replit.");
+    throw new Error("No Gemini API key found. Set GOOGLE_GENAI_API_KEY or ensure Replit AI Integrations is configured.");
   }
   
   if (baseUrl) {
