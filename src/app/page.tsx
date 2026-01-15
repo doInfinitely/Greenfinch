@@ -2,151 +2,242 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
+import LandingNav from '@/components/LandingNav';
+import LandingFooter from '@/components/LandingFooter';
+
+const testimonials = [
+  {
+    quote: "Greenfinch has completely transformed how we prospect. We're connecting with decision makers 3x faster than before.",
+    name: "Sarah Jenkins",
+    title: "VP of Sales, Apex Property Management",
+    initial: "S",
+  },
+  {
+    quote: "The portfolio intelligence feature is a game changer. We can finally see the full scope of an owner's holdings.",
+    name: "Michael Chen",
+    title: "Director of Acquisitions, Summit Capital Partners",
+    initial: "M",
+  },
+  {
+    quote: "Finally, a tool that gives us accurate contact info for facility directors. It's paid for itself ten times over.",
+    name: "David Rodriguez",
+    title: "Business Development, GreenLeaf Services",
+    initial: "D",
+  },
+  {
+    quote: "The zoning data is incredibly accurate. We've stopped wasting time on properties that don't fit our criteria.",
+    name: "Emily Thompson",
+    title: "Land Acquisition, TerraForm Construction",
+    initial: "E",
+  },
+  {
+    quote: "I use the map view every day to plan my territory visits. It's intuitive and saves me hours of driving.",
+    name: "James Wilson",
+    title: "Regional Manager, Evergreen Landscapes",
+    initial: "J",
+  },
+  {
+    quote: "Connecting with the right person used to take weeks. Now it takes minutes. Highly recommended.",
+    name: "Robert Chang",
+    title: "Investment Officer, Highland Investments",
+    initial: "R",
+  },
+];
+
+const companyLogos = [
+  { name: "Evergreen Landscapes", initial: "E" },
+  { name: "Summit Capital", initial: "S" },
+  { name: "TerraForm", initial: "T" },
+  { name: "Apex Property", initial: "A" },
+  { name: "GreenLeaf", initial: "G" },
+  { name: "Highland", initial: "H" },
+];
 
 export default function LandingPage() {
   const [isLoaded, setIsLoaded] = useState(false);
+  const [currentTestimonial, setCurrentTestimonial] = useState(0);
 
   useEffect(() => {
     setIsLoaded(true);
   }, []);
 
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setCurrentTestimonial((prev) => (prev + 1) % testimonials.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-emerald-50">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">G</span>
-              </div>
-              <span className="text-xl font-semibold text-gray-900">Greenfinch</span>
-            </div>
-            <div className="flex items-center space-x-4">
-              <a href="/api/login" className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors">
-                Log In
-              </a>
-              <a
-                href="/api/login"
-                className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm hover:shadow-md"
-              >
-                Get Started
-              </a>
-            </div>
-          </div>
-        </div>
-      </nav>
+      <LandingNav />
 
-      {/* Hero Section */}
       <section className="pt-32 pb-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
+          <div className="text-center mb-4">
+            <span className="inline-block px-4 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full">
+              Accepting early access partners
+            </span>
+          </div>
+          
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className={`transition-all duration-700 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
               <h1 className="text-5xl sm:text-6xl font-serif font-bold text-gray-900 leading-tight">
-                Find Decision-Makers for{' '}
+                Stop searching.{' '}
                 <span className="bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                  Commercial Properties
+                  Start selling.
                 </span>
               </h1>
               <p className="mt-6 text-xl text-gray-600 leading-relaxed">
-                Greenfinch provides sales teams with detailed property information and validated contact details for owners, property managers, and facilities directors.
+                Find the decision maker, not just the building. Empower your sales team to discover properties, identify true owners, and view portfolios through a single lens.
               </p>
               <div className="mt-8 flex flex-col sm:flex-row gap-4">
-                <a
-                  href="/api/login"
+                <Link
+                  href="/waitlist"
                   className="inline-flex items-center justify-center px-6 py-3 text-base font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl"
+                  data-testid="button-start-prospecting"
                 >
                   Start Prospecting
                   <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
                   </svg>
-                </a>
-                <a
-                  href="#features"
+                </Link>
+                <Link
+                  href="/product"
                   className="inline-flex items-center justify-center px-6 py-3 text-base font-medium text-gray-700 bg-white border border-gray-200 rounded-lg hover:bg-gray-50 transition-all"
+                  data-testid="button-see-how-it-works"
                 >
-                  Learn More
-                </a>
-              </div>
-              <div className="mt-8 flex items-center gap-6 text-sm text-gray-500">
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>Validated Emails</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                  </svg>
-                  <span>AI-Enriched Data</span>
-                </div>
+                  See How It Works
+                </Link>
               </div>
             </div>
+            
             <div className={`relative transition-all duration-700 delay-200 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
-              <div className="relative bg-white rounded-2xl shadow-2xl p-6 ring-1 ring-gray-100">
-                <div className="aspect-[4/3] bg-gradient-to-br from-gray-100 to-gray-200 rounded-lg flex items-center justify-center">
-                  <div className="text-center p-8">
-                    <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-                      </svg>
-                    </div>
-                    <p className="text-gray-600 font-medium">Interactive Map View</p>
-                    <p className="text-sm text-gray-400 mt-1">Click parcels to see property details</p>
-                  </div>
-                </div>
+              <div className="relative bg-white rounded-2xl shadow-2xl p-2 ring-1 ring-gray-100">
+                <Image
+                  src="/generated_images/network_connection_green_yellow.png"
+                  alt="Greenfinch Network"
+                  width={800}
+                  height={450}
+                  className="rounded-xl"
+                  priority
+                />
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      {/* Features Section */}
-      <section id="features" className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
+      <section className="py-12 px-4 sm:px-6 lg:px-8 bg-white border-y border-gray-100">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex items-center justify-center gap-8 md:gap-16 overflow-hidden">
+            <div className="flex gap-12 animate-scroll">
+              {[...companyLogos, ...companyLogos].map((company, index) => (
+                <div
+                  key={index}
+                  className="flex items-center gap-2 text-gray-400 whitespace-nowrap"
+                >
+                  <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
+                    <span className="text-gray-500 font-semibold">{company.initial}</span>
+                  </div>
+                  <span className="text-sm font-medium">{company.name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
+        <div className="max-w-4xl mx-auto">
+          <div className="relative">
+            <div className="text-center">
+              {testimonials.map((testimonial, index) => (
+                <div
+                  key={index}
+                  className={`transition-opacity duration-500 ${
+                    index === currentTestimonial ? 'block' : 'hidden'
+                  }`}
+                >
+                  <blockquote className="text-2xl font-medium text-gray-900 mb-8">
+                    "{testimonial.quote}"
+                  </blockquote>
+                  <div className="flex items-center justify-center gap-4">
+                    <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center text-white font-bold">
+                      {testimonial.initial}
+                    </div>
+                    <div className="text-left">
+                      <div className="font-semibold text-gray-900">{testimonial.name}</div>
+                      <div className="text-sm text-gray-500">{testimonial.title}</div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            <div className="flex justify-center gap-2 mt-8">
+              {testimonials.map((_, index) => (
+                <button
+                  key={index}
+                  onClick={() => setCurrentTestimonial(index)}
+                  className={`w-2 h-2 rounded-full transition-colors ${
+                    index === currentTestimonial ? 'bg-green-600' : 'bg-gray-300'
+                  }`}
+                  aria-label={`Go to testimonial ${index + 1}`}
+                  data-testid={`button-testimonial-${index}`}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-serif font-bold text-gray-900">
-              Everything You Need to Prospect Commercial Properties
+              Built for the Modern Sales Rep
             </h2>
             <p className="mt-4 text-lg text-gray-600 max-w-2xl mx-auto">
-              Access comprehensive property data and verified contact information in one platform.
+              Stop wasting time on bad data. We give you the intelligence you need to close more commercial service contracts.
             </p>
           </div>
+          
           <div className="grid md:grid-cols-3 gap-8">
             {[
               {
+                title: 'Property Intelligence',
+                description: 'Filter by lot size, building type, and zoning to find properties that fit your service profile perfectly.',
                 icon: (
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
                 ),
-                title: 'Parcel-Level Data',
-                description: 'Access detailed property information from county assessor records, including ownership, valuations, and zoning.',
               },
               {
+                title: 'Decision Maker Intelligence',
+                description: 'Bypass the gatekeeper. Access verified contact info for Property Managers, Facility Directors, and Owners.',
                 icon: (
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                 ),
-                title: 'Verified Contacts',
-                description: 'Find property managers, facilities directors, and decision-makers with validated email addresses and phone numbers.',
               },
               {
+                title: 'Portfolio Intelligence',
+                description: 'View properties through an owner or manager lens. See everything a prospect manages to expand your deal size.',
                 icon: (
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
                   </svg>
                 ),
-                title: 'AI-Powered Enrichment',
-                description: 'Our AI analyzes properties to discover management companies, beneficial owners, and key stakeholders.',
               },
             ].map((feature, index) => (
               <div
                 key={index}
-                className="bg-gray-50 rounded-xl p-6 hover:bg-white hover:shadow-lg transition-all duration-300 property-card"
+                className="bg-gray-50 rounded-xl p-6 hover:bg-white hover:shadow-lg transition-all duration-300"
+                data-testid={`card-feature-${index}`}
               >
                 <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center text-green-600 mb-4">
                   {feature.icon}
@@ -159,23 +250,170 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="py-12 px-4 sm:px-6 lg:px-8 bg-gray-50 border-t border-gray-100">
-        <div className="max-w-7xl mx-auto text-center">
-          <div className="flex items-center justify-center space-x-2 mb-4">
-            <div className="w-6 h-6 bg-gradient-to-br from-green-500 to-emerald-600 rounded flex items-center justify-center">
-              <span className="text-white font-bold text-sm">G</span>
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-green-50 to-emerald-50">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <Image
+                src="/generated_images/isometric_city_block_target.png"
+                alt="Target Properties"
+                width={600}
+                height={450}
+                className="rounded-2xl shadow-xl"
+              />
             </div>
-            <span className="text-lg font-semibold text-gray-900">Greenfinch</span>
+            <div>
+              <span className="text-green-600 font-medium text-sm uppercase tracking-wide">Territory Planning</span>
+              <h2 className="text-3xl font-serif font-bold text-gray-900 mt-2 mb-4">
+                See your territory in a new light.
+              </h2>
+              <p className="text-lg text-gray-600 mb-6">
+                Visualize your market with high-fidelity map layers. Identify clusters of opportunity and plan your route effectively.
+              </p>
+              <ul className="space-y-3">
+                <li className="flex items-center gap-3">
+                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-gray-700">Pinpoint high-value targets</span>
+                </li>
+                <li className="flex items-center gap-3">
+                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-gray-700">Access ownership history instantly</span>
+                </li>
+              </ul>
+            </div>
           </div>
-          <p className="text-gray-500 text-sm">
-            Commercial property prospecting made simple.
-          </p>
-          <p className="text-gray-400 text-xs mt-4">
-            &copy; {new Date().getFullYear()} Greenfinch. All rights reserved.
-          </p>
         </div>
-      </footer>
+      </section>
+
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-white">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div className="order-2 lg:order-1">
+              <span className="text-green-600 font-medium text-sm uppercase tracking-wide">Prospecting & Qualification</span>
+              <h2 className="text-3xl font-serif font-bold text-gray-900 mt-2 mb-4">
+                Qualify fast. Then feed your CRM.
+              </h2>
+              <p className="text-lg text-gray-600 mb-6">
+                Greenfinch sits upstream of your CRM. We help you find the right properties and people so you only fill your pipeline with high-quality, verified leads.
+              </p>
+              <Link
+                href="/product"
+                className="inline-flex items-center text-green-600 font-medium hover:text-green-700"
+                data-testid="link-explore-features"
+              >
+                Explore Features
+                <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </Link>
+            </div>
+            <div className="order-1 lg:order-2">
+              <Image
+                src="/generated_images/sales_pipeline_flow_abstract.png"
+                alt="Pipeline Management"
+                width={600}
+                height={450}
+                className="rounded-2xl shadow-xl"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gradient-to-br from-green-50 to-emerald-50">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <Image
+                src="/generated_images/data_analytics_abstract_3d.png"
+                alt="Data Driven Decisions"
+                width={600}
+                height={450}
+                className="rounded-2xl shadow-xl"
+              />
+            </div>
+            <div>
+              <span className="text-green-600 font-medium text-sm uppercase tracking-wide">Market Intelligence</span>
+              <h2 className="text-3xl font-serif font-bold text-gray-900 mt-2 mb-4">
+                Filter out the noise, focus on the signal.
+              </h2>
+              <p className="text-lg text-gray-600 mb-6">
+                Advanced filtering capabilities allow you to zero in on properties that match your ideal customer profile instantly. No more manual sifting.
+              </p>
+              <ul className="space-y-3">
+                <li className="flex items-center gap-3">
+                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-gray-700">Identify top-tier opportunities</span>
+                </li>
+                <li className="flex items-center gap-3">
+                  <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  <span className="text-gray-700">Collaborate with your team in real-time</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-900 text-white">
+        <div className="max-w-4xl mx-auto text-center">
+          <span className="text-green-400 font-medium text-sm uppercase tracking-wide">Maximum Efficiency</span>
+          <h2 className="text-3xl font-serif font-bold mt-2 mb-4">
+            Accelerate your workflow.
+          </h2>
+          <p className="text-lg text-gray-300 mb-8">
+            Drastically reduce time spent driving and researching. We put verified contact information and high-likelihood prospects right at your fingertips.
+          </p>
+          <div className="flex flex-wrap justify-center gap-8 mb-8">
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <span>Instant access to decision makers</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <svg className="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+              </svg>
+              <span>Cut research time by 70%</span>
+            </div>
+          </div>
+          <Link
+            href="/waitlist"
+            className="inline-flex items-center justify-center px-8 py-4 text-base font-medium text-gray-900 bg-white rounded-lg hover:bg-gray-100 transition-all shadow-lg"
+            data-testid="button-get-started-now"
+          >
+            Get Started Now
+            <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+            </svg>
+          </Link>
+        </div>
+      </section>
+
+      <LandingFooter />
+
+      <style jsx>{`
+        @keyframes scroll {
+          0% {
+            transform: translateX(0);
+          }
+          100% {
+            transform: translateX(-50%);
+          }
+        }
+        .animate-scroll {
+          animation: scroll 30s linear infinite;
+        }
+      `}</style>
     </div>
   );
 }

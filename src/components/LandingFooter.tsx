@@ -1,0 +1,66 @@
+'use client';
+
+import Link from 'next/link';
+
+export default function LandingFooter() {
+  return (
+    <footer className="py-12 px-4 sm:px-6 lg:px-8 bg-gray-900 text-white">
+      <div className="max-w-7xl mx-auto">
+        <div className="grid md:grid-cols-4 gap-8 mb-8">
+          <div className="md:col-span-2">
+            <div className="flex items-center space-x-2 mb-4">
+              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-lg">G</span>
+              </div>
+              <span className="text-xl font-semibold">Greenfinch</span>
+            </div>
+            <p className="text-gray-400 text-sm max-w-md">
+              The modern sales intelligence platform for commercial services. Find decision-makers, not just buildings.
+            </p>
+          </div>
+          
+          <div>
+            <h3 className="font-semibold mb-4">Product</h3>
+            <ul className="space-y-2 text-sm text-gray-400">
+              <li>
+                <Link href="/product" className="hover:text-white transition-colors" data-testid="link-footer-product">
+                  Features
+                </Link>
+              </li>
+              <li>
+                <Link href="/pricing" className="hover:text-white transition-colors" data-testid="link-footer-pricing">
+                  Pricing
+                </Link>
+              </li>
+              <li>
+                <Link href="/faq" className="hover:text-white transition-colors" data-testid="link-footer-faq">
+                  FAQ
+                </Link>
+              </li>
+            </ul>
+          </div>
+          
+          <div>
+            <h3 className="font-semibold mb-4">Company</h3>
+            <ul className="space-y-2 text-sm text-gray-400">
+              <li>
+                <Link href="/waitlist" className="hover:text-white transition-colors" data-testid="link-footer-waitlist">
+                  Join Waitlist
+                </Link>
+              </li>
+              <li>
+                <a href="/api/login" className="hover:text-white transition-colors" data-testid="link-footer-login">
+                  Log In
+                </a>
+              </li>
+            </ul>
+          </div>
+        </div>
+        
+        <div className="border-t border-gray-800 pt-8 text-center text-gray-400 text-sm">
+          <p>&copy; {new Date().getFullYear()} Greenfinch. All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+  );
+}

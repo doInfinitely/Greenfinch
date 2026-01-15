@@ -215,6 +215,18 @@ export const parcelToProperty = pgTable('parcel_to_property', {
   propertyKeyIdx: index('idx_parcel_property_key').on(table.propertyKey),
 }));
 
+// Waitlist signups
+export const waitlistSignups = pgTable('waitlist_signups', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  email: text('email').unique().notNull(),
+  name: text('name'),
+  company: text('company'),
+  role: text('role'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  emailIdx: uniqueIndex('idx_waitlist_email').on(table.email),
+}));
+
 // User lists for saved properties/contacts
 export const userLists = pgTable('user_lists', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -255,3 +267,5 @@ export type InsertProperty = typeof properties.$inferInsert;
 export type Contact = typeof contacts.$inferSelect;
 export type InsertContact = typeof contacts.$inferInsert;
 export type Organization = typeof organizations.$inferSelect;
+export type WaitlistSignup = typeof waitlistSignups.$inferSelect;
+export type InsertWaitlistSignup = typeof waitlistSignups.$inferInsert;
