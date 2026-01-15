@@ -604,10 +604,10 @@ If you cannot find a verified profile, return: NOT_FOUND`;
   }
 }
 
-// Enrich contacts with LinkedIn URLs (limited to top 3 high-priority contacts, run in parallel)
+// Enrich contacts with LinkedIn URLs (limited to top 2 high-priority contacts, run sequentially to avoid rate limits)
 export async function enrichContactsWithLinkedIn(contacts: EnrichedContact[]): Promise<EnrichedContact[]> {
-  const MAX_LINKEDIN_LOOKUPS = 3;
-  const highPriorityRoles = ['property_manager', 'facilities', 'asset_manager'];
+  const MAX_LINKEDIN_LOOKUPS = 2;
+  const highPriorityRoles = ['property_manager', 'facilities_manager', 'owner'];
   
   const sortedContacts = [...contacts].sort((a, b) => {
     const aHighPriority = highPriorityRoles.includes(a.role);
