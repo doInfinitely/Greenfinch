@@ -1,3 +1,102 @@
+export interface CommonNameResult {
+  commonName: string | null;
+  rawResponse: unknown;
+}
+
+const nameCache = new Map<string, { result: CommonNameResult; timestamp: number }>();
+const NAME_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+let lastRequestTime = 0;
+const MIN_REQUEST_INTERVAL_MS = 100;
+
+async function throttle(): Promise<void> {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastRequestTime;
+  
+  if (timeSinceLastRequest < MIN_REQUEST_INTERVAL_MS) {
+    await new Promise(resolve => setTimeout(resolve, MIN_REQUEST_INTERVAL_MS - timeSinceLastRequest));
+  }
+  
+  lastRequestTime = Date.now();
+}
+
+function getNameCacheKey(lat: number, lon: number): string {
+  const roundedLat = Math.round(lat * 100000) / 100000;
+  const roundedLon = Math.round(lon * 100000) / 100000;
+  return `${roundedLat},${roundedLon}`;
+}
+
+export async function getCommonNameFromGooglePlaces(lat: number, lon: number): Promise<CommonNameResult> {
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  
+  if (!apiKey) {
+    console.warn('[Google Places] No API key configured');
+    return { commonName: null, rawResponse: null };
+  }
+  
+  const cacheKey = getNameCacheKey(lat, lon);
+  const cached = nameCache.get(cacheKey);
+  
+  if (cached && Date.now() - cached.timestamp < NAME_CACHE_TTL_MS) {
+    return cached.result;
+  }
+  
+  await throttle();
+  
+  try {
+    const response = await fetch(
+      'https://places.googleapis.com/v1/places:searchNearby',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': 'places.displayName',
+        },
+        body: JSON.stringify({
+          maxResultCount: 1,
+          rankPreference: 'DISTANCE',
+          locationRestriction: {
+            circle: {
+              center: { latitude: lat, longitude: lon },
+              radius: 10.0,
+            },
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[Google Places] Common name lookup error:', errorText);
+      return { commonName: null, rawResponse: null };
+    }
+
+    const data = await response.json();
+    const places = data.places || [];
+
+    if (places.length === 0) {
+      const noResult: CommonNameResult = { commonName: null, rawResponse: data };
+      nameCache.set(cacheKey, { result: noResult, timestamp: Date.now() });
+      return noResult;
+    }
+
+    const firstPlace = places[0];
+    const commonName = firstPlace.displayName?.text || null;
+
+    const result: CommonNameResult = { commonName, rawResponse: data };
+    nameCache.set(cacheKey, { result, timestamp: Date.now() });
+    return result;
+  } catch (error) {
+    console.error('[Google Places] Error getting common name:', error);
+    return { commonName: null, rawResponse: null };
+  }
+}
+
+export function clearNameCache(): void {
+  nameCache.clear();
+}
+
 interface ContainingPlaceResult {
   containingPlace: string | null;
   containingPlaceType: string | null;

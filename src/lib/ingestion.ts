@@ -5,7 +5,7 @@ import { eq } from 'drizzle-orm';
 import type { RegridParcel, AggregatedProperty } from './snowflake';
 import { normalizeAddress, normalizeOwnerName, normalizeCity, normalizeCounty } from './normalization';
 import { classifyPropertyType, isCommercialOrMultifamily, type PropertyClassification } from './zoning-classification';
-import { enrichWithMapboxPOI } from './mapbox-poi';
+import { getCommonNameFromGooglePlaces } from './google-places';
 
 snowflake.configure({ logLevel: 'ERROR' });
 
@@ -450,15 +450,15 @@ export async function runMVPIngestion(
   stats.commercialPropertiesIdentified = commercialProperties.length;
   console.log(`[MVP Ingestion] Identified ${commercialProperties.length} commercial/multifamily properties`);
 
-  console.log(`[MVP Ingestion] Step 4: Enriching commercial properties with Mapbox POI...`);
+  console.log(`[MVP Ingestion] Step 4: Saving commercial properties and looking up common names via Google Places...`);
   
   for (let i = 0; i < commercialProperties.length; i++) {
     const property = commercialProperties[i];
     
     try {
-      console.log(`[MVP Ingestion] Enriching property ${i + 1}/${commercialProperties.length}: ${property.address}`);
+      console.log(`[MVP Ingestion] Processing property ${i + 1}/${commercialProperties.length}: ${property.address}`);
       
-      const poiResult = await enrichWithMapboxPOI(property.lat, property.lon);
+      const placesResult = await getCommonNameFromGooglePlaces(property.lat, property.lon);
       
       const usedesc = property.usedesc.join(' ');
       const zoningDescription = property.zoningDescription.join(' ');
@@ -478,6 +478,8 @@ export async function runMVPIngestion(
         .where(eq(properties.propertyKey, property.propertyKey))
         .limit(1);
 
+      const assetCategory = mapClassificationToCategory(classification.classification);
+
       const propertyData = {
         propertyKey: property.propertyKey,
         sourceLlUuid: property.sourceLlUuid,
@@ -496,13 +498,13 @@ export async function runMVPIngestion(
         regridOwner: normalizedOwner,
         regridOwner2: normalizedOwner2,
         rawParcelsJson: property.rawParcelsJson,
-        assetCategory: poiResult.category !== 'Unknown' ? poiResult.category : mapClassificationToCategory(classification.classification),
-        assetSubcategory: poiResult.subcategory !== 'Unknown' ? poiResult.subcategory : null,
-        categoryConfidence: poiResult.confidence,
-        commonName: poiResult.name,
-        commonNameConfidence: poiResult.name ? poiResult.confidence : null,
-        operationalStatus: poiResult.operationalStatus,
-        mapboxPoiJson: poiResult.rawResponse,
+        assetCategory,
+        assetSubcategory: null,
+        categoryConfidence: null,
+        commonName: placesResult.commonName,
+        commonNameConfidence: placesResult.commonName ? 0.9 : null,
+        operationalStatus: null,
+        mapboxPoiJson: placesResult.rawResponse,
         lastRegridUpdate: new Date(),
         lastEnrichedAt: new Date(),
         enrichmentStatus: 'enriched',
@@ -523,15 +525,17 @@ export async function runMVPIngestion(
       }
       
       stats.propertiesSaved++;
-      stats.propertiesEnrichedWithPOI++;
+      if (placesResult.commonName) {
+        stats.propertiesEnrichedWithPOI++;
+      }
 
       const linked = await linkParcelsToProperty(property.rawParcelsJson, property.propertyKey);
       stats.parcelsLinked += linked;
 
-      if (poiResult.name) {
-        console.log(`  -> POI: "${poiResult.name}" (${poiResult.category}/${poiResult.subcategory})`);
+      if (placesResult.commonName) {
+        console.log(`  -> Common name: "${placesResult.commonName}" (${assetCategory})`);
       } else {
-        console.log(`  -> No POI found, using zoning category: ${propertyData.assetCategory}`);
+        console.log(`  -> No common name found, category: ${assetCategory}`);
       }
       
     } catch (error) {
