@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic';
 import Header from '@/components/Header';
 import AddToListModal from '@/components/AddToListModal';
 import EnrichmentModal from '@/components/EnrichmentModal';
+import StreetView from '@/components/StreetView';
 
 function toTitleCase(str: string): string {
   return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
@@ -208,6 +209,7 @@ export default function PropertyDetailPage() {
   const [validatingEmails, setValidatingEmails] = useState<Set<string>>(new Set());
   const [mapToken, setMapToken] = useState<string>('');
   const [regridToken, setRegridToken] = useState<string>('');
+  const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>('');
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -255,6 +257,7 @@ export default function PropertyDetailPage() {
       .then(data => {
         if (data.mapboxToken) setMapToken(data.mapboxToken);
         if (data.regridToken) setRegridToken(data.regridToken);
+        if (data.googleMapsApiKey) setGoogleMapsApiKey(data.googleMapsApiKey);
       })
       .catch(err => console.error('Failed to load map config:', err));
   }, []);
@@ -949,15 +952,15 @@ export default function PropertyDetailPage() {
             </div>
           </div>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1 space-y-4">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden sticky top-20">
-              <div className="h-64 lg:h-96">
+              <div className="h-64 lg:h-72">
                 {property.lat && property.lon && mapToken ? (
                   <MapCanvas
                     accessToken={mapToken}
                     regridToken={regridToken}
                     initialCenter={{ lat: property.lat, lon: property.lon }}
-                    initialZoom={16}
+                    initialZoom={17}
                     properties={[{
                       type: 'Feature',
                       geometry: {
@@ -981,13 +984,32 @@ export default function PropertyDetailPage() {
                   </div>
                 )}
               </div>
-              <div className="p-4 border-t border-gray-100">
-                <p className="text-sm text-gray-600">
-                  <span className="font-medium">Coordinates:</span>{' '}
-                  {property.lat?.toFixed(6)}, {property.lon?.toFixed(6)}
+              <div className="p-3 border-t border-gray-100 flex items-center justify-between">
+                <p className="text-xs text-gray-500">
+                  <span className="font-medium">Map</span> with parcel boundaries
+                </p>
+                <p className="text-xs text-gray-400">
+                  {property.lat?.toFixed(5)}, {property.lon?.toFixed(5)}
                 </p>
               </div>
             </div>
+
+            {property.lat && property.lon && googleMapsApiKey && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+                <div className="h-64 lg:h-72">
+                  <StreetView
+                    apiKey={googleMapsApiKey}
+                    lat={property.lat}
+                    lon={property.lon}
+                  />
+                </div>
+                <div className="p-3 border-t border-gray-100">
+                  <p className="text-xs text-gray-500">
+                    <span className="font-medium">Street View</span> - drag to explore
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
