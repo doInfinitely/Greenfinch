@@ -563,7 +563,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): 
   ]);
 }
 
-// Find LinkedIn URL using Gemini with web grounding (with 45s timeout)
+// Find LinkedIn URL using Gemini with web grounding
 export async function findLinkedInUrl(
   name: string,
   title: string | null,
@@ -571,63 +571,96 @@ export async function findLinkedInUrl(
   domain: string | null,
   city: string | null = null
 ): Promise<{ linkedinUrl: string | null; confidence: number }> {
-  // Build context parts for the search
-  const contextParts: string[] = [name];
-  if (title) contextParts.push(title);
-  if (company) contextParts.push(`at ${company}`);
-  if (domain) contextParts.push(`(${domain})`);
-  if (city) contextParts.push(`in ${city}`);
-  
-  const searchContext = contextParts.join(', ');
-  
-  const prompt = `Search for the LinkedIn profile of ${searchContext}.
+  // Build structured context for better search results
+  const contextParts = [
+    `Name: ${name}`,
+    company && `Company: ${company}`,
+    domain && `Domain: ${domain}`,
+    title && `Title: ${title}`,
+    city && `City: ${city}`,
+  ].filter(Boolean).join("\n");
 
-If you find their LinkedIn profile, return ONLY the URL in this format:
-https://www.linkedin.com/in/username
+  const prompt = `Find the LinkedIn profile URL for this person. Return ONLY a JSON object, no markdown.
 
-If you cannot find a verified profile, return: NOT_FOUND`;
+${contextParts}
+
+Return format:
+{"linkedin_url": "https://linkedin.com/in/...", "confidence": "high|medium|low", "match_reason": "brief explanation"}
+
+If no match found, return {"linkedin_url": null, "confidence": "none", "match_reason": "reason"}`;
 
   try {
     const client = getGeminiClient();
     
-    console.log(`[Enrichment] Calling Gemini for LinkedIn lookup: ${searchContext}`);
+    console.log(`[Enrichment] Calling Gemini for LinkedIn lookup: ${name} at ${company || domain || 'unknown'}`);
     
     const response = await withTimeout(
       client.models.generateContent({
-        model: "gemini-1.5-flash",
+        model: "gemini-3-flash-preview",
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
         },
       }),
-      60000,
+      90000,
       'LinkedIn lookup timed out'
     );
 
     const text = response.text?.trim();
-    console.log(`[Enrichment] Gemini LinkedIn response: ${text?.substring(0, 200) || 'empty'}`);
+    console.log(`[Enrichment] Gemini LinkedIn response: ${text?.substring(0, 300) || 'empty'}`);
     
-    if (!text || text === 'NOT_FOUND' || !text.includes('linkedin.com/in/')) {
-      console.log(`[Enrichment] No LinkedIn URL found in response`);
+    if (!text) {
+      console.log(`[Enrichment] Empty response from Gemini`);
       return { linkedinUrl: null, confidence: 0 };
     }
 
-    const linkedinMatch = text.match(/https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/);
-    
-    if (linkedinMatch) {
-      let url = linkedinMatch[0];
-      if (!url.endsWith('/')) {
-        url = url + '/';
+    // Try to parse JSON response
+    try {
+      const jsonStr = text.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(jsonStr);
+      
+      if (parsed.linkedin_url && parsed.linkedin_url.includes('linkedin.com/in/')) {
+        let url = parsed.linkedin_url;
+        if (!url.endsWith('/')) url = url + '/';
+        if (!url.startsWith('https://www.')) {
+          url = url.replace('https://linkedin.com', 'https://www.linkedin.com')
+                   .replace('http://linkedin.com', 'https://www.linkedin.com')
+                   .replace('http://www.linkedin.com', 'https://www.linkedin.com');
+        }
+        
+        const confidenceMap: Record<string, number> = {
+          'high': 0.95,
+          'medium': 0.80,
+          'low': 0.60,
+          'none': 0
+        };
+        const confidence = confidenceMap[parsed.confidence] || 0.75;
+        
+        console.log(`[Enrichment] Found LinkedIn for ${name}: ${url} (confidence: ${parsed.confidence})`);
+        return { linkedinUrl: url, confidence };
       }
-      if (!url.startsWith('https://www.')) {
-        url = url.replace('https://linkedin.com', 'https://www.linkedin.com')
-                 .replace('http://linkedin.com', 'https://www.linkedin.com')
-                 .replace('http://www.linkedin.com', 'https://www.linkedin.com');
+      
+      console.log(`[Enrichment] No LinkedIn URL in parsed response: ${parsed.match_reason || 'unknown reason'}`);
+      return { linkedinUrl: null, confidence: 0 };
+    } catch (parseError) {
+      // Fallback: try to extract URL directly from response
+      const linkedinMatch = text.match(/https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/);
+      
+      if (linkedinMatch) {
+        let url = linkedinMatch[0];
+        if (!url.endsWith('/')) url = url + '/';
+        if (!url.startsWith('https://www.')) {
+          url = url.replace('https://linkedin.com', 'https://www.linkedin.com')
+                   .replace('http://linkedin.com', 'https://www.linkedin.com')
+                   .replace('http://www.linkedin.com', 'https://www.linkedin.com');
+        }
+        console.log(`[Enrichment] Extracted LinkedIn URL from text: ${url}`);
+        return { linkedinUrl: url, confidence: 0.75 };
       }
-      return { linkedinUrl: url, confidence: 0.85 };
+      
+      console.log(`[Enrichment] Could not parse response or extract URL`);
+      return { linkedinUrl: null, confidence: 0 };
     }
-
-    return { linkedinUrl: null, confidence: 0 };
   } catch (error) {
     console.error(`[Enrichment] Error finding LinkedIn for ${name}:`, error);
     return { linkedinUrl: null, confidence: 0 };
