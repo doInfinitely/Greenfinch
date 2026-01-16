@@ -1,0 +1,88 @@
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import pLimit from "p-limit"; // For concurrency control
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+/**
+ * Find LinkedIn profile URL using Gemini Flash with Google Search grounding
+ */
+async function findLinkedInUrl({ name, company, domain, city, title }) {
+  const model = genAI.getGenerativeModel({
+    model: "gemini-2.0-flash",
+    tools: [{ googleSearch: {} }], // Enable search grounding
+  });
+
+  const contextParts = [
+    `Name: ${name}`,
+    company && `Company: ${company}`,
+    domain && `Domain: ${domain}`,
+    title && `Title: ${title}`,
+    city && `City: ${city}`,
+  ].filter(Boolean).join("\n");
+
+  const prompt = `Find the LinkedIn profile URL for this person. Return ONLY a JSON object, no markdown.
+
+${contextParts}
+
+Return format:
+{"linkedin_url": "https://linkedin.com/in/...", "confidence": "high|medium|low", "match_reason": "brief explanation"}
+
+If no match found, return {"linkedin_url": null, "confidence": "none", "match_reason": "reason"}`;
+
+  try {
+    const result = await model.generateContent(prompt);
+    const text = result.response.text().trim();
+    
+    // Clean up markdown code blocks if present
+    const jsonStr = text.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+    return JSON.parse(jsonStr);
+  } catch (error) {
+    return {
+      linkedin_url: null,
+      confidence: "error",
+      match_reason: error.message,
+    };
+  }
+}
+
+/**
+ * Process multiple contacts with concurrency control
+ */
+async function findLinkedInBatch(contacts, { concurrency = 5, delayMs = 100 } = {}) {
+  const limit = pLimit(concurrency);
+  
+  const tasks = contacts.map((contact, index) =>
+    limit(async () => {
+      // Small delay to avoid rate limits
+      if (index > 0) await sleep(delayMs);
+      
+      const result = await findLinkedInUrl(contact);
+      return { ...contact, ...result };
+    })
+  );
+
+  return Promise.all(tasks);
+}
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ============ Usage Examples ============
+
+// Single lookup
+const single = await findLinkedInUrl({
+  name: "John Smith",
+  company: "Acme Landscaping",
+  title: "VP Operations",
+  city: "Dallas",
+});
+console.log(single);
+
+// Batch lookup
+const contacts = [
+  { name: "John Smith", company: "Acme Corp", title: "VP Operations", city: "Dallas" },
+  { name: "Jane Doe", company: "BigCo Services", title: "Facilities Manager", city: "Charlotte" },
+  { name: "Bob Wilson", company: "GreenScape", domain: "greenscape.com", title: "Owner" },
+];
+
+const results = await findLinkedInBatch(contacts, { concurrency: 3, delayMs: 200 });
+console.log(results);
