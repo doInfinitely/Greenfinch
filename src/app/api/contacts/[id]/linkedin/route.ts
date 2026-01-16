@@ -21,7 +21,7 @@ export async function POST(
     }
 
     // Get contact with city from associated property
-    const [contactResult] = await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT 
         c.*,
         p.city as property_city
@@ -32,6 +32,7 @@ export async function POST(
       LIMIT 1
     `);
 
+    const contactResult = result.rows?.[0];
     if (!contactResult) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
