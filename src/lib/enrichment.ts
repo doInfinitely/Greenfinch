@@ -594,7 +594,7 @@ If you cannot find a verified profile, return: NOT_FOUND`;
     
     const response = await withTimeout(
       client.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-1.5-flash",
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
