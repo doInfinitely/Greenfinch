@@ -568,9 +568,19 @@ export async function findLinkedInUrl(
   name: string,
   title: string | null,
   company: string | null,
-  domain: string | null
+  domain: string | null,
+  city: string | null = null
 ): Promise<{ linkedinUrl: string | null; confidence: number }> {
-  const prompt = `Search for the LinkedIn profile of ${name}${title ? `, ${title}` : ''}${company ? ` at ${company}` : ''}.
+  // Build context parts for the search
+  const contextParts: string[] = [name];
+  if (title) contextParts.push(title);
+  if (company) contextParts.push(`at ${company}`);
+  if (domain) contextParts.push(`(${domain})`);
+  if (city) contextParts.push(`in ${city}`);
+  
+  const searchContext = contextParts.join(', ');
+  
+  const prompt = `Search for the LinkedIn profile of ${searchContext}.
 
 If you find their LinkedIn profile, return ONLY the URL in this format:
 https://www.linkedin.com/in/username
@@ -580,7 +590,7 @@ If you cannot find a verified profile, return: NOT_FOUND`;
   try {
     const client = getGeminiClient();
     
-    console.log(`[Enrichment] Calling Gemini for LinkedIn lookup: ${name}`);
+    console.log(`[Enrichment] Calling Gemini for LinkedIn lookup: ${searchContext}`);
     
     const response = await withTimeout(
       client.models.generateContent({
@@ -590,13 +600,15 @@ If you cannot find a verified profile, return: NOT_FOUND`;
           tools: [{ googleSearch: {} }],
         },
       }),
-      45000,
+      60000,
       'LinkedIn lookup timed out'
     );
 
     const text = response.text?.trim();
+    console.log(`[Enrichment] Gemini LinkedIn response: ${text?.substring(0, 200) || 'empty'}`);
     
     if (!text || text === 'NOT_FOUND' || !text.includes('linkedin.com/in/')) {
+      console.log(`[Enrichment] No LinkedIn URL found in response`);
       return { linkedinUrl: null, confidence: 0 };
     }
 

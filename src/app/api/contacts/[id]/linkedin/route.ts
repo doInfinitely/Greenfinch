@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { contacts } from '@/lib/schema';
-import { eq } from 'drizzle-orm';
+import { contacts, propertyContacts, properties } from '@/lib/schema';
+import { eq, sql } from 'drizzle-orm';
 import { findLinkedInUrl, CONFIDENCE } from '@/lib/enrichment';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -20,40 +20,58 @@ export async function POST(
       );
     }
 
-    const [contact] = await db
-      .select()
-      .from(contacts)
-      .where(eq(contacts.id, id))
-      .limit(1);
+    // Get contact with city from associated property
+    const [contactResult] = await db.execute(sql`
+      SELECT 
+        c.*,
+        p.city as property_city
+      FROM contacts c
+      LEFT JOIN property_contacts pc ON pc.contact_id = c.id
+      LEFT JOIN properties p ON p.id = pc.property_id
+      WHERE c.id = ${id}
+      LIMIT 1
+    `);
 
-    if (!contact) {
+    if (!contactResult) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
-    if (contact.linkedinUrl) {
+    const contact = contactResult as {
+      id: string;
+      full_name: string | null;
+      title: string | null;
+      employer_name: string | null;
+      company_domain: string | null;
+      linkedin_url: string | null;
+      linkedin_confidence: number | null;
+      property_city: string | null;
+    };
+
+    if (contact.linkedin_url) {
       return NextResponse.json({
         success: true,
-        linkedinUrl: contact.linkedinUrl,
-        confidence: contact.linkedinConfidence,
+        linkedinUrl: contact.linkedin_url,
+        confidence: contact.linkedin_confidence,
         message: 'LinkedIn profile already exists',
         alreadyExists: true,
       });
     }
 
-    if (!contact.fullName) {
+    if (!contact.full_name) {
       return NextResponse.json(
         { error: 'Contact name is required to find LinkedIn profile' },
         { status: 400 }
       );
     }
 
-    console.log(`[API] Finding LinkedIn for contact: ${contact.fullName}`);
+    console.log(`[API] Finding LinkedIn for contact: ${contact.full_name} (${contact.employer_name || 'unknown company'}, ${contact.company_domain || 'no domain'}, ${contact.property_city || 'unknown city'})`);
 
     const result = await findLinkedInUrl(
-      contact.fullName,
+      contact.full_name,
       contact.title,
-      contact.employerName,
-      contact.companyDomain
+      contact.employer_name,
+      contact.company_domain,
+      contact.property_city
     );
 
     if (result.linkedinUrl && result.confidence >= CONFIDENCE.LINKEDIN_THRESHOLD) {
@@ -67,7 +85,7 @@ export async function POST(
         })
         .where(eq(contacts.id, id));
 
-      console.log(`[API] Found and saved LinkedIn for ${contact.fullName}: ${result.linkedinUrl}`);
+      console.log(`[API] Found and saved LinkedIn for ${contact.full_name}: ${result.linkedinUrl}`);
 
       return NextResponse.json({
         success: true,
