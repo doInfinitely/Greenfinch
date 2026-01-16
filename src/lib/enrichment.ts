@@ -592,7 +592,8 @@ If no match found, return {"linkedin_url": null, "confidence": "none", "match_re
   try {
     const client = getGeminiClient();
     
-    console.log(`[Enrichment] Calling Gemini for LinkedIn lookup: ${name} at ${company || domain || 'unknown'}`);
+    console.log(`[Enrichment] LinkedIn search: ${name} at ${company || domain || 'unknown'}`);
+    const startTime = Date.now();
     
     const response = await withTimeout(
       client.models.generateContent({
@@ -606,8 +607,9 @@ If no match found, return {"linkedin_url": null, "confidence": "none", "match_re
       'LinkedIn lookup timed out'
     );
 
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     const text = response.text?.trim();
-    console.log(`[Enrichment] Gemini LinkedIn response: ${text?.substring(0, 300) || 'empty'}`);
+    console.log(`[Enrichment] LinkedIn response (${elapsed}s): ${text?.substring(0, 200) || 'empty'}`);
     
     if (!text) {
       console.log(`[Enrichment] Empty response from Gemini`);
@@ -636,7 +638,7 @@ If no match found, return {"linkedin_url": null, "confidence": "none", "match_re
         };
         const confidence = confidenceMap[parsed.confidence] || 0.75;
         
-        console.log(`[Enrichment] Found LinkedIn for ${name}: ${url} (confidence: ${parsed.confidence})`);
+        console.log(`[Enrichment] Found LinkedIn for ${name}: ${url} (${parsed.confidence}, ${elapsed}s)`);
         return { linkedinUrl: url, confidence };
       }
       
@@ -654,7 +656,7 @@ If no match found, return {"linkedin_url": null, "confidence": "none", "match_re
                    .replace('http://linkedin.com', 'https://www.linkedin.com')
                    .replace('http://www.linkedin.com', 'https://www.linkedin.com');
         }
-        console.log(`[Enrichment] Extracted LinkedIn URL from text: ${url}`);
+        console.log(`[Enrichment] Extracted LinkedIn URL from text: ${url} (${elapsed}s)`);
         return { linkedinUrl: url, confidence: 0.75 };
       }
       
