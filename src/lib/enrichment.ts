@@ -563,7 +563,59 @@ function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): 
   ]);
 }
 
-// Find LinkedIn URL using Gemini with web grounding
+// Single LinkedIn search attempt
+async function attemptLinkedInSearch(
+  searchTerms: string,
+  name: string
+): Promise<{ linkedinUrl: string | null; confidence: number }> {
+  const prompt = `Search the web for: ${searchTerms}
+
+What is this person's LinkedIn profile URL? Just return the URL, nothing else.
+If you find it, respond with ONLY the URL like: https://www.linkedin.com/in/username
+If not found, respond with: NOT_FOUND`;
+
+  const client = getGeminiClient();
+  console.log(`[Enrichment] LinkedIn search: "${searchTerms}"`);
+  const startTime = Date.now();
+  
+  const response = await withTimeout(
+    client.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }],
+      },
+    }),
+    90000,
+    'LinkedIn lookup timed out'
+  );
+
+  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+  const text = response.text?.trim();
+  console.log(`[Enrichment] LinkedIn response (${elapsed}s): ${text?.substring(0, 300) || 'empty'}`);
+  
+  if (!text || text === 'NOT_FOUND' || text.toUpperCase().includes('NOT_FOUND') || text.toUpperCase().includes('NOT FOUND')) {
+    return { linkedinUrl: null, confidence: 0 };
+  }
+
+  // Extract LinkedIn URL from response
+  const linkedinMatch = text.match(/https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/i);
+  
+  if (linkedinMatch) {
+    let url = linkedinMatch[0];
+    if (!url.endsWith('/')) url = url + '/';
+    if (!url.startsWith('https://www.')) {
+      url = url.replace(/https?:\/\/linkedin\.com/i, 'https://www.linkedin.com')
+               .replace(/https?:\/\/www\.linkedin\.com/i, 'https://www.linkedin.com');
+    }
+    console.log(`[Enrichment] Found LinkedIn for ${name}: ${url} (${elapsed}s)`);
+    return { linkedinUrl: url, confidence: 0.85 };
+  }
+  
+  return { linkedinUrl: null, confidence: 0 };
+}
+
+// Find LinkedIn URL using Gemini with web grounding (with retry strategy)
 export async function findLinkedInUrl(
   name: string,
   title: string | null,
@@ -571,57 +623,19 @@ export async function findLinkedInUrl(
   domain: string | null,
   city: string | null = null
 ): Promise<{ linkedinUrl: string | null; confidence: number }> {
-  // Build a simple search query like a human would use on Google
-  const searchTerms = [name, company, city, "LinkedIn profile"].filter(Boolean).join(" ");
-
-  const prompt = `Search the web for: ${searchTerms}
-
-What is this person's LinkedIn profile URL? Just return the URL, nothing else.
-If you find it, respond with ONLY the URL like: https://www.linkedin.com/in/username
-If not found, respond with: NOT_FOUND`;
-
   try {
-    const client = getGeminiClient();
-    
-    console.log(`[Enrichment] LinkedIn search query: "${searchTerms}"`);
-    const startTime = Date.now();
-    
-    const response = await withTimeout(
-      client.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: prompt,
-        config: {
-          tools: [{ googleSearch: {} }],
-        },
-      }),
-      90000,
-      'LinkedIn lookup timed out'
-    );
+    // Strategy 1: Full search with name + company + city (most specific)
+    const fullSearchTerms = [name, company, city, "LinkedIn"].filter(Boolean).join(" ");
+    let result = await attemptLinkedInSearch(fullSearchTerms, name);
+    if (result.linkedinUrl) return result;
 
-    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-    const text = response.text?.trim();
-    console.log(`[Enrichment] LinkedIn response (${elapsed}s): ${text?.substring(0, 300) || 'empty'}`);
-    
-    if (!text || text === 'NOT_FOUND' || text.toUpperCase().includes('NOT_FOUND') || text.toUpperCase().includes('NOT FOUND')) {
-      console.log(`[Enrichment] LinkedIn not found for ${name}`);
-      return { linkedinUrl: null, confidence: 0 };
-    }
+    // Strategy 2: Simpler search with just name + LinkedIn (broader search)
+    // Skip company/city as they might be limiting results
+    const nameOnlySearchTerms = `${name} LinkedIn`;
+    result = await attemptLinkedInSearch(nameOnlySearchTerms, name);
+    if (result.linkedinUrl) return result;
 
-    // Extract LinkedIn URL from response (handles various formats)
-    const linkedinMatch = text.match(/https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/i);
-    
-    if (linkedinMatch) {
-      let url = linkedinMatch[0];
-      if (!url.endsWith('/')) url = url + '/';
-      if (!url.startsWith('https://www.')) {
-        url = url.replace(/https?:\/\/linkedin\.com/i, 'https://www.linkedin.com')
-                 .replace(/https?:\/\/www\.linkedin\.com/i, 'https://www.linkedin.com');
-      }
-      console.log(`[Enrichment] Found LinkedIn for ${name}: ${url} (${elapsed}s)`);
-      return { linkedinUrl: url, confidence: 0.85 };
-    }
-    
-    console.log(`[Enrichment] No LinkedIn URL found in response for ${name}`);
+    console.log(`[Enrichment] LinkedIn not found for ${name} after 2 attempts`);
     return { linkedinUrl: null, confidence: 0 };
   } catch (error) {
     console.error(`[Enrichment] Error finding LinkedIn for ${name}:`, error);
