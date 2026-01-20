@@ -73,7 +73,6 @@ export default function MapPage() {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 32.8639, lon: -96.7784 });
   const [isLoading, setIsLoading] = useState(true);
   const [filters, setFilters] = useState<FilterState>({ minLotAcres: null, categories: [] });
-  const [showMobileList, setShowMobileList] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -86,15 +85,6 @@ export default function MapPage() {
     }).catch(() => setIsLoading(false));
   }, []);
 
-  useEffect(() => {
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape' && showMobileList) {
-        setShowMobileList(false);
-      }
-    }
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [showMobileList]);
 
   const handleBoundsChange = useCallback((newBounds: MapBounds) => {
     setBounds(newBounds);
@@ -168,59 +158,27 @@ export default function MapPage() {
           onBoundsChange={handleBoundsChange}
           onPropertyClick={handlePropertyClick}
         />
-        <div className="absolute top-3 left-3 right-3 md:right-auto z-10 flex flex-col gap-2">
+        <div className="absolute top-3 left-3 right-14 md:right-auto z-10 flex flex-col gap-2">
           <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
           <PropertyFilters filters={filters} onFiltersChange={setFilters} />
         </div>
-        
-        <button
-          onClick={() => setShowMobileList(!showMobileList)}
-          className="md:hidden absolute bottom-4 right-4 z-10 bg-white shadow-lg rounded-full p-3 border border-gray-200"
-          data-testid="button-toggle-mobile-list"
-          aria-label="Show property list"
-        >
-          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-          </svg>
-          {visibleProperties.length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-green-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" aria-label={`${visibleProperties.length} properties`}>
-              {visibleProperties.length > 99 ? '99+' : visibleProperties.length}
-            </span>
-          )}
-        </button>
       </div>
 
-      <div className={`
-        fixed md:relative inset-0 md:inset-auto z-20 md:z-auto
-        ${showMobileList ? 'block' : 'hidden'} md:block
-        md:w-80 bg-white md:border-l border-gray-200 flex flex-col
-      `}>
-        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
-          <div>
-            <h2 className="font-semibold text-gray-900">
-              Properties in View <span className="text-green-600 font-normal">({visibleProperties.length})</span>
-            </h2>
-            {(filters.minLotAcres || filters.categories.length > 0) && (
-              <p className="text-xs text-gray-500 mt-1">
-                Filtered from {allProperties.length} total
-              </p>
-            )}
-          </div>
-          <button
-            onClick={() => setShowMobileList(false)}
-            className="md:hidden p-2 hover:bg-gray-100 rounded-lg"
-            data-testid="button-close-mobile-list"
-            aria-label="Close property list"
-          >
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
+      <div className="hidden md:flex md:w-80 bg-white border-l border-gray-200 flex-col">
+        <div className="px-4 py-3 border-b border-gray-200">
+          <h2 className="font-semibold text-gray-900">
+            Properties in View <span className="text-green-600 font-normal">({visibleProperties.length})</span>
+          </h2>
+          {(filters.minLotAcres || filters.categories.length > 0) && (
+            <p className="text-xs text-gray-500 mt-1">
+              Filtered from {allProperties.length} total
+            </p>
+          )}
         </div>
         <div className="flex-1 overflow-y-auto">
           {visibleProperties.length === 0 ? (
             <div className="p-4 text-center text-gray-500">
-              <svg className="w-10 h-10 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-10 h-10 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
               <p>Pan or zoom to see properties</p>
@@ -229,10 +187,7 @@ export default function MapPage() {
             visibleProperties.map((f, idx) => (
               <button
                 key={`${f.properties.propertyKey}-${idx}`}
-                onClick={() => {
-                  handlePropertyClick(f.properties.propertyKey);
-                  setShowMobileList(false);
-                }}
+                onClick={() => handlePropertyClick(f.properties.propertyKey)}
                 className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors"
                 data-testid={`property-item-${f.properties.propertyKey}`}
               >
