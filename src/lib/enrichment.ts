@@ -17,6 +17,24 @@ interface GoogleSearchResult {
   }>;
 }
 
+interface LinkedInSearchParams {
+  name: string;
+  title: string | null;
+  company: string | null;
+  city: string | null;
+}
+
+interface LinkedInMatch {
+  url: string;
+  confidence: number;
+  matchDetails: {
+    nameMatch: boolean;
+    companyMatch: boolean;
+    titleMatch: boolean;
+    locationMatch: boolean;
+  };
+}
+
 async function googleCustomSearch(query: string): Promise<GoogleSearchResult | null> {
   const apiKey = process.env.GOOGLE_CUSTOM_SEARCH_API_KEY;
   const cx = process.env.GOOGLE_CUSTOM_SEARCH_CX;
@@ -42,27 +60,147 @@ async function googleCustomSearch(query: string): Promise<GoogleSearchResult | n
   }
 }
 
-// Extract LinkedIn URL from Google Custom Search results
-function extractLinkedInFromSearchResults(results: GoogleSearchResult): string | null {
-  if (!results.items || results.items.length === 0) {
-    return null;
-  }
+// Normalize a name for comparison (lowercase, remove special chars)
+function normalizeName(name: string): string {
+  return name.toLowerCase()
+    .replace(/[^a-z\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Check if two names are similar enough to be the same person
+function namesMatch(searchName: string, resultText: string): boolean {
+  const normalizedSearch = normalizeName(searchName);
+  const normalizedResult = normalizeName(resultText);
   
-  for (const item of results.items) {
-    // Look for LinkedIn profile URLs in the link
-    const linkedinMatch = item.link.match(/https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/i);
-    if (linkedinMatch) {
-      let url = linkedinMatch[0];
-      // Normalize URL
-      if (!url.endsWith('/')) url = url + '/';
-      if (!url.startsWith('https://www.')) {
-        url = url.replace(/https?:\/\/linkedin\.com/i, 'https://www.linkedin.com');
-      }
-      return url;
+  // Split into first and last name
+  const searchParts = normalizedSearch.split(' ').filter(p => p.length > 1);
+  const resultParts = normalizedResult.split(' ').filter(p => p.length > 1);
+  
+  if (searchParts.length === 0) return false;
+  
+  // Check if first name and last name appear in result
+  const firstName = searchParts[0];
+  const lastName = searchParts[searchParts.length - 1];
+  
+  const hasFirstName = resultParts.some(p => p.includes(firstName) || firstName.includes(p));
+  const hasLastName = resultParts.some(p => p.includes(lastName) || lastName.includes(p));
+  
+  return hasFirstName && hasLastName;
+}
+
+// Check if company name appears in text
+function companyMatches(company: string | null, text: string): boolean {
+  if (!company) return false;
+  const normalizedCompany = company.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
+  const normalizedText = text.toLowerCase();
+  
+  // Check for company name or significant parts (at least 4 chars)
+  const companyParts = normalizedCompany.split(' ').filter(p => p.length >= 4);
+  return companyParts.some(part => normalizedText.includes(part));
+}
+
+// Check if title appears in text
+function titleMatches(title: string | null, text: string): boolean {
+  if (!title) return false;
+  const normalizedTitle = title.toLowerCase();
+  const normalizedText = text.toLowerCase();
+  
+  // Common title variations
+  const titleKeywords = normalizedTitle.split(' ').filter(p => p.length >= 3);
+  return titleKeywords.some(keyword => normalizedText.includes(keyword));
+}
+
+// Check if location/city appears in text (including metro area variations)
+function locationMatches(city: string | null, text: string): boolean {
+  if (!city) return false;
+  const normalizedCity = city.toLowerCase().trim();
+  const normalizedText = text.toLowerCase();
+  
+  // Direct city match
+  if (normalizedText.includes(normalizedCity)) return true;
+  
+  // Common metro area mappings
+  const metroAreas: Record<string, string[]> = {
+    'dallas': ['dallas', 'dfw', 'fort worth', 'plano', 'irving', 'arlington', 'frisco', 'mckinney'],
+    'houston': ['houston', 'the woodlands', 'sugar land', 'katy', 'pearland'],
+    'austin': ['austin', 'round rock', 'cedar park', 'georgetown'],
+    'san antonio': ['san antonio', 'new braunfels'],
+    'los angeles': ['los angeles', 'la', 'santa monica', 'pasadena', 'long beach'],
+    'new york': ['new york', 'nyc', 'manhattan', 'brooklyn', 'queens'],
+    'chicago': ['chicago', 'evanston', 'naperville'],
+    'phoenix': ['phoenix', 'scottsdale', 'tempe', 'mesa', 'chandler'],
+  };
+  
+  // Check if city is in a known metro area
+  for (const [metro, cities] of Object.entries(metroAreas)) {
+    if (cities.includes(normalizedCity)) {
+      // Check if any city in the metro area appears in text
+      return cities.some(c => normalizedText.includes(c));
     }
   }
   
-  return null;
+  return false;
+}
+
+// Validate and score a LinkedIn search result
+function validateLinkedInResult(
+  item: { title: string; link: string; snippet: string },
+  params: LinkedInSearchParams
+): LinkedInMatch | null {
+  // Check if this is a LinkedIn profile URL (not company, job, etc.)
+  const linkedinMatch = item.link.match(/https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/i);
+  if (!linkedinMatch) return null;
+  
+  // Normalize URL
+  let url = linkedinMatch[0];
+  if (!url.endsWith('/')) url = url + '/';
+  if (!url.startsWith('https://www.')) {
+    url = url.replace(/https?:\/\/linkedin\.com/i, 'https://www.linkedin.com');
+  }
+  
+  // Combined text for matching (title + snippet)
+  const combinedText = `${item.title} ${item.snippet}`;
+  
+  // Check name match (required)
+  const nameMatch = namesMatch(params.name, combinedText);
+  if (!nameMatch) {
+    console.log(`[Enrichment] Skipping result - name mismatch: "${item.title.substring(0, 60)}"`);
+    return null;
+  }
+  
+  // Check optional matches
+  const companyMatch = companyMatches(params.company, combinedText);
+  const titleMatch = titleMatches(params.title, combinedText);
+  const locationMatch = locationMatches(params.city, combinedText);
+  
+  // Calculate confidence based on matches
+  let confidence = 0.50; // Base confidence for name match only
+  
+  if (companyMatch) confidence += 0.20;
+  if (titleMatch) confidence += 0.15;
+  if (locationMatch) confidence += 0.10;
+  
+  // If we have no additional context to validate, flag as low confidence
+  if (!params.company && !params.title && !params.city) {
+    confidence = 0.40; // Very low - only name, no context
+  } else if (!companyMatch && !titleMatch && !locationMatch) {
+    confidence = 0.50; // Low - name matches but nothing else validates
+  }
+  
+  // Cap at 0.95
+  confidence = Math.min(confidence, 0.95);
+  
+  return {
+    url,
+    confidence,
+    matchDetails: {
+      nameMatch,
+      companyMatch,
+      titleMatch,
+      locationMatch
+    }
+  };
 }
 
 // UUID namespace for Greenfinch
@@ -201,14 +339,6 @@ function generateOrgId(org: { domain?: string | null; name: string }): string {
   // Fallback to normalized name if no domain
   const normalizedName = normalizeName(org.name);
   return uuidv5(`org:${normalizedName}`, GREENFINCH_NAMESPACE);
-}
-
-function normalizeName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
 }
 
 function normalizePhone(phone: string): string {
@@ -620,7 +750,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): 
   ]);
 }
 
-// Find LinkedIn URL using Google Custom Search API
+// Find LinkedIn URL using Google Custom Search API with validation
 export async function findLinkedInUrl(
   name: string,
   title: string | null,
@@ -631,34 +761,54 @@ export async function findLinkedInUrl(
   try {
     const startTime = Date.now();
     
-    // Build search query: "name company LinkedIn"
+    // Build search query: name + company + LinkedIn (keep simple for better results)
+    // City and title are used for validation, not search
     const searchQuery = [name, company, "LinkedIn"].filter(Boolean).join(" ");
-    console.log(`[Enrichment] LinkedIn search: "${searchQuery}"`);
+    console.log(`[Enrichment] LinkedIn search: "${searchQuery}" (validating with: city=${city || 'none'}, title=${title || 'none'})`);
+    
     
     const results = await googleCustomSearch(searchQuery);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     
-    if (!results) {
+    if (!results || !results.items || results.items.length === 0) {
       console.log(`[Enrichment] Google Custom Search returned no results (${elapsed}s)`);
       return { linkedinUrl: null, confidence: 0 };
     }
     
     // Log search results for debugging
-    if (results.items) {
-      console.log(`[Enrichment] Found ${results.items.length} results (${elapsed}s):`);
-      results.items.slice(0, 3).forEach((item, i) => {
-        console.log(`  ${i + 1}. ${item.link}`);
-      });
+    console.log(`[Enrichment] Found ${results.items.length} results (${elapsed}s):`);
+    results.items.slice(0, 3).forEach((item, i) => {
+      console.log(`  ${i + 1}. ${item.link} - "${item.title.substring(0, 50)}"`);
+    });
+    
+    // Validate each result and find the best match
+    const searchParams: LinkedInSearchParams = { name, title, company, city };
+    let bestMatch: LinkedInMatch | null = null;
+    
+    for (const item of results.items) {
+      const match = validateLinkedInResult(item, searchParams);
+      if (match && (!bestMatch || match.confidence > bestMatch.confidence)) {
+        bestMatch = match;
+      }
     }
     
-    const linkedinUrl = extractLinkedInFromSearchResults(results);
-    
-    if (linkedinUrl) {
-      console.log(`[Enrichment] Found LinkedIn for ${name}: ${linkedinUrl} (${elapsed}s)`);
-      return { linkedinUrl, confidence: 0.90 };
+    if (bestMatch) {
+      const { nameMatch, companyMatch, titleMatch, locationMatch } = bestMatch.matchDetails;
+      const matchInfo = [
+        nameMatch ? 'name' : null,
+        companyMatch ? 'company' : null,
+        titleMatch ? 'title' : null,
+        locationMatch ? 'location' : null
+      ].filter(Boolean).join('+');
+      
+      const confidenceLabel = bestMatch.confidence >= 0.75 ? 'high' : 
+                              bestMatch.confidence >= 0.50 ? 'medium' : 'low';
+      
+      console.log(`[Enrichment] Found LinkedIn for ${name}: ${bestMatch.url} (${confidenceLabel} confidence: ${(bestMatch.confidence * 100).toFixed(0)}%, matched: ${matchInfo}, ${elapsed}s)`);
+      return { linkedinUrl: bestMatch.url, confidence: bestMatch.confidence };
     }
     
-    console.log(`[Enrichment] No LinkedIn URL found for ${name} (${elapsed}s)`);
+    console.log(`[Enrichment] No validated LinkedIn match for ${name} (${elapsed}s)`);
     return { linkedinUrl: null, confidence: 0 };
   } catch (error) {
     console.error(`[Enrichment] Error finding LinkedIn for ${name}:`, error);
