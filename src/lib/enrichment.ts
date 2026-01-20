@@ -8,6 +8,63 @@ import { findEmail, validateEmail } from "./leadmagic";
 import { findContainingPlace } from "./google-places";
 import pLimit from "p-limit";
 
+// Google Custom Search API for LinkedIn lookups
+interface GoogleSearchResult {
+  items?: Array<{
+    title: string;
+    link: string;
+    snippet: string;
+  }>;
+}
+
+async function googleCustomSearch(query: string): Promise<GoogleSearchResult | null> {
+  const apiKey = process.env.GOOGLE_CUSTOM_SEARCH_API_KEY;
+  const cx = process.env.GOOGLE_CUSTOM_SEARCH_CX;
+  
+  if (!apiKey || !cx) {
+    console.error('[Search] Missing GOOGLE_CUSTOM_SEARCH_API_KEY or GOOGLE_CUSTOM_SEARCH_CX');
+    return null;
+  }
+
+  const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}&num=5`;
+  
+  try {
+    const response = await fetch(url);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[Search] Google Custom Search error: ${response.status} - ${errorText}`);
+      return null;
+    }
+    return await response.json() as GoogleSearchResult;
+  } catch (error) {
+    console.error('[Search] Google Custom Search failed:', error);
+    return null;
+  }
+}
+
+// Extract LinkedIn URL from Google Custom Search results
+function extractLinkedInFromSearchResults(results: GoogleSearchResult): string | null {
+  if (!results.items || results.items.length === 0) {
+    return null;
+  }
+  
+  for (const item of results.items) {
+    // Look for LinkedIn profile URLs in the link
+    const linkedinMatch = item.link.match(/https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/i);
+    if (linkedinMatch) {
+      let url = linkedinMatch[0];
+      // Normalize URL
+      if (!url.endsWith('/')) url = url + '/';
+      if (!url.startsWith('https://www.')) {
+        url = url.replace(/https?:\/\/linkedin\.com/i, 'https://www.linkedin.com');
+      }
+      return url;
+    }
+  }
+  
+  return null;
+}
+
 // UUID namespace for Greenfinch
 const GREENFINCH_NAMESPACE = "6ba7b810-9dad-11d1-80b4-00c04fd430c8";
 
@@ -563,59 +620,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): 
   ]);
 }
 
-// Single LinkedIn search attempt
-async function attemptLinkedInSearch(
-  searchTerms: string,
-  name: string
-): Promise<{ linkedinUrl: string | null; confidence: number }> {
-  const prompt = `Search the web for: ${searchTerms}
-
-What is this person's LinkedIn profile URL? Just return the URL, nothing else.
-If you find it, respond with ONLY the URL like: https://www.linkedin.com/in/username
-If not found, respond with: NOT_FOUND`;
-
-  const client = getGeminiClient();
-  console.log(`[Enrichment] LinkedIn search: "${searchTerms}"`);
-  const startTime = Date.now();
-  
-  const response = await withTimeout(
-    client.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
-    }),
-    90000,
-    'LinkedIn lookup timed out'
-  );
-
-  const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-  const text = response.text?.trim();
-  console.log(`[Enrichment] LinkedIn response (${elapsed}s): ${text?.substring(0, 300) || 'empty'}`);
-  
-  if (!text || text === 'NOT_FOUND' || text.toUpperCase().includes('NOT_FOUND') || text.toUpperCase().includes('NOT FOUND')) {
-    return { linkedinUrl: null, confidence: 0 };
-  }
-
-  // Extract LinkedIn URL from response
-  const linkedinMatch = text.match(/https?:\/\/(www\.)?linkedin\.com\/in\/[a-zA-Z0-9_-]+\/?/i);
-  
-  if (linkedinMatch) {
-    let url = linkedinMatch[0];
-    if (!url.endsWith('/')) url = url + '/';
-    if (!url.startsWith('https://www.')) {
-      url = url.replace(/https?:\/\/linkedin\.com/i, 'https://www.linkedin.com')
-               .replace(/https?:\/\/www\.linkedin\.com/i, 'https://www.linkedin.com');
-    }
-    console.log(`[Enrichment] Found LinkedIn for ${name}: ${url} (${elapsed}s)`);
-    return { linkedinUrl: url, confidence: 0.85 };
-  }
-  
-  return { linkedinUrl: null, confidence: 0 };
-}
-
-// Find LinkedIn URL using Gemini with web grounding (with retry strategy)
+// Find LinkedIn URL using Google Custom Search API
 export async function findLinkedInUrl(
   name: string,
   title: string | null,
@@ -624,18 +629,36 @@ export async function findLinkedInUrl(
   city: string | null = null
 ): Promise<{ linkedinUrl: string | null; confidence: number }> {
   try {
-    // Strategy 1: Full search with name + company + city (most specific)
-    const fullSearchTerms = [name, company, city, "LinkedIn"].filter(Boolean).join(" ");
-    let result = await attemptLinkedInSearch(fullSearchTerms, name);
-    if (result.linkedinUrl) return result;
-
-    // Strategy 2: Simpler search with just name + LinkedIn (broader search)
-    // Skip company/city as they might be limiting results
-    const nameOnlySearchTerms = `${name} LinkedIn`;
-    result = await attemptLinkedInSearch(nameOnlySearchTerms, name);
-    if (result.linkedinUrl) return result;
-
-    console.log(`[Enrichment] LinkedIn not found for ${name} after 2 attempts`);
+    const startTime = Date.now();
+    
+    // Build search query: "name company LinkedIn"
+    const searchQuery = [name, company, "LinkedIn"].filter(Boolean).join(" ");
+    console.log(`[Enrichment] LinkedIn search: "${searchQuery}"`);
+    
+    const results = await googleCustomSearch(searchQuery);
+    const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    
+    if (!results) {
+      console.log(`[Enrichment] Google Custom Search returned no results (${elapsed}s)`);
+      return { linkedinUrl: null, confidence: 0 };
+    }
+    
+    // Log search results for debugging
+    if (results.items) {
+      console.log(`[Enrichment] Found ${results.items.length} results (${elapsed}s):`);
+      results.items.slice(0, 3).forEach((item, i) => {
+        console.log(`  ${i + 1}. ${item.link}`);
+      });
+    }
+    
+    const linkedinUrl = extractLinkedInFromSearchResults(results);
+    
+    if (linkedinUrl) {
+      console.log(`[Enrichment] Found LinkedIn for ${name}: ${linkedinUrl} (${elapsed}s)`);
+      return { linkedinUrl, confidence: 0.90 };
+    }
+    
+    console.log(`[Enrichment] No LinkedIn URL found for ${name} (${elapsed}s)`);
     return { linkedinUrl: null, confidence: 0 };
   } catch (error) {
     console.error(`[Enrichment] Error finding LinkedIn for ${name}:`, error);
