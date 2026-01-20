@@ -31,6 +31,7 @@ export class DashboardMap {
   private styleReady = false;
   private pendingStyleSwitch: string | null = null;
   private isAnimating = false;
+  private initError: string | null = null;
 
   constructor(config: DashboardMapConfig) {
     this.config = config;
@@ -47,13 +48,19 @@ export class DashboardMap {
     const initialStyle = initialZoom >= 14 ? SATELLITE_STYLE : LIGHT_STYLE;
     this.currentStyle = initialStyle;
 
-    this.map = new mapboxgl.Map({
-      container: this.config.container,
-      style: initialStyle,
-      center: initialCenter,
-      zoom: initialZoom,
-      attributionControl: false,
-    });
+    try {
+      this.map = new mapboxgl.Map({
+        container: this.config.container,
+        style: initialStyle,
+        center: initialCenter,
+        zoom: initialZoom,
+        attributionControl: false,
+      });
+    } catch (error) {
+      this.initError = error instanceof Error ? error.message : 'Map initialization failed';
+      console.warn('Map initialization failed:', this.initError);
+      return;
+    }
 
     this.map.addControl(new mapboxgl.NavigationControl(), 'top-right');
     this.map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
@@ -468,5 +475,13 @@ export class DashboardMap {
       this.map.remove();
       this.map = null;
     }
+  }
+
+  getInitError(): string | null {
+    return this.initError;
+  }
+
+  isInitialized(): boolean {
+    return this.map !== null && !this.initError;
   }
 }

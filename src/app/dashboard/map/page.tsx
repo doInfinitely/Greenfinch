@@ -73,6 +73,7 @@ export default function MapPage() {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 32.8639, lon: -96.7784 });
   const [isLoading, setIsLoading] = useState(true);
   const [filters, setFilters] = useState<FilterState>({ minLotAcres: null, categories: [] });
+  const [showMobileList, setShowMobileList] = useState(false);
 
   useEffect(() => {
     Promise.all([
@@ -147,7 +148,7 @@ export default function MapPage() {
   }
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full relative">
       <div className="flex-1 relative">
         <MapCanvas
           ref={mapRef}
@@ -157,22 +158,52 @@ export default function MapPage() {
           onBoundsChange={handleBoundsChange}
           onPropertyClick={handlePropertyClick}
         />
-        <div className="absolute top-4 left-4 z-10 flex flex-col gap-3">
+        <div className="absolute top-3 left-3 right-3 md:right-auto z-10 flex flex-col gap-2">
           <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
           <PropertyFilters filters={filters} onFiltersChange={setFilters} />
         </div>
+        
+        <button
+          onClick={() => setShowMobileList(!showMobileList)}
+          className="md:hidden absolute bottom-4 right-4 z-10 bg-white shadow-lg rounded-full p-3 border border-gray-200"
+          data-testid="button-toggle-mobile-list"
+        >
+          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
+          </svg>
+          {visibleProperties.length > 0 && (
+            <span className="absolute -top-1 -right-1 bg-green-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+              {visibleProperties.length > 99 ? '99+' : visibleProperties.length}
+            </span>
+          )}
+        </button>
       </div>
 
-      <div className="w-80 bg-white border-l border-gray-200 flex flex-col">
-        <div className="px-4 py-3 border-b border-gray-200">
-          <h2 className="font-semibold text-gray-900">
-            Properties in View <span className="text-green-600 font-normal">({visibleProperties.length})</span>
-          </h2>
-          {(filters.minLotAcres || filters.categories.length > 0) && (
-            <p className="text-xs text-gray-500 mt-1">
-              Filtered from {allProperties.length} total
-            </p>
-          )}
+      <div className={`
+        fixed md:relative inset-0 md:inset-auto z-20 md:z-auto
+        ${showMobileList ? 'block' : 'hidden'} md:block
+        md:w-80 bg-white md:border-l border-gray-200 flex flex-col
+      `}>
+        <div className="px-4 py-3 border-b border-gray-200 flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-gray-900">
+              Properties in View <span className="text-green-600 font-normal">({visibleProperties.length})</span>
+            </h2>
+            {(filters.minLotAcres || filters.categories.length > 0) && (
+              <p className="text-xs text-gray-500 mt-1">
+                Filtered from {allProperties.length} total
+              </p>
+            )}
+          </div>
+          <button
+            onClick={() => setShowMobileList(false)}
+            className="md:hidden p-2 hover:bg-gray-100 rounded-lg"
+            data-testid="button-close-mobile-list"
+          >
+            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
         <div className="flex-1 overflow-y-auto">
           {visibleProperties.length === 0 ? (
@@ -186,8 +217,12 @@ export default function MapPage() {
             visibleProperties.map((f, idx) => (
               <button
                 key={`${f.properties.propertyKey}-${idx}`}
-                onClick={() => handlePropertyClick(f.properties.propertyKey)}
+                onClick={() => {
+                  handlePropertyClick(f.properties.propertyKey);
+                  setShowMobileList(false);
+                }}
                 className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                data-testid={`property-item-${f.properties.propertyKey}`}
               >
                 {f.properties.enriched && f.properties.commonName ? (
                   <>
@@ -197,7 +232,7 @@ export default function MapPage() {
                 ) : (
                   <p className="font-medium text-gray-900 truncate">{f.properties.address}</p>
                 )}
-                <div className="flex items-center gap-2 mt-1">
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {f.properties.category && (
                     <span className="inline-block px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
                       {f.properties.category}
