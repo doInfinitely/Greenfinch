@@ -95,8 +95,11 @@ function companyMatches(company: string | null, text: string): boolean {
   const normalizedCompany = company.toLowerCase().replace(/[^a-z0-9\s]/g, '').trim();
   const normalizedText = text.toLowerCase();
   
-  // Check for company name or significant parts (at least 4 chars)
-  const companyParts = normalizedCompany.split(' ').filter(p => p.length >= 4);
+  // Check for full company name first (exact or partial)
+  if (normalizedText.includes(normalizedCompany)) return true;
+  
+  // Check for significant parts (at least 2 chars to handle acronyms like JLL, IBM, etc.)
+  const companyParts = normalizedCompany.split(' ').filter(p => p.length >= 2);
   return companyParts.some(part => normalizedText.includes(part));
 }
 
