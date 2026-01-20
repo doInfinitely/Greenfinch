@@ -86,6 +86,16 @@ export default function MapPage() {
     }).catch(() => setIsLoading(false));
   }, []);
 
+  useEffect(() => {
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape' && showMobileList) {
+        setShowMobileList(false);
+      }
+    }
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [showMobileList]);
+
   const handleBoundsChange = useCallback((newBounds: MapBounds) => {
     setBounds(newBounds);
     const centerLat = (newBounds.north + newBounds.south) / 2;
@@ -167,12 +177,13 @@ export default function MapPage() {
           onClick={() => setShowMobileList(!showMobileList)}
           className="md:hidden absolute bottom-4 right-4 z-10 bg-white shadow-lg rounded-full p-3 border border-gray-200"
           data-testid="button-toggle-mobile-list"
+          aria-label="Show property list"
         >
-          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <svg className="w-5 h-5 text-gray-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
           </svg>
           {visibleProperties.length > 0 && (
-            <span className="absolute -top-1 -right-1 bg-green-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
+            <span className="absolute -top-1 -right-1 bg-green-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center" aria-label={`${visibleProperties.length} properties`}>
               {visibleProperties.length > 99 ? '99+' : visibleProperties.length}
             </span>
           )}
@@ -199,8 +210,9 @@ export default function MapPage() {
             onClick={() => setShowMobileList(false)}
             className="md:hidden p-2 hover:bg-gray-100 rounded-lg"
             data-testid="button-close-mobile-list"
+            aria-label="Close property list"
           >
-            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>

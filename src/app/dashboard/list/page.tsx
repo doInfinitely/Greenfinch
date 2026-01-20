@@ -87,7 +87,7 @@ export default function ListPage() {
   return (
     <div className="h-full flex flex-col bg-white">
       <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-200">
-        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:justify-between">
+        <div className="flex flex-col md:flex-row md:items-center gap-3 md:justify-between">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-base md:text-lg font-semibold text-gray-900">
               All Properties <span className="text-green-600 font-normal">({filteredProperties.length})</span>
@@ -100,16 +100,16 @@ export default function ListPage() {
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <PropertyFilters filters={filters} onFiltersChange={setFilters} />
-            <div className="relative flex-1 min-w-[200px] sm:flex-none">
+            <div className="relative flex-1 min-w-[200px] md:flex-none">
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by name, address..."
-                className="w-full sm:w-64 md:w-80 pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                className="w-full md:w-80 pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500"
                 data-testid="input-search-properties"
               />
-              <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
               </svg>
             </div>

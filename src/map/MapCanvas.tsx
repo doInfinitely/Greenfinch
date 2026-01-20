@@ -55,6 +55,9 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
       onPropertyClick: (propertyKey) => {
         callbacksRef.current.onPropertyClick?.(propertyKey);
       },
+      onError: (error) => {
+        setMapError(error);
+      },
     });
 
     const initError = mapRef.current.getInitError();

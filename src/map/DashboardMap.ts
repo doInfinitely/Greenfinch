@@ -18,6 +18,7 @@ export interface DashboardMapConfig {
   initialZoom?: number;
   onBoundsChange?: (bounds: MapBounds, zoom: number) => void;
   onPropertyClick?: (propertyKey: string) => void;
+  onError?: (error: string) => void;
 }
 
 export class DashboardMap {
@@ -74,6 +75,13 @@ export class DashboardMap {
     this.map.on('load', () => {
       if (this.isDestroyed) return;
       this.onStyleReady();
+    });
+
+    this.map.on('error', (e) => {
+      const errorMsg = e.error?.message || 'Map error occurred';
+      console.warn('Mapbox error:', errorMsg);
+      this.initError = errorMsg;
+      this.config.onError?.(errorMsg);
     });
 
     this.map.on('moveend', () => {
