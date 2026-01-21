@@ -666,6 +666,34 @@ CRITICAL REQUIREMENTS:
 7. Leave LinkedIn as null - this will be discovered separately
 8. ALWAYS provide at least 3-5 sources with real URLs when possible
 
+## CONDO OWNER / HOA EXCLUSION RULES
+
+IMPORTANT: This tool is for identifying COMMERCIAL property decision-makers, not residential condo owners or HOA members.
+
+**DO NOT include as beneficial owners or associates:**
+- Individual condo unit owners (even if they appear in ownership records)
+- HOA board members or officers (unless it's a commercial/mixed-use HOA)
+- Individual apartment tenants
+- Residential homeowners who happen to own a unit in a larger commercial property
+
+**HOW to identify condo/HOA situations:**
+- Owner names like "UNIT 101", "APT 5B", individual names owning small %
+- Multiple individual owners listed (indicates condo association structure)
+- Property type is "Condominium" with individual unit owners
+- HOA references in ownership records
+
+**INSTEAD, look for:**
+- The HOA management company (if commercial/mixed-use property)
+- The building developer or institutional owner
+- The property management company managing the entire building
+- Master association contacts for commercial decisions
+
+**For organizations:**
+- DO NOT create organization entries for individual condo owners' personal businesses
+- Only associate companies that have a TRUE relationship to the property (management, ownership of the whole building, tenancy, etc.)
+
+If the only owners found are residential condo owners, note this in the summary and focus on finding the property manager or master HOA instead.
+
 Focus on finding real, currently active people associated with this property through the ownership structure, management company, or known business relationships.
 
 Be conservative with confidence scores:

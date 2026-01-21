@@ -356,6 +356,20 @@ export default function PropertyDetailPage() {
       .catch(err => console.error('Failed to load map config:', err));
   }, []);
 
+  // Fetch service providers for the property - defined before use in useEffect
+  const fetchServiceProviders = useCallback(async () => {
+    if (!propertyId) return;
+    try {
+      const response = await fetch(`/api/properties/${propertyId}/service-providers`);
+      if (response.ok) {
+        const data = await response.json();
+        setServiceProvidersList(data.providers || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch service providers:', err);
+    }
+  }, [propertyId]);
+
   useEffect(() => {
     if (!propertyId) return;
 
@@ -576,20 +590,6 @@ export default function PropertyDetailPage() {
     setFlagComments('');
     setFlagMessage(null);
   };
-
-  // Fetch service providers for the property
-  const fetchServiceProviders = useCallback(async () => {
-    if (!propertyId) return;
-    try {
-      const response = await fetch(`/api/properties/${propertyId}/service-providers`);
-      if (response.ok) {
-        const data = await response.json();
-        setServiceProvidersList(data.providers || []);
-      }
-    } catch (err) {
-      console.error('Failed to fetch service providers:', err);
-    }
-  }, [propertyId]);
 
   // Search service providers
   const handleServiceProviderSearch = async (query: string) => {
@@ -1014,7 +1014,12 @@ export default function PropertyDetailPage() {
               {contacts.length > 0 ? (
                 <div className="space-y-3">
                   {contacts.map((contact, i) => (
-                    <div key={`${contact.id || contact.email}-${i}`} className="p-4 bg-gray-50 rounded-lg">
+                    <div 
+                      key={`${contact.id || contact.email}-${i}`} 
+                      className={`p-4 bg-gray-50 rounded-lg transition-colors ${contact.id ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                      onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
+                      data-testid={`contact-row-${contact.id}`}
+                    >
                       <div className="flex items-start space-x-3">
                         <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
                           <span className="text-green-700 font-medium text-sm">
@@ -1104,12 +1109,11 @@ export default function PropertyDetailPage() {
                             )}
                             
                             {contact.id && (
-                              <Link
-                                href={`/contact/${contact.id}`}
-                                className="text-xs text-green-600 hover:text-green-700 hover:underline ml-auto"
-                              >
-                                View Details →
-                              </Link>
+                              <span className="text-xs text-gray-400 ml-auto flex items-center gap-1">
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              </span>
                             )}
                           </div>
                           
@@ -1157,24 +1161,35 @@ export default function PropertyDetailPage() {
               {organizations.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {organizations.map((org) => (
-                    <div key={org.id || org.domain || org.name} className="p-4 bg-gray-50 rounded-lg">
+                    <div 
+                      key={org.id || org.domain || org.name} 
+                      className={`p-4 bg-gray-50 rounded-lg transition-colors ${org.id ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                      onClick={() => org.id && router.push(`/organization/${org.id}`)}
+                      data-testid={`org-row-${org.id}`}
+                    >
                       <div className="flex items-start justify-between mb-2">
                         <p className="font-medium text-gray-900">{org.name}</p>
-                        {org.orgType && (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ORG_TYPE_COLORS[org.orgType] || ORG_TYPE_COLORS.other}`}>
-                            {org.orgType}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          {org.orgType && (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ORG_TYPE_COLORS[org.orgType] || ORG_TYPE_COLORS.other}`}>
+                              {org.orgType}
+                            </span>
+                          )}
+                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </div>
                       </div>
                       {org.domain && (
-                        <a 
-                          href={`https://${org.domain}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                        <span 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            window.open(`https://${org.domain}`, '_blank');
+                          }}
+                          className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
                         >
                           {org.domain}
-                        </a>
+                        </span>
                       )}
                       {org.role && (
                         <p className="text-sm text-gray-500 mt-1">{org.role}</p>

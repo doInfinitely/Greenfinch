@@ -236,7 +236,12 @@ export default function OrganizationsPage() {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {organizations.map((org) => (
-                      <tr key={org.id} className="hover:bg-gray-50">
+                      <tr 
+                        key={org.id} 
+                        className={`hover:bg-gray-50 ${org.id ? 'cursor-pointer' : ''}`}
+                        onClick={() => org.id && (window.location.href = `/organization/${org.id}`)}
+                        data-testid={`org-row-${org.id}`}
+                      >
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-gray-900">
                             {org.name || 'Unnamed'}
@@ -244,14 +249,15 @@ export default function OrganizationsPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           {org.domain ? (
-                            <a
-                              href={`https://${org.domain}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-green-600 hover:text-green-700 hover:underline"
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(`https://${org.domain}`, '_blank');
+                              }}
+                              className="text-sm text-green-600 hover:text-green-700 hover:underline cursor-pointer"
                             >
                               {org.domain}
-                            </a>
+                            </span>
                           ) : (
                             <span className="text-sm text-gray-400">—</span>
                           )}
@@ -275,20 +281,19 @@ export default function OrganizationsPage() {
                             {org.contactCount}
                           </span>
                         </td>
-                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
-                          <Link
-                            href={`/organization/${org.id}`}
-                            className="text-green-600 hover:text-green-700"
-                            data-testid={`link-view-details-${org.id}`}
-                          >
-                            View Details
-                          </Link>
-                          <Link
-                            href={`/dashboard?org=${org.id}`}
-                            className="text-gray-500 hover:text-gray-700"
+                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.location.href = `/dashboard?org=${org.id}`;
+                            }}
+                            className="text-gray-500 hover:text-gray-700 cursor-pointer"
                           >
                             Map
-                          </Link>
+                          </span>
+                          <svg className="w-4 h-4 inline-block ml-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
                         </td>
                       </tr>
                     ))}
