@@ -390,11 +390,11 @@ export default function ContactDetailPage() {
                           {contact.linkedinSearchResults && contact.linkedinSearchResults.length > 1 && !showLinkedInAlternatives && (
                             <button
                               onClick={handleFlagLinkedIn}
-                              className="inline-flex items-center px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100"
+                              className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors"
+                              title="Something doesn't look right? Flag for review by the greenfinch.ai team"
                               data-testid="button-flag-linkedin"
                             >
-                              <Flag className="w-3 h-3 mr-1" />
-                              Wrong profile?
+                              <Flag className="w-4 h-4" />
                             </button>
                           )}
                           {contact.linkedinFlagged && (

@@ -874,12 +874,11 @@ export default function PropertyDetailPage() {
                     </div>
                     <button
                       onClick={() => openFlagDialog('owner')}
-                      className="inline-flex items-center px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100"
-                      title="Flag as incorrect"
+                      className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors"
+                      title="Something doesn't look right? Flag for review by the greenfinch.ai team"
                       data-testid="button-flag-owner"
                     >
-                      <Flag className="w-3 h-3 mr-1" />
-                      Flag
+                      <Flag className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -911,12 +910,11 @@ export default function PropertyDetailPage() {
                     </div>
                     <button
                       onClick={() => openFlagDialog('management_company')}
-                      className="inline-flex items-center px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100"
-                      title="Flag as incorrect"
+                      className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors"
+                      title="Something doesn't look right? Flag for review by the greenfinch.ai team"
                       data-testid="button-flag-management"
                     >
-                      <Flag className="w-3 h-3 mr-1" />
-                      Flag
+                      <Flag className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
