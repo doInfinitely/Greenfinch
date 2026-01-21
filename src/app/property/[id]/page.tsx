@@ -62,6 +62,12 @@ interface EnrichedPropertyData {
   propertyWebsite: string | null;
   propertyManagerWebsite: string | null;
   aiRationale: string | null;
+  enrichmentSources: Array<{
+    id: number;
+    title: string;
+    url: string;
+    type: string;
+  }> | null;
   lastEnrichedAt: string | null;
 }
 
@@ -132,6 +138,79 @@ function LowConfidenceMarker({ confidence }: { confidence: number | null | undef
       <AlertTriangle className="w-3 h-3 mr-0.5" />
       Unsure
     </span>
+  );
+}
+
+// Render summary with clickable source links
+function SummaryWithSources({ 
+  summary, 
+  sources 
+}: { 
+  summary: string; 
+  sources: Array<{ id: number; title: string; url: string; type: string }> | null;
+}) {
+  if (!summary) return null;
+  
+  // Parse [1], [2], etc. in the summary and make them clickable
+  const sourceMap = new Map(sources?.map(s => [s.id, s]) || []);
+  
+  // Split text by source references like [1], [2], etc.
+  const parts = summary.split(/(\[\d+\])/g);
+  
+  return (
+    <div className="space-y-4">
+      <p className="text-sm text-gray-600 leading-relaxed">
+        {parts.map((part, i) => {
+          const match = part.match(/\[(\d+)\]/);
+          if (match) {
+            const sourceId = parseInt(match[1]);
+            const source = sourceMap.get(sourceId);
+            if (source?.url) {
+              return (
+                <a
+                  key={i}
+                  href={source.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center px-1 py-0.5 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                  title={source.title}
+                >
+                  [{sourceId}]
+                </a>
+              );
+            }
+            return <span key={i} className="text-gray-400">{part}</span>;
+          }
+          return <span key={i}>{part}</span>;
+        })}
+      </p>
+      
+      {sources && sources.length > 0 && (
+        <div className="pt-3 border-t border-gray-200">
+          <p className="text-xs font-medium text-gray-500 mb-2">Sources</p>
+          <div className="space-y-1">
+            {sources.map((source) => (
+              <div key={source.id} className="flex items-start gap-2 text-xs">
+                <span className="text-gray-400 font-medium">[{source.id}]</span>
+                {source.url ? (
+                  <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-800 hover:underline truncate"
+                    title={source.url}
+                  >
+                    {source.title || source.url}
+                  </a>
+                ) : (
+                  <span className="text-gray-600">{source.title}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -327,6 +406,7 @@ export default function PropertyDetailPage() {
               propertyWebsite: prop.propertyWebsite,
               propertyManagerWebsite: prop.propertyManagerWebsite,
               aiRationale: prop.aiRationale,
+              enrichmentSources: prop.enrichmentSources,
               lastEnrichedAt: prop.lastEnrichedAt,
             });
           }
@@ -741,8 +821,11 @@ export default function PropertyDetailPage() {
 
                   {enrichedProperty.aiRationale && (
                     <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <p className="text-sm font-medium text-gray-700 mb-2">Classification Rationale</p>
-                      <p className="text-sm text-gray-600">{enrichedProperty.aiRationale}</p>
+                      <p className="text-sm font-medium text-gray-700 mb-2">AI Research Summary</p>
+                      <SummaryWithSources 
+                        summary={enrichedProperty.aiRationale} 
+                        sources={enrichedProperty.enrichmentSources} 
+                      />
                     </div>
                   )}
                 </div>

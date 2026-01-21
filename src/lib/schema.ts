@@ -95,6 +95,7 @@ export const properties = pgTable('properties', {
   propertyWebsite: text('property_website'),
   propertyManagerWebsite: text('property_manager_website'),
   aiRationale: text('ai_rationale'),
+  enrichmentSources: json('enrichment_sources'),
   
   // Timestamps
   lastRegridUpdate: timestamp('last_regrid_update'),

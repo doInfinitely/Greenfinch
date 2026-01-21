@@ -324,6 +324,13 @@ export interface EnrichedOrganization {
   roles: string[];
 }
 
+export interface EnrichmentSource {
+  id: number;
+  title: string;
+  url: string;
+  type: string;
+}
+
 export interface EnrichedProperty {
   validatedAddress: string | null;
   validatedAddressConfidence: number | null;
@@ -348,6 +355,7 @@ export interface EnrichedProperty {
   propertyWebsite: string | null;
   propertyManagerWebsite: string | null;
   aiRationale: string | null;
+  enrichmentSources: EnrichmentSource[] | null;
   buildingSqft: number | null;
   buildingSqftConfidence: number | null;
   buildingSqftSource: string | null;
@@ -531,7 +539,8 @@ Analyze this property and return a JSON object with the following structure:
       "linkedin_confidence": null,
       "role": "RELATIONSHIP TO THIS PROPERTY - MUST be one of: property_manager, facilities_manager, owner, leasing, other",
       "role_confidence": 0.0-1.0,
-      "contact_rationale": "WHY include this contact? What is their connection to this property? How did you find them?"
+      "priority_rank": 1,
+      "contact_rationale": "Detailed explanation with sources - see format below"
     }
   ],
   "organizations": [
@@ -540,6 +549,15 @@ Analyze this property and return a JSON object with the following structure:
       "domain": "organization.com or null",
       "org_type": "owner, management, tenant, developer, other",
       "roles": ["Array of relationships to THIS PROPERTY - each MUST be one of: property_manager, facilities_manager, owner, leasing, other"]
+    }
+  ],
+  "summary": "A comprehensive summary (300-500 words) explaining the property analysis with source annotations. Use [1], [2], etc. to cite sources inline. Include: property overview, ownership structure, management details, why each contact was selected and prioritized, and any notable findings.",
+  "sources": [
+    {
+      "id": 1,
+      "title": "Source title or description",
+      "url": "https://example.com/source-page",
+      "type": "county_records | company_website | property_listing | linkedin | news | sec_filing | other"
     }
   ]
 }
@@ -565,30 +583,52 @@ Target 5-10 contacts. For EACH contact, you MUST provide:
   * owner = has ownership stake in this property
   * leasing = handles tenant leasing for this property
   * other = other relevant relationship
-- **contact_rationale**: Explain:
-  * How you found this person (ownership records, management company website, property listing, etc.)
-  * Why they're relevant to this property (they manage this building, their company owns it, etc.)
-  * What evidence connects them to this specific property
+- **priority_rank**: A number 1-10 indicating their priority for sales outreach (1 = highest priority)
+- **contact_rationale**: A DETAILED explanation (2-4 sentences) that MUST include:
+  * The SOURCE where you found this person (reference source IDs like "[1]", "[2]")
+  * WHY they are the right person to contact for this property
+  * Their specific connection to this property (e.g., "manages this building", "listed as owner on county records")
+  * Why they rank at their priority level (e.g., "Ranked #1 because they are the direct property manager")
 
 **TITLE vs ROLE distinction**:
 - TITLE = their job at their employer (e.g., "Senior Property Manager at ABC Realty")
 - ROLE = their relationship to THIS property (e.g., "property_manager" because ABC Realty manages this building)
 
+## Summary Requirements
+
+The "summary" field should be a comprehensive 300-500 word analysis that includes:
+1. Property overview (type, class, size, notable features)
+2. Ownership structure analysis
+3. Management situation (self-managed vs third-party)
+4. Contact prioritization rationale - explain WHY contacts are ordered the way they are
+5. Key findings and any red flags
+
+Use source annotations [1], [2], etc. throughout the summary to cite your sources. Every key fact should have a source citation.
+
+## Sources Requirements
+
+List ALL sources you used to gather information. Each source must have:
+- **id**: Sequential number (1, 2, 3...)
+- **title**: Brief description (e.g., "Dallas County Appraisal District", "Lincoln Property Company website")
+- **url**: The actual URL where the information was found (use real URLs when possible)
+- **type**: One of: county_records, company_website, property_listing, linkedin, news, sec_filing, other
+
 CRITICAL REQUIREMENTS:
 1. Only include CURRENT, ACTIVE contacts - no deceased individuals, no historical/former employees
 2. Verify contacts are still active in their roles (check for recent activity)
 3. Each contact MUST have a clear, documented connection to THIS property
-4. Provide contact_rationale explaining HOW you know they're connected
+4. Provide contact_rationale with SOURCE CITATIONS explaining HOW you know they're connected
 5. If you cannot find a verified email, leave email as null
 6. If you cannot find a verified phone, leave phone as null
 7. Leave LinkedIn as null - this will be discovered separately
+8. ALWAYS provide at least 3-5 sources with real URLs when possible
 
 Focus on finding real, currently active people associated with this property through the ownership structure, management company, or known business relationships.
 
 Be conservative with confidence scores:
 - HIGH (>0.90): Only when you're very certain based on clear evidence
-- MEDIUM (0.75-0.90): Reasonable inference with some supporting evidence
-- LOW (0.50-0.75): Educated guess based on limited information
+- MEDIUM (0.70-0.90): Reasonable inference with some supporting evidence
+- LOW (0.50-0.70): Educated guess based on limited information
 - Below 0.50: Do not include
 
 Return ONLY valid JSON, no markdown formatting.`;
@@ -615,16 +655,30 @@ function processEnrichmentResponse(
 ): { property: EnrichedProperty; contacts: EnrichedContact[]; organizations: EnrichedOrganization[] } {
   const prop = rawResponse.property || {};
   
-  // Build combined rationale from individual rationales if available
-  let combinedRationale = prop.classification_rationale || '';
-  if (prop.category_rationale && !combinedRationale.includes(prop.category_rationale)) {
-    combinedRationale = `Category: ${prop.category_rationale}`;
+  // Use the comprehensive summary if available, otherwise build from individual rationales
+  let aiRationale = rawResponse.summary || '';
+  if (!aiRationale) {
+    // Fallback to building combined rationale from individual fields
+    aiRationale = prop.classification_rationale || '';
+    if (prop.category_rationale && !aiRationale.includes(prop.category_rationale)) {
+      aiRationale = `Category: ${prop.category_rationale}`;
+    }
+    if (prop.property_class_rationale) {
+      aiRationale = aiRationale 
+        ? `${aiRationale} | Class: ${prop.property_class_rationale}`
+        : `Class: ${prop.property_class_rationale}`;
+    }
   }
-  if (prop.property_class_rationale) {
-    combinedRationale = combinedRationale 
-      ? `${combinedRationale} | Class: ${prop.property_class_rationale}`
-      : `Class: ${prop.property_class_rationale}`;
-  }
+
+  // Parse sources from the response
+  const enrichmentSources: EnrichmentSource[] | null = rawResponse.sources 
+    ? rawResponse.sources.map((s: any) => ({
+        id: s.id,
+        title: s.title || '',
+        url: s.url || '',
+        type: s.type || 'other',
+      }))
+    : null;
 
   const property: EnrichedProperty = {
     validatedAddress: prop.validated_address || null,
@@ -649,7 +703,8 @@ function processEnrichmentResponse(
     managementConfidence: prop.management_confidence || null,
     propertyWebsite: prop.property_website || null,
     propertyManagerWebsite: prop.property_manager_website || null,
-    aiRationale: combinedRationale || null,
+    aiRationale: aiRationale || null,
+    enrichmentSources,
     buildingSqft: prop.building_sqft || null,
     buildingSqftConfidence: prop.building_sqft_confidence || null,
     buildingSqftSource: prop.building_sqft_source || null,
@@ -1106,6 +1161,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
         propertyWebsite: null,
         propertyManagerWebsite: null,
         aiRationale: null,
+        enrichmentSources: null,
         buildingSqft: null,
         buildingSqftConfidence: null,
         buildingSqftSource: null,
@@ -1149,19 +1205,19 @@ export async function storeEnrichmentResults(
     lat: aggregatedProperty.lat,
     lon: aggregatedProperty.lon,
     geocodeConfidence: result.property.geocodeConfidence,
-    // Prefer AI-returned values over Regrid when available with reasonable confidence
-    lotSqft: (result.property.lotSqft && result.property.lotSqftConfidence && result.property.lotSqftConfidence >= CONFIDENCE.MEDIUM) 
+    // Prefer AI-returned values over Regrid when available with 70%+ confidence
+    lotSqft: (result.property.lotSqft && result.property.lotSqftConfidence && result.property.lotSqftConfidence >= 0.70) 
       ? result.property.lotSqft 
       : aggregatedProperty.lotSqft,
     lotSqftConfidence: result.property.lotSqftConfidence || null,
-    lotSqftSource: (result.property.lotSqft && result.property.lotSqftConfidence && result.property.lotSqftConfidence >= CONFIDENCE.MEDIUM) 
+    lotSqftSource: (result.property.lotSqft && result.property.lotSqftConfidence && result.property.lotSqftConfidence >= 0.70) 
       ? result.property.lotSqftSource 
       : 'regrid',
-    buildingSqft: (result.property.buildingSqft && result.property.buildingSqftConfidence && result.property.buildingSqftConfidence >= CONFIDENCE.MEDIUM) 
+    buildingSqft: (result.property.buildingSqft && result.property.buildingSqftConfidence && result.property.buildingSqftConfidence >= 0.70) 
       ? result.property.buildingSqft 
       : aggregatedProperty.buildingSqft,
     buildingSqftConfidence: result.property.buildingSqftConfidence || null,
-    buildingSqftSource: (result.property.buildingSqft && result.property.buildingSqftConfidence && result.property.buildingSqftConfidence >= CONFIDENCE.MEDIUM) 
+    buildingSqftSource: (result.property.buildingSqft && result.property.buildingSqftConfidence && result.property.buildingSqftConfidence >= 0.70) 
       ? result.property.buildingSqftSource 
       : 'regrid',
     yearBuilt: aggregatedProperty.yearBuilt,
@@ -1187,6 +1243,7 @@ export async function storeEnrichmentResults(
     propertyWebsite: result.property.propertyWebsite,
     propertyManagerWebsite: result.property.propertyManagerWebsite,
     aiRationale: result.property.aiRationale,
+    enrichmentSources: result.property.enrichmentSources,
     rawParcelsJson: aggregatedProperty.rawParcelsJson,
     enrichmentJson: result.rawResponse,
     lastEnrichedAt: new Date(),
