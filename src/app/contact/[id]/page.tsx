@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { AlertTriangle } from 'lucide-react';
 import Header from '@/components/Header';
 
 interface PropertyRelation {
@@ -80,21 +81,14 @@ const ORG_TYPE_COLORS: Record<string, string> = {
   other: 'bg-gray-100 text-gray-700',
 };
 
-function getConfidenceColor(confidence: number | null | undefined): string {
-  if (confidence === null || confidence === undefined) return 'bg-gray-100 text-gray-500';
-  if (confidence > 0.9) return 'bg-green-100 text-green-700';
-  if (confidence >= 0.75) return 'bg-yellow-100 text-yellow-700';
-  return 'bg-red-100 text-red-700';
-}
-
-function ConfidenceBadge({ confidence }: { confidence: number | null | undefined }) {
-  if (confidence === null || confidence === undefined) return null;
-  const colorClass = getConfidenceColor(confidence);
-  const percentage = Math.round(confidence * 100);
+// Low confidence marker - only shows for items under 70% confidence
+function LowConfidenceMarker({ confidence }: { confidence: number | null | undefined }) {
+  if (confidence === null || confidence === undefined || confidence >= 0.70) return null;
   
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${colorClass} ml-2`}>
-      {percentage}%
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700 ml-1" title={`${Math.round(confidence * 100)}% confidence`}>
+      <AlertTriangle className="w-3 h-3 mr-0.5" />
+      Unsure
     </span>
   );
 }
@@ -261,7 +255,7 @@ export default function ContactDetailPage() {
                   <label className="block text-sm font-medium text-gray-500 mb-1">Full Name</label>
                   <p className="text-gray-900">
                     {contact.fullName || '—'}
-                    <ConfidenceBadge confidence={contact.nameConfidence} />
+                    <LowConfidenceMarker confidence={contact.nameConfidence} />
                   </p>
                 </div>
                 
@@ -269,7 +263,7 @@ export default function ContactDetailPage() {
                   <label className="block text-sm font-medium text-gray-500 mb-1">Title</label>
                   <p className="text-gray-900">
                     {contact.title || '—'}
-                    <ConfidenceBadge confidence={contact.titleConfidence} />
+                    <LowConfidenceMarker confidence={contact.titleConfidence} />
                   </p>
                 </div>
                 
@@ -284,7 +278,7 @@ export default function ContactDetailPage() {
                       <span className="text-gray-400">—</span>
                     )}
                     {contact.emailStatus && <EmailStatusBadge status={contact.emailStatus} />}
-                    <ConfidenceBadge confidence={contact.emailConfidence} />
+                    <LowConfidenceMarker confidence={contact.emailConfidence} />
                   </div>
                 </div>
                 
@@ -292,7 +286,7 @@ export default function ContactDetailPage() {
                   <label className="block text-sm font-medium text-gray-500 mb-1">Phone</label>
                   <p className="text-gray-900">
                     {contact.phone || contact.normalizedPhone || '—'}
-                    <ConfidenceBadge confidence={contact.phoneConfidence} />
+                    <LowConfidenceMarker confidence={contact.phoneConfidence} />
                   </p>
                 </div>
                 
@@ -331,7 +325,7 @@ export default function ContactDetailPage() {
                           <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
                         </svg>
                         View Profile
-                        <ConfidenceBadge confidence={contact.linkedinConfidence} />
+                        <LowConfidenceMarker confidence={contact.linkedinConfidence} />
                       </a>
                     ) : (
                       <button
@@ -417,9 +411,7 @@ export default function ContactDetailPage() {
                               {ROLE_LABELS[prop.role] || prop.role}
                             </span>
                           )}
-                          {prop.confidenceScore && (
-                            <ConfidenceBadge confidence={prop.confidenceScore} />
-                          )}
+                          <LowConfidenceMarker confidence={prop.confidenceScore} />
                         </div>
                       </div>
                     </Link>

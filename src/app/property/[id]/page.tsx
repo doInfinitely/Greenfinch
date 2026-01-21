@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
+import { AlertTriangle } from 'lucide-react';
 import Header from '@/components/Header';
 import AddToListModal from '@/components/AddToListModal';
 import EnrichmentModal from '@/components/EnrichmentModal';
@@ -122,28 +123,14 @@ const ORG_TYPE_COLORS: Record<string, string> = {
   other: 'bg-gray-100 text-gray-700',
 };
 
-function getConfidenceColor(confidence: number | null | undefined): string {
-  if (confidence === null || confidence === undefined) return 'bg-gray-100 text-gray-500';
-  if (confidence > 0.9) return 'bg-green-100 text-green-700';
-  if (confidence >= 0.75) return 'bg-yellow-100 text-yellow-700';
-  return 'bg-red-100 text-red-700';
-}
-
-function getConfidenceLabel(confidence: number | null | undefined): string {
-  if (confidence === null || confidence === undefined) return 'N/A';
-  if (confidence > 0.9) return 'High';
-  if (confidence >= 0.75) return 'Medium';
-  return 'Low';
-}
-
-function ConfidenceBadge({ confidence, label }: { confidence: number | null | undefined; label?: string }) {
-  const colorClass = getConfidenceColor(confidence);
-  const displayLabel = label || getConfidenceLabel(confidence);
-  const percentage = confidence !== null && confidence !== undefined ? Math.round(confidence * 100) : null;
+// Low confidence marker - only shows for items under 70% confidence
+function LowConfidenceMarker({ confidence }: { confidence: number | null | undefined }) {
+  if (confidence === null || confidence === undefined || confidence >= 0.70) return null;
   
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${colorClass}`}>
-      {displayLabel}{percentage !== null && ` (${percentage}%)`}
+    <span className="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700 ml-1" title={`${Math.round(confidence * 100)}% confidence`}>
+      <AlertTriangle className="w-3 h-3 mr-0.5" />
+      Unsure
     </span>
   );
 }
@@ -551,11 +538,7 @@ export default function PropertyDetailPage() {
                         {enrichedProperty.assetSubcategory}
                       </span>
                     )}
-                    {enrichedProperty?.categoryConfidence !== null && enrichedProperty?.categoryConfidence !== undefined && enrichedProperty.categoryConfidence < 0.70 && (
-                      <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
-                        Low Confidence
-                      </span>
-                    )}
+                    <LowConfidenceMarker confidence={enrichedProperty?.categoryConfidence} />
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
