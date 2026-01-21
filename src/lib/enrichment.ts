@@ -36,12 +36,11 @@ interface LinkedInMatch {
 }
 
 async function googleCustomSearch(query: string): Promise<GoogleSearchResult | null> {
-  // Use GOOGLE_MAPS_API_KEY as primary (has Custom Search API enabled), fall back to dedicated key
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY || process.env.GOOGLE_CUSTOM_SEARCH_API_KEY;
+  const apiKey = process.env.GOOGLE_CUSTOM_SEARCH_API_KEY;
   const cx = process.env.GOOGLE_CUSTOM_SEARCH_CX;
   
   if (!apiKey || !cx) {
-    console.error('[Search] Missing API key (GOOGLE_MAPS_API_KEY or GOOGLE_CUSTOM_SEARCH_API_KEY) or GOOGLE_CUSTOM_SEARCH_CX');
+    console.error('[Search] Missing GOOGLE_CUSTOM_SEARCH_API_KEY or GOOGLE_CUSTOM_SEARCH_CX');
     return null;
   }
 
