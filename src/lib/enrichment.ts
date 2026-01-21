@@ -46,6 +46,9 @@ async function googleCustomSearch(query: string): Promise<GoogleSearchResult | n
 
   const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}&num=5`;
   
+  // Log request details (mask API key for security)
+  console.log(`[Search] Request: key=${apiKey?.substring(0, 8)}...${apiKey?.substring(apiKey.length - 4)}, cx=${cx}, query="${query}"`);
+  
   try {
     const response = await fetch(url);
     if (!response.ok) {
