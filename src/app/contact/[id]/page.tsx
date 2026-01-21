@@ -3,8 +3,17 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Flag, Check, X, ExternalLink } from 'lucide-react';
 import Header from '@/components/Header';
+
+interface LinkedInSearchResult {
+  name: string;
+  title: string;
+  url: string;
+  company?: string;
+  location?: string;
+  confidence: number;
+}
 
 interface PropertyRelation {
   id: string;
@@ -48,6 +57,8 @@ interface Contact {
   linkedinUrl: string | null;
   linkedinConfidence: number | null;
   linkedinStatus: string | null;
+  linkedinSearchResults: LinkedInSearchResult[] | null;
+  linkedinFlagged: boolean | null;
   source: string | null;
   needsReview: boolean | null;
   reviewReason: string | null;
@@ -122,6 +133,8 @@ export default function ContactDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [isFindingLinkedIn, setIsFindingLinkedIn] = useState(false);
   const [linkedInMessage, setLinkedInMessage] = useState<string | null>(null);
+  const [showLinkedInAlternatives, setShowLinkedInAlternatives] = useState(false);
+  const [selectingAlternative, setSelectingAlternative] = useState(false);
 
   useEffect(() => {
     if (!contactId) return;
@@ -176,6 +189,50 @@ export default function ContactDetailPage() {
     } finally {
       setIsFindingLinkedIn(false);
     }
+  };
+
+  const handleFlagLinkedIn = () => {
+    setShowLinkedInAlternatives(true);
+    setLinkedInMessage(null);
+  };
+
+  const handleSelectAlternative = async (alternative: LinkedInSearchResult, index: number) => {
+    if (!contact) return;
+    
+    setSelectingAlternative(true);
+    try {
+      const response = await fetch(`/api/contacts/${contactId}/linkedin/flag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          originalUrl: contact.linkedinUrl,
+          selectedUrl: alternative.url,
+          selectedIndex: index,
+        }),
+      });
+
+      if (response.ok) {
+        setContact(prev => prev ? { 
+          ...prev, 
+          linkedinUrl: alternative.url,
+          linkedinConfidence: alternative.confidence,
+          linkedinFlagged: true,
+        } : null);
+        setShowLinkedInAlternatives(false);
+        setLinkedInMessage('Profile updated successfully');
+      } else {
+        setLinkedInMessage('Failed to update profile');
+      }
+    } catch (err) {
+      setLinkedInMessage('Failed to update profile');
+    } finally {
+      setSelectingAlternative(false);
+    }
+  };
+
+  const getAlternativeProfiles = () => {
+    if (!contact?.linkedinSearchResults) return [];
+    return contact.linkedinSearchResults.filter(r => r.url !== contact.linkedinUrl).slice(0, 3);
   };
 
   if (isLoading) {
@@ -313,45 +370,128 @@ export default function ContactDetailPage() {
                 
                 <div className="md:col-span-2">
                   <label className="block text-sm font-medium text-gray-500 mb-1">LinkedIn</label>
-                  <div className="flex items-center gap-3">
-                    {contact.linkedinUrl ? (
-                      <a 
-                        href={contact.linkedinUrl} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="text-green-600 hover:text-green-700 hover:underline flex items-center gap-1"
-                      >
-                        <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                          <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
-                        </svg>
-                        View Profile
-                        <LowConfidenceMarker confidence={contact.linkedinConfidence} />
-                      </a>
-                    ) : (
-                      <button
-                        onClick={handleFindLinkedIn}
-                        disabled={isFindingLinkedIn}
-                        className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {isFindingLinkedIn ? (
-                          <>
-                            <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                            Searching...
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {contact.linkedinUrl ? (
+                        <>
+                          <a 
+                            href={contact.linkedinUrl} 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-green-600 hover:text-green-700 hover:underline flex items-center gap-1"
+                            data-testid="link-linkedin-profile"
+                          >
+                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                               <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
                             </svg>
-                            Find LinkedIn
-                          </>
+                            View Profile
+                            <LowConfidenceMarker confidence={contact.linkedinConfidence} />
+                          </a>
+                          {contact.linkedinSearchResults && contact.linkedinSearchResults.length > 1 && !showLinkedInAlternatives && (
+                            <button
+                              onClick={handleFlagLinkedIn}
+                              className="inline-flex items-center px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100"
+                              data-testid="button-flag-linkedin"
+                            >
+                              <Flag className="w-3 h-3 mr-1" />
+                              Wrong profile?
+                            </button>
+                          )}
+                          {contact.linkedinFlagged && (
+                            <span className="text-xs text-gray-500">(Updated by user)</span>
+                          )}
+                        </>
+                      ) : (
+                        <button
+                          onClick={handleFindLinkedIn}
+                          disabled={isFindingLinkedIn}
+                          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          data-testid="button-find-linkedin"
+                        >
+                          {isFindingLinkedIn ? (
+                            <>
+                              <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                              Searching...
+                            </>
+                          ) : (
+                            <>
+                              <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+                              </svg>
+                              Find LinkedIn
+                            </>
+                          )}
+                        </button>
+                      )}
+                      {linkedInMessage && (
+                        <span className={`text-sm ${linkedInMessage.includes('success') || linkedInMessage.includes('found') ? 'text-green-600' : 'text-gray-500'}`}>
+                          {linkedInMessage}
+                        </span>
+                      )}
+                    </div>
+
+                    {showLinkedInAlternatives && (
+                      <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-sm font-medium text-amber-800">Select the correct profile:</h4>
+                          <button
+                            onClick={() => setShowLinkedInAlternatives(false)}
+                            className="text-amber-600 hover:text-amber-800"
+                            data-testid="button-close-alternatives"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                        
+                        {getAlternativeProfiles().length > 0 ? (
+                          <div className="space-y-2">
+                            {getAlternativeProfiles().map((alt, index) => (
+                              <div 
+                                key={alt.url}
+                                className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:border-green-300"
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-medium text-gray-900 truncate">{alt.name}</p>
+                                  {alt.title && (
+                                    <p className="text-sm text-gray-600 truncate">{alt.title}</p>
+                                  )}
+                                  {alt.company && (
+                                    <p className="text-xs text-gray-500 truncate">{alt.company}</p>
+                                  )}
+                                  <span className="text-xs text-gray-400">
+                                    {Math.round(alt.confidence * 100)}% match
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 ml-3">
+                                  <a
+                                    href={alt.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1.5 text-gray-400 hover:text-blue-600"
+                                    title="View profile"
+                                    data-testid={`link-alternative-${index}`}
+                                  >
+                                    <ExternalLink className="w-4 h-4" />
+                                  </a>
+                                  <button
+                                    onClick={() => handleSelectAlternative(alt, index)}
+                                    disabled={selectingAlternative}
+                                    className="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 disabled:opacity-50"
+                                    data-testid={`button-select-alternative-${index}`}
+                                  >
+                                    <Check className="w-3 h-3 mr-1" />
+                                    Select
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-amber-700">
+                            No alternative profiles available. The search only found one matching profile.
+                          </p>
                         )}
-                      </button>
-                    )}
-                    {linkedInMessage && (
-                      <span className={`text-sm ${contact.linkedinUrl ? 'text-green-600' : 'text-gray-500'}`}>
-                        {linkedInMessage}
-                      </span>
+                      </div>
                     )}
                   </div>
                 </div>

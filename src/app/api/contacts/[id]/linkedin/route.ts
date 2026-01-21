@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { contacts, propertyContacts, properties } from '@/lib/schema';
 import { eq, sql } from 'drizzle-orm';
-import { findLinkedInUrl, CONFIDENCE } from '@/lib/enrichment';
+import { findLinkedInUrl, CONFIDENCE, LinkedInSearchResult } from '@/lib/enrichment';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -45,6 +45,7 @@ export async function POST(
       company_domain: string | null;
       linkedin_url: string | null;
       linkedin_confidence: number | null;
+      linkedin_search_results: LinkedInSearchResult[] | null;
       property_city: string | null;
     };
 
@@ -53,6 +54,7 @@ export async function POST(
         success: true,
         linkedinUrl: contact.linkedin_url,
         confidence: contact.linkedin_confidence,
+        allResults: contact.linkedin_search_results || [],
         message: 'LinkedIn profile already exists',
         alreadyExists: true,
       });
@@ -75,38 +77,45 @@ export async function POST(
       contact.property_city
     );
 
+    // Always store all search results for alternative selection
+    const updateData: Record<string, unknown> = {
+      linkedinSearchResults: result.allResults,
+      updatedAt: new Date(),
+    };
+
     if (result.linkedinUrl && result.confidence >= CONFIDENCE.LINKEDIN_THRESHOLD) {
+      updateData.linkedinUrl = result.linkedinUrl;
+      updateData.linkedinConfidence = result.confidence;
+      updateData.linkedinStatus = 'discovered';
+
       await db
         .update(contacts)
-        .set({
-          linkedinUrl: result.linkedinUrl,
-          linkedinConfidence: result.confidence,
-          linkedinStatus: 'discovered',
-          updatedAt: new Date(),
-        })
+        .set(updateData)
         .where(eq(contacts.id, id));
 
-      console.log(`[API] Found and saved LinkedIn for ${contact.full_name}: ${result.linkedinUrl}`);
+      console.log(`[API] Found and saved LinkedIn for ${contact.full_name}: ${result.linkedinUrl} (${result.allResults.length} alternatives)`);
 
       return NextResponse.json({
         success: true,
         linkedinUrl: result.linkedinUrl,
         confidence: result.confidence,
+        allResults: result.allResults,
         message: 'LinkedIn profile discovered successfully',
       });
     }
 
+    // Still save search results even if no high-confidence match
+    updateData.linkedinStatus = 'not_found';
+    
     await db
       .update(contacts)
-      .set({
-        linkedinStatus: 'not_found',
-        updatedAt: new Date(),
-      })
+      .set(updateData)
       .where(eq(contacts.id, id));
 
     return NextResponse.json({
       success: false,
       message: 'Could not find LinkedIn profile with high confidence',
+      allResults: result.allResults,
     });
   } catch (error) {
     console.error('[API] LinkedIn discovery error:', error);

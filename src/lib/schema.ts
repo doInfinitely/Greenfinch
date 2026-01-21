@@ -12,6 +12,20 @@ export const users = pgTable('users', {
   role: text('role').default('standard_user'),
   accountId: uuid('account_id'),
   isActive: boolean('is_active').default(true),
+  
+  // Company info for service provider linking
+  companyName: text('company_name'),
+  companyDomain: text('company_domain'),
+  
+  // Auto-linked service provider (matched by email domain)
+  serviceProviderId: uuid('service_provider_id'),
+  
+  // Selected services the user's company provides (array of service category keys)
+  selectedServices: json('selected_services'),
+  
+  // Settings completed flag
+  settingsCompleted: boolean('settings_completed').default(false),
+  
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -138,6 +152,17 @@ export const contacts = pgTable('contacts', {
   linkedinUrl: text('linkedin_url'),
   linkedinConfidence: real('linkedin_confidence'),
   linkedinStatus: text('linkedin_status'),
+  
+  // Store top 4 LinkedIn search results for alternative selection
+  linkedinSearchResults: json('linkedin_search_results').$type<{
+    name: string;
+    title: string;
+    url: string;
+    company?: string;
+    location?: string;
+    confidence: number;
+  }[]>(),
+  linkedinFlagged: boolean('linkedin_flagged').default(false),
   
   source: text('source').default('ai'),
   contactRationale: text('contact_rationale'),
@@ -267,6 +292,157 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   contactOrganizations: many(contactOrganizations),
 }));
 
+// Service categories - top 15 by spend for commercial properties and HOAs
+export const SERVICE_CATEGORIES = [
+  'landscaping',           // Landscaping & Grounds (~15-25%)
+  'janitorial',            // Janitorial & Cleaning (~10-20%)
+  'hvac',                  // HVAC (~8-15%)
+  'security',              // Security Services (~5-12%)
+  'waste_management',      // Waste Management (~3-8%)
+  'elevator',              // Elevator/Escalator (~3-6%)
+  'roofing',               // Roofing (~2-5%)
+  'plumbing',              // Plumbing (~2-5%)
+  'electrical',            // Electrical (~2-5%)
+  'fire_protection',       // Fire Protection & Life Safety (~2-4%)
+  'parking_pavement',      // Parking & Pavement (~2-4%)
+  'pest_control',          // Pest Control (~1-3%)
+  'window_cleaning',       // Window Cleaning (~1-2%)
+  'snow_ice_removal',      // Snow & Ice Removal (~1-3%)
+  'pool_water_features',   // Pool & Water Features (~1-2%)
+] as const;
+
+export const SERVICE_CATEGORY_LABELS: Record<string, string> = {
+  landscaping: 'Landscaping & Grounds',
+  janitorial: 'Janitorial & Cleaning',
+  hvac: 'HVAC',
+  security: 'Security Services',
+  waste_management: 'Waste Management',
+  elevator: 'Elevator/Escalator',
+  roofing: 'Roofing',
+  plumbing: 'Plumbing',
+  electrical: 'Electrical',
+  fire_protection: 'Fire Protection & Life Safety',
+  parking_pavement: 'Parking & Pavement',
+  pest_control: 'Pest Control',
+  window_cleaning: 'Window Cleaning',
+  snow_ice_removal: 'Snow & Ice Removal',
+  pool_water_features: 'Pool & Water Features',
+};
+
+export type ServiceCategory = typeof SERVICE_CATEGORIES[number];
+
+// Service providers table - companies that provide facilities services
+export const serviceProviders = pgTable('service_providers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  domain: text('domain').unique(),
+  
+  // Services offered (array of service category keys)
+  servicesOffered: json('services_offered').$type<ServiceCategory[]>(),
+  
+  // Company info
+  linkedinUrl: text('linkedin_url'),
+  website: text('website'),
+  phone: text('phone'),
+  
+  // Location
+  city: text('city'),
+  state: text('state'),
+  
+  // Enrichment
+  enrichmentStatus: text('enrichment_status').default('pending'),
+  enrichmentJson: json('enrichment_json'),
+  lastEnrichedAt: timestamp('last_enriched_at'),
+  
+  // Metadata
+  isUserCompany: boolean('is_user_company').default(false),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  domainIdx: uniqueIndex('idx_service_providers_domain').on(table.domain),
+  nameIdx: index('idx_service_providers_name').on(table.name),
+}));
+
+// Property service providers - tracks which provider serves which property for each service
+export const propertyServiceProviders = pgTable('property_service_providers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  propertyId: uuid('property_id').references(() => properties.id),
+  serviceProviderId: uuid('service_provider_id').references(() => serviceProviders.id),
+  serviceCategory: text('service_category').notNull(), // One of SERVICE_CATEGORIES
+  
+  // Status and confidence
+  status: text('status').default('suggested'), // suggested, confirmed, flagged
+  confidence: real('confidence'),
+  
+  // Who suggested/confirmed
+  suggestedByUserId: uuid('suggested_by_user_id').references(() => users.id),
+  confirmedByUserId: uuid('confirmed_by_user_id').references(() => users.id),
+  
+  // Notes
+  notes: text('notes'),
+  
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  propertyServiceIdx: index('idx_property_service_providers').on(table.propertyId, table.serviceCategory),
+}));
+
+// Property flags - for flagging incorrect property/management info
+export const propertyFlags = pgTable('property_flags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  propertyId: uuid('property_id').references(() => properties.id),
+  
+  // What's being flagged
+  flagType: text('flag_type').notNull(), // 'property_info', 'management_company', 'owner', 'other'
+  
+  // Suggested correction
+  suggestedOrganizationId: uuid('suggested_organization_id').references(() => organizations.id),
+  suggestedOrganizationName: text('suggested_organization_name'), // For new orgs not in system
+  
+  // User feedback
+  reason: text('reason'),
+  comments: text('comments'),
+  
+  // Status
+  status: text('status').default('pending'), // pending, reviewed, resolved, dismissed
+  
+  // Who flagged
+  flaggedByUserId: uuid('flagged_by_user_id').references(() => users.id),
+  reviewedByUserId: uuid('reviewed_by_user_id').references(() => users.id),
+  reviewedAt: timestamp('reviewed_at'),
+  reviewNotes: text('review_notes'),
+  
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  propertyFlagIdx: index('idx_property_flags_property').on(table.propertyId),
+  statusIdx: index('idx_property_flags_status').on(table.status),
+}));
+
+// Contact LinkedIn flags - for flagging incorrect LinkedIn profiles
+export const contactLinkedinFlags = pgTable('contact_linkedin_flags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  contactId: uuid('contact_id').references(() => contacts.id),
+  
+  // Original LinkedIn URL that was flagged
+  originalLinkedinUrl: text('original_linkedin_url'),
+  
+  // Selected alternative (if user picked one)
+  selectedAlternativeIndex: integer('selected_alternative_index'), // 0-3 in alternatives array
+  selectedLinkedinUrl: text('selected_linkedin_url'),
+  
+  // Status
+  status: text('status').default('pending'), // pending, resolved, dismissed
+  
+  // Who flagged
+  flaggedByUserId: uuid('flagged_by_user_id').references(() => users.id),
+  
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  contactFlagIdx: index('idx_contact_linkedin_flags').on(table.contactId),
+}));
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
@@ -277,3 +453,8 @@ export type InsertContact = typeof contacts.$inferInsert;
 export type Organization = typeof organizations.$inferSelect;
 export type WaitlistSignup = typeof waitlistSignups.$inferSelect;
 export type InsertWaitlistSignup = typeof waitlistSignups.$inferInsert;
+export type ServiceProvider = typeof serviceProviders.$inferSelect;
+export type InsertServiceProvider = typeof serviceProviders.$inferInsert;
+export type PropertyServiceProvider = typeof propertyServiceProviders.$inferSelect;
+export type PropertyFlag = typeof propertyFlags.$inferSelect;
+export type ContactLinkedinFlag = typeof contactLinkedinFlags.$inferSelect;

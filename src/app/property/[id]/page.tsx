@@ -4,8 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench } from 'lucide-react';
 import Header from '@/components/Header';
+import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
 import AddToListModal from '@/components/AddToListModal';
 import EnrichmentModal from '@/components/EnrichmentModal';
 import StreetView from '@/components/StreetView';
@@ -271,6 +272,33 @@ export default function PropertyDetailPage() {
   const [enrichmentStatus, setEnrichmentStatus] = useState<EnrichmentStatusType>('not_enriched');
   const [enrichmentMessage, setEnrichmentMessage] = useState<string>('');
   const [showAddToListModal, setShowAddToListModal] = useState(false);
+  
+  // Property flagging state
+  const [showFlagDialog, setShowFlagDialog] = useState(false);
+  const [flagType, setFlagType] = useState<'management_company' | 'owner' | 'property_info' | 'other'>('management_company');
+  const [flagSearchQuery, setFlagSearchQuery] = useState('');
+  const [flagSearchResults, setFlagSearchResults] = useState<Array<{id: string; name: string; domain: string | null}>>([]);
+  const [selectedFlagOrg, setSelectedFlagOrg] = useState<{id: string; name: string} | null>(null);
+  const [flagComments, setFlagComments] = useState('');
+  const [isSubmittingFlag, setIsSubmittingFlag] = useState(false);
+  const [flagMessage, setFlagMessage] = useState<string | null>(null);
+  
+  // Service providers state
+  interface PropertyServiceProvider {
+    id: string;
+    serviceCategory: string;
+    status: string;
+    providerName: string | null;
+    providerDomain: string | null;
+    providerPhone: string | null;
+  }
+  const [serviceProvidersList, setServiceProvidersList] = useState<PropertyServiceProvider[]>([]);
+  const [showAddServiceProvider, setShowAddServiceProvider] = useState(false);
+  const [selectedServiceCategory, setSelectedServiceCategory] = useState('');
+  const [serviceProviderSearch, setServiceProviderSearch] = useState('');
+  const [serviceProviderResults, setServiceProviderResults] = useState<Array<{id: string; name: string; domain: string | null}>>([]);
+  const [selectedServiceProvider, setSelectedServiceProvider] = useState<{id: string; name: string} | null>(null);
+  const [isSubmittingServiceProvider, setIsSubmittingServiceProvider] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
   const [validatingEmails, setValidatingEmails] = useState<Set<string>>(new Set());
   const [mapToken, setMapToken] = useState<string>('');
@@ -440,7 +468,8 @@ export default function PropertyDetailPage() {
     };
 
     fetchProperty();
-  }, [propertyId]);
+    fetchServiceProviders();
+  }, [propertyId, fetchServiceProviders]);
 
   const handleEnrichment = async () => {
     if (!property) return;
@@ -480,6 +509,134 @@ export default function PropertyDetailPage() {
       setEnrichmentMessage(err instanceof Error ? err.message : 'Enrichment failed');
     } finally {
       setIsEnriching(false);
+    }
+  };
+
+  // Search organizations for flagging
+  const handleFlagSearch = async (query: string) => {
+    setFlagSearchQuery(query);
+    if (query.length < 2) {
+      setFlagSearchResults([]);
+      return;
+    }
+    
+    try {
+      const response = await fetch(`/api/organizations/search?q=${encodeURIComponent(query)}`);
+      const data = await response.json();
+      setFlagSearchResults(data.organizations || []);
+    } catch (err) {
+      console.error('Organization search error:', err);
+    }
+  };
+
+  // Submit property flag
+  const handleSubmitFlag = async () => {
+    if (!property) return;
+    
+    setIsSubmittingFlag(true);
+    setFlagMessage(null);
+    
+    try {
+      const response = await fetch(`/api/properties/${property.id}/flag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          flagType,
+          suggestedOrganizationId: selectedFlagOrg?.id || null,
+          suggestedOrganizationName: selectedFlagOrg ? null : flagSearchQuery || null,
+          comments: flagComments,
+        }),
+      });
+
+      if (response.ok) {
+        setFlagMessage('Thank you! Your feedback has been submitted for review.');
+        setTimeout(() => {
+          setShowFlagDialog(false);
+          setFlagMessage(null);
+          setFlagSearchQuery('');
+          setSelectedFlagOrg(null);
+          setFlagComments('');
+        }, 2000);
+      } else {
+        setFlagMessage('Failed to submit feedback. Please try again.');
+      }
+    } catch (err) {
+      setFlagMessage('Failed to submit feedback. Please try again.');
+    } finally {
+      setIsSubmittingFlag(false);
+    }
+  };
+
+  const openFlagDialog = (type: 'management_company' | 'owner' | 'property_info' | 'other') => {
+    setFlagType(type);
+    setShowFlagDialog(true);
+    setFlagSearchQuery('');
+    setFlagSearchResults([]);
+    setSelectedFlagOrg(null);
+    setFlagComments('');
+    setFlagMessage(null);
+  };
+
+  // Fetch service providers for the property
+  const fetchServiceProviders = useCallback(async () => {
+    if (!propertyId) return;
+    try {
+      const response = await fetch(`/api/properties/${propertyId}/service-providers`);
+      if (response.ok) {
+        const data = await response.json();
+        setServiceProvidersList(data.providers || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch service providers:', err);
+    }
+  }, [propertyId]);
+
+  // Search service providers
+  const handleServiceProviderSearch = async (query: string) => {
+    setServiceProviderSearch(query);
+    if (query.length < 2) {
+      setServiceProviderResults([]);
+      return;
+    }
+    
+    try {
+      const url = selectedServiceCategory 
+        ? `/api/service-providers/search?q=${encodeURIComponent(query)}&category=${selectedServiceCategory}`
+        : `/api/service-providers/search?q=${encodeURIComponent(query)}`;
+      const response = await fetch(url);
+      const data = await response.json();
+      setServiceProviderResults(data.providers || []);
+    } catch (err) {
+      console.error('Service provider search error:', err);
+    }
+  };
+
+  // Submit service provider suggestion
+  const handleSubmitServiceProvider = async () => {
+    if (!property || !selectedServiceCategory || !selectedServiceProvider) return;
+    
+    setIsSubmittingServiceProvider(true);
+    try {
+      const response = await fetch(`/api/properties/${property.id}/service-providers`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          serviceCategory: selectedServiceCategory,
+          serviceProviderId: selectedServiceProvider.id,
+        }),
+      });
+
+      if (response.ok) {
+        await fetchServiceProviders();
+        setShowAddServiceProvider(false);
+        setSelectedServiceCategory('');
+        setServiceProviderSearch('');
+        setSelectedServiceProvider(null);
+      }
+    } catch (err) {
+      console.error('Failed to add service provider:', err);
+    } finally {
+      setIsSubmittingServiceProvider(false);
     }
   };
 
@@ -715,6 +872,15 @@ export default function PropertyDetailPage() {
                         </span>
                       )}
                     </div>
+                    <button
+                      onClick={() => openFlagDialog('owner')}
+                      className="inline-flex items-center px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100"
+                      title="Flag as incorrect"
+                      data-testid="button-flag-owner"
+                    >
+                      <Flag className="w-3 h-3 mr-1" />
+                      Flag
+                    </button>
                   </div>
                 </div>
               )}
@@ -743,6 +909,15 @@ export default function PropertyDetailPage() {
                         )}
                       </div>
                     </div>
+                    <button
+                      onClick={() => openFlagDialog('management_company')}
+                      className="inline-flex items-center px-2 py-1 text-xs font-medium text-amber-700 bg-amber-50 border border-amber-200 rounded hover:bg-amber-100"
+                      title="Flag as incorrect"
+                      data-testid="button-flag-management"
+                    >
+                      <Flag className="w-3 h-3 mr-1" />
+                      Flag
+                    </button>
                   </div>
                 </div>
               )}
@@ -1016,6 +1191,64 @@ export default function PropertyDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* Service Providers Section */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Wrench className="w-5 h-5 text-gray-500" />
+                  Service Providers ({serviceProvidersList.length})
+                </h2>
+                <button
+                  onClick={() => setShowAddServiceProvider(true)}
+                  className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100"
+                  data-testid="button-add-service-provider"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Suggest Provider
+                </button>
+              </div>
+              
+              {serviceProvidersList.length > 0 ? (
+                <div className="space-y-3">
+                  {serviceProvidersList.map((sp) => (
+                    <div key={sp.id} className="p-3 bg-gray-50 rounded-lg">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 mb-1">
+                            {SERVICE_CATEGORY_LABELS[sp.serviceCategory as keyof typeof SERVICE_CATEGORY_LABELS] || sp.serviceCategory}
+                          </span>
+                          <p className="font-medium text-gray-900">{sp.providerName || 'Unknown Provider'}</p>
+                          {sp.providerDomain && (
+                            <a 
+                              href={`https://${sp.providerDomain}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm text-blue-600 hover:underline"
+                            >
+                              {sp.providerDomain}
+                            </a>
+                          )}
+                        </div>
+                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                          sp.status === 'confirmed' ? 'bg-green-100 text-green-800' :
+                          sp.status === 'suggested' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-gray-100 text-gray-800'
+                        }`}>
+                          {sp.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <Wrench className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500 mb-2">No service providers listed yet</p>
+                  <p className="text-xs text-gray-400">Know who services this property? Click "Suggest Provider" to add them.</p>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="lg:col-span-1">
@@ -1095,6 +1328,251 @@ export default function PropertyDetailPage() {
         isOpen={isEnriching}
         propertyName={enrichedProperty?.commonName || property?.address}
       />
+
+      {showFlagDialog && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowFlagDialog(false)} />
+            
+            <div className="relative inline-block w-full max-w-lg p-6 my-8 text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Flag {flagType === 'management_company' ? 'Management Company' : flagType === 'owner' ? 'Owner' : 'Information'} as Incorrect
+                </h3>
+                <button
+                  onClick={() => setShowFlagDialog(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                  data-testid="button-close-flag-dialog"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Suggest correct organization (optional)
+                  </label>
+                  <div className="relative">
+                    <div className="flex items-center">
+                      <Search className="absolute left-3 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={selectedFlagOrg?.name || flagSearchQuery}
+                        onChange={(e) => {
+                          setSelectedFlagOrg(null);
+                          handleFlagSearch(e.target.value);
+                        }}
+                        placeholder="Search organizations or type a new name..."
+                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
+                        data-testid="input-flag-search"
+                      />
+                    </div>
+                    
+                    {flagSearchResults.length > 0 && !selectedFlagOrg && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {flagSearchResults.map((org) => (
+                          <button
+                            key={org.id}
+                            onClick={() => {
+                              setSelectedFlagOrg({ id: org.id, name: org.name || '' });
+                              setFlagSearchResults([]);
+                            }}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center justify-between"
+                            data-testid={`button-select-org-${org.id}`}
+                          >
+                            <span className="font-medium text-gray-900">{org.name}</span>
+                            {org.domain && (
+                              <span className="text-xs text-gray-500">{org.domain}</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {selectedFlagOrg && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="inline-flex items-center px-2.5 py-1 bg-green-100 text-green-800 text-sm rounded">
+                          <Check className="w-3 h-3 mr-1" />
+                          {selectedFlagOrg.name}
+                        </span>
+                        <button
+                          onClick={() => setSelectedFlagOrg(null)}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    Search for an existing organization or type a new name
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Comments
+                  </label>
+                  <textarea
+                    value={flagComments}
+                    onChange={(e) => setFlagComments(e.target.value)}
+                    placeholder="Why do you believe this is incorrect?"
+                    rows={3}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
+                    data-testid="input-flag-comments"
+                  />
+                </div>
+
+                {flagMessage && (
+                  <div className={`p-3 rounded-md text-sm ${flagMessage.includes('Thank you') ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+                    {flagMessage}
+                  </div>
+                )}
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => setShowFlagDialog(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                    data-testid="button-cancel-flag"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmitFlag}
+                    disabled={isSubmittingFlag}
+                    className="px-4 py-2 text-sm font-medium text-white bg-amber-600 rounded-md hover:bg-amber-700 disabled:opacity-50"
+                    data-testid="button-submit-flag"
+                  >
+                    {isSubmittingFlag ? 'Submitting...' : 'Submit Flag'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Service Provider Dialog */}
+      {showAddServiceProvider && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div className="fixed inset-0 transition-opacity bg-gray-500 bg-opacity-75" onClick={() => setShowAddServiceProvider(false)} />
+            
+            <div className="relative inline-block w-full max-w-lg p-6 my-8 text-left align-middle transition-all transform bg-white shadow-xl rounded-lg">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  Suggest a Service Provider
+                </h3>
+                <button
+                  onClick={() => setShowAddServiceProvider(false)}
+                  className="text-gray-400 hover:text-gray-600"
+                  data-testid="button-close-service-provider-dialog"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Service Category
+                  </label>
+                  <select
+                    value={selectedServiceCategory}
+                    onChange={(e) => setSelectedServiceCategory(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
+                    data-testid="select-service-category"
+                  >
+                    <option value="">Select a service category...</option>
+                    {SERVICE_CATEGORIES.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {SERVICE_CATEGORY_LABELS[cat]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Service Provider
+                  </label>
+                  <div className="relative">
+                    <div className="flex items-center">
+                      <Search className="absolute left-3 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={selectedServiceProvider?.name || serviceProviderSearch}
+                        onChange={(e) => {
+                          setSelectedServiceProvider(null);
+                          handleServiceProviderSearch(e.target.value);
+                        }}
+                        placeholder="Search for a service provider..."
+                        className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
+                        data-testid="input-service-provider-search"
+                      />
+                    </div>
+                    
+                    {serviceProviderResults.length > 0 && !selectedServiceProvider && (
+                      <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {serviceProviderResults.map((provider) => (
+                          <button
+                            key={provider.id}
+                            onClick={() => {
+                              setSelectedServiceProvider({ id: provider.id, name: provider.name });
+                              setServiceProviderResults([]);
+                            }}
+                            className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center justify-between"
+                            data-testid={`button-select-provider-${provider.id}`}
+                          >
+                            <span className="font-medium text-gray-900">{provider.name}</span>
+                            {provider.domain && (
+                              <span className="text-xs text-gray-500">{provider.domain}</span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {selectedServiceProvider && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="inline-flex items-center px-2.5 py-1 bg-green-100 text-green-800 text-sm rounded">
+                          <Check className="w-3 h-3 mr-1" />
+                          {selectedServiceProvider.name}
+                        </span>
+                        <button
+                          onClick={() => setSelectedServiceProvider(null)}
+                          className="text-gray-400 hover:text-gray-600"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    onClick={() => setShowAddServiceProvider(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                    data-testid="button-cancel-service-provider"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmitServiceProvider}
+                    disabled={isSubmittingServiceProvider || !selectedServiceCategory || !selectedServiceProvider}
+                    className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 disabled:opacity-50"
+                    data-testid="button-submit-service-provider"
+                  >
+                    {isSubmittingServiceProvider ? 'Adding...' : 'Add Provider'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

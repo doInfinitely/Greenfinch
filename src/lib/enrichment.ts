@@ -29,12 +29,30 @@ interface LinkedInSearchParams {
 interface LinkedInMatch {
   url: string;
   confidence: number;
+  parsedName: string;
+  parsedTitle: string;
+  parsedCompany: string;
   matchDetails: {
     nameMatch: boolean;
     companyMatch: boolean;
     titleMatch: boolean;
     locationMatch: boolean;
   };
+}
+
+export interface LinkedInSearchResult {
+  name: string;
+  title: string;
+  url: string;
+  company?: string;
+  location?: string;
+  confidence: number;
+}
+
+export interface LinkedInSearchResponse {
+  linkedinUrl: string | null;
+  confidence: number;
+  allResults: LinkedInSearchResult[];
 }
 
 async function serpApiSearch(query: string): Promise<GoogleSearchResult | null> {
@@ -214,6 +232,28 @@ function validateLinkedInResult(
   // Combined text for matching (title + snippet)
   const combinedText = `${item.title} ${item.snippet}`;
   
+  // Parse name from LinkedIn title (format: "Name - Title - Company | LinkedIn")
+  let parsedName = '';
+  let parsedTitle = '';
+  let parsedCompany = '';
+  
+  // LinkedIn title format: "FirstName LastName - Title at Company | LinkedIn"
+  const titleParts = item.title.replace(' | LinkedIn', '').split(' - ');
+  if (titleParts.length >= 1) {
+    parsedName = titleParts[0].trim();
+  }
+  if (titleParts.length >= 2) {
+    // Could be "Title at Company" or just "Title"
+    const titleAtCompany = titleParts.slice(1).join(' - ');
+    const atMatch = titleAtCompany.match(/(.+?)\s+at\s+(.+)/i);
+    if (atMatch) {
+      parsedTitle = atMatch[1].trim();
+      parsedCompany = atMatch[2].trim();
+    } else {
+      parsedTitle = titleAtCompany.trim();
+    }
+  }
+  
   // Check name match (required)
   const nameMatch = namesMatch(params.name, combinedText);
   if (!nameMatch) {
@@ -246,6 +286,9 @@ function validateLinkedInResult(
   return {
     url,
     confidence,
+    parsedName: parsedName || params.name,
+    parsedTitle,
+    parsedCompany,
     matchDetails: {
       nameMatch,
       companyMatch,
@@ -858,13 +901,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): 
 }
 
 // Find LinkedIn URL using Google Custom Search API with validation
+// Returns best match and top 4 alternatives for user selection
 export async function findLinkedInUrl(
   name: string,
   title: string | null,
   company: string | null,
   domain: string | null,
   city: string | null = null
-): Promise<{ linkedinUrl: string | null; confidence: number }> {
+): Promise<LinkedInSearchResponse> {
   try {
     const startTime = Date.now();
     
@@ -878,7 +922,7 @@ export async function findLinkedInUrl(
     
     if (!results || !results.items || results.items.length === 0) {
       console.log(`[Enrichment] SERP API returned no results (${elapsed}s)`);
-      return { linkedinUrl: null, confidence: 0 };
+      return { linkedinUrl: null, confidence: 0, allResults: [] };
     }
     
     // Log search results for debugging
@@ -887,16 +931,32 @@ export async function findLinkedInUrl(
       console.log(`  ${i + 1}. ${item.link} - "${item.title.substring(0, 50)}"`);
     });
     
-    // Validate each result and find the best match
+    // Validate each result and collect all matches
     const searchParams: LinkedInSearchParams = { name, title, company, city };
-    let bestMatch: LinkedInMatch | null = null;
+    const allMatches: LinkedInMatch[] = [];
     
     for (const item of results.items) {
       const match = validateLinkedInResult(item, searchParams);
-      if (match && (!bestMatch || match.confidence > bestMatch.confidence)) {
-        bestMatch = match;
+      if (match) {
+        allMatches.push(match);
       }
     }
+    
+    // Sort by confidence and take top 4
+    allMatches.sort((a, b) => b.confidence - a.confidence);
+    const top4Matches = allMatches.slice(0, 4);
+    
+    // Convert to search result format for storage
+    const allResults: LinkedInSearchResult[] = top4Matches.map(match => ({
+      name: match.parsedName,
+      title: match.parsedTitle || '',
+      url: match.url,
+      company: match.parsedCompany || undefined,
+      location: match.matchDetails.locationMatch ? (city || undefined) : undefined,
+      confidence: match.confidence,
+    }));
+    
+    const bestMatch = top4Matches[0] || null;
     
     if (bestMatch) {
       const { nameMatch, companyMatch, titleMatch, locationMatch } = bestMatch.matchDetails;
@@ -911,14 +971,15 @@ export async function findLinkedInUrl(
                               bestMatch.confidence >= 0.50 ? 'medium' : 'low';
       
       console.log(`[Enrichment] Found LinkedIn for ${name}: ${bestMatch.url} (${confidenceLabel} confidence: ${(bestMatch.confidence * 100).toFixed(0)}%, matched: ${matchInfo}, ${elapsed}s)`);
-      return { linkedinUrl: bestMatch.url, confidence: bestMatch.confidence };
+      console.log(`[Enrichment] Returning ${allResults.length} total LinkedIn results for alternatives`);
+      return { linkedinUrl: bestMatch.url, confidence: bestMatch.confidence, allResults };
     }
     
     console.log(`[Enrichment] No validated LinkedIn match for ${name} (${elapsed}s)`);
-    return { linkedinUrl: null, confidence: 0 };
+    return { linkedinUrl: null, confidence: 0, allResults };
   } catch (error) {
     console.error(`[Enrichment] Error finding LinkedIn for ${name}:`, error);
-    return { linkedinUrl: null, confidence: 0 };
+    return { linkedinUrl: null, confidence: 0, allResults: [] };
   }
 }
 
@@ -1386,6 +1447,131 @@ export async function storeEnrichmentResults(
   console.log(`[Enrichment] Enrichment complete for property: ${aggregatedProperty.propertyKey}`);
 
   return { propertyId, contactIds, orgIds };
+}
+
+// Service Provider enrichment types
+export interface ServiceProviderEnrichmentResult {
+  success: boolean;
+  companyLinkedInUrl?: string;
+  companyName?: string;
+  servicesOffered?: string[];
+  description?: string;
+  confidence?: number;
+  error?: string;
+}
+
+// Service provider enrichment prompt
+const SERVICE_PROVIDER_PROMPT = `You are a commercial property services expert. Analyze the given company name and domain to determine what facility services they provide.
+
+CONTEXT:
+You are helping a commercial property prospecting tool identify and classify service providers that work with commercial properties. These are companies that provide facility management and maintenance services.
+
+SERVICE CATEGORIES (choose all that apply):
+1. landscaping - Landscaping, lawn care, grounds maintenance, irrigation, tree services
+2. janitorial - Cleaning services, janitorial, custodial, sanitation
+3. hvac - HVAC, heating, ventilation, air conditioning, climate control
+4. security - Security services, guards, surveillance, access control
+5. waste_management - Waste removal, recycling, dumpster services
+6. elevator - Elevator, escalator maintenance and repair
+7. roofing - Commercial roofing, roof repair, waterproofing
+8. plumbing - Commercial plumbing, pipe repair, water systems
+9. electrical - Electrical services, wiring, lighting
+10. fire_protection - Fire alarm systems, sprinklers, fire safety
+11. parking_pavement - Parking lot maintenance, striping, asphalt repair
+12. pest_control - Pest control, extermination, pest management
+13. window_cleaning - Window washing, high-rise window cleaning
+14. snow_ice_removal - Snow removal, ice management, de-icing
+15. pool_water_features - Pool maintenance, fountain care, water features
+
+INPUT:
+- Company Name: {companyName}
+- Domain: {domain}
+- Website Description (if available): {websiteDescription}
+
+OUTPUT: Respond with ONLY valid JSON in this exact format:
+{
+  "servicesOffered": ["category1", "category2"],
+  "primaryService": "main_category",
+  "description": "Brief description of the company and its services",
+  "confidence": 0.0-1.0
+}
+
+RULES:
+1. Only include service categories from the list above
+2. If you cannot determine services, return empty array for servicesOffered
+3. confidence should reflect how certain you are (0.9+ for clear service companies, 0.5-0.8 for partial info, <0.5 for uncertain)
+4. Be conservative - only include services you're confident they provide`;
+
+// Enrich a service provider with AI classification
+export async function enrichServiceProvider(
+  companyName: string,
+  domain: string,
+  websiteDescription?: string
+): Promise<ServiceProviderEnrichmentResult> {
+  const apiKey = process.env.GOOGLE_GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GOOGLE_GEMINI_API_KEY;
+  
+  if (!apiKey) {
+    console.error('[ServiceProvider Enrichment] No Gemini API key found');
+    return { success: false, error: 'No API key available' };
+  }
+
+  try {
+    const genai = new GoogleGenAI({ apiKey });
+    
+    const prompt = SERVICE_PROVIDER_PROMPT
+      .replace('{companyName}', companyName)
+      .replace('{domain}', domain || 'Not available')
+      .replace('{websiteDescription}', websiteDescription || 'Not available');
+
+    console.log(`[ServiceProvider Enrichment] Enriching: ${companyName} (${domain})`);
+
+    const response = await genai.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: prompt,
+    });
+
+    const responseText = response.text || '';
+    
+    // Extract JSON from response
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.error('[ServiceProvider Enrichment] No valid JSON in response');
+      return { success: false, error: 'Invalid response format' };
+    }
+
+    const parsed = JSON.parse(jsonMatch[0]);
+
+    // Search for company LinkedIn page
+    let companyLinkedInUrl: string | undefined;
+    try {
+      const linkedinQuery = `site:linkedin.com/company "${companyName}"`;
+      const searchResults = await serpApiSearch(linkedinQuery);
+      
+      if (searchResults?.items && searchResults.items.length > 0) {
+        const linkedinResult = searchResults.items.find(item => 
+          item.link.includes('linkedin.com/company/')
+        );
+        if (linkedinResult) {
+          companyLinkedInUrl = linkedinResult.link;
+          console.log(`[ServiceProvider Enrichment] Found LinkedIn: ${companyLinkedInUrl}`);
+        }
+      }
+    } catch (err) {
+      console.error('[ServiceProvider Enrichment] LinkedIn search failed:', err);
+    }
+
+    return {
+      success: true,
+      companyName,
+      companyLinkedInUrl,
+      servicesOffered: parsed.servicesOffered || [],
+      description: parsed.description,
+      confidence: parsed.confidence || 0.5,
+    };
+  } catch (error) {
+    console.error('[ServiceProvider Enrichment] Error:', error);
+    return { success: false, error: String(error) };
+  }
 }
 
 // Combined function to enrich and store

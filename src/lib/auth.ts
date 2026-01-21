@@ -1,6 +1,6 @@
 import { db } from './db';
-import { users, sessions } from './schema';
-import { eq } from 'drizzle-orm';
+import { users, sessions, serviceProviders } from './schema';
+import { eq, ilike } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import * as client from 'openid-client';
 
@@ -133,6 +133,31 @@ export async function deleteSession(sessionId: string): Promise<void> {
   await db.delete(sessions).where(eq(sessions.sid, sessionId));
 }
 
+// Extract domain from email address
+function extractDomain(email: string | undefined): string | null {
+  if (!email || !email.includes('@')) return null;
+  return email.split('@')[1].toLowerCase();
+}
+
+// Find matching service provider by email domain
+async function findMatchingServiceProvider(email: string | undefined): Promise<{ id: string; name: string } | null> {
+  const domain = extractDomain(email);
+  if (!domain) return null;
+
+  try {
+    const [provider] = await db
+      .select({ id: serviceProviders.id, name: serviceProviders.name })
+      .from(serviceProviders)
+      .where(ilike(serviceProviders.domain, domain))
+      .limit(1);
+
+    return provider || null;
+  } catch (error) {
+    console.error('[Auth] Error finding matching service provider:', error);
+    return null;
+  }
+}
+
 export async function upsertUser(claims: {
   sub: string;
   email?: string;
@@ -147,13 +172,49 @@ export async function upsertUser(claims: {
     .limit(1);
   
   if (existingUsers.length > 0) {
+    const existingUser = existingUsers[0];
+    
+    // Check if user needs service provider linking (new email or no service provider yet)
+    if (claims.email && !existingUser.serviceProviderId) {
+      const matchingProvider = await findMatchingServiceProvider(claims.email);
+      if (matchingProvider) {
+        console.log(`[Auth] Linking user ${claims.sub} to service provider: ${matchingProvider.name} (${matchingProvider.id})`);
+        
+        const [updated] = await db
+          .update(users)
+          .set({
+            email: claims.email || existingUser.email,
+            firstName: claims.first_name || existingUser.firstName,
+            lastName: claims.last_name || existingUser.lastName,
+            profileImageUrl: claims.profile_image_url || existingUser.profileImageUrl,
+            companyDomain: extractDomain(claims.email),
+            companyName: matchingProvider.name,
+            serviceProviderId: matchingProvider.id,
+            updatedAt: new Date(),
+          })
+          .where(eq(users.replitId, claims.sub))
+          .returning();
+        
+        return {
+          id: updated.id,
+          replitId: updated.replitId || '',
+          email: updated.email,
+          firstName: updated.firstName,
+          lastName: updated.lastName,
+          profileImageUrl: updated.profileImageUrl,
+          role: (updated.role as UserRole) || 'standard_user',
+          isActive: updated.isActive ?? true,
+        };
+      }
+    }
+    
     const [updated] = await db
       .update(users)
       .set({
-        email: claims.email || existingUsers[0].email,
-        firstName: claims.first_name || existingUsers[0].firstName,
-        lastName: claims.last_name || existingUsers[0].lastName,
-        profileImageUrl: claims.profile_image_url || existingUsers[0].profileImageUrl,
+        email: claims.email || existingUser.email,
+        firstName: claims.first_name || existingUser.firstName,
+        lastName: claims.last_name || existingUser.lastName,
+        profileImageUrl: claims.profile_image_url || existingUser.profileImageUrl,
         updatedAt: new Date(),
       })
       .where(eq(users.replitId, claims.sub))
@@ -171,6 +232,10 @@ export async function upsertUser(claims: {
     };
   }
   
+  // New user - check for matching service provider
+  const matchingProvider = await findMatchingServiceProvider(claims.email);
+  const domain = extractDomain(claims.email);
+  
   const [newUser] = await db
     .insert(users)
     .values({
@@ -179,8 +244,15 @@ export async function upsertUser(claims: {
       firstName: claims.first_name,
       lastName: claims.last_name,
       profileImageUrl: claims.profile_image_url,
+      companyDomain: domain,
+      companyName: matchingProvider?.name || null,
+      serviceProviderId: matchingProvider?.id || null,
     })
     .returning();
+  
+  if (matchingProvider) {
+    console.log(`[Auth] New user ${claims.sub} auto-linked to service provider: ${matchingProvider.name}`);
+  }
   
   return {
     id: newUser.id,
