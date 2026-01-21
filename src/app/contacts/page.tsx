@@ -161,8 +161,8 @@ export default function ContactsPage() {
     <div className="min-h-screen bg-gray-50">
       <Header />
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+      <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
+        <div className="flex flex-col gap-3 mb-6">
           <div className="relative flex-1">
             <input
               type="text"
@@ -185,30 +185,32 @@ export default function ContactsPage() {
               />
             </svg>
           </div>
-          <select
-            value={emailStatusFilter}
-            onChange={(e) => setEmailStatusFilter(e.target.value)}
-            className="px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
-          >
-            <option value="">All Email Status</option>
-            {availableStatuses.map((status) => (
-              <option key={status} value={status}>
-                {status}
-              </option>
-            ))}
-          </select>
-          <select
-            value={titleFilter}
-            onChange={(e) => setTitleFilter(e.target.value)}
-            className="px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
-          >
-            <option value="">All Titles</option>
-            {availableTitles.map((title) => (
-              <option key={title} value={title}>
-                {title}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap gap-2">
+            <select
+              value={emailStatusFilter}
+              onChange={(e) => setEmailStatusFilter(e.target.value)}
+              className="flex-1 min-w-[140px] px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+            >
+              <option value="">All Email Status</option>
+              {availableStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status}
+                </option>
+              ))}
+            </select>
+            <select
+              value={titleFilter}
+              onChange={(e) => setTitleFilter(e.target.value)}
+              className="flex-1 min-w-[140px] px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+            >
+              <option value="">All Titles</option>
+              {availableTitles.map((title) => (
+                <option key={title} value={title}>
+                  {title}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
 
         {error && (
@@ -248,7 +250,8 @@ export default function ContactsPage() {
           </div>
         ) : (
           <>
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            {/* Desktop table view */}
+            <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -465,9 +468,52 @@ export default function ContactsPage() {
               </div>
             </div>
 
+            {/* Mobile card view */}
+            <div className="md:hidden bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
+              {contacts.map((contact) => (
+                <Link
+                  key={contact.id}
+                  href={`/contact/${contact.id}`}
+                  className="block p-4 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-green-600 truncate">
+                        {contact.fullName || 'Unknown'}
+                      </p>
+                      {contact.title && (
+                        <p className="text-sm text-gray-600 truncate">{contact.title}</p>
+                      )}
+                      {contact.employerName && (
+                        <p className="text-xs text-gray-500 truncate">{contact.employerName}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {contact.emailStatus && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getEmailStatusColor(contact.emailStatus)}`}>
+                          {contact.emailStatus}
+                        </span>
+                      )}
+                      {contact.propertyCount > 0 && (
+                        <span className="text-xs text-gray-500">
+                          {contact.propertyCount} properties
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  {contact.email && (
+                    <p className="text-sm text-gray-600 mt-1 truncate">{contact.email}</p>
+                  )}
+                  {contact.phone && (
+                    <p className="text-xs text-gray-500 mt-0.5">{contact.phone}</p>
+                  )}
+                </Link>
+              ))}
+            </div>
+
             {pagination.totalPages > 1 && (
-              <div className="flex items-center justify-between mt-6">
-                <div className="text-sm text-gray-500">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4 mt-6">
+                <div className="text-sm text-gray-500 text-center md:text-left">
                   Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
                   {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
                   {pagination.total} contacts

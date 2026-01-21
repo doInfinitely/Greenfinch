@@ -117,8 +117,8 @@ export default function OrganizationsPage() {
     <div className="min-h-screen bg-gray-50">
       <Header />
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
+      <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
+        <div className="flex flex-col gap-3 mb-6">
           <div className="relative flex-1">
             <input
               type="text"
@@ -132,6 +132,7 @@ export default function OrganizationsPage() {
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
+              aria-hidden="true"
             >
               <path
                 strokeLinecap="round"
@@ -144,7 +145,7 @@ export default function OrganizationsPage() {
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+            className="w-full md:w-auto px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
           >
             <option value="">All Types</option>
             {availableTypes.map((type) => (
@@ -192,7 +193,8 @@ export default function OrganizationsPage() {
           </div>
         ) : (
           <>
-            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            {/* Desktop table view */}
+            <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
@@ -295,8 +297,45 @@ export default function OrganizationsPage() {
               </div>
             </div>
 
+            {/* Mobile card view */}
+            <div className="md:hidden bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
+              {organizations.map((org) => (
+                <Link
+                  key={org.id}
+                  href={`/organization/${org.id}`}
+                  className="block p-4 hover:bg-gray-50 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-gray-900 truncate">
+                        {org.name || 'Unnamed'}
+                      </p>
+                      {org.domain && (
+                        <p className="text-sm text-green-600 truncate">{org.domain}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {org.orgType && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                          {org.orgType}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3 mt-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {org.propertyCount} properties
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                      {org.contactCount} contacts
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+
             {pagination.totalPages > 1 && (
-              <div className="flex items-center justify-between mt-6">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4 mt-6">
                 <div className="text-sm text-gray-500">
                   Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
                   {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
