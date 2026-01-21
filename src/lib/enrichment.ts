@@ -7,6 +7,8 @@ import type { AggregatedProperty } from "./snowflake";
 import { findEmail, validateEmail } from "./leadmagic";
 import { findContainingPlace } from "./google-places";
 import pLimit from "p-limit";
+// @ts-ignore - name-match has no type declarations
+import { isMatch as nameLibMatch, NameNormalizer } from "name-match";
 
 // Google Custom Search API for LinkedIn lookups
 interface GoogleSearchResult {
@@ -80,131 +82,14 @@ function normalizeName(name: string): string {
     .trim();
 }
 
-// Nickname mappings: canonical name -> array of nicknames (bidirectional lookup)
-const NICKNAME_MAP: Record<string, string[]> = {
-  // Male names
-  'michael': ['mike', 'mikey', 'mick'],
-  'william': ['bill', 'billy', 'will', 'willy', 'liam'],
-  'robert': ['bob', 'bobby', 'rob', 'robby', 'robbie'],
-  'richard': ['dick', 'rick', 'rich', 'ricky'],
-  'james': ['jim', 'jimmy', 'jamie'],
-  'john': ['jack', 'johnny', 'jon'],
-  'charles': ['chuck', 'charlie', 'chas'],
-  'edward': ['ed', 'eddie', 'ted', 'teddy', 'ned'],
-  'thomas': ['tom', 'tommy'],
-  'joseph': ['joe', 'joey'],
-  'david': ['dave', 'davey'],
-  'daniel': ['dan', 'danny'],
-  'matthew': ['matt', 'matty'],
-  'andrew': ['andy', 'drew'],
-  'christopher': ['chris', 'kit'],
-  'anthony': ['tony'],
-  'stephen': ['steve', 'stevie'],
-  'steven': ['steve', 'stevie'],
-  'benjamin': ['ben', 'benny'],
-  'nicholas': ['nick', 'nicky'],
-  'alexander': ['alex', 'al', 'xander'],
-  'jonathan': ['jon', 'jonny'],
-  'timothy': ['tim', 'timmy'],
-  'gregory': ['greg', 'gregg'],
-  'patrick': ['pat', 'paddy'],
-  'lawrence': ['larry', 'laurie'],
-  'raymond': ['ray'],
-  'gerald': ['jerry', 'gerry'],
-  'harold': ['hal', 'harry'],
-  'theodore': ['ted', 'teddy', 'theo'],
-  'albert': ['al', 'bert', 'albie'],
-  'samuel': ['sam', 'sammy'],
-  'frederick': ['fred', 'freddy', 'rick'],
-  'phillip': ['phil'],
-  'philip': ['phil'],
-  'eugene': ['gene'],
-  'kenneth': ['ken', 'kenny'],
-  'walter': ['walt', 'wally'],
-  'donald': ['don', 'donny'],
-  'ronald': ['ron', 'ronny', 'ronnie'],
-  'francis': ['frank', 'frankie'],
-  'peter': ['pete'],
-  'henry': ['hank', 'harry'],
-  'douglas': ['doug'],
-  'leonard': ['leo', 'len', 'lenny'],
-  'jeffrey': ['jeff'],
-  'geoffrey': ['geoff', 'jeff'],
-  'nathaniel': ['nate', 'nathan'],
-  'nathan': ['nate'],
-  'zachary': ['zach', 'zack'],
-  // Female names
-  'margaret': ['peggy', 'meg', 'maggie', 'marge', 'margie'],
-  'elizabeth': ['liz', 'lizzy', 'beth', 'betsy', 'betty', 'eliza'],
-  'katherine': ['kate', 'kathy', 'katie', 'kay', 'kit'],
-  'catherine': ['cathy', 'kate', 'katie', 'kay'],
-  'dorothy': ['dot', 'dottie', 'dolly'],
-  'patricia': ['pat', 'patty', 'tricia', 'trish'],
-  'jennifer': ['jen', 'jenny', 'jenn'],
-  'christina': ['chris', 'chrissy', 'tina'],
-  'christine': ['chris', 'chrissy', 'tina'],
-  'rebecca': ['becky', 'becca'],
-  'deborah': ['deb', 'debbie'],
-  'stephanie': ['steph', 'stevie'],
-  'victoria': ['vicky', 'vicki', 'tori'],
-  'samantha': ['sam', 'sammy'],
-  'alexandra': ['alex', 'lexi', 'sandra'],
-  'jacqueline': ['jackie'],
-  'jessica': ['jess', 'jessie'],
-  'amanda': ['mandy', 'amy'],
-  'susan': ['sue', 'suzy', 'susie'],
-  'nancy': ['nan'],
-  'barbara': ['barb', 'barbie'],
-  'sandra': ['sandy'],
-  'carolyn': ['carol', 'carrie', 'lyn'],
-  'abigail': ['abby', 'gail'],
-  'madeleine': ['maddy', 'maddie'],
-  'madeline': ['maddy', 'maddie'],
-  'sarah': ['sally'],
-  'mary': ['polly', 'molly', 'mae'],
-  'helen': ['nell', 'nellie', 'ellie'],
-  'martha': ['patsy', 'marty'],
-  'virginia': ['ginny', 'ginger'],
-  'amy': ['amanda'],
-};
-
-// Build reverse lookup (nickname -> canonical names)
-const NICKNAME_REVERSE: Record<string, string[]> = {};
-for (const [canonical, nicknames] of Object.entries(NICKNAME_MAP)) {
-  for (const nick of nicknames) {
-    if (!NICKNAME_REVERSE[nick]) {
-      NICKNAME_REVERSE[nick] = [];
-    }
-    NICKNAME_REVERSE[nick].push(canonical);
-    // Also add all other nicknames of the same canonical name
-    for (const otherNick of nicknames) {
-      if (otherNick !== nick && !NICKNAME_REVERSE[nick].includes(otherNick)) {
-        NICKNAME_REVERSE[nick].push(otherNick);
-      }
-    }
-  }
-}
-
-// Get all name variations (canonical + nicknames)
+// Get all name variations using name-match library
 function getNameVariations(name: string): string[] {
-  const normalized = name.toLowerCase().trim();
-  const variations = new Set<string>([normalized]);
-  
-  // Add nicknames if this is a canonical name
-  if (NICKNAME_MAP[normalized]) {
-    for (const nick of NICKNAME_MAP[normalized]) {
-      variations.add(nick);
-    }
+  try {
+    const variations = NameNormalizer.getNameVariations(name);
+    return variations && variations.length > 0 ? variations : [name.toLowerCase().trim()];
+  } catch {
+    return [name.toLowerCase().trim()];
   }
-  
-  // Add canonical names and other nicknames if this is a nickname
-  if (NICKNAME_REVERSE[normalized]) {
-    for (const name of NICKNAME_REVERSE[normalized]) {
-      variations.add(name);
-    }
-  }
-  
-  return Array.from(variations);
 }
 
 // Check if two names are similar enough to be the same person
@@ -212,9 +97,17 @@ function namesMatch(searchName: string, resultText: string): boolean {
   const normalizedSearch = normalizeName(searchName);
   const normalizedResult = normalizeName(resultText);
   
-  // Split into first and last name parts
-  const searchParts = normalizedSearch.split(' ').filter(p => p.length > 1);
+  // Try name-match library first (handles nicknames like Robert/Bob, William/Bill)
+  try {
+    if (nameLibMatch(normalizedSearch, normalizedResult)) {
+      return true;
+    }
+  } catch {
+    // Fall through to manual check
+  }
   
+  // Fallback: manual check for partial matches in LinkedIn titles
+  const searchParts = normalizedSearch.split(' ').filter(p => p.length > 1);
   if (searchParts.length === 0) return false;
   
   const firstName = searchParts[0];
