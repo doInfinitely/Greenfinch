@@ -920,10 +920,9 @@ export async function findLinkedInUrl(
   try {
     const startTime = Date.now();
     
-    // Build search query: name + company + LinkedIn (keep simple for better results)
-    // City and title are used for validation, not search
-    const searchQuery = [name, company, "LinkedIn"].filter(Boolean).join(" ");
-    console.log(`[Enrichment] LinkedIn search: "${searchQuery}" (validating with: city=${city || 'none'}, title=${title || 'none'})`);
+    // Build search query: name + company + city + LinkedIn
+    const searchQuery = [name, company, city, "LinkedIn"].filter(Boolean).join(" ");
+    console.log(`[Enrichment] LinkedIn search: "${searchQuery}" (validating with: title=${title || 'none'})`);
     
     
     const results = await serpApiSearch(searchQuery);
