@@ -35,31 +35,39 @@ interface LinkedInMatch {
   };
 }
 
-async function googleCustomSearch(query: string): Promise<GoogleSearchResult | null> {
-  // Use dedicated Custom Search API key
-  const apiKey = process.env.GOOGLE_CUSTOM_SEARCH_API_KEY;
-  const cx = process.env.GOOGLE_CUSTOM_SEARCH_CX;
+async function serpApiSearch(query: string): Promise<GoogleSearchResult | null> {
+  const apiKey = process.env.SERP_API_KEY;
   
-  if (!apiKey || !cx) {
-    console.error('[Search] Missing GOOGLE_CUSTOM_SEARCH_API_KEY or GOOGLE_CUSTOM_SEARCH_CX');
+  if (!apiKey) {
+    console.error('[Search] Missing SERP_API_KEY');
     return null;
   }
 
-  const url = `https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${cx}&q=${encodeURIComponent(query)}&num=5`;
+  const url = `https://serpapi.com/search.json?api_key=${apiKey}&engine=google&q=${encodeURIComponent(query)}&num=5`;
   
   // Log request details (mask API key for security)
-  console.log(`[Search] Request: key=${apiKey?.substring(0, 8)}...${apiKey?.substring(apiKey.length - 4)}, cx=${cx}, query="${query}"`);
+  console.log(`[Search] SERP API Request: query="${query}"`);
   
   try {
     const response = await fetch(url);
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[Search] Google Custom Search error: ${response.status} - ${errorText}`);
+      console.error(`[Search] SERP API error: ${response.status} - ${errorText}`);
       return null;
     }
-    return await response.json() as GoogleSearchResult;
+    const data = await response.json();
+    
+    // Transform SERP API response to match our expected format
+    const organicResults = data.organic_results || [];
+    return {
+      items: organicResults.map((result: { title: string; link: string; snippet: string }) => ({
+        title: result.title || '',
+        link: result.link || '',
+        snippet: result.snippet || '',
+      })),
+    };
   } catch (error) {
-    console.error('[Search] Google Custom Search failed:', error);
+    console.error('[Search] SERP API failed:', error);
     return null;
   }
 }
@@ -918,11 +926,11 @@ export async function findLinkedInUrl(
     console.log(`[Enrichment] LinkedIn search: "${searchQuery}" (validating with: city=${city || 'none'}, title=${title || 'none'})`);
     
     
-    const results = await googleCustomSearch(searchQuery);
+    const results = await serpApiSearch(searchQuery);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     
     if (!results || !results.items || results.items.length === 0) {
-      console.log(`[Enrichment] Google Custom Search returned no results (${elapsed}s)`);
+      console.log(`[Enrichment] SERP API returned no results (${elapsed}s)`);
       return { linkedinUrl: null, confidence: 0 };
     }
     
