@@ -940,10 +940,10 @@ export async function findLinkedInUrl(
   try {
     const startTime = Date.now();
     
-    // Build search query: name + company + city + LinkedIn
-    const searchQuery = [name, company, city, "LinkedIn"].filter(Boolean).join(" ");
+    // Build search query: name + company + city with site restriction to linkedin.com/in profiles only
+    const searchTerms = [name, company, city].filter(Boolean).join(" ");
+    const searchQuery = `site:linkedin.com/in ${searchTerms}`;
     console.log(`[Enrichment] LinkedIn search: "${searchQuery}" (validating with: title=${title || 'none'})`);
-    
     
     const results = await serpApiSearch(searchQuery);
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
