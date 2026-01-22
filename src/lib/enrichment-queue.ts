@@ -262,7 +262,8 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
     const unenrichedProperties = await db.query.properties.findMany({
       where: or(
         isNull(properties.enrichmentStatus),
-        eq(properties.enrichmentStatus, 'pending')
+        eq(properties.enrichmentStatus, 'pending'),
+        eq(properties.enrichmentStatus, 'enriched')
       ),
       columns: { propertyKey: true },
       limit,
