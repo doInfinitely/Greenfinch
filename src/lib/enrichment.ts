@@ -705,6 +705,94 @@ Be conservative with confidence scores:
 Return ONLY valid JSON, no markdown formatting.`;
 }
 
+// Extract grounding sources from Gemini response metadata
+// These are verified URLs from Google Search, not AI-generated URLs which can be hallucinated
+function extractGroundingSources(response: any): Array<{ id: number; title: string; url: string; type: string }> {
+  try {
+    // Access grounding metadata from the response
+    // The structure varies slightly between SDK versions - try multiple paths
+    const candidates = response.candidates || response.response?.candidates || [];
+    if (candidates.length === 0) {
+      console.log('[Enrichment] No candidates in response, keys available:', Object.keys(response || {}));
+      return [];
+    }
+    
+    const candidate = candidates[0];
+    const groundingMetadata = candidate.groundingMetadata || candidate.grounding_metadata;
+    
+    if (!groundingMetadata) {
+      console.log('[Enrichment] No grounding metadata in candidate, keys available:', Object.keys(candidate || {}));
+      return [];
+    }
+    
+    // Extract grounding chunks (the actual source URLs)
+    const groundingChunks = groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || [];
+    
+    if (groundingChunks.length === 0) {
+      console.log('[Enrichment] No grounding chunks in metadata, keys available:', Object.keys(groundingMetadata || {}));
+      return [];
+    }
+    
+    // Convert to our source format - process each chunk independently to handle errors
+    const sources: Array<{ id: number; title: string; url: string; type: string }> = [];
+    let currentId = 1;
+    
+    for (const chunk of groundingChunks) {
+      try {
+        const web = chunk.web || chunk;
+        const uri = web.uri || web.url || '';
+        const title = web.title || '';
+        
+        // Skip chunks without valid URLs
+        if (!uri || typeof uri !== 'string' || !uri.startsWith('http')) {
+          console.log(`[Enrichment] Skipping invalid grounding chunk:`, chunk);
+          continue;
+        }
+        
+        // Determine source type from URL
+        let type = 'other';
+        if (uri.includes('linkedin.com')) type = 'linkedin';
+        else if (uri.includes('loopnet.com') || uri.includes('crexi.com') || uri.includes('costar.com')) type = 'property_listing';
+        else if (uri.includes('appraisal') || uri.includes('cad.org') || uri.includes('county')) type = 'county_records';
+        else if (uri.includes('sec.gov')) type = 'sec_filing';
+        else if (uri.includes('news') || uri.includes('dallasnews') || uri.includes('bizjournals')) type = 'news';
+        else if (uri.includes('.com') || uri.includes('.org')) type = 'company_website';
+        
+        // Extract hostname safely for title fallback
+        let displayTitle = title;
+        if (!displayTitle) {
+          try {
+            displayTitle = new URL(uri).hostname.replace('www.', '');
+          } catch {
+            displayTitle = uri.slice(0, 50);
+          }
+        }
+        
+        sources.push({
+          id: currentId++,
+          title: displayTitle,
+          url: uri,
+          type,
+        });
+      } catch (chunkError) {
+        console.warn('[Enrichment] Error processing grounding chunk:', chunkError);
+        // Continue to next chunk instead of failing entirely
+      }
+    }
+    
+    if (sources.length > 0) {
+      console.log(`[Enrichment] Extracted ${sources.length} grounding sources:`, sources.map(s => s.url));
+    } else {
+      console.log('[Enrichment] No valid grounding sources extracted from', groundingChunks.length, 'chunks');
+    }
+    
+    return sources;
+  } catch (error) {
+    console.warn('[Enrichment] Error extracting grounding sources:', error);
+    return [];
+  }
+}
+
 // Parse Gemini response
 function parseGeminiResponse(text: string): any {
   // Remove markdown code blocks if present
@@ -1182,7 +1270,22 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
 
     console.log(`[Enrichment] Received response, parsing...`);
     
+    // Extract grounding sources from response metadata (verified URLs from Google Search)
+    const groundingSources = extractGroundingSources(response);
+    
     const rawResponse = parseGeminiResponse(text);
+    
+    // Use grounding sources from API metadata instead of AI-generated sources
+    // This provides verified, working URLs instead of hallucinated ones
+    if (groundingSources.length > 0) {
+      console.log(`[Enrichment] Using ${groundingSources.length} grounding sources from API metadata (verified URLs)`);
+      rawResponse.sources = groundingSources;
+    } else if (rawResponse.sources && rawResponse.sources.length > 0) {
+      console.log(`[Enrichment] WARNING: Using ${rawResponse.sources.length} AI-generated sources (may have broken URLs)`);
+    } else {
+      console.log(`[Enrichment] No sources available from grounding metadata or AI response`);
+    }
+    
     const { property, contacts: enrichedContacts, organizations: enrichedOrgs } = processEnrichmentResponse(
       aggregatedProperty.propertyKey,
       rawResponse

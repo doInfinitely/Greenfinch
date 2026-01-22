@@ -169,35 +169,55 @@ function SummaryWithSources({
 }) {
   if (!summary) return null;
   
-  // Parse [1], [2], etc. in the summary and make them clickable
+  // Parse [1], [2], [9, 11], [12, 13, 15] etc. in the summary and make them clickable
   const sourceMap = new Map(sources?.map(s => [s.id, s]) || []);
   
-  // Split text by source references like [1], [2], etc.
-  const parts = summary.split(/(\[\d+\])/g);
+  // Split text by source references - handles [1], [9, 11], [12, 13, 15] patterns
+  const parts = summary.split(/(\[\d+(?:,\s*\d+)*\])/g);
   
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600 leading-relaxed">
         {parts.map((part, i) => {
-          const match = part.match(/\[(\d+)\]/);
+          // Match patterns like [1], [9, 11], [12, 13, 15]
+          const match = part.match(/\[([\d,\s]+)\]/);
           if (match) {
-            const sourceId = parseInt(match[1]);
-            const source = sourceMap.get(sourceId);
-            if (source?.url) {
-              return (
-                <a
-                  key={i}
-                  href={source.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center px-1 py-0.5 text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                  title={source.title}
-                >
-                  [{sourceId}]
-                </a>
-              );
-            }
-            return <span key={i} className="text-gray-400">{part}</span>;
+            // Extract all numbers from the citation
+            const sourceIds = match[1].split(/,\s*/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
+            
+            // Render each source ID as a separate clickable link
+            return (
+              <span key={i}>
+                [
+                {sourceIds.map((sourceId, j) => {
+                  const source = sourceMap.get(sourceId);
+                  const isLast = j === sourceIds.length - 1;
+                  
+                  if (source?.url) {
+                    return (
+                      <span key={sourceId}>
+                        <a
+                          href={source.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                          title={source.title}
+                        >
+                          {sourceId}
+                        </a>
+                        {!isLast && ', '}
+                      </span>
+                    );
+                  }
+                  return (
+                    <span key={sourceId} className="text-gray-400 text-xs">
+                      {sourceId}{!isLast && ', '}
+                    </span>
+                  );
+                })}
+                ]
+              </span>
+            );
           }
           return <span key={i}>{part}</span>;
         })}
