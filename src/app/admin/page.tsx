@@ -70,6 +70,7 @@ export default function AdminPage() {
     try {
       const response = await fetch('/api/admin/enrich-status', { credentials: 'include' });
       const data = await response.json();
+      console.log('[Admin] Enrichment status:', data);
       setEnrichmentStatus(data);
     } catch (error) {
       console.error('Failed to fetch enrichment status:', error);
@@ -301,7 +302,7 @@ export default function AdminPage() {
               {isStartingEnrichment ? 'Starting...' : enrichmentStatus?.isRunning ? 'Batch Running...' : 'Start Enrichment'}
             </button>
 
-            {enrichmentStatus && enrichmentStatus.status !== 'idle' && (
+            {enrichmentStatus && (enrichmentStatus.isRunning || enrichmentStatus.status !== 'idle') && (
               <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-gray-700">Status</span>
