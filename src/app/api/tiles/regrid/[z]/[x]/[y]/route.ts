@@ -5,8 +5,8 @@ import path from 'path';
 const CACHE_DIR = '/tmp/regrid-tiles';
 const CACHE_MAX_AGE_HOURS = 24 * 7;
 
-// Minimal valid empty MVT tile (Mapbox expects valid protobuf, not empty response)
-const EMPTY_TILE = Buffer.from([0x1a, 0x00]);
+// Empty MVT tile - zero bytes is valid for "no data" in MVT format
+const EMPTY_TILE = Buffer.alloc(0);
 
 async function ensureCacheDir() {
   try {

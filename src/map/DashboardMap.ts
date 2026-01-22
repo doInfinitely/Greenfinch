@@ -88,8 +88,10 @@ export class DashboardMap {
     this.map.on('moveend', () => {
       if (this.isDestroyed) return;
       this.emitBounds();
-      // Force tile source to check for new tiles after panning
-      this.triggerSourceUpdate();
+      // Force a repaint to ensure newly loaded tiles are rendered
+      if (this.map && this.styleReady) {
+        this.map.triggerRepaint();
+      }
     });
 
     this.map.on('zoom', () => {
@@ -113,7 +115,8 @@ export class DashboardMap {
     if (needsSatellite) {
       this.switchStyle(SATELLITE_STYLE);
     } else if (needsLight) {
-      this.switchStyle(LIGHT_STYLE);
+      // Temporarily disabled light switch to debug tile loading issue
+      // this.switchStyle(LIGHT_STYLE);
     }
   }
 
@@ -187,7 +190,6 @@ export class DashboardMap {
         minzoom: 10,
         maxzoom: 21,
         promoteId: 'll_uuid',
-        volatile: true,
       });
     }
   }
@@ -520,23 +522,6 @@ export class DashboardMap {
       // Check if we need to switch styles after animation
       this.checkStyleSwitch();
     });
-  }
-
-  private triggerSourceUpdate() {
-    if (!this.map || !this.styleReady) return;
-    
-    // Force the regrid source to reload tiles by re-setting the tiles URL
-    // This triggers Mapbox to re-request tiles for the current viewport
-    const source = this.map.getSource('regrid') as mapboxgl.VectorTileSource | undefined;
-    if (source) {
-      const regridTileUrl = this.config.regridTileUrl || 
-        (this.config.regridToken ? `https://tiles.regrid.com/api/v1/parcels/{z}/{x}/{y}.mvt?token=${this.config.regridToken}` : null);
-      
-      if (regridTileUrl) {
-        // Re-set the same URL to trigger Mapbox to re-evaluate which tiles are needed
-        source.setTiles([regridTileUrl]);
-      }
-    }
   }
 
   destroy() {
