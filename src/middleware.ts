@@ -8,6 +8,7 @@ const isPublicRoute = createRouteMatcher([
   '/waitlist(.*)',
   '/api/waitlist(.*)',
   '/api/config(.*)',
+  '/api/tiles(.*)',
   '/sign-in(.*)',
   '/sign-up(.*)',
 ]);

@@ -20,15 +20,27 @@ function getMetaPath(z: string, x: string, y: string): string {
   return path.join(CACHE_DIR, `${z}_${x}_${y}.meta.json`);
 }
 
-async function isCacheValid(metaPath: string): Promise<boolean> {
+interface CacheMeta {
+  cachedAt: string;
+  z: string;
+  x: string;
+  y: string;
+  size: number;
+  contentEncoding?: string;
+}
+
+async function getCacheMeta(metaPath: string): Promise<CacheMeta | null> {
   try {
     const metaContent = await fs.readFile(metaPath, 'utf-8');
-    const meta = JSON.parse(metaContent);
+    const meta = JSON.parse(metaContent) as CacheMeta;
     const cachedAt = new Date(meta.cachedAt).getTime();
     const maxAge = CACHE_MAX_AGE_HOURS * 60 * 60 * 1000;
-    return Date.now() - cachedAt < maxAge;
+    if (Date.now() - cachedAt < maxAge) {
+      return meta;
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -49,28 +61,27 @@ export async function GET(
     const cachePath = getCachePath(z, x, y);
     const metaPath = getMetaPath(z, x, y);
 
-    if (await isCacheValid(metaPath)) {
+    const cachedMeta = await getCacheMeta(metaPath);
+    if (cachedMeta) {
       try {
         const cachedTile = await fs.readFile(cachePath);
-        return new NextResponse(cachedTile, {
-          headers: {
-            'Content-Type': 'application/x-protobuf',
-            'Content-Encoding': 'gzip',
-            'Cache-Control': 'public, max-age=86400',
-            'X-Cache': 'HIT',
-          },
-        });
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/vnd.mapbox-vector-tile',
+          'Cache-Control': 'public, max-age=86400',
+          'X-Cache': 'HIT',
+          'Access-Control-Allow-Origin': '*',
+        };
+        if (cachedMeta.contentEncoding) {
+          headers['Content-Encoding'] = cachedMeta.contentEncoding;
+        }
+        return new NextResponse(cachedTile, { headers });
       } catch {
       }
     }
 
     const regridUrl = `https://tiles.regrid.com/api/v1/parcels/${z}/${x}/${y}.mvt?token=${apiKey}`;
     
-    const response = await fetch(regridUrl, {
-      headers: {
-        'Accept-Encoding': 'gzip',
-      },
-    });
+    const response = await fetch(regridUrl);
 
     if (!response.ok) {
       if (response.status === 204 || response.status === 404) {
@@ -82,6 +93,7 @@ export async function GET(
     }
 
     const tileData = Buffer.from(await response.arrayBuffer());
+    const contentEncoding = response.headers.get('content-encoding') || undefined;
 
     try {
       await fs.writeFile(cachePath, tileData);
@@ -89,19 +101,23 @@ export async function GET(
         cachedAt: new Date().toISOString(),
         z, x, y,
         size: tileData.length,
+        contentEncoding,
       }));
     } catch (cacheError) {
       console.warn('[Tile Cache] Failed to write cache:', cacheError);
     }
 
-    return new NextResponse(tileData, {
-      headers: {
-        'Content-Type': 'application/x-protobuf',
-        'Content-Encoding': 'gzip',
-        'Cache-Control': 'public, max-age=86400',
-        'X-Cache': 'MISS',
-      },
-    });
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/vnd.mapbox-vector-tile',
+      'Cache-Control': 'public, max-age=86400',
+      'X-Cache': 'MISS',
+      'Access-Control-Allow-Origin': '*',
+    };
+    if (contentEncoding) {
+      headers['Content-Encoding'] = contentEncoding;
+    }
+
+    return new NextResponse(tileData, { headers });
   } catch (error) {
     console.error('[Tile Cache] Error:', error);
     return new NextResponse('Internal server error', { status: 500 });
