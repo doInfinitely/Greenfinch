@@ -4,6 +4,7 @@ export async function GET() {
   return NextResponse.json({
     mapboxToken: process.env.MAPBOX_API_KEY || '',
     regridToken: process.env.REGRID_API_KEY || '',
+    regridTileUrl: '/api/tiles/regrid/{z}/{x}/{y}',
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   });
 }

@@ -16,6 +16,7 @@ export interface GoogleMapConfig {
   container: HTMLElement;
   apiKey: string;
   regridToken?: string;
+  regridTileUrl?: string;
   initialCenter?: { lat: number; lon: number };
   initialZoom?: number;
   onBoundsChange?: (bounds: MapBounds, zoom: number) => void;
@@ -103,7 +104,7 @@ export class GoogleMapController {
   }
 
   private setupDeckOverlay() {
-    if (!this.map || !this.config.regridToken) return;
+    if (!this.map || (!this.config.regridToken && !this.config.regridTileUrl)) return;
 
     this.deckOverlay = new GoogleMapsOverlay({
       layers: this.createLayers(),
@@ -117,11 +118,14 @@ export class GoogleMapController {
     const zoom = this.currentZoom;
     const showParcels = zoom >= 15;
 
-    if (showParcels && this.config.regridToken) {
+    const regridTileUrl = this.config.regridTileUrl || 
+      (this.config.regridToken ? `https://tiles.regrid.com/api/v1/parcels/{z}/{x}/{y}.mvt?token=${this.config.regridToken}` : null);
+
+    if (showParcels && regridTileUrl) {
       layers.push(
         new MVTLayer({
           id: 'regrid-parcels',
-          data: `https://tiles.regrid.com/api/v1/parcels/{z}/{x}/{y}.mvt?token=${this.config.regridToken}`,
+          data: regridTileUrl,
           minZoom: 10,
           maxZoom: 21,
           uniqueIdProperty: 'll_uuid',

@@ -67,7 +67,7 @@ function getZoomForType(type: string, hasPropertyKey: boolean): number {
 export default function MapPage() {
   const router = useRouter();
   const mapRef = useRef<MapCanvasHandle>(null);
-  const [config, setConfig] = useState<{ mapboxToken: string; regridToken: string } | null>(null);
+  const [config, setConfig] = useState<{ mapboxToken: string; regridToken: string; regridTileUrl: string } | null>(null);
   const [allProperties, setAllProperties] = useState<PropertyFeature[]>([]);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 32.8639, lon: -96.7784 });
@@ -79,7 +79,7 @@ export default function MapPage() {
       fetch('/api/config').then(r => r.json()),
       fetch('/api/properties/geojson').then(r => r.json()),
     ]).then(([configData, geoData]) => {
-      setConfig({ mapboxToken: configData.mapboxToken, regridToken: configData.regridToken });
+      setConfig({ mapboxToken: configData.mapboxToken, regridToken: configData.regridToken, regridTileUrl: configData.regridTileUrl });
       setAllProperties(geoData.features || []);
       setIsLoading(false);
     }).catch(() => setIsLoading(false));
@@ -154,6 +154,7 @@ export default function MapPage() {
           ref={mapRef}
           accessToken={config.mapboxToken}
           regridToken={config.regridToken}
+          regridTileUrl={config.regridTileUrl}
           properties={filteredProperties}
           onBoundsChange={handleBoundsChange}
           onPropertyClick={handlePropertyClick}

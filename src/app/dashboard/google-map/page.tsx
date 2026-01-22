@@ -38,7 +38,7 @@ interface PropertyFeature {
 export default function GoogleMapPage() {
   const router = useRouter();
   const mapRef = useRef<GoogleMapCanvasHandle>(null);
-  const [config, setConfig] = useState<{ googleMapsApiKey: string; regridToken: string } | null>(null);
+  const [config, setConfig] = useState<{ googleMapsApiKey: string; regridToken: string; regridTileUrl: string } | null>(null);
   const [allProperties, setAllProperties] = useState<PropertyFeature[]>([]);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -49,7 +49,7 @@ export default function GoogleMapPage() {
       fetch('/api/config').then(r => r.json()),
       fetch('/api/properties/geojson').then(r => r.json()),
     ]).then(([configData, geoData]) => {
-      setConfig({ googleMapsApiKey: configData.googleMapsApiKey, regridToken: configData.regridToken });
+      setConfig({ googleMapsApiKey: configData.googleMapsApiKey, regridToken: configData.regridToken, regridTileUrl: configData.regridTileUrl });
       setAllProperties(geoData.features || []);
       setIsLoading(false);
     }).catch(() => setIsLoading(false));
@@ -117,6 +117,7 @@ export default function GoogleMapPage() {
           ref={mapRef}
           apiKey={config.googleMapsApiKey}
           regridToken={config.regridToken}
+          regridTileUrl={config.regridTileUrl}
           properties={filteredProperties}
           onBoundsChange={handleBoundsChange}
           onPropertyClick={handlePropertyClick}

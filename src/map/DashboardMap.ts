@@ -14,6 +14,7 @@ export interface DashboardMapConfig {
   container: HTMLElement;
   accessToken: string;
   regridToken?: string;
+  regridTileUrl?: string;
   initialCenter?: { lat: number; lon: number };
   initialZoom?: number;
   onBoundsChange?: (bounds: MapBounds, zoom: number) => void;
@@ -173,11 +174,14 @@ export class DashboardMap {
       });
     }
 
-    // Regrid parcel source
-    if (this.config.regridToken && !this.map.getSource('regrid')) {
+    // Regrid parcel source (use cached tile URL if available)
+    const regridTileUrl = this.config.regridTileUrl || 
+      (this.config.regridToken ? `https://tiles.regrid.com/api/v1/parcels/{z}/{x}/{y}.mvt?token=${this.config.regridToken}` : null);
+    
+    if (regridTileUrl && !this.map.getSource('regrid')) {
       this.map.addSource('regrid', {
         type: 'vector',
-        tiles: [`https://tiles.regrid.com/api/v1/parcels/{z}/{x}/{y}.mvt?token=${this.config.regridToken}`],
+        tiles: [regridTileUrl],
         minzoom: 10,
         maxzoom: 21,
         promoteId: 'll_uuid',
@@ -189,7 +193,7 @@ export class DashboardMap {
     if (!this.map) return;
 
     // Add parcel layers first (below markers)
-    if (this.config.regridToken && this.map.getSource('regrid')) {
+    if ((this.config.regridToken || this.config.regridTileUrl) && this.map.getSource('regrid')) {
       if (!this.map.getLayer('parcels-fill')) {
         this.map.addLayer({
           id: 'parcels-fill',

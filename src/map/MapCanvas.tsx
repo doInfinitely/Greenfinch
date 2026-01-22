@@ -7,6 +7,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 interface MapCanvasProps {
   accessToken: string;
   regridToken?: string;
+  regridTileUrl?: string;
   properties: GeoJSON.Feature[];
   initialCenter?: { lat: number; lon: number };
   initialZoom?: number;
@@ -21,6 +22,7 @@ export interface MapCanvasHandle {
 const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
   accessToken,
   regridToken,
+  regridTileUrl,
   properties,
   initialCenter,
   initialZoom,
@@ -47,6 +49,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
       container: containerRef.current,
       accessToken,
       regridToken,
+      regridTileUrl,
       initialCenter,
       initialZoom,
       onBoundsChange: (bounds, zoom) => {
@@ -71,7 +74,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
         mapRef.current = null;
       }
     };
-  }, [accessToken, regridToken, initialCenter, initialZoom]);
+  }, [accessToken, regridToken, regridTileUrl, initialCenter, initialZoom]);
 
   useEffect(() => {
     if (!mapRef.current) return;

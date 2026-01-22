@@ -6,6 +6,7 @@ import { GoogleMapController, MapBounds } from './GoogleMap';
 interface GoogleMapCanvasProps {
   apiKey: string;
   regridToken?: string;
+  regridTileUrl?: string;
   properties: GeoJSON.Feature[];
   initialCenter?: { lat: number; lon: number };
   initialZoom?: number;
@@ -20,6 +21,7 @@ export interface GoogleMapCanvasHandle {
 const GoogleMapCanvas = forwardRef<GoogleMapCanvasHandle, GoogleMapCanvasProps>(({
   apiKey,
   regridToken,
+  regridTileUrl,
   properties,
   initialCenter,
   initialZoom,
@@ -45,6 +47,7 @@ const GoogleMapCanvas = forwardRef<GoogleMapCanvasHandle, GoogleMapCanvasProps>(
       container: containerRef.current,
       apiKey,
       regridToken,
+      regridTileUrl,
       initialCenter,
       initialZoom,
       onBoundsChange: (bounds, zoom) => {
@@ -59,7 +62,7 @@ const GoogleMapCanvas = forwardRef<GoogleMapCanvasHandle, GoogleMapCanvasProps>(
       controllerRef.current?.destroy();
       controllerRef.current = null;
     };
-  }, [apiKey, regridToken, initialCenter?.lat, initialCenter?.lon, initialZoom]);
+  }, [apiKey, regridToken, regridTileUrl, initialCenter?.lat, initialCenter?.lon, initialZoom]);
 
   useEffect(() => {
     if (controllerRef.current) {
