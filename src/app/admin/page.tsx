@@ -56,7 +56,7 @@ export default function AdminPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const response = await fetch('/api/admin/stats');
+      const response = await fetch('/api/admin/stats', { credentials: 'include' });
       const data = await response.json();
       setStats(data);
     } catch (error) {
@@ -68,7 +68,7 @@ export default function AdminPage() {
 
   const fetchEnrichmentStatus = useCallback(async () => {
     try {
-      const response = await fetch('/api/admin/enrich-status');
+      const response = await fetch('/api/admin/enrich-status', { credentials: 'include' });
       const data = await response.json();
       setEnrichmentStatus(data);
     } catch (error) {
@@ -95,6 +95,7 @@ export default function AdminPage() {
       const response = await fetch('/api/admin/ingest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           limit: parseInt(ingestLimit) || 1000,
           offset: parseInt(ingestOffset) || 0,
@@ -121,6 +122,7 @@ export default function AdminPage() {
       const response = await fetch('/api/admin/enrich-batch', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({
           limit: parseInt(enrichLimit) || 50,
           onlyUnenriched,
