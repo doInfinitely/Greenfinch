@@ -185,6 +185,7 @@ export class DashboardMap {
         minzoom: 10,
         maxzoom: 21,
         promoteId: 'll_uuid',
+        volatile: true,
       });
     }
   }
