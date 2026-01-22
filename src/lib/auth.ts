@@ -91,72 +91,57 @@ interface ClerkUser {
 async function getOrCreateUser(clerkUser: ClerkUser): Promise<User | null> {
   const primaryEmail = clerkUser.emailAddresses[0]?.emailAddress || null;
   
-  const existingUsers = await db
+  // First, try to find by clerkId
+  const existingByClerkId = await db
     .select()
     .from(users)
     .where(eq(users.clerkId, clerkUser.id))
     .limit(1);
   
-  if (existingUsers.length > 0) {
-    const existingUser = existingUsers[0];
-    
-    if (primaryEmail && !existingUser.serviceProviderId) {
-      const matchingProvider = await findMatchingServiceProvider(primaryEmail);
-      if (matchingProvider) {
-        console.log(`[Auth] Linking user ${clerkUser.id} to service provider: ${matchingProvider.name}`);
-        
-        const [updated] = await db
-          .update(users)
-          .set({
-            email: primaryEmail,
-            firstName: clerkUser.firstName || existingUser.firstName,
-            lastName: clerkUser.lastName || existingUser.lastName,
-            profileImageUrl: clerkUser.imageUrl || existingUser.profileImageUrl,
-            companyDomain: extractDomain(primaryEmail),
-            companyName: matchingProvider.name,
-            serviceProviderId: matchingProvider.id,
-            updatedAt: new Date(),
-          })
-          .where(eq(users.clerkId, clerkUser.id))
-          .returning();
-        
-        return {
-          id: updated.id,
-          clerkId: updated.clerkId || '',
-          email: updated.email,
-          firstName: updated.firstName,
-          lastName: updated.lastName,
-          profileImageUrl: updated.profileImageUrl,
-          role: (updated.role as UserRole) || 'standard_user',
-          isActive: updated.isActive ?? true,
-        };
-      }
-    }
-    
-    const [updated] = await db
-      .update(users)
-      .set({
-        email: primaryEmail || existingUser.email,
-        firstName: clerkUser.firstName || existingUser.firstName,
-        lastName: clerkUser.lastName || existingUser.lastName,
-        profileImageUrl: clerkUser.imageUrl || existingUser.profileImageUrl,
-        updatedAt: new Date(),
-      })
-      .where(eq(users.clerkId, clerkUser.id))
-      .returning();
-    
-    return {
-      id: updated.id,
-      clerkId: updated.clerkId || '',
-      email: updated.email,
-      firstName: updated.firstName,
-      lastName: updated.lastName,
-      profileImageUrl: updated.profileImageUrl,
-      role: (updated.role as UserRole) || 'standard_user',
-      isActive: updated.isActive ?? true,
-    };
+  if (existingByClerkId.length > 0) {
+    const existingUser = existingByClerkId[0];
+    return await updateExistingUser(clerkUser, existingUser, primaryEmail);
   }
   
+  // Fallback: Try to find by email (for legacy users migrating from Replit Auth)
+  if (primaryEmail) {
+    const existingByEmail = await db
+      .select()
+      .from(users)
+      .where(eq(users.email, primaryEmail))
+      .limit(1);
+    
+    if (existingByEmail.length > 0) {
+      const existingUser = existingByEmail[0];
+      console.log(`[Auth] Migrating legacy user ${primaryEmail} to Clerk ID ${clerkUser.id}`);
+      
+      // Link Clerk ID to existing user
+      const [updated] = await db
+        .update(users)
+        .set({
+          clerkId: clerkUser.id,
+          firstName: clerkUser.firstName || existingUser.firstName,
+          lastName: clerkUser.lastName || existingUser.lastName,
+          profileImageUrl: clerkUser.imageUrl || existingUser.profileImageUrl,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, existingUser.id))
+        .returning();
+      
+      return {
+        id: updated.id,
+        clerkId: updated.clerkId || '',
+        email: updated.email,
+        firstName: updated.firstName,
+        lastName: updated.lastName,
+        profileImageUrl: updated.profileImageUrl,
+        role: (updated.role as UserRole) || 'standard_user',
+        isActive: updated.isActive ?? true,
+      };
+    }
+  }
+  
+  // Create new user
   const matchingProvider = await findMatchingServiceProvider(primaryEmail);
   const domain = extractDomain(primaryEmail);
   
@@ -171,6 +156,7 @@ async function getOrCreateUser(clerkUser: ClerkUser): Promise<User | null> {
       companyDomain: domain,
       companyName: matchingProvider?.name || null,
       serviceProviderId: matchingProvider?.id || null,
+      isActive: true,
     })
     .returning();
   
@@ -187,6 +173,70 @@ async function getOrCreateUser(clerkUser: ClerkUser): Promise<User | null> {
     profileImageUrl: newUser.profileImageUrl,
     role: (newUser.role as UserRole) || 'standard_user',
     isActive: newUser.isActive ?? true,
+  };
+}
+
+async function updateExistingUser(
+  clerkUser: ClerkUser,
+  existingUser: typeof users.$inferSelect,
+  primaryEmail: string | null
+): Promise<User> {
+  // Check if we should link to a service provider
+  if (primaryEmail && !existingUser.serviceProviderId) {
+    const matchingProvider = await findMatchingServiceProvider(primaryEmail);
+    if (matchingProvider) {
+      console.log(`[Auth] Linking user ${clerkUser.id} to service provider: ${matchingProvider.name}`);
+      
+      const [updated] = await db
+        .update(users)
+        .set({
+          email: primaryEmail,
+          firstName: clerkUser.firstName || existingUser.firstName,
+          lastName: clerkUser.lastName || existingUser.lastName,
+          profileImageUrl: clerkUser.imageUrl || existingUser.profileImageUrl,
+          companyDomain: extractDomain(primaryEmail),
+          companyName: matchingProvider.name,
+          serviceProviderId: matchingProvider.id,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, existingUser.id))
+        .returning();
+      
+      return {
+        id: updated.id,
+        clerkId: updated.clerkId || '',
+        email: updated.email,
+        firstName: updated.firstName,
+        lastName: updated.lastName,
+        profileImageUrl: updated.profileImageUrl,
+        role: (updated.role as UserRole) || 'standard_user',
+        isActive: updated.isActive ?? true,
+      };
+    }
+  }
+  
+  // Standard update
+  const [updated] = await db
+    .update(users)
+    .set({
+      email: primaryEmail || existingUser.email,
+      firstName: clerkUser.firstName || existingUser.firstName,
+      lastName: clerkUser.lastName || existingUser.lastName,
+      profileImageUrl: clerkUser.imageUrl || existingUser.profileImageUrl,
+      updatedAt: new Date(),
+    })
+    .where(eq(users.id, existingUser.id))
+    .returning();
+  
+  return {
+    id: updated.id,
+    clerkId: updated.clerkId || '',
+    email: updated.email,
+    firstName: updated.firstName,
+    lastName: updated.lastName,
+    profileImageUrl: updated.profileImageUrl,
+    role: (updated.role as UserRole) || 'standard_user',
+    isActive: updated.isActive ?? true,
   };
 }
 

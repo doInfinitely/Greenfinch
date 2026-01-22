@@ -36,7 +36,8 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **PostgreSQL**: The primary operational database, storing enriched property records, contacts, organizations, and user-generated lists. The schema includes `users`, `sessions`, `properties`, `contacts`, `organizations`, and various linking tables.
 
 ### Authentication System
-- **Replit Auth**: Implements session-based authentication using OpenID Connect + PKCE flow.
+- **Clerk Auth**: Implements authentication using Clerk SDK with Next.js middleware for route protection.
+- **Migration Support**: Legacy Replit Auth users are automatically migrated to Clerk by matching email addresses on first login.
 - **Role-Based Access Control**: Supports user roles (`standard_user`, `team_manager`, `account_admin`, `system_admin`) for managing access to features and routes, with protected admin routes and enforced list ownership.
 
 ### UI/UX Decisions
@@ -54,7 +55,7 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Snowflake**: For Regrid parcel data access and ingestion.
 - **Mapbox**: Used for interactive mapping, geocoding, and Point of Interest (POI) enrichment.
 - **LeadMagic**: Provides email validation services.
-- **Replit Auth**: Handles user authentication.
+- **Clerk Auth**: Handles user authentication with automatic legacy user migration.
 - **Google Gemini**: Utilized for AI-based property enrichment, including contact discovery, beneficial owner identification, and management company detection.
 
 ## AI Enrichment Rules
