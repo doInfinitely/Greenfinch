@@ -551,7 +551,7 @@ export default function PropertyDetailPage() {
     setFlagMessage(null);
     
     try {
-      const response = await fetch(`/api/properties/${property.id}/flag`, {
+      const response = await fetch(`/api/properties/${property.propertyKey}/flag`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -617,7 +617,7 @@ export default function PropertyDetailPage() {
     
     setIsSubmittingServiceProvider(true);
     try {
-      const response = await fetch(`/api/properties/${property.id}/service-providers`, {
+      const response = await fetch(`/api/properties/${property.propertyKey}/service-providers`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
