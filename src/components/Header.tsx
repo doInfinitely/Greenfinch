@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SignInButton, UserButton, useUser, OrganizationSwitcher, useAuth } from '@clerk/nextjs';
+import { Settings } from 'lucide-react';
 
 interface HeaderProps {
   showBackButton?: boolean;
@@ -163,6 +164,14 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
                   {orgRole?.replace('org:', '').toUpperCase()}
                 </span>
               )}
+              <Link
+                href="/settings"
+                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Account Settings"
+                data-testid="link-settings"
+              >
+                <Settings className="w-5 h-5" />
+              </Link>
               <UserButton afterSignOutUrl="/" />
             </div>
           ) : (
@@ -216,6 +225,15 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
                   afterSelectOrganizationUrl="/dashboard"
                   afterSelectPersonalUrl="/dashboard"
                 />
+                <Link
+                  href="/settings"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center px-3 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                  data-testid="link-settings-mobile"
+                >
+                  <Settings className="w-4 h-4 mr-2" />
+                  Settings
+                </Link>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <span className="text-sm text-gray-700">{getUserDisplayName()}</span>

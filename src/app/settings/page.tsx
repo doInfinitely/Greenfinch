@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { ArrowLeft, Building2, Save, Check } from 'lucide-react';
+import { Building2, Save, Check } from 'lucide-react';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
+import Header from '@/components/Header';
 
 interface UserSettings {
   companyName: string | null;
@@ -13,7 +13,6 @@ interface UserSettings {
 }
 
 export default function SettingsPage() {
-  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -84,24 +83,19 @@ export default function SettingsPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="flex items-center justify-center py-16">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-3xl mx-auto px-4 py-8">
-        <button
-          onClick={() => router.back()}
-          className="flex items-center text-gray-600 hover:text-gray-900 mb-6"
-          data-testid="button-back"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
-        </button>
-
+      <Header />
+      <main className="max-w-3xl mx-auto px-4 py-8">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
             <h1 className="text-xl font-semibold text-gray-900">Account Settings</h1>
@@ -242,7 +236,7 @@ export default function SettingsPage() {
             </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
