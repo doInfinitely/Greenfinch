@@ -36,9 +36,14 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **PostgreSQL**: The primary operational database, storing enriched property records, contacts, organizations, and user-generated lists. The schema includes `users`, `sessions`, `properties`, `contacts`, `organizations`, and various linking tables.
 
 ### Authentication System
-- **Clerk Auth**: Implements authentication using Clerk SDK with Next.js middleware for route protection.
+- **Clerk Auth**: Implements authentication using Clerk SDK with Next.js proxy for route protection.
 - **Migration Support**: Legacy Replit Auth users are automatically migrated to Clerk by matching email addresses on first login.
-- **Role-Based Access Control**: Supports user roles (`standard_user`, `team_manager`, `account_admin`, `system_admin`) for managing access to features and routes, with protected admin routes and enforced list ownership.
+- **Role-Based Access Control**: Uses Clerk Organizations for role management with the following structure:
+  - **Internal Organization**: `greenfinch` slug for internal team members
+  - **Roles**: `org:super_admin`, `org:admin`, `org:support`, `org:member`, `org:viewer`
+  - **Permissions**: Defined in `src/lib/permissions.ts` including `admin:ingest`, `admin:enrich`, `data:read/write/delete`, etc.
+  - **Route Protection**: `/admin/*` routes require admin role in greenfinch org, `/internal/*` requires greenfinch org membership
+  - **Components**: `PermissionGate`, `AdminOnly`, `InternalOnly`, `AdminBadge` for UI-level access control
 
 ### UI/UX Decisions
 - **Interactive Maps**: Utilizes Mapbox for displaying property data, clusters, and interactive elements.

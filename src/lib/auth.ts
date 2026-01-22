@@ -2,6 +2,7 @@ import { db } from './db';
 import { users, serviceProviders } from './schema';
 import { eq, ilike } from 'drizzle-orm';
 import { currentUser, auth } from '@clerk/nextjs/server';
+import { ROLES, INTERNAL_ORG_SLUG, Permission, getRolePermissions } from './permissions';
 
 export type UserRole = 'standard_user' | 'team_manager' | 'account_admin' | 'system_admin';
 
@@ -243,4 +244,41 @@ async function updateExistingUser(
 export async function getUserId(): Promise<string | null> {
   const { userId } = await auth();
   return userId;
+}
+
+export async function getUserPermissions(): Promise<Set<Permission>> {
+  const authData = await auth();
+  const permissions = new Set<Permission>();
+  
+  const orgRole = authData.orgRole;
+  if (orgRole) {
+    getRolePermissions(orgRole).forEach(p => permissions.add(p));
+  }
+  
+  return permissions;
+}
+
+export async function hasPermission(permission: Permission): Promise<boolean> {
+  const permissions = await getUserPermissions();
+  return permissions.has(permission);
+}
+
+export async function isInternalUser(): Promise<boolean> {
+  const user = await currentUser();
+  const memberships = (user as { organizationMemberships?: Array<{ organization: { slug: string } }> })?.organizationMemberships;
+  return memberships?.some(
+    (mem) => mem.organization.slug === INTERNAL_ORG_SLUG
+  ) ?? false;
+}
+
+export async function isInternalAdmin(): Promise<boolean> {
+  const authData = await auth();
+  return authData.orgSlug === INTERNAL_ORG_SLUG && 
+         (authData.orgRole === 'org:super_admin' || authData.orgRole === 'org:admin');
+}
+
+export async function requirePermission(permission: Permission): Promise<void> {
+  if (!(await hasPermission(permission))) {
+    throw new Error(`FORBIDDEN: Missing permission ${permission}`);
+  }
 }

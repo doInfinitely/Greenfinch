@@ -1,0 +1,275 @@
+Here's a practical permissions structure for Greenfinch:
+
+## 1. Define Permissions & Roles
+
+```typescript
+// lib/permissions.ts
+
+export const PERMISSIONS = {
+  // Data access
+  'data:read': 'View property data',
+  'data:write': 'Edit property data',
+  'data:delete': 'Delete property data',
+  'data:export': 'Export/download data',
+  
+  // Admin functions
+  'admin:users': 'Manage users',
+  'admin:billing': 'Manage billing',
+  'admin:settings': 'Manage system settings',
+  'admin:impersonate': 'Impersonate customers',
+  
+  // Customer-specific
+  'properties:view': 'View properties',
+  'properties:enrich': 'Run enrichment',
+  'reports:create': 'Create reports',
+  'api:access': 'API access',
+} as const;
+
+export type Permission = keyof typeof PERMISSIONS;
+
+// Role definitions
+export const ROLES = {
+  // Internal roles (Greenfinch org)
+  'org:super_admin': [
+    'data:read', 'data:write', 'data:delete', 'data:export',
+    'admin:users', 'admin:billing', 'admin:settings', 'admin:impersonate',
+    'properties:view', 'properties:enrich', 'reports:create', 'api:access',
+  ],
+  'org:admin': [
+    'data:read', 'data:write', 'data:export',
+    'admin:users', 'admin:impersonate',
+    'properties:view', 'properties:enrich', 'reports:create', 'api:access',
+  ],
+  'org:support': [
+    'data:read',
+    'admin:impersonate',
+    'properties:view',
+  ],
+  
+  // Customer roles
+  'org:member': [
+    'properties:view', 'properties:enrich', 'reports:create',
+  ],
+  'org:viewer': [
+    'properties:view',
+  ],
+} as const;
+
+export const INTERNAL_ORG_SLUG = 'greenfinch';
+```
+
+## 2. Permission Helpers
+
+```typescript
+// lib/auth.ts
+import { auth, currentUser } from '@clerk/nextjs/server';
+import { ROLES, INTERNAL_ORG_SLUG, Permission } from './permissions';
+
+export async function getUserPermissions(): Promise<Set<Permission>> {
+  const { orgSlug, orgRole } = auth();
+  const permissions = new Set<Permission>();
+  
+  if (orgRole && ROLES[orgRole as keyof typeof ROLES]) {
+    ROLES[orgRole as keyof typeof ROLES].forEach(p => permissions.add(p as Permission));
+  }
+  
+  return permissions;
+}
+
+export async function hasPermission(permission: Permission): Promise<boolean> {
+  const permissions = await getUserPermissions();
+  return permissions.has(permission);
+}
+
+export async function isInternalUser(): Promise<boolean> {
+  const user = await currentUser();
+  return user?.organizationMemberships?.some(
+    (mem) => mem.organization.slug === INTERNAL_ORG_SLUG
+  ) ?? false;
+}
+
+export async function isInternalAdmin(): Promise<boolean> {
+  const { orgSlug, orgRole } = auth();
+  return orgSlug === INTERNAL_ORG_SLUG && 
+         (orgRole === 'org:super_admin' || orgRole === 'org:admin');
+}
+
+export async function requirePermission(permission: Permission): Promise<void> {
+  if (!(await hasPermission(permission))) {
+    throw new Error(`Missing permission: ${permission}`);
+  }
+}
+```
+
+## 3. Middleware
+
+```typescript
+// middleware.ts
+import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+
+const isPublicRoute = createRouteMatcher([
+  '/',
+  '/sign-in(.*)',
+  '/sign-up(.*)',
+  '/api/webhooks(.*)',
+]);
+
+const isAdminRoute = createRouteMatcher([
+  '/admin(.*)',
+  '/api/admin(.*)',
+]);
+
+const isInternalRoute = createRouteMatcher([
+  '/internal(.*)',
+  '/api/internal(.*)',
+]);
+
+export default clerkMiddleware(async (auth, req) => {
+  const { userId, orgSlug, orgRole } = auth();
+  
+  // Public routes - no auth needed
+  if (isPublicRoute(req)) {
+    return;
+  }
+  
+  // All other routes require auth
+  if (!userId) {
+    return auth().redirectToSignIn();
+  }
+  
+  // Internal routes - must be Greenfinch org member
+  if (isInternalRoute(req)) {
+    if (orgSlug !== 'greenfinch') {
+      return new Response('Forbidden', { status: 403 });
+    }
+  }
+  
+  // Admin routes - must be admin role in Greenfinch org
+  if (isAdminRoute(req)) {
+    const isAdmin = orgSlug === 'greenfinch' && 
+                    ['org:super_admin', 'org:admin'].includes(orgRole || '');
+    if (!isAdmin) {
+      return new Response('Forbidden', { status: 403 });
+    }
+  }
+});
+
+export const config = {
+  matcher: ['/((?!.*\\..*|_next).*)', '/', '/(api|trpc)(.*)'],
+};
+```
+
+## 4. API Route Protection
+
+```typescript
+// app/api/properties/route.ts
+import { NextResponse } from 'next/server';
+import { hasPermission, requirePermission } from '@/lib/auth';
+
+export async function GET(req: Request) {
+  try {
+    await requirePermission('properties:view');
+    
+    // Fetch and return properties...
+    return NextResponse.json({ properties: [] });
+  } catch (error) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    await requirePermission('data:delete');
+    
+    // Delete logic...
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+  }
+}
+```
+
+## 5. React Component Protection
+
+```typescript
+// components/PermissionGate.tsx
+'use client';
+
+import { useAuth, useOrganization } from '@clerk/nextjs';
+import { ROLES, INTERNAL_ORG_SLUG, Permission } from '@/lib/permissions';
+
+interface PermissionGateProps {
+  permission: Permission;
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+}
+
+export function PermissionGate({ permission, children, fallback = null }: PermissionGateProps) {
+  const { orgRole } = useAuth();
+  
+  const permissions = new Set(
+    ROLES[orgRole as keyof typeof ROLES] ?? []
+  );
+  
+  if (!permissions.has(permission)) {
+    return <>{fallback}</>;
+  }
+  
+  return <>{children}</>;
+}
+
+// Usage in components
+export function PropertyActions() {
+  return (
+    <div>
+      <PermissionGate permission="properties:view">
+        <ViewButton />
+      </PermissionGate>
+      
+      <PermissionGate permission="data:delete">
+        <DeleteButton />
+      </PermissionGate>
+      
+      <PermissionGate permission="admin:impersonate">
+        <ImpersonateButton />
+      </PermissionGate>
+    </div>
+  );
+}
+```
+
+## 6. Internal Admin Badge/Indicator
+
+```typescript
+// components/AdminBadge.tsx
+'use client';
+
+import { useOrganization } from '@clerk/nextjs';
+import { INTERNAL_ORG_SLUG } from '@/lib/permissions';
+
+export function AdminBadge() {
+  const { organization } = useOrganization();
+  
+  if (organization?.slug !== INTERNAL_ORG_SLUG) {
+    return null;
+  }
+  
+  return (
+    <span className="bg-amber-500 text-white text-xs px-2 py-1 rounded">
+      INTERNAL
+    </span>
+  );
+}
+```
+
+## Quick Setup in Clerk Dashboard
+
+1. **Create "greenfinch" organization**
+2. **Add custom roles** under Organizations → Roles:
+   - `super_admin`
+   - `admin` 
+   - `support`
+3. **Invite your team** to the greenfinch org with appropriate roles
+4. **Customers** sign up normally and create their own orgs if needed
+
+This gives you a clean separation where internal users get the full admin experience while customers only see what they're entitled to. Want me to add anything specific like impersonation logic or audit logging?
