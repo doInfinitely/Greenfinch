@@ -39,9 +39,9 @@ export async function POST(
       );
     }
 
-    // Verify property exists
+    // Verify property exists (id param is propertyKey)
     const property = await db.query.properties.findFirst({
-      where: eq(properties.id, id),
+      where: eq(properties.propertyKey, id),
     });
 
     if (!property) {
@@ -61,9 +61,9 @@ export async function POST(
       }
     }
 
-    // Create the flag
+    // Create the flag (use property.id which is the database UUID)
     const flag = await db.insert(propertyFlags).values({
-      propertyId: id,
+      propertyId: property.id,
       flagType,
       suggestedOrganizationId: orgId,
       suggestedOrganizationName: suggestedOrganizationName || null,
@@ -103,8 +103,17 @@ export async function GET(
       );
     }
 
+    // First find the property by propertyKey
+    const property = await db.query.properties.findFirst({
+      where: eq(properties.propertyKey, id),
+    });
+
+    if (!property) {
+      return NextResponse.json({ flags: [] });
+    }
+
     const flags = await db.query.propertyFlags.findMany({
-      where: eq(propertyFlags.propertyId, id),
+      where: eq(propertyFlags.propertyId, property.id),
     });
 
     return NextResponse.json({ flags });
