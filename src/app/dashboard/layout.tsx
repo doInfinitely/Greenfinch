@@ -17,11 +17,11 @@ export default function DashboardLayout({
     <div className="h-screen flex flex-col bg-gray-50">
       <Header />
       
-      <div className="bg-white border-b border-gray-200">
-        <div className="flex items-center">
+      <div className="bg-white border-b border-gray-200 px-4">
+        <div className="max-w-7xl mx-auto flex items-center">
           <Link
             href="/dashboard/map"
-            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-b-2 ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${
               isMapView
                 ? 'border-green-600 text-green-700 bg-green-50'
                 : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
@@ -34,7 +34,7 @@ export default function DashboardLayout({
           </Link>
           <Link
             href="/dashboard/list"
-            className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-colors border-b-2 ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${
               isListView
                 ? 'border-green-600 text-green-700 bg-green-50'
                 : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
