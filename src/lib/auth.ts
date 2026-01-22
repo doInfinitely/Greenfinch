@@ -282,3 +282,30 @@ export async function requirePermission(permission: Permission): Promise<void> {
     throw new Error(`FORBIDDEN: Missing permission ${permission}`);
   }
 }
+
+export async function requireAdminAccess(): Promise<void> {
+  const authData = await auth();
+  
+  if (!authData.userId) {
+    throw new Error('UNAUTHORIZED');
+  }
+  
+  const isAdmin = authData.orgSlug === INTERNAL_ORG_SLUG && 
+    ['org:super_admin', 'org:admin'].includes(authData.orgRole || '');
+  
+  if (!isAdmin) {
+    throw new Error('FORBIDDEN');
+  }
+}
+
+export async function requireInternalAccess(): Promise<void> {
+  const authData = await auth();
+  
+  if (!authData.userId) {
+    throw new Error('UNAUTHORIZED');
+  }
+  
+  if (authData.orgSlug !== INTERNAL_ORG_SLUG) {
+    throw new Error('FORBIDDEN');
+  }
+}

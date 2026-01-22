@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { requireRole } from '@/lib/auth';
+import { requireAdminAccess } from '@/lib/auth';
 import { fetchParcelsFromZipCode, countParcelsInZipCode, aggregateParcelsToProperties } from '@/lib/ingestion';
 import { classifyPropertyType, type ClassificationResult, type PropertyClassification } from '@/lib/zoning-classification';
 import { enrichWithMapboxPOI, type MapboxPOIResult } from '@/lib/mapbox-poi';
 
 export async function GET(request: Request) {
   try {
-    await requireRole(['system_admin', 'account_admin']);
+    await requireAdminAccess();
     
     const url = new URL(request.url);
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '20'), 100);

@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties, contacts } from '@/lib/schema';
-import { count, eq, isNotNull, and } from 'drizzle-orm';
-import { requireRole } from '@/lib/auth';
+import { count, eq, and } from 'drizzle-orm';
+import { requireAdminAccess } from '@/lib/auth';
 
 export async function GET() {
   try {
-    await requireRole(['system_admin', 'account_admin']);
+    await requireAdminAccess();
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });

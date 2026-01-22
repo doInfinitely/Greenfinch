@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getQueueStatus, isBatchRunning, getMaxBatchSize } from '@/lib/enrichment-queue';
-import { requireRole } from '@/lib/auth';
+import { requireAdminAccess } from '@/lib/auth';
 
 export async function GET() {
   try {
-    await requireRole(['system_admin', 'account_admin']);
+    await requireAdminAccess();
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });

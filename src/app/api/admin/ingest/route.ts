@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runMVPIngestion, countParcelsInZipCode, MVP_ZIP_CODE } from '@/lib/ingestion';
-import { requireRole } from '@/lib/auth';
+import { requireAdminAccess } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
   try {
-    await requireRole(['system_admin']);
+    await requireAdminAccess();
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
     if (error instanceof Error && error.message === 'FORBIDDEN') {
-      return NextResponse.json({ error: 'System admin access required' }, { status: 403 });
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
