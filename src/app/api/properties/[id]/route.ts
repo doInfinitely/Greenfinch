@@ -93,6 +93,7 @@ export async function GET(
         propertyWebsite: dbProperty.propertyWebsite,
         propertyManagerWebsite: dbProperty.propertyManagerWebsite,
         aiRationale: dbProperty.aiRationale,
+        enrichmentSources: dbProperty.enrichmentSources,
         enrichmentStatus: dbProperty.enrichmentStatus,
         lastEnrichedAt: dbProperty.lastEnrichedAt,
         rawParcelsJson: dbProperty.rawParcelsJson,
