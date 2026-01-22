@@ -26,7 +26,6 @@ interface CacheMeta {
   x: string;
   y: string;
   size: number;
-  contentEncoding?: string;
 }
 
 async function getCacheMeta(metaPath: string): Promise<CacheMeta | null> {
@@ -71,9 +70,6 @@ export async function GET(
           'X-Cache': 'HIT',
           'Access-Control-Allow-Origin': '*',
         };
-        if (cachedMeta.contentEncoding) {
-          headers['Content-Encoding'] = cachedMeta.contentEncoding;
-        }
         return new NextResponse(cachedTile, { headers });
       } catch {
       }
@@ -93,7 +89,6 @@ export async function GET(
     }
 
     const tileData = Buffer.from(await response.arrayBuffer());
-    const contentEncoding = response.headers.get('content-encoding') || undefined;
 
     try {
       await fs.writeFile(cachePath, tileData);
@@ -101,23 +96,19 @@ export async function GET(
         cachedAt: new Date().toISOString(),
         z, x, y,
         size: tileData.length,
-        contentEncoding,
       }));
     } catch (cacheError) {
       console.warn('[Tile Cache] Failed to write cache:', cacheError);
     }
 
-    const headers: Record<string, string> = {
-      'Content-Type': 'application/vnd.mapbox-vector-tile',
-      'Cache-Control': 'public, max-age=86400',
-      'X-Cache': 'MISS',
-      'Access-Control-Allow-Origin': '*',
-    };
-    if (contentEncoding) {
-      headers['Content-Encoding'] = contentEncoding;
-    }
-
-    return new NextResponse(tileData, { headers });
+    return new NextResponse(tileData, {
+      headers: {
+        'Content-Type': 'application/vnd.mapbox-vector-tile',
+        'Cache-Control': 'public, max-age=86400',
+        'X-Cache': 'MISS',
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
   } catch (error) {
     console.error('[Tile Cache] Error:', error);
     return new NextResponse('Internal server error', { status: 500 });
