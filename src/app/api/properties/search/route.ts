@@ -6,7 +6,7 @@ import { sql, ilike, or, and, eq } from 'drizzle-orm';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const search = searchParams.get('search')?.trim();
+    const search = (searchParams.get('q') || searchParams.get('search'))?.trim();
     
     let whereClause = and(
       eq(properties.isActive, true),
