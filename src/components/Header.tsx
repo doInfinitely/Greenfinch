@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { SignInButton, UserButton, useUser } from '@clerk/nextjs';
+import { SignInButton, UserButton, useUser, OrganizationSwitcher, useAuth } from '@clerk/nextjs';
 
 interface HeaderProps {
   showBackButton?: boolean;
@@ -72,7 +72,11 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
     return pathname?.startsWith(href);
   };
 
-  const isAdmin = dbUser?.role === 'system_admin' || dbUser?.role === 'account_admin';
+  const { orgSlug, orgRole } = useAuth();
+  
+  const isDbAdmin = dbUser?.role === 'system_admin' || dbUser?.role === 'account_admin';
+  const isOrgAdmin = orgSlug === 'greenfinch' && ['org:super_admin', 'org:admin'].includes(orgRole || '');
+  const isAdmin = isDbAdmin || isOrgAdmin;
   
   const navLinks = [
     ...baseNavLinks.filter(link => !link.requiresAuth || isSignedIn),
@@ -143,12 +147,22 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
             </div>
           ) : isSignedIn ? (
             <div className="hidden sm:flex items-center space-x-3">
-              <div className="flex items-center space-x-2 px-3 py-1.5 bg-gray-100 rounded-lg">
-                <span className="text-sm text-gray-700">{getUserDisplayName()}</span>
-                {isAdmin && (
-                  <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Admin</span>
-                )}
-              </div>
+              <OrganizationSwitcher 
+                hidePersonal={false}
+                afterSelectOrganizationUrl="/dashboard"
+                afterSelectPersonalUrl="/dashboard"
+                appearance={{
+                  elements: {
+                    rootBox: "flex items-center",
+                    organizationSwitcherTrigger: "px-3 py-1.5 bg-gray-100 rounded-lg text-sm text-gray-700 hover:bg-gray-200 transition-colors",
+                  }
+                }}
+              />
+              {isOrgAdmin && (
+                <span className="text-xs bg-amber-500 text-white px-2 py-1 rounded font-medium">
+                  {orgRole?.replace('org:', '').toUpperCase()}
+                </span>
+              )}
               <UserButton afterSignOutUrl="/" />
             </div>
           ) : (
@@ -196,14 +210,21 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
           </nav>
           <div className="mt-3 pt-3 border-t border-gray-100 px-3">
             {isSignedIn ? (
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2">
-                  <span className="text-sm text-gray-700">{getUserDisplayName()}</span>
-                  {isAdmin && (
-                    <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Admin</span>
-                  )}
+              <div className="space-y-3">
+                <OrganizationSwitcher 
+                  hidePersonal={false}
+                  afterSelectOrganizationUrl="/dashboard"
+                  afterSelectPersonalUrl="/dashboard"
+                />
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="text-sm text-gray-700">{getUserDisplayName()}</span>
+                    {isOrgAdmin && (
+                      <span className="text-xs bg-amber-500 text-white px-1.5 py-0.5 rounded">{orgRole?.replace('org:', '').toUpperCase()}</span>
+                    )}
+                  </div>
+                  <UserButton afterSignOutUrl="/" />
                 </div>
-                <UserButton afterSignOutUrl="/" />
               </div>
             ) : (
               <SignInButton mode="modal">
