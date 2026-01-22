@@ -26,6 +26,7 @@ interface CacheMeta {
   x: string;
   y: string;
   size: number;
+  empty?: boolean;
 }
 
 async function getCacheMeta(metaPath: string): Promise<CacheMeta | null> {
@@ -62,27 +63,56 @@ export async function GET(
 
     const cachedMeta = await getCacheMeta(metaPath);
     if (cachedMeta) {
+      // Return 204 for cached empty tiles
+      if (cachedMeta.empty) {
+        return new NextResponse(null, { 
+          status: 204,
+          headers: { 'X-Cache': 'HIT' }
+        });
+      }
       try {
         const cachedTile = await fs.readFile(cachePath);
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/vnd.mapbox-vector-tile',
-          'Cache-Control': 'public, max-age=86400',
-          'X-Cache': 'HIT',
-          'Access-Control-Allow-Origin': '*',
-        };
-        return new NextResponse(cachedTile, { headers });
+        return new NextResponse(cachedTile, {
+          headers: {
+            'Content-Type': 'application/vnd.mapbox-vector-tile',
+            'Cache-Control': 'public, max-age=86400',
+            'X-Cache': 'HIT',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
       } catch {
+        // Cache file missing, refetch
       }
     }
 
     const regridUrl = `https://tiles.regrid.com/api/v1/parcels/${z}/${x}/${y}.mvt?token=${apiKey}`;
     
-    const response = await fetch(regridUrl);
+    // Add timeout to prevent hanging requests
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    
+    let response: Response;
+    try {
+      response = await fetch(regridUrl, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       if (response.status === 204 || response.status === 404) {
+        // Cache empty tiles to avoid repeated requests
+        try {
+          await fs.writeFile(cachePath, Buffer.alloc(0));
+          await fs.writeFile(metaPath, JSON.stringify({
+            cachedAt: new Date().toISOString(),
+            z, x, y,
+            size: 0,
+            empty: true,
+          }));
+        } catch {}
         return new NextResponse(null, { status: 204 });
       }
+      console.error(`[Tile Cache] Regrid API error for ${z}/${x}/${y}: ${response.status}`);
       return new NextResponse(`Regrid API error: ${response.status}`, { 
         status: response.status 
       });
