@@ -1,12 +1,12 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
-import { isInternalOrg } from '@/lib/permissions';
+import { INTERNAL_ORG_SLUG } from '@/lib/permissions';
 
 export function AdminBadge() {
   const { orgSlug, orgRole } = useAuth();
   
-  if (!isInternalOrg(orgSlug)) {
+  if (orgSlug !== INTERNAL_ORG_SLUG) {
     return null;
   }
   

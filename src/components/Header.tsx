@@ -75,7 +75,7 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
   const { orgSlug, orgRole } = useAuth();
   
   const isDbAdmin = dbUser?.role === 'system_admin' || dbUser?.role === 'account_admin';
-  const isOrgAdmin = orgSlug?.startsWith('greenfinch') && ['org:super_admin', 'org:admin'].includes(orgRole || '');
+  const isOrgAdmin = orgSlug === 'greenfinch' && ['org:super_admin', 'org:admin'].includes(orgRole || '');
   const isAdmin = isDbAdmin || isOrgAdmin;
   
   const navLinks = [

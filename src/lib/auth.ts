@@ -2,7 +2,7 @@ import { db } from './db';
 import { users, serviceProviders } from './schema';
 import { eq, ilike } from 'drizzle-orm';
 import { currentUser, auth } from '@clerk/nextjs/server';
-import { ROLES, isInternalOrg, Permission, getRolePermissions } from './permissions';
+import { ROLES, INTERNAL_ORG_SLUG, Permission, getRolePermissions } from './permissions';
 
 export type UserRole = 'standard_user' | 'team_manager' | 'account_admin' | 'system_admin';
 
@@ -267,13 +267,13 @@ export async function isInternalUser(): Promise<boolean> {
   const user = await currentUser();
   const memberships = (user as { organizationMemberships?: Array<{ organization: { slug: string } }> })?.organizationMemberships;
   return memberships?.some(
-    (mem) => isInternalOrg(mem.organization.slug)
+    (mem) => mem.organization.slug === INTERNAL_ORG_SLUG
   ) ?? false;
 }
 
 export async function isInternalAdmin(): Promise<boolean> {
   const authData = await auth();
-  return isInternalOrg(authData.orgSlug) && 
+  return authData.orgSlug === INTERNAL_ORG_SLUG && 
          (authData.orgRole === 'org:super_admin' || authData.orgRole === 'org:admin');
 }
 

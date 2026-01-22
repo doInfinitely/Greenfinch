@@ -1,7 +1,7 @@
 'use client';
 
 import { useAuth } from '@clerk/nextjs';
-import { ROLES, isInternalOrg, Permission } from '@/lib/permissions';
+import { ROLES, INTERNAL_ORG_SLUG, Permission } from '@/lib/permissions';
 
 interface PermissionGateProps {
   permission: Permission;
@@ -31,7 +31,7 @@ interface InternalOnlyProps {
 export function InternalOnly({ children, fallback = null }: InternalOnlyProps) {
   const { orgSlug } = useAuth();
   
-  if (!isInternalOrg(orgSlug)) {
+  if (orgSlug !== INTERNAL_ORG_SLUG) {
     return <>{fallback}</>;
   }
   
@@ -46,7 +46,7 @@ interface AdminOnlyProps {
 export function AdminOnly({ children, fallback = null }: AdminOnlyProps) {
   const { orgSlug, orgRole } = useAuth();
   
-  const isAdmin = isInternalOrg(orgSlug) && 
+  const isAdmin = orgSlug === INTERNAL_ORG_SLUG && 
     ['org:super_admin', 'org:admin'].includes(orgRole || '');
   
   if (!isAdmin) {

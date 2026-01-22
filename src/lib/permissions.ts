@@ -51,11 +51,7 @@ export const ROLES = {
   ],
 } as const;
 
-export const INTERNAL_ORG_SLUG_PREFIX = 'greenfinch';
-
-export function isInternalOrg(orgSlug: string | null | undefined): boolean {
-  return orgSlug?.startsWith(INTERNAL_ORG_SLUG_PREFIX) ?? false;
-}
+export const INTERNAL_ORG_SLUG = 'greenfinch';
 
 export function getRolePermissions(orgRole: string | null | undefined): Permission[] {
   if (!orgRole) return [];

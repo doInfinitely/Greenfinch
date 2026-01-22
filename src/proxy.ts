@@ -1,11 +1,7 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
 
-const INTERNAL_ORG_SLUG_PREFIX = 'greenfinch';
-
-function isInternalOrg(orgSlug: string | null | undefined): boolean {
-  return orgSlug?.startsWith(INTERNAL_ORG_SLUG_PREFIX) ?? false;
-}
+const INTERNAL_ORG_SLUG = 'greenfinch';
 
 const isPublicRoute = createRouteMatcher([
   '/',
@@ -45,14 +41,14 @@ export default clerkMiddleware(async (auth, request) => {
   
   if (isInternalRoute(request)) {
     console.log(`[Proxy] Internal route ${path}: orgSlug=${authData.orgSlug}, orgRole=${authData.orgRole}`);
-    if (!isInternalOrg(authData.orgSlug)) {
+    if (authData.orgSlug !== INTERNAL_ORG_SLUG) {
       return new NextResponse('Forbidden - Internal access only', { status: 403 });
     }
   }
   
   if (isAdminRoute(request)) {
     console.log(`[Proxy] Admin route ${path}: orgSlug=${authData.orgSlug}, orgRole=${authData.orgRole}`);
-    const isAdmin = isInternalOrg(authData.orgSlug) && 
+    const isAdmin = authData.orgSlug === INTERNAL_ORG_SLUG && 
                     ['org:super_admin', 'org:admin'].includes(authData.orgRole || '');
     if (!isAdmin) {
       console.log(`[Proxy] Admin access denied for ${path}: isAdmin=${isAdmin}`);
