@@ -22,16 +22,26 @@ export const metadata: Metadata = {
   },
 };
 
+export const dynamic = 'force-dynamic';
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const publishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
+  
   return (
-    <ClerkProvider>
-      <html lang="en">
-        <body className={inter.className}>{children}</body>
-      </html>
-    </ClerkProvider>
+    <html lang="en">
+      <body className={inter.className}>
+        {publishableKey ? (
+          <ClerkProvider publishableKey={publishableKey}>
+            {children}
+          </ClerkProvider>
+        ) : (
+          children
+        )}
+      </body>
+    </html>
   );
 }
