@@ -24,30 +24,17 @@ export const PERMISSIONS = {
 export type Permission = keyof typeof PERMISSIONS;
 
 export const ROLES = {
-  'org:super_admin': [
+  'org:admin': [
     'data:read', 'data:write', 'data:delete', 'data:export',
     'admin:users', 'admin:billing', 'admin:settings', 'admin:impersonate',
     'admin:ingest', 'admin:enrich',
     'properties:view', 'properties:enrich', 'contacts:view', 'contacts:edit',
     'organizations:view', 'lists:manage', 'reports:create', 'api:access',
   ],
-  'org:admin': [
-    'data:read', 'data:write', 'data:export',
-    'admin:users', 'admin:impersonate', 'admin:ingest', 'admin:enrich',
-    'properties:view', 'properties:enrich', 'contacts:view', 'contacts:edit',
-    'organizations:view', 'lists:manage', 'reports:create', 'api:access',
-  ],
-  'org:support': [
-    'data:read',
-    'admin:impersonate',
-    'properties:view', 'contacts:view', 'organizations:view',
-  ],
   'org:member': [
+    'data:read',
     'properties:view', 'properties:enrich', 'contacts:view', 'contacts:edit',
     'organizations:view', 'lists:manage', 'reports:create',
-  ],
-  'org:viewer': [
-    'properties:view', 'contacts:view', 'organizations:view',
   ],
 } as const;
 

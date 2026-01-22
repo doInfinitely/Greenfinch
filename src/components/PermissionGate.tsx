@@ -46,8 +46,7 @@ interface AdminOnlyProps {
 export function AdminOnly({ children, fallback = null }: AdminOnlyProps) {
   const { orgSlug, orgRole } = useAuth();
   
-  const isAdmin = orgSlug === INTERNAL_ORG_SLUG && 
-    ['org:super_admin', 'org:admin'].includes(orgRole || '');
+  const isAdmin = orgSlug === INTERNAL_ORG_SLUG && orgRole === 'org:admin';
   
   if (!isAdmin) {
     return <>{fallback}</>;

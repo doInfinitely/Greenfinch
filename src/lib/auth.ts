@@ -273,8 +273,7 @@ export async function isInternalUser(): Promise<boolean> {
 
 export async function isInternalAdmin(): Promise<boolean> {
   const authData = await auth();
-  return authData.orgSlug === INTERNAL_ORG_SLUG && 
-         (authData.orgRole === 'org:super_admin' || authData.orgRole === 'org:admin');
+  return authData.orgSlug === INTERNAL_ORG_SLUG && authData.orgRole === 'org:admin';
 }
 
 export async function requirePermission(permission: Permission): Promise<void> {
@@ -290,8 +289,7 @@ export async function requireAdminAccess(): Promise<void> {
     throw new Error('UNAUTHORIZED');
   }
   
-  const isAdmin = authData.orgSlug === INTERNAL_ORG_SLUG && 
-    ['org:super_admin', 'org:admin'].includes(authData.orgRole || '');
+  const isAdmin = authData.orgSlug === INTERNAL_ORG_SLUG && authData.orgRole === 'org:admin';
   
   if (!isAdmin) {
     throw new Error('FORBIDDEN');

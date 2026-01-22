@@ -48,8 +48,7 @@ export default clerkMiddleware(async (auth, request) => {
   
   if (isAdminRoute(request)) {
     console.log(`[Proxy] Admin route ${path}: orgSlug=${authData.orgSlug}, orgRole=${authData.orgRole}`);
-    const isAdmin = authData.orgSlug === INTERNAL_ORG_SLUG && 
-                    ['org:super_admin', 'org:admin'].includes(authData.orgRole || '');
+    const isAdmin = authData.orgSlug === INTERNAL_ORG_SLUG && authData.orgRole === 'org:admin';
     if (!isAdmin) {
       console.log(`[Proxy] Admin access denied for ${path}: isAdmin=${isAdmin}`);
       return new NextResponse('Forbidden - Admin access required', { status: 403 });
