@@ -114,6 +114,23 @@ const ROLE_LABELS: Record<string, string> = {
   other: 'Other',
 };
 
+// Priority order for contact sorting (lower = higher priority)
+const ROLE_PRIORITY: Record<string, number> = {
+  property_manager: 1,
+  facilities_manager: 2,
+  owner: 3,
+  leasing: 4,
+  other: 5,
+};
+
+function sortContactsByRelevance(contacts: Contact[]): Contact[] {
+  return [...contacts].sort((a, b) => {
+    const priorityA = ROLE_PRIORITY[a.role] || 99;
+    const priorityB = ROLE_PRIORITY[b.role] || 99;
+    return priorityA - priorityB;
+  });
+}
+
 const ROLE_COLORS: Record<string, string> = {
   owner: 'bg-purple-100 text-purple-700',
   property_manager: 'bg-blue-100 text-blue-700',
@@ -1011,7 +1028,7 @@ export default function PropertyDetailPage() {
               </h2>
               {contacts.length > 0 ? (
                 <div className="space-y-3">
-                  {contacts.map((contact, i) => (
+                  {sortContactsByRelevance(contacts).map((contact, i) => (
                     <div 
                       key={`${contact.id || contact.email}-${i}`} 
                       className={`p-4 bg-gray-50 rounded-lg transition-colors ${contact.id ? 'cursor-pointer hover:bg-gray-100' : ''}`}
