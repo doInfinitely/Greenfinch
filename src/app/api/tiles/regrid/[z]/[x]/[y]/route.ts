@@ -5,6 +5,9 @@ import path from 'path';
 const CACHE_DIR = '/tmp/regrid-tiles';
 const CACHE_MAX_AGE_HOURS = 24 * 7;
 
+// Minimal valid empty MVT tile (Mapbox expects valid protobuf, not empty response)
+const EMPTY_TILE = Buffer.from([0x1a, 0x00]);
+
 async function ensureCacheDir() {
   try {
     await fs.mkdir(CACHE_DIR, { recursive: true });
@@ -63,11 +66,16 @@ export async function GET(
 
     const cachedMeta = await getCacheMeta(metaPath);
     if (cachedMeta) {
-      // Return 204 for cached empty tiles
+      // Return valid empty MVT for cached empty tiles (Mapbox needs valid protobuf)
       if (cachedMeta.empty) {
-        return new NextResponse(null, { 
-          status: 204,
-          headers: { 'X-Cache': 'HIT' }
+        return new NextResponse(EMPTY_TILE, { 
+          status: 200,
+          headers: {
+            'Content-Type': 'application/vnd.mapbox-vector-tile',
+            'Cache-Control': 'public, max-age=86400',
+            'X-Cache': 'HIT-EMPTY',
+            'Access-Control-Allow-Origin': '*',
+          }
         });
       }
       try {
@@ -110,7 +118,16 @@ export async function GET(
             empty: true,
           }));
         } catch {}
-        return new NextResponse(null, { status: 204 });
+        // Return valid empty MVT (Mapbox needs proper protobuf response)
+        return new NextResponse(EMPTY_TILE, {
+          status: 200,
+          headers: {
+            'Content-Type': 'application/vnd.mapbox-vector-tile',
+            'Cache-Control': 'public, max-age=86400',
+            'X-Cache': 'MISS-EMPTY',
+            'Access-Control-Allow-Origin': '*',
+          }
+        });
       }
       console.error(`[Tile Cache] Regrid API error for ${z}/${x}/${y}: ${response.status}`);
       return new NextResponse(`Regrid API error: ${response.status}`, { 
