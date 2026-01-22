@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { parcelToPropertyLookup } from '@/lib/schema';
+import { parcelToProperty } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 
 export async function GET(
@@ -15,9 +15,9 @@ export async function GET(
     }
 
     const [lookup] = await db
-      .select({ propertyKey: parcelToPropertyLookup.propertyKey })
-      .from(parcelToPropertyLookup)
-      .where(eq(parcelToPropertyLookup.llUuid, llUuid))
+      .select({ propertyKey: parcelToProperty.propertyKey })
+      .from(parcelToProperty)
+      .where(eq(parcelToProperty.llUuid, llUuid))
       .limit(1);
 
     if (!lookup) {
