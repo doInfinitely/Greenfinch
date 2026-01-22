@@ -385,8 +385,36 @@ export class DashboardMap {
     }
   };
 
-  private onParcelClick = (e: mapboxgl.MapLayerMouseEvent) => {
+  private onParcelClick = async (e: mapboxgl.MapLayerMouseEvent) => {
     if (!e.features?.length) return;
+    
+    const feature = e.features[0];
+    const llUuid = feature.id as string || feature.properties?.ll_uuid;
+    
+    // Try to find property by ll_uuid via API lookup (most accurate)
+    if (llUuid && this.config.onPropertyClick) {
+      try {
+        const response = await fetch(`/api/properties/by-parcel/${encodeURIComponent(llUuid)}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.propertyKey) {
+            this.config.onPropertyClick(data.propertyKey);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Parcel lookup failed, using fallback', err);
+      }
+      
+      // Fallback: try client-side ll_uuid matching
+      const propertyInfo = this.findPropertyByLlUuid(llUuid);
+      if (propertyInfo?.propertyKey) {
+        this.config.onPropertyClick(propertyInfo.propertyKey);
+        return;
+      }
+    }
+    
+    // Final fallback to location-based matching
     const center = e.lngLat;
     const propertyInfo = this.findPropertyByLocation(center.lng, center.lat);
     if (propertyInfo?.propertyKey && this.config.onPropertyClick) {
@@ -394,8 +422,22 @@ export class DashboardMap {
     }
   };
 
+  private findPropertyByLlUuid(llUuid: string): { propertyKey: string; commonName: string | null } | null {
+    for (const feature of this.currentData.features) {
+      const props = feature.properties as any;
+      if (props?.llUuid === llUuid) {
+        return {
+          propertyKey: props?.propertyKey || null,
+          commonName: props?.commonName || null,
+        };
+      }
+    }
+    return null;
+  }
+
   private findPropertyByLocation(lng: number, lat: number): { propertyKey: string; commonName: string | null } | null {
-    const tolerance = 0.0005;
+    // Use larger tolerance to match clicks within parcels (about 100m)
+    const tolerance = 0.001;
     for (const feature of this.currentData.features) {
       if (feature.geometry.type === 'Point') {
         const [fLng, fLat] = feature.geometry.coordinates;

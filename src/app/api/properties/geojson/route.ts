@@ -48,6 +48,7 @@ export async function GET(request: NextRequest) {
         lastEnrichedAt: properties.lastEnrichedAt,
         lotSqft: properties.lotSqft,
         propertyClass: properties.propertyClass,
+        sourceLlUuid: properties.sourceLlUuid,
       })
       .from(properties)
       .where(and(...conditions));
@@ -77,6 +78,7 @@ export async function GET(request: NextRequest) {
             operationalStatus: p.operationalStatus || '',
             enriched: isEnriched,
             lotSqft: p.lotSqft || 0,
+            llUuid: p.sourceLlUuid || '',
           },
         };
       });
