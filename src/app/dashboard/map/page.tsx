@@ -187,7 +187,7 @@ export default function MapPage() {
           ) : (
             visibleProperties.map((f, idx) => (
               <button
-                key={`${f.properties.propertyKey}-${idx}`}
+                key={`property-${f.properties.propertyKey || idx}-${idx}`}
                 onClick={() => handlePropertyClick(f.properties.propertyKey)}
                 className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors"
                 data-testid={`property-item-${f.properties.propertyKey}`}

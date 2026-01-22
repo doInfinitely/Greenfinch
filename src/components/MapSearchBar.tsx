@@ -229,7 +229,7 @@ export default function MapSearchBar({ onSelect, mapCenter }: MapSearchBarProps)
         <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-96 overflow-y-auto">
           {suggestions.map((suggestion, index) => (
             <button
-              key={suggestion.id || index}
+              key={`${suggestion.id || 'suggestion'}-${index}`}
               onClick={() => handleSelect(suggestion)}
               className={`w-full text-left px-3 py-2.5 flex items-start gap-3 transition-colors ${
                 index === highlightedIndex 
