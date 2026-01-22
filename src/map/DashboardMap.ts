@@ -88,10 +88,20 @@ export class DashboardMap {
     this.map.on('moveend', () => {
       if (this.isDestroyed) return;
       this.emitBounds();
-      // Force a repaint to ensure newly loaded tiles are rendered
-      if (this.map && this.styleReady) {
+    });
+
+    // Force repaint when new vector tiles are loaded
+    this.map.on('sourcedata', (e) => {
+      if (this.isDestroyed || !this.map || !this.styleReady) return;
+      if (e.sourceId === 'regrid' && e.isSourceLoaded) {
         this.map.triggerRepaint();
       }
+    });
+
+    // Also trigger repaint after tiles finish loading
+    this.map.on('idle', () => {
+      if (this.isDestroyed || !this.map || !this.styleReady) return;
+      this.map.triggerRepaint();
     });
 
     this.map.on('zoom', () => {
