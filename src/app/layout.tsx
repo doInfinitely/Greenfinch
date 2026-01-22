@@ -5,6 +5,8 @@ import './globals.css';
 
 const inter = Inter({ subsets: ['latin'] });
 
+export const dynamic = 'force-dynamic';
+
 export const metadata: Metadata = {
   title: 'Greenfinch - Commercial Property Prospecting',
   description: 'Find decision-makers for commercial properties with validated contact information. Property intelligence, decision-maker contacts, and portfolio insights in one platform.',
