@@ -7,15 +7,13 @@ import LandingFooter from '@/components/LandingFooter';
 const pricingPlans = [
   {
     name: 'Early Access',
-    price: 'Free',
+    price: '',
     description: 'Join our beta program and shape the future of Greenfinch.',
     features: [
       'Unlimited Property Search',
       'Map-based Interface',
       'Property Owner Details',
       'Property Manager Identification',
-      '50 Verified Contact Credits / mo',
-      'Pipeline Management',
     ],
     cta: 'Join the Waitlist',
     ctaLink: '/waitlist',
@@ -102,7 +100,7 @@ export default function PricingPage() {
                 className={`rounded-2xl p-6 ${
                   plan.highlight
                     ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white ring-4 ring-green-200'
-                    : 'bg-white border border-gray-200'
+                    : 'bg-white border border-gray-200 blur-sm opacity-60 pointer-events-none select-none'
                 }`}
                 data-testid={`card-pricing-${plan.name.toLowerCase().replace(' ', '-')}`}
               >
