@@ -30,14 +30,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { originalUrl, selectedUrl, selectedIndex } = body;
-
-    if (!selectedUrl) {
-      return NextResponse.json(
-        { error: 'Selected URL is required' },
-        { status: 400 }
-      );
-    }
+    const { originalUrl, selectedUrl, selectedIndex, markAsIncorrect } = body;
 
     // Get current contact to verify it exists
     const contact = await db.query.contacts.findFirst({
@@ -46,6 +39,44 @@ export async function POST(
 
     if (!contact) {
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+    }
+
+    // Handle marking as incorrect (clears the LinkedIn URL)
+    if (markAsIncorrect) {
+      await db.insert(contactLinkedinFlags).values({
+        contactId: id,
+        originalLinkedinUrl: originalUrl,
+        selectedLinkedinUrl: null,
+        selectedAlternativeIndex: null,
+        status: 'marked_incorrect',
+        flaggedByUserId: session.user.id,
+      });
+
+      await db
+        .update(contacts)
+        .set({
+          linkedinUrl: null,
+          linkedinConfidence: null,
+          linkedinFlagged: true,
+          linkedinStatus: 'marked_incorrect',
+          updatedAt: new Date(),
+        })
+        .where(eq(contacts.id, id));
+
+      console.log(`[API] LinkedIn marked as incorrect for contact ${id}: ${originalUrl}`);
+
+      return NextResponse.json({
+        success: true,
+        message: 'LinkedIn profile marked as incorrect',
+        linkedinUrl: null,
+      });
+    }
+
+    if (!selectedUrl) {
+      return NextResponse.json(
+        { error: 'Selected URL is required' },
+        { status: 400 }
+      );
     }
 
     // Create a flag record for audit trail

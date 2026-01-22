@@ -196,6 +196,39 @@ export default function ContactDetailPage() {
     setLinkedInMessage(null);
   };
 
+  const handleMarkLinkedInIncorrect = async () => {
+    if (!contact) return;
+    
+    setSelectingAlternative(true);
+    try {
+      const response = await fetch(`/api/contacts/${contactId}/linkedin/flag`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          originalUrl: contact.linkedinUrl,
+          markAsIncorrect: true,
+        }),
+      });
+
+      if (response.ok) {
+        setContact(prev => prev ? { 
+          ...prev, 
+          linkedinUrl: null,
+          linkedinConfidence: null,
+          linkedinFlagged: true,
+        } : null);
+        setShowLinkedInAlternatives(false);
+        setLinkedInMessage('Profile marked as incorrect');
+      } else {
+        setLinkedInMessage('Failed to update');
+      }
+    } catch (err) {
+      setLinkedInMessage('Failed to update');
+    } finally {
+      setSelectingAlternative(false);
+    }
+  };
+
   const handleSelectAlternative = async (alternative: LinkedInSearchResult, index: number) => {
     if (!contact) return;
     
@@ -387,11 +420,11 @@ export default function ContactDetailPage() {
                             View Profile
                             <LowConfidenceMarker confidence={contact.linkedinConfidence} />
                           </a>
-                          {contact.linkedinSearchResults && contact.linkedinSearchResults.length > 1 && !showLinkedInAlternatives && (
+                          {!showLinkedInAlternatives && (
                             <button
                               onClick={handleFlagLinkedIn}
                               className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors"
-                              title="Something doesn't look right? Flag for review by the greenfinch.ai team"
+                              title="Something doesn't look right? Flag for review"
                               data-testid="button-flag-linkedin"
                             >
                               <Flag className="w-4 h-4" />
@@ -487,9 +520,20 @@ export default function ContactDetailPage() {
                             ))}
                           </div>
                         ) : (
-                          <p className="text-sm text-amber-700">
-                            No alternative profiles available. The search only found one matching profile.
-                          </p>
+                          <div className="space-y-3">
+                            <p className="text-sm text-amber-700">
+                              No alternative profiles available.
+                            </p>
+                            <button
+                              onClick={handleMarkLinkedInIncorrect}
+                              disabled={selectingAlternative}
+                              className="inline-flex items-center px-3 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 disabled:opacity-50"
+                              data-testid="button-mark-incorrect"
+                            >
+                              <Flag className="w-4 h-4 mr-2" />
+                              {selectingAlternative ? 'Updating...' : 'Mark as Incorrect'}
+                            </button>
+                          </div>
                         )}
                       </div>
                     )}
