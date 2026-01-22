@@ -3,10 +3,12 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { SignInButton, useUser } from '@clerk/nextjs';
 
 export default function LandingNav() {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const { isSignedIn, isLoaded } = useUser();
   
   const navLinks = [
     { href: '/', label: 'Home' },
@@ -46,20 +48,35 @@ export default function LandingNav() {
           </div>
           
           <div className="hidden md:flex items-center space-x-4">
-            <a
-              href="/api/login"
-              className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
-              data-testid="link-login"
-            >
-              Log In
-            </a>
-            <Link
-              href="/waitlist"
-              className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm hover:shadow-md"
-              data-testid="link-get-started"
-            >
-              Get Early Access
-            </Link>
+            {!isLoaded ? (
+              <div className="w-16 h-4 bg-gray-200 rounded animate-pulse"></div>
+            ) : isSignedIn ? (
+              <Link
+                href="/dashboard"
+                className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm hover:shadow-md"
+                data-testid="link-dashboard"
+              >
+                Go to Dashboard
+              </Link>
+            ) : (
+              <>
+                <SignInButton mode="modal">
+                  <button
+                    className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-900 transition-colors"
+                    data-testid="link-login"
+                  >
+                    Log In
+                  </button>
+                </SignInButton>
+                <Link
+                  href="/waitlist"
+                  className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm hover:shadow-md"
+                  data-testid="link-get-started"
+                >
+                  Get Early Access
+                </Link>
+              </>
+            )}
           </div>
 
           <button
@@ -99,21 +116,35 @@ export default function LandingNav() {
               </Link>
             ))}
             <div className="pt-3 border-t border-gray-100 space-y-3">
-              <a
-                href="/api/login"
-                className="block px-3 py-2 rounded-lg text-base font-medium text-gray-600 hover:bg-gray-50"
-                data-testid="link-mobile-login"
-              >
-                Log In
-              </a>
-              <Link
-                href="/waitlist"
-                onClick={() => setMobileMenuOpen(false)}
-                className="block px-3 py-2 rounded-lg text-base font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 text-center"
-                data-testid="link-mobile-get-started"
-              >
-                Get Early Access
-              </Link>
+              {isSignedIn ? (
+                <Link
+                  href="/dashboard"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="block px-3 py-2 rounded-lg text-base font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 text-center"
+                  data-testid="link-mobile-dashboard"
+                >
+                  Go to Dashboard
+                </Link>
+              ) : (
+                <>
+                  <SignInButton mode="modal">
+                    <button
+                      className="block w-full text-left px-3 py-2 rounded-lg text-base font-medium text-gray-600 hover:bg-gray-50"
+                      data-testid="link-mobile-login"
+                    >
+                      Log In
+                    </button>
+                  </SignInButton>
+                  <Link
+                    href="/waitlist"
+                    onClick={() => setMobileMenuOpen(false)}
+                    className="block px-3 py-2 rounded-lg text-base font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 text-center"
+                    data-testid="link-mobile-get-started"
+                  >
+                    Get Early Access
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>

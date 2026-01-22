@@ -1,10 +1,11 @@
 import { pgTable, uuid, text, timestamp, boolean, integer, real, json, index, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
-// Users table for Replit Auth
+// Users table for authentication (Clerk)
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   replitId: text('replit_id').unique(),
+  clerkId: text('clerk_id').unique(),
   email: text('email'),
   firstName: text('first_name'),
   lastName: text('last_name'),

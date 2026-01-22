@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { SignInButton } from '@clerk/nextjs';
 
 export default function LandingFooter() {
   return (
@@ -49,9 +50,11 @@ export default function LandingFooter() {
                 </Link>
               </li>
               <li>
-                <a href="/api/login" className="hover:text-white transition-colors" data-testid="link-footer-login">
-                  Log In
-                </a>
+                <SignInButton mode="modal">
+                  <button className="hover:text-white transition-colors" data-testid="link-footer-login">
+                    Log In
+                  </button>
+                </SignInButton>
               </li>
             </ul>
           </div>

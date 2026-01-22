@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import Header from '@/components/Header';
+import { SignInButton } from '@clerk/nextjs';
 
 interface List {
   id: string;
@@ -144,12 +145,13 @@ export default function ListsPage() {
             </svg>
             <h2 className="text-xl font-semibold text-gray-900 mb-2">Sign in to view your lists</h2>
             <p className="text-gray-500 mb-6">Create and manage your property and contact lists.</p>
-            <button
-              onClick={() => window.location.href = '/api/login'}
-              className="px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
-            >
-              Sign in with Replit
-            </button>
+            <SignInButton mode="modal">
+              <button
+                className="px-6 py-3 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition-colors"
+              >
+                Sign in
+              </button>
+            </SignInButton>
           </div>
         </main>
       </div>

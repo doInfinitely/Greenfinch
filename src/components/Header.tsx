@@ -3,13 +3,14 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { SignInButton, UserButton, useUser } from '@clerk/nextjs';
 
 interface HeaderProps {
   showBackButton?: boolean;
   onBack?: () => void;
 }
 
-interface User {
+interface DbUser {
   id: string;
   email: string | null;
   firstName: string | null;
@@ -31,8 +32,8 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [hasScrolled, setHasScrolled] = useState(false);
-  const [user, setUser] = useState<User | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [dbUser, setDbUser] = useState<DbUser | null>(null);
+  const { user: clerkUser, isSignedIn, isLoaded } = useUser();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -44,21 +45,25 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
   }, []);
 
   useEffect(() => {
-    const fetchUser = async () => {
+    const fetchDbUser = async () => {
+      if (!isSignedIn) {
+        setDbUser(null);
+        return;
+      }
       try {
         const response = await fetch('/api/auth/user');
         if (response.ok) {
           const data = await response.json();
-          setUser(data.user);
+          setDbUser(data.user);
         }
       } catch (err) {
         console.error('Failed to fetch user:', err);
-      } finally {
-        setIsLoading(false);
       }
     };
-    fetchUser();
-  }, []);
+    if (isLoaded) {
+      fetchDbUser();
+    }
+  }, [isSignedIn, isLoaded]);
 
   const isActive = (href: string) => {
     if (href === '/dashboard') {
@@ -67,45 +72,24 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
     return pathname?.startsWith(href);
   };
 
-  const isAdmin = user?.role === 'system_admin' || user?.role === 'account_admin';
+  const isAdmin = dbUser?.role === 'system_admin' || dbUser?.role === 'account_admin';
   
   const navLinks = [
-    ...baseNavLinks.filter(link => !link.requiresAuth || user),
+    ...baseNavLinks.filter(link => !link.requiresAuth || isSignedIn),
     ...(isAdmin ? [adminNavLink] : []),
   ];
 
-  const handleLogin = () => {
-    window.location.href = '/api/login';
-  };
-
-  const handleLogout = () => {
-    window.location.href = '/api/logout';
-  };
-
   const getUserDisplayName = () => {
-    if (user?.firstName && user?.lastName) {
-      return `${user.firstName} ${user.lastName}`;
+    if (clerkUser?.firstName && clerkUser?.lastName) {
+      return `${clerkUser.firstName} ${clerkUser.lastName}`;
     }
-    if (user?.firstName) {
-      return user.firstName;
+    if (clerkUser?.firstName) {
+      return clerkUser.firstName;
     }
-    if (user?.email) {
-      return user.email.split('@')[0];
+    if (clerkUser?.primaryEmailAddress?.emailAddress) {
+      return clerkUser.primaryEmailAddress.emailAddress.split('@')[0];
     }
     return 'User';
-  };
-
-  const getUserInitials = () => {
-    if (user?.firstName && user?.lastName) {
-      return `${user.firstName[0]}${user.lastName[0]}`.toUpperCase();
-    }
-    if (user?.firstName) {
-      return user.firstName[0].toUpperCase();
-    }
-    if (user?.email) {
-      return user.email[0].toUpperCase();
-    }
-    return 'U';
   };
 
   return (
@@ -152,44 +136,27 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
         </div>
 
         <div className="flex items-center space-x-3">
-          {isLoading ? (
+          {!isLoaded ? (
             <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5">
               <div className="w-7 h-7 bg-gray-200 rounded-full animate-pulse"></div>
               <div className="w-16 h-4 bg-gray-200 rounded animate-pulse"></div>
             </div>
-          ) : user ? (
+          ) : isSignedIn ? (
             <div className="hidden sm:flex items-center space-x-3">
               <div className="flex items-center space-x-2 px-3 py-1.5 bg-gray-100 rounded-lg">
-                {user.profileImageUrl ? (
-                  <img
-                    src={user.profileImageUrl}
-                    alt={getUserDisplayName()}
-                    className="w-7 h-7 rounded-full"
-                  />
-                ) : (
-                  <div className="w-7 h-7 bg-green-600 rounded-full flex items-center justify-center">
-                    <span className="text-white text-xs font-medium">{getUserInitials()}</span>
-                  </div>
-                )}
                 <span className="text-sm text-gray-700">{getUserDisplayName()}</span>
                 {isAdmin && (
                   <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Admin</span>
                 )}
               </div>
-              <button
-                onClick={handleLogout}
-                className="text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 px-3 py-1.5 rounded-lg transition-colors"
-              >
-                Sign out
-              </button>
+              <UserButton afterSignOutUrl="/" />
             </div>
           ) : (
-            <button
-              onClick={handleLogin}
-              className="hidden sm:flex items-center space-x-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-            >
-              Sign in with Replit
-            </button>
+            <SignInButton mode="modal">
+              <button className="hidden sm:flex items-center space-x-2 px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+                Sign in
+              </button>
+            </SignInButton>
           )}
 
           <button
@@ -228,39 +195,22 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
             ))}
           </nav>
           <div className="mt-3 pt-3 border-t border-gray-100 px-3">
-            {user ? (
-              <div className="flex items-center space-x-2">
-                {user.profileImageUrl ? (
-                  <img
-                    src={user.profileImageUrl}
-                    alt={getUserDisplayName()}
-                    className="w-8 h-8 rounded-full"
-                  />
-                ) : (
-                  <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
-                    <span className="text-white text-sm font-medium">{getUserInitials()}</span>
-                  </div>
-                )}
-                <div className="flex-1">
+            {isSignedIn ? (
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
                   <span className="text-sm text-gray-700">{getUserDisplayName()}</span>
                   {isAdmin && (
-                    <span className="ml-2 text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Admin</span>
+                    <span className="text-xs bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded">Admin</span>
                   )}
                 </div>
-                <button
-                  onClick={handleLogout}
-                  className="text-sm text-gray-500 hover:text-gray-700"
-                >
-                  Sign out
-                </button>
+                <UserButton afterSignOutUrl="/" />
               </div>
             ) : (
-              <button
-                onClick={handleLogin}
-                className="w-full px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Sign in with Replit
-              </button>
+              <SignInButton mode="modal">
+                <button className="w-full px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors">
+                  Sign in
+                </button>
+              </SignInButton>
             )}
           </div>
         </div>

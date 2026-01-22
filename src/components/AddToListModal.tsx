@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { SignInButton } from '@clerk/nextjs';
 
 interface List {
   id: string;
@@ -167,12 +168,13 @@ export default function AddToListModal({
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
               <p className="text-gray-600 mb-4">Sign in to save items to lists</p>
-              <button
-                onClick={() => window.location.href = '/api/login'}
-                className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-              >
-                Sign in with Replit
-              </button>
+              <SignInButton mode="modal">
+                <button
+                  className="px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
+                >
+                  Sign in
+                </button>
+              </SignInButton>
             </div>
           ) : (
             <>
