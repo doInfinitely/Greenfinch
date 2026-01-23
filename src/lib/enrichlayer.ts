@@ -1,5 +1,5 @@
 const ENRICHLAYER_API_KEY = process.env.ENRICHLAYER_API_KEY;
-const ENRICHLAYER_BASE_URL = 'https://enrichlayer.com/api';
+const ENRICHLAYER_BASE_URL = 'https://enrichlayer.com/api/v2';
 
 export interface EnrichLayerPersonInput {
   firstName: string;
@@ -100,7 +100,7 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
     params.append('enrich_profile', 'enrich');
     params.append('similarity_checks', 'include');
 
-    const url = `${ENRICHLAYER_BASE_URL}/people/profile/resolve?${params.toString()}`;
+    const url = `${ENRICHLAYER_BASE_URL}/linkedin?${params.toString()}`;
     console.log('[EnrichLayer] Person lookup request:', { firstName: input.firstName, lastName: input.lastName, companyDomain: input.companyDomain });
 
     const response = await fetch(url, {
@@ -180,7 +180,7 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
       params.append('live_fetch', 'force');
     }
 
-    const url = `${ENRICHLAYER_BASE_URL}/v2/profile?${params.toString()}`;
+    const url = `${ENRICHLAYER_BASE_URL}/profile?${params.toString()}`;
     console.log('[EnrichLayer] Profile enrichment request:', { linkedinUrl, options });
 
     const response = await fetch(url, {
