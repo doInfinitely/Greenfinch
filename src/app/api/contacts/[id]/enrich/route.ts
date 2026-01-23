@@ -105,6 +105,10 @@ export async function POST(
       updateData.employerName = result.company;
     }
 
+    if (result.profilePicture) {
+      updateData.photoUrl = result.profilePicture;
+    }
+
     const [updatedContact] = await db
       .update(contacts)
       .set(updateData)
@@ -125,6 +129,7 @@ export async function POST(
         linkedinStatus: updatedContact.linkedinStatus,
         title: updatedContact.title,
         employerName: updatedContact.employerName,
+        photoUrl: updatedContact.photoUrl,
       },
       enrichmentResult: {
         linkedinUrl: result.linkedinUrl,
@@ -132,6 +137,7 @@ export async function POST(
         phone: result.phone,
         title: result.title,
         company: result.company,
+        photoUrl: result.profilePicture,
         creditsUsed: result.creditsUsed,
       },
     });
