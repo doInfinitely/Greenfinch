@@ -133,6 +133,15 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
     // The resolve endpoint returns LinkedIn URL at top level as 'url'
     const linkedinUrl = data.url ?? profile.linkedin_url ?? (profile.public_identifier ? `https://www.linkedin.com/in/${profile.public_identifier}` : undefined);
     
+    // If no LinkedIn URL found, person wasn't matched
+    if (!linkedinUrl) {
+      return { 
+        success: false, 
+        error: 'Person not found in EnrichLayer database',
+        rawResponse: data,
+      };
+    }
+    
     return {
       success: true,
       linkedinUrl,
