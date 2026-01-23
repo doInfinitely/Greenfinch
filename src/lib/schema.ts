@@ -154,6 +154,8 @@ export const contacts = pgTable('contacts', {
   linkedinConfidence: real('linkedin_confidence'),
   linkedinStatus: text('linkedin_status'),
   
+  location: text('location'),
+  
   // Store top 4 LinkedIn search results for alternative selection
   linkedinSearchResults: json('linkedin_search_results').$type<{
     name: string;

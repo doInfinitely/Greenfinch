@@ -37,13 +37,18 @@ export async function POST(
       return NextResponse.json({ error: 'Contact has no name to enrich' }, { status: 400 });
     }
 
+    // Default to Dallas, TX if no location available (since MVP is focused on Dallas ZIP 75225)
+    const location = contact.location || 'Dallas, TX';
+    
     console.log(`[EnrichContact] Starting enrichment for contact: ${contact.fullName} (${id})`);
+    console.log(`[EnrichContact] Using location: ${location}, title: ${contact.title}, domain: ${contact.companyDomain}`);
 
     const result = await enrichContact({
       fullName: contact.fullName,
       companyDomain: contact.companyDomain,
       linkedinUrl: contact.linkedinUrl,
-      location: null,
+      location,
+      title: contact.title,
     });
 
     if (!result.success) {

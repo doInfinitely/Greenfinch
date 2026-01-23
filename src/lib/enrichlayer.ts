@@ -6,6 +6,7 @@ export interface EnrichLayerPersonInput {
   lastName?: string;
   companyDomain?: string;
   location?: string;
+  title?: string;
   linkedinUrl?: string;
 }
 
@@ -97,11 +98,14 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
     if (input.location) {
       params.append('location', input.location);
     }
+    if (input.title) {
+      params.append('title', input.title);
+    }
     params.append('enrich_profile', 'enrich');
     params.append('similarity_checks', 'include');
 
     const url = `${ENRICHLAYER_BASE_URL}/profile/resolve?${params.toString()}`;
-    console.log('[EnrichLayer] Person lookup request:', { firstName: input.firstName, lastName: input.lastName, companyDomain: input.companyDomain });
+    console.log('[EnrichLayer] Person lookup request:', { firstName: input.firstName, lastName: input.lastName, companyDomain: input.companyDomain, location: input.location, title: input.title });
 
     const response = await fetch(url, {
       method: 'GET',
@@ -256,6 +260,7 @@ export async function enrichContact(contact: {
   companyDomain?: string | null;
   linkedinUrl?: string | null;
   location?: string | null;
+  title?: string | null;
 }): Promise<EnrichLayerPersonResult | EnrichLayerProfileResult> {
   if (contact.linkedinUrl) {
     return enrichLinkedInProfile(contact.linkedinUrl, {
@@ -272,5 +277,6 @@ export async function enrichContact(contact: {
     lastName,
     companyDomain: contact.companyDomain || undefined,
     location: contact.location || undefined,
+    title: contact.title || undefined,
   });
 }

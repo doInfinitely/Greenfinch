@@ -351,6 +351,7 @@ export interface EnrichedContact {
   employerName: string | null;
   linkedinUrl: string | null;
   linkedinConfidence: number | null;
+  location: string | null;
   role: string;
   roleConfidence: number;
   contactRationale: string | null;
@@ -724,6 +725,8 @@ Return ONLY valid JSON matching this structure:
       "employer_name": "Company Name",
       "company_domain": "company.com",
       
+      "location": "City, State (e.g., Dallas, TX) - REQUIRED: Use property location if contact location unknown",
+      
       "role": "property_manager | facilities_manager | owner | leasing | other",
       "role_confidence": 0.0-1.0,
       "priority_rank": 1,
@@ -997,6 +1000,7 @@ function processEnrichmentResponse(
         employerName: c.employer_name || null,
         linkedinUrl: c.linkedin_url || null,
         linkedinConfidence: c.linkedin_confidence || null,
+        location: c.location || null,
         role: c.role || 'other',
         roleConfidence: c.role_confidence || 0.5,
         contactRationale: c.contact_rationale || null,
@@ -1647,6 +1651,7 @@ export async function storeEnrichmentResults(
           employerName: contact.employerName,
           linkedinUrl: contact.linkedinUrl,
           linkedinConfidence: contact.linkedinConfidence,
+          location: contact.location,
           source: contact.source,
           contactRationale: contact.contactRationale,
           needsReview: contact.needsReview,
