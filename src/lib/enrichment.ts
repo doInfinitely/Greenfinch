@@ -486,223 +486,301 @@ function buildEnrichmentPrompt(property: AggregatedProperty): string {
     .map(([cat, subs]) => `${cat}: ${subs.join(', ')}`)
     .join('\n');
 
-  return `You are a commercial real estate data analyst helping sales representatives identify decision-makers for commercial properties. Analyze this property and provide enrichment data with detailed rationale.
+  return `You are a commercial real estate data analyst helping sales representatives identify decision-makers for commercial properties. Your PRIMARY goal is ACCURACY over completeness - it is better to return fewer high-confidence results than many uncertain ones.
 
-## Property Data
-Address: ${property.address}, ${property.city}, ${property.state} ${property.zip}
-County: ${property.county}
-Coordinates: ${property.lat}, ${property.lon}
+## CRITICAL: Anti-Hallucination Rules
 
-## Physical Characteristics
+Before you begin, internalize these rules:
+
+1. NEVER include information you cannot trace to a specific, dated source
+2. NEVER conflate this property with similarly-named or nearby properties
+3. NEVER include contacts from sources older than 2 years (before January 2024) unless explicitly noting staleness
+4. PREFER "null" or empty arrays over plausible guesses
+5. When uncertain, lower confidence scores significantly (below 0.5 means "do not include")
+6. For every contact, ask: "Can I prove this person is connected to THIS property TODAY?"
+
+---
+
+## Input: Property Data
+
+**Location**
+- Address: ${property.address}, ${property.city}, ${property.state} ${property.zip}
+- County: ${property.county}
+- Coordinates: ${property.lat}, ${property.lon}
+
+**Physical Characteristics**
 - Lot Size: ${property.lotSqft?.toLocaleString() || 'Unknown'} sq ft
 - Building Size: ${property.buildingSqft?.toLocaleString() || 'Unknown'} sq ft
 - Year Built: ${property.yearBuilt || 'Unknown'}
 - Floors: ${property.numFloors || 'Unknown'}
 
-## Ownership
+**Ownership**
 - Primary Owner: ${property.primaryOwner || 'Unknown'}
 - All Owners: ${property.allOwners?.join(', ') || 'Unknown'}
 
-## Land Use
+**Land Use**
 - Use Descriptions: ${property.usedesc?.join(', ') || 'Unknown'}
 - Use Codes: ${property.usecode?.join(', ') || 'Unknown'}
 
-## Valuation
+**Valuation**
 - Total Parcel Value: $${property.totalParval?.toLocaleString() || 0}
 - Total Improvement Value: $${property.totalImprovval?.toLocaleString() || 0}
 - Land Value: $${property.landval?.toLocaleString() || 0}
 
-## Raw Parcel Data
+**Raw Parcel Data**
 ${JSON.stringify(property.rawParcelsJson?.slice(0, 5) || [], null, 2)}
 
-## Asset Categories (use these exact values)
+---
+
+## Step 1: Property Verification (REQUIRED FIRST)
+
+Before any analysis, you MUST verify you have identified the correct property:
+
+1. **Address Confirmation**: Verify the exact address exists and matches the coordinates
+2. **Cross-Reference**: Find at least 2 independent sources confirming this property
+3. **Disambiguation**: If similar properties exist (same name elsewhere, nearby addresses), explicitly note them and confirm you are analyzing the CORRECT one
+4. **Red Flags**: If sources conflict or you cannot confidently verify, set \`property_verified: false\`
+
+DO NOT proceed with contact discovery if you cannot verify the property.
+
+---
+
+## Step 2: Property Classification
+
+**Asset Categories** (use these exact values):
 ${categoryList}
 
-## UNDERSTANDING BUILDING CLASS VS CATEGORY
+**Understanding Building Class vs Category**
 
-**Asset Category/Subcategory** = WHAT the property IS (its use type)
-- Describes the property's PRIMARY USE: Office, Retail, Industrial, Multifamily, etc.
-- Determined by: zoning, tenant mix, building design, and actual use
-- Example: A shopping center is "Retail > Shopping Center"
+| Concept | Meaning | Determined By |
+|---------|---------|---------------|
+| Asset Category/Subcategory | WHAT the property IS (use type) | Zoning, tenant mix, building design, actual use |
+| Building Class (A/B/C/D) | QUALITY GRADE within that category | Age, location, condition, rents, amenities |
 
-**Building Class (A, B, C, D)** = QUALITY GRADE within that category
-- Describes the property's QUALITY relative to other properties of the same type
-- Class A: Premium, newest, best location, highest rents, institutional quality
-- Class B: Good quality, well-maintained, competitive rents, solid tenants
-- Class C: Older, functional, lower rents, may need updates, value-add opportunity
-- Class D: Distressed, significant deferred maintenance, highest risk
+**Building Class Definitions**:
+- **Class A**: Premium, newest, best location, highest rents, institutional quality
+- **Class B**: Good quality, well-maintained, competitive rents, solid tenants  
+- **Class C**: Older, functional, lower rents, may need updates, value-add opportunity
+- **Class D**: Distressed, significant deferred maintenance, highest risk
 
-**Example**: Two office buildings can both be "Office > Office Building" (same category) but one is Class A (new, downtown, trophy asset) and one is Class C (1970s suburban, needs renovation).
+---
 
-## Instructions
-Analyze this property and return a JSON object with the following structure:
+## Step 3: Contact Discovery
 
+**Purpose**: Identify WHO to contact about this property for sales outreach.
+
+**Priority Order**:
+1. Site-level operations (property manager, facilities manager for THIS property)
+2. Management company contacts (if third-party managed)
+3. Asset managers overseeing this property
+4. Owners and principals (current, active individuals only)
+5. Leasing agents and brokers
+6. Other stakeholders
+
+**Target**: 5-10 contacts maximum. Quality over quantity.
+
+### Source Freshness Requirements
+
+| Source Age | Action |
+|------------|--------|
+| < 6 months | Use normally, mark as "current" |
+| 6 months - 2 years | Use with caution, note the date |
+| > 2 years | DO NOT USE for contacts unless no alternative exists; if used, set confidence < 0.5 |
+| Unknown date | Treat as potentially stale, confidence < 0.6 |
+
+For EACH contact, you must be able to answer: **"What dated source confirms this person is in this role TODAY?"**
+
+### Negative Verification (Required)
+
+Before including any contact, verify they have NOT:
+- Left the company (check for departure announcements, LinkedIn changes)
+- Changed roles significantly
+- Passed away
+- Been removed due to litigation/scandal
+
+Note in rationale: "No departure found as of [date checked]" or flag if uncertain.
+
+### Title vs Role Distinction
+
+| Field | Meaning | Example |
+|-------|---------|---------|
+| \`title\` | Their job at their employer | "Senior Property Manager at ABC Realty" |
+| \`role\` | Their relationship to THIS property | "property_manager" (because ABC Realty manages this building) |
+
+**Valid role values**: \`property_manager\`, \`facilities_manager\`, \`owner\`, \`leasing\`, \`other\`
+
+---
+
+## Step 4: Exclusion Rules
+
+### DO NOT Include:
+
+**Condo Owners / HOA Members**:
+- Individual condo unit owners (even if in ownership records)
+- HOA board members (unless commercial/mixed-use HOA)
+- Individual apartment tenants
+- Residential homeowners owning units in larger commercial property
+
+**Indicators of Condo/HOA Structure**:
+- Owner names like "UNIT 101", "APT 5B"
+- Multiple individual owners with small percentages
+- Property type "Condominium" with individual unit owners
+
+**Instead, Find**:
+- HOA management company (for commercial decisions)
+- Building developer or institutional owner
+- Property management company for entire building
+- Master association contacts
+
+### DO NOT Include Contacts Where:
+
+- Only source is > 2 years old
+- Cannot verify current employment
+- Connection to THIS property is unclear
+- Confidence would be below 0.5
+
+---
+
+## Output Schema
+
+Return ONLY valid JSON matching this structure:
 {
+  "verification": {
+    "property_verified": true,
+    "verification_method": "Matched address to county records [1] and property listing [2]",
+    "address_exact_match": true,
+    "potential_conflicts": ["Similar property at 123 Main St in different city - confirmed this is the Dallas location"],
+    "verification_sources": [1, 2]
+  },
+  
   "property": {
     "validated_address": "Full validated address or null",
     "validated_address_confidence": 0.0-1.0,
-    "asset_category": "One of the main categories above",
-    "asset_subcategory": "One of the subcategories for that category",
+    
+    "asset_category": "One of the main categories",
+    "asset_subcategory": "Subcategory for that category", 
     "category_confidence": 0.0-1.0,
-    "category_rationale": "Explain WHY this category/subcategory. What evidence (zoning, use codes, building characteristics, tenants) supports this classification?",
+    "category_rationale": "Evidence-based explanation with source citations [1]",
+    
     "property_class": "A, B, C, or D",
-    "property_class_rationale": "Explain WHY this class grade. Consider: age, location quality, building condition, rent levels, tenant quality, amenities. What makes it an A vs B vs C?",
-    "common_name": "Building/property name if known, else null",
+    "property_class_rationale": "Evidence-based explanation with source citations [1]",
+    
+    "common_name": "Building name if known, else null",
     "common_name_confidence": 0.0-1.0,
-    "beneficial_owner": "True beneficial owner if different from registered owner",
+    
+    "beneficial_owner": "True beneficial owner if different from registered",
     "beneficial_owner_confidence": 0.0-1.0,
-    "beneficial_owner_type": "individual, corporation, llc, trust, government, other",
-    "management_type": "self_managed, third_party, owner_operator",
-    "management_company": "Name of management company if applicable",
-    "management_company_domain": "Website domain if known",
+    "beneficial_owner_type": "individual | corporation | llc | trust | government | other",
+    
+    "management_type": "self_managed | third_party | owner_operator",
+    "management_company": "Name if applicable",
+    "management_company_domain": "domain.com if known",
     "management_confidence": 0.0-1.0,
-    "property_website": "Property website URL if known (e.g., building website, leasing site)",
-    "property_manager_website": "Property management company website URL if known",
-    "classification_rationale": "Overall summary combining category and class rationale",
-    "building_sqft": "Total building square footage (number or null if unknown)",
+    
+    "property_website": "URL if known",
+    "property_manager_website": "URL if known",
+    
+    "building_sqft": null,
     "building_sqft_confidence": 0.0-1.0,
-    "building_sqft_source": "Where this data came from (e.g., 'county records', 'property listing', 'estimated from floors and footprint')",
-    "lot_sqft": "Total lot/land square footage (number or null if unknown)",
+    "building_sqft_source": "county records | property listing | estimated",
+    
+    "lot_sqft": null,
     "lot_sqft_confidence": 0.0-1.0,
-    "lot_sqft_source": "Where this data came from (e.g., 'county records', 'parcel data', 'estimated')"
+    "lot_sqft_source": "county records | parcel data | estimated"
   },
+  
   "contacts": [
     {
       "full_name": "Contact name",
       "name_confidence": 0.0-1.0,
+      
       "email": null,
       "email_confidence": null,
-      "phone": null,
+      "phone": null, 
       "phone_confidence": null,
-      "title": "Job title at their company",
-      "title_confidence": 0.0-1.0,
-      "company_domain": "company.com",
-      "employer_name": "Company Name",
       "linkedin_url": null,
       "linkedin_confidence": null,
-      "role": "RELATIONSHIP TO THIS PROPERTY - MUST be one of: property_manager, facilities_manager, owner, leasing, other",
+      
+      "title": "Job title at their company",
+      "title_confidence": 0.0-1.0,
+      "employer_name": "Company Name",
+      "company_domain": "company.com",
+      
+      "role": "property_manager | facilities_manager | owner | leasing | other",
       "role_confidence": 0.0-1.0,
       "priority_rank": 1,
-      "contact_rationale": "Detailed explanation with sources - see format below"
+      
+      "source_date": "2024-06",
+      "freshness": "current | recent | stale | unknown",
+      
+      "contact_rationale": "REQUIRED: 2-4 sentences with [source citations]. Must include: (1) WHERE you found them, (2) WHY they're relevant to THIS property, (3) verification of current status, (4) why this priority rank.",
+      "negative_verification": "No departure or role change found as of [date] | Could not verify current status | [specific concern]"
     }
   ],
+  
   "organizations": [
     {
       "name": "Organization name",
       "domain": "organization.com or null",
-      "org_type": "owner, management, tenant, developer, other",
-      "roles": ["Array of relationships to THIS PROPERTY - each MUST be one of: property_manager, facilities_manager, owner, leasing, other"]
+      "org_type": "owner | management | tenant | developer | other",
+      "roles": ["property_manager", "owner"],
+      "relationship_verified": true,
+      "verification_source": 1
     }
   ],
-  "summary": "A comprehensive summary (300-500 words) explaining the property analysis with source annotations. Use [1], [2], etc. to cite sources inline. Include: property overview, ownership structure, management details, why each contact was selected and prioritized, and any notable findings.",
+  
   "sources": [
     {
       "id": 1,
-      "title": "Source title or description",
-      "url": "https://example.com/source-page",
-      "type": "county_records | company_website | property_listing | linkedin | news | sec_filing | other"
+      "title": "Source title",
+      "url": "https://actual-url.com",
+      "type": "county_records | company_website | property_listing | linkedin | news | sec_filing | other",
+      "access_date": "2025-01-22",
+      "source_date": "2024-06 | null if unknown",
+      "freshness": "current | recent | stale | unknown"
     }
-  ]
+  ],
+  
+  "summary": "300-500 words with [source citations] throughout. Include: (1) Property overview and verification, (2) Ownership structure, (3) Management situation, (4) Contact prioritization rationale, (5) Data quality notes and any limitations.",
+  
+  "data_quality": {
+    "overall_confidence": "high | medium | low",
+    "limitations": ["List any data gaps or concerns"],
+    "stale_data_warnings": ["Any contacts or facts from older sources"],
+    "recommendation": "Suggested next steps if data quality is low"
+  }
 }
 
-## Contact Discovery Instructions
+---
 
-PURPOSE: Help sales reps identify WHO to contact about this property. Each contact should be someone who can make or influence decisions about the property.
+## Confidence Score Guidelines
 
-For contacts, search for and prioritize:
-1. PRIORITY 1 - Site-level operations (property manager, facilities manager/director for this specific property)
-2. PRIORITY 2 - Management company contacts (if third-party managed)
-3. PRIORITY 3 - Asset managers overseeing this property
-4. PRIORITY 4 - Owners and principals (current, active individuals only)
-5. PRIORITY 5 - Leasing agents and brokers
-6. PRIORITY 6 - Other stakeholders
+| Score | Meaning | When to Use |
+|-------|---------|-------------|
+| 0.90-1.0 | Very certain | Clear, recent, primary source evidence |
+| 0.70-0.89 | Reasonably confident | Good evidence with minor uncertainty |
+| 0.50-0.69 | Uncertain | Limited or older evidence |
+| Below 0.50 | Do not include | Insufficient evidence - omit this data |
 
-Target 5-10 contacts. For EACH contact, you MUST provide:
-- **full_name**: Their complete name
-- **title**: Their job title AT THEIR COMPANY (e.g., "Property Manager", "Director of Facilities", "Principal")
-- **role**: Their RELATIONSHIP to THIS SPECIFIC PROPERTY (not their job title):
-  * property_manager = manages day-to-day operations of this building
-  * facilities_manager = oversees maintenance/facilities for this property
-  * owner = has ownership stake in this property
-  * leasing = handles tenant leasing for this property
-  * other = other relevant relationship
-- **priority_rank**: A number 1-10 indicating their priority for sales outreach (1 = highest priority)
-- **contact_rationale**: A DETAILED explanation (2-4 sentences) that MUST include:
-  * The SOURCE where you found this person (reference source IDs like "[1]", "[2]")
-  * WHY they are the right person to contact for this property
-  * Their specific connection to this property (e.g., "manages this building", "listed as owner on county records")
-  * Why they rank at their priority level (e.g., "Ranked #1 because they are the direct property manager")
+**When in doubt, round DOWN on confidence.**
 
-**TITLE vs ROLE distinction**:
-- TITLE = their job at their employer (e.g., "Senior Property Manager at ABC Realty")
-- ROLE = their relationship to THIS property (e.g., "property_manager" because ABC Realty manages this building)
+---
 
-## Summary Requirements
+## Final Checklist (Self-Verify Before Returning)
 
-The "summary" field should be a comprehensive 300-500 word analysis that includes:
-1. Property overview (type, class, size, notable features)
-2. Ownership structure analysis
-3. Management situation (self-managed vs third-party)
-4. Contact prioritization rationale - explain WHY contacts are ordered the way they are
-5. Key findings and any red flags
+Before returning your response, confirm:
 
-Use source annotations [1], [2], etc. throughout the summary to cite your sources. Every key fact should have a source citation.
+- [ ] Property is verified with 2+ sources
+- [ ] No contacts from sources older than 2 years (unless flagged)
+- [ ] Every contact has a dated source citation
+- [ ] No condo owners or HOA members included
+- [ ] All confidence scores are justified
+- [ ] Title vs Role distinction is correct for each contact
+- [ ] Negative verification completed for each contact
+- [ ] Summary includes source citations throughout
+- [ ] Data quality section notes any limitations honestly
 
-## Sources Requirements
-
-List ALL sources you used to gather information. Each source must have:
-- **id**: Sequential number (1, 2, 3...)
-- **title**: Brief description (e.g., "Dallas County Appraisal District", "Lincoln Property Company website")
-- **url**: The actual URL where the information was found (use real URLs when possible)
-- **type**: One of: county_records, company_website, property_listing, linkedin, news, sec_filing, other
-
-CRITICAL REQUIREMENTS:
-1. Only include CURRENT, ACTIVE contacts - no deceased individuals, no historical/former employees
-2. Verify contacts are still active in their roles (check for recent activity)
-3. Each contact MUST have a clear, documented connection to THIS property
-4. Provide contact_rationale with SOURCE CITATIONS explaining HOW you know they're connected
-5. If you cannot find a verified email, leave email as null
-6. If you cannot find a verified phone, leave phone as null
-7. Leave LinkedIn as null - this will be discovered separately
-8. ALWAYS provide at least 3-5 sources with real URLs when possible
-
-## CONDO OWNER / HOA EXCLUSION RULES
-
-IMPORTANT: This tool is for identifying COMMERCIAL property decision-makers, not residential condo owners or HOA members.
-
-**DO NOT include as beneficial owners or associates:**
-- Individual condo unit owners (even if they appear in ownership records)
-- HOA board members or officers (unless it's a commercial/mixed-use HOA)
-- Individual apartment tenants
-- Residential homeowners who happen to own a unit in a larger commercial property
-
-**HOW to identify condo/HOA situations:**
-- Owner names like "UNIT 101", "APT 5B", individual names owning small %
-- Multiple individual owners listed (indicates condo association structure)
-- Property type is "Condominium" with individual unit owners
-- HOA references in ownership records
-
-**INSTEAD, look for:**
-- The HOA management company (if commercial/mixed-use property)
-- The building developer or institutional owner
-- The property management company managing the entire building
-- Master association contacts for commercial decisions
-
-**For organizations:**
-- DO NOT create organization entries for individual condo owners' personal businesses
-- Only associate companies that have a TRUE relationship to the property (management, ownership of the whole building, tenancy, etc.)
-
-If the only owners found are residential condo owners, note this in the summary and focus on finding the property manager or master HOA instead.
-
-Focus on finding real, currently active people associated with this property through the ownership structure, management company, or known business relationships.
-
-Be conservative with confidence scores:
-- HIGH (>0.90): Only when you're very certain based on clear evidence
-- MEDIUM (0.70-0.90): Reasonable inference with some supporting evidence
-- LOW (0.50-0.70): Educated guess based on limited information
-- Below 0.50: Do not include
-
-Return ONLY valid JSON, no markdown formatting.`;
+Return ONLY valid JSON. No markdown formatting, no code blocks.`;
 }
 
 // Extract grounding sources from Gemini response metadata
