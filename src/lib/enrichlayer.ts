@@ -100,7 +100,7 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
     params.append('enrich_profile', 'enrich');
     params.append('similarity_checks', 'include');
 
-    const url = `${ENRICHLAYER_BASE_URL}/linkedin?${params.toString()}`;
+    const url = `${ENRICHLAYER_BASE_URL}/profile/resolve?${params.toString()}`;
     console.log('[EnrichLayer] Person lookup request:', { firstName: input.firstName, lastName: input.lastName, companyDomain: input.companyDomain });
 
     const response = await fetch(url, {
@@ -126,9 +126,12 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
 
     const profile = data.profile || data;
     
+    // The resolve endpoint returns LinkedIn URL at top level as 'url'
+    const linkedinUrl = data.url ?? profile.linkedin_url ?? (profile.public_identifier ? `https://www.linkedin.com/in/${profile.public_identifier}` : undefined);
+    
     return {
       success: true,
-      linkedinUrl: profile.linkedin_url ?? (profile.public_identifier ? `https://www.linkedin.com/in/${profile.public_identifier}` : undefined),
+      linkedinUrl,
       email: profile.work_email || profile.email,
       personalEmail: profile.personal_email,
       phone: profile.phone_number || profile.personal_contact_number,
@@ -136,7 +139,7 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
       lastName: profile.last_name,
       fullName: profile.full_name,
       headline: profile.headline,
-      location: profile.location || profile.city,
+      location: profile.location_str || profile.location || profile.city,
       company: profile.company || profile.current_company,
       title: profile.title || profile.occupation,
       profilePicture: profile.profile_pic_url,
