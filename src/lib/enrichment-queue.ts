@@ -7,7 +7,7 @@ import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
 
 const ENRICHMENT_MAX_BATCH_SIZE = parseInt(process.env.ENRICHMENT_MAX_BATCH_SIZE || '100', 10);
-const RATE_LIMIT_DELAY_MS = 1000;
+const RATE_LIMIT_DELAY_MS = 10;
 
 // Get property from Postgres and convert to AggregatedProperty format for enrichment
 async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedProperty | null> {
