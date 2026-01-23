@@ -211,14 +211,18 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
       return { success: false, error: data?.error || 'No data returned', rawResponse: data };
     }
 
+    // EnrichLayer returns personal_emails and personal_numbers as arrays
+    const personalEmail = data.personal_emails?.[0] || data.personal_email;
+    const personalPhone = data.personal_numbers?.[0] || data.personal_contact_number;
+    
     return {
       success: true,
       linkedinUrl: data.linkedin_url ?? (data.public_identifier ? `https://www.linkedin.com/in/${data.public_identifier}` : linkedinUrl),
-      email: data.work_email,
-      personalEmail: data.personal_email,
+      email: data.work_email || personalEmail,
+      personalEmail: personalEmail,
       workEmail: data.work_email,
-      phone: data.phone_number,
-      personalPhone: data.personal_contact_number,
+      phone: data.phone_number || personalPhone,
+      personalPhone: personalPhone,
       firstName: data.first_name,
       lastName: data.last_name,
       fullName: data.full_name,
