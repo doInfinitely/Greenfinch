@@ -182,6 +182,7 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
       params.append('skills', 'include');
     }
     params.append('extra', 'include');
+    params.append('enrich_profile', 'enrich');
     
     if (options?.liveFetch) {
       params.append('live_fetch', 'force');
