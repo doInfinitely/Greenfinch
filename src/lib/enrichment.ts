@@ -579,6 +579,24 @@ ${categoryList}
 
 **Target**: 5-10 contacts maximum. Quality over quantity.
 
+### CRITICAL: Do NOT Guess Contact Details
+
+**ALWAYS set these fields to null** - they will be enriched later via a dedicated data service:
+- \`email\`: ALWAYS null (do not guess or infer email addresses)
+- \`phone\`: ALWAYS null (do not guess or infer phone numbers)  
+- \`linkedin_url\`: ALWAYS null (do not guess or construct LinkedIn URLs)
+- \`email_confidence\`, \`phone_confidence\`, \`linkedin_confidence\`: ALWAYS null
+
+**DO capture these fields** from your research:
+- \`full_name\`: The person's full name
+- \`title\`: Their job title at their company
+- \`employer_name\`: The company they work for
+- \`company_domain\`: The company's website domain (e.g., "lincolnproperty.com")
+- \`role\`: Their relationship to THIS property
+- \`contact_rationale\`: Why they are relevant to this property
+
+The contact information (email, phone, LinkedIn) will be populated by a separate enrichment service that uses verified data sources. Your job is to identify the RIGHT people with accurate names, titles, and company affiliations.
+
 ### Source Freshness Requirements
 
 | Source Age | Action |

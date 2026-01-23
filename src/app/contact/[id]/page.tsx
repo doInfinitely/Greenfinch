@@ -135,6 +135,8 @@ export default function ContactDetailPage() {
   const [linkedInMessage, setLinkedInMessage] = useState<string | null>(null);
   const [showLinkedInAlternatives, setShowLinkedInAlternatives] = useState(false);
   const [selectingAlternative, setSelectingAlternative] = useState(false);
+  const [isEnriching, setIsEnriching] = useState(false);
+  const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!contactId) return;
@@ -268,6 +270,52 @@ export default function ContactDetailPage() {
     return contact.linkedinSearchResults.filter(r => r.url !== contact.linkedinUrl).slice(0, 3);
   };
 
+  const handleEnrichContact = async () => {
+    if (!contact) return;
+
+    setIsEnriching(true);
+    setEnrichMessage(null);
+
+    try {
+      const response = await fetch(`/api/contacts/${contactId}/enrich`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setContact(prev => prev ? {
+          ...prev,
+          linkedinUrl: data.contact.linkedinUrl || prev.linkedinUrl,
+          linkedinConfidence: data.contact.linkedinConfidence || prev.linkedinConfidence,
+          linkedinStatus: data.contact.linkedinStatus || prev.linkedinStatus,
+          email: data.contact.email || prev.email,
+          emailConfidence: data.contact.emailConfidence || prev.emailConfidence,
+          phone: data.contact.phone || prev.phone,
+          phoneConfidence: data.contact.phoneConfidence || prev.phoneConfidence,
+          title: data.contact.title || prev.title,
+          employerName: data.contact.employerName || prev.employerName,
+        } : null);
+        
+        const updates = [];
+        if (data.enrichmentResult.linkedinUrl) updates.push('LinkedIn');
+        if (data.enrichmentResult.email) updates.push('Email');
+        if (data.enrichmentResult.phone) updates.push('Phone');
+        
+        setEnrichMessage(updates.length > 0 
+          ? `Found: ${updates.join(', ')}` 
+          : 'No additional information found');
+      } else {
+        setEnrichMessage(data.error || 'Enrichment failed');
+      }
+    } catch (err) {
+      setEnrichMessage('Failed to enrich contact');
+    } finally {
+      setIsEnriching(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -327,11 +375,38 @@ export default function ContactDetailPage() {
                 <p className="text-gray-500">{contact.employerName}</p>
               )}
             </div>
-            {contact.needsReview && (
-              <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-sm rounded-full">
-                Needs Review
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={handleEnrichContact}
+                disabled={isEnriching}
+                className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                data-testid="button-enrich-contact"
+              >
+                {isEnriching ? (
+                  <>
+                    <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Enriching...
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                    </svg>
+                    Enrich Contact
+                  </>
+                )}
+              </button>
+              {enrichMessage && (
+                <span className={`text-sm ${enrichMessage.includes('Found') ? 'text-green-600' : 'text-amber-600'}`}>
+                  {enrichMessage}
+                </span>
+              )}
+              {contact.needsReview && (
+                <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-sm rounded-full">
+                  Needs Review
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
