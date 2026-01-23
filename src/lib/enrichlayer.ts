@@ -276,14 +276,8 @@ export async function enrichContact(contact: {
   location?: string | null;
   title?: string | null;
 }): Promise<EnrichLayerPersonResult | EnrichLayerProfileResult> {
-  if (contact.linkedinUrl) {
-    return enrichLinkedInProfile(contact.linkedinUrl, {
-      includeEmail: true,
-      includePhone: true,
-      includeSkills: true,
-    });
-  }
-
+  // Always use name-based lookup to verify/replace AI-discovered LinkedIn URLs
+  // This ensures we get the most accurate match from EnrichLayer
   const { firstName, lastName } = parseFullName(contact.fullName);
   
   return lookupPerson({
