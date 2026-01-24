@@ -69,9 +69,9 @@ export interface AggregatedProperty {
 function createConnection() {
   return snowflake.createConnection({
     account: process.env.SNOWFLAKE_ACCOUNT_GF!,
-    username: process.env.SNOWFLAKE_USERNAME!,
+    username: process.env.SNOWFLAKE_USER_GF!,
     password: process.env.SNOWFLAKE_PASSWORD!,
-    database: process.env.SNOWFLAKE_DATABASE!,
+    database: process.env.SNOWFLAKE_REGRID_DB!,
     warehouse: process.env.SNOWFLAKE_WAREHOUSE!,
   });
 }
