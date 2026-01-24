@@ -66,11 +66,39 @@ export interface AggregatedProperty {
   rawParcelsJson: RegridParcel[];
 }
 
+function formatPrivateKey(key: string): string {
+  let formatted = key.trim();
+  
+  if (!formatted.includes('\n')) {
+    formatted = formatted
+      .replace('-----BEGIN PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----\n')
+      .replace('-----END PRIVATE KEY-----', '\n-----END PRIVATE KEY-----');
+    
+    const header = '-----BEGIN PRIVATE KEY-----\n';
+    const footer = '\n-----END PRIVATE KEY-----';
+    const body = formatted.slice(header.length - 1, formatted.length - footer.length + 1).trim();
+    
+    const bodyWithNewlines = body.match(/.{1,64}/g)?.join('\n') || body;
+    formatted = `-----BEGIN PRIVATE KEY-----\n${bodyWithNewlines}\n-----END PRIVATE KEY-----`;
+  }
+  
+  return formatted;
+}
+
 function createConnection() {
+  const privateKey = process.env.SNOWFLAKE_PRIVATE_KEY;
+  
+  if (!privateKey) {
+    throw new Error('SNOWFLAKE_PRIVATE_KEY environment variable is not set');
+  }
+
+  const formattedKey = formatPrivateKey(privateKey);
+
   return snowflake.createConnection({
     account: process.env.SNOWFLAKE_ACCOUNT_GF!,
     username: process.env.SNOWFLAKE_USER_GF!,
-    password: process.env.SNOWFLAKE_PASSWORD!,
+    authenticator: 'SNOWFLAKE_JWT',
+    privateKey: formattedKey,
     database: process.env.SNOWFLAKE_REGRID_DB!,
     warehouse: process.env.SNOWFLAKE_WAREHOUSE!,
   });
