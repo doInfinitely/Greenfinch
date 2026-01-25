@@ -1390,13 +1390,12 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
       ...(focusedResult.contacts?.sources || []),
     ];
     
-    // Build rationale combining all stage rationales
-    const combinedRationale = [
-      focusedResult.physical?.rationale ? `Physical: ${focusedResult.physical.rationale}` : null,
-      focusedResult.classification?.rationale ? `Classification: ${focusedResult.classification.rationale}` : null,
-      focusedResult.ownership?.rationale ? `Ownership: ${focusedResult.ownership.rationale}` : null,
-      focusedResult.contacts?.rationale ? `Contacts: ${focusedResult.contacts.rationale}` : null,
-    ].filter(Boolean).join(' | ');
+    // Build combined summary from all stages
+    const combinedSummary = [
+      focusedResult.classification?.summary,
+      focusedResult.ownership?.summary,
+      focusedResult.contacts?.summary,
+    ].filter(Boolean).join('\n\n');
     
     const property = {
       validatedAddress: classification?.canonicalAddress || null,
@@ -1405,7 +1404,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
       assetCategory: classification?.category || null,
       assetSubcategory: classification?.subcategory || null,
       categoryConfidence: classification?.confidence || null,
-      categoryRationale: focusedResult.classification?.rationale || null,
+      categoryRationale: focusedResult.classification?.summary || null,
       propertyClass: classification?.propertyClass || null,
       propertyClassRationale: null,
       commonName: classification?.propertyName || null,
@@ -1421,7 +1420,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
       managementConfidence: ownership?.managementCompany?.confidence || null,
       propertyWebsite: null,
       propertyManagerWebsite: ownership?.managementCompany?.domain ? `https://${ownership.managementCompany.domain}` : null,
-      aiRationale: combinedRationale,
+      aiRationale: combinedSummary,
       enrichmentSources: allSources.map((s, i) => ({ id: i + 1, title: s.title, url: s.url, type: 'grounded' })),
       buildingSqft: null,
       buildingSqftConfidence: null,
@@ -1432,10 +1431,10 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
       // New AI physical data fields
       aiLotAcres: physical?.lotAcres || null,
       aiLotAcresConfidence: physical?.lotAcresConfidence || null,
-      aiLotAcresRationale: focusedResult.physical?.rationale || null,
+      aiLotAcresRationale: focusedResult.physical?.summary || null,
       aiNetSqft: physical?.netSqft || null,
       aiNetSqftConfidence: physical?.netSqftConfidence || null,
-      aiNetSqftRationale: focusedResult.physical?.rationale || null,
+      aiNetSqftRationale: focusedResult.physical?.summary || null,
     };
     
     // Map contacts to legacy format with required properties
@@ -1459,7 +1458,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
       location: `${aggregatedProperty.city}, ${aggregatedProperty.state || 'TX'}`,
       role: c.role || 'other',
       roleConfidence: c.roleConfidence,
-      contactRationale: focusedResult.contacts?.rationale || null,
+      contactRationale: focusedResult.contacts?.summary || null,
       source: 'focused_enrichment',
       needsReview: false,
       reviewReason: null,

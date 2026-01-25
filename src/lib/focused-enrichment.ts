@@ -35,7 +35,6 @@ interface GroundedSource {
 interface StageResult<T> {
   data: T;
   summary: string;
-  rationale: string;
   sources: GroundedSource[];
 }
 
@@ -191,8 +190,7 @@ Return JSON:
   "lot_acres_confidence":0.0-1.0,
   "net_sqft":number|null,
   "net_sqft_confidence":0.0-1.0,
-  "summary":"One sentence: '[Name] is a Class [X] [category] [anchored by X / featuring Y], built in [year] [and renovated in year if applicable].'",
-  "rationale":"Evidence supporting the classification"
+  "summary":"One sentence: '[Name] is a Class [X] [category] [anchored by X / featuring Y], built in [year] [and renovated in year if applicable].'"
 }`;
 
   console.log('[FocusedEnrichment] Stage 1: Classification and physical verification...');
@@ -233,7 +231,6 @@ Return JSON:
         },
       },
       summary: '',
-      rationale: 'No response from AI model',
       sources: [],
     };
   }
@@ -262,7 +259,6 @@ Return JSON:
       },
     },
     summary: parsed.summary || '',
-    rationale: parsed.rationale || '',
     sources,
   };
 }
@@ -324,8 +320,7 @@ Return JSON:
 {
   "beneficialOwner":{"name":"Entity name or null","type":"REIT|Private Equity|Family Office|Individual|Corporation|null","confidence":0.0-1.0},
   "managementCompany":{"name":"Company or null","domain":"website.com or null","confidence":0.0-1.0},
-  "summary":"One sentence: 'The property was [acquired/developed] by [Owner] in [year] and is [self-managed / managed by Company], [a firm specializing in X].'",
-  "rationale":"Evidence supporting ownership findings"
+  "summary":"One sentence: 'The property was [acquired/developed] by [Owner] in [year] and is [self-managed / managed by Company], [a firm specializing in X].'"
 }`;
 
   console.log('[FocusedEnrichment] Stage 2: Ownership identification...');
@@ -356,7 +351,6 @@ Return JSON:
           managementCompany: { name: null, domain: null, confidence: 0 },
         },
         summary: '',
-        rationale: 'No response from AI model',
         sources: [],
       };
     }
@@ -372,7 +366,6 @@ Return JSON:
         managementCompany: parsed.managementCompany || { name: null, domain: null, confidence: 0 },
       },
       summary: parsed.summary || '',
-      rationale: parsed.rationale || '',
       sources,
     };
   } catch (error) {
@@ -382,8 +375,7 @@ Return JSON:
         beneficialOwner: { name: null, type: null, confidence: 0 },
         managementCompany: { name: null, domain: null, confidence: 0 },
       },
-      summary: '',
-      rationale: `Failed to identify ownership: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      summary: `Failed to identify ownership: ${error instanceof Error ? error.message : 'Unknown error'}`,
       sources: [],
     };
   }
@@ -423,8 +415,7 @@ Return JSON:
 {
   "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8}],
   "organizations":[{"name":"Org name","domain":"domain.com","org_type":"owner|management|tenant|developer","roles":["property_manager","owner"]}],
-  "summary":"2-3 sentences citing evidence: 'Based on [source], the primary contact is [Name], listed on [website] as [role]. [Secondary contact] at [company] handles [responsibility].'",
-  "rationale":"Evidence supporting each contact's relevance to this property"
+  "summary":"2-3 sentences citing evidence: 'Based on [source], the primary contact is [Name], listed on [website] as [role]. [Secondary contact] at [company] handles [responsibility].'"
 }`;
 
   console.log('[FocusedEnrichment] Stage 3: Contact discovery...');
@@ -452,7 +443,6 @@ Return JSON:
       return {
         data: { contacts: [], organizations: [] },
         summary: '',
-        rationale: 'No response from AI model',
         sources: [],
       };
     }
@@ -482,15 +472,13 @@ Return JSON:
     return {
       data: { contacts, organizations },
       summary: parsed.summary || '',
-      rationale: parsed.rationale || '',
       sources,
     };
   } catch (error) {
     console.error(`[FocusedEnrichment] Stage 3 failed after retries: ${error instanceof Error ? error.message : error}`);
     return {
       data: { contacts: [], organizations: [] },
-      summary: '',
-      rationale: `Failed to discover contacts: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      summary: `Failed to discover contacts: ${error instanceof Error ? error.message : 'Unknown error'}`,
       sources: [],
     };
   }
@@ -521,14 +509,12 @@ export async function runFocusedEnrichment(property: CommercialProperty): Promis
   const physical: StageResult<PropertyPhysicalData> = {
     data: stage1Result.data.physical,
     summary: stage1Result.summary,
-    rationale: stage1Result.rationale,
     sources: stage1Result.sources,
   };
   
   const classification: StageResult<PropertyClassification> = {
     data: stage1Result.data.classification,
     summary: stage1Result.summary,
-    rationale: stage1Result.rationale,
     sources: stage1Result.sources,
   };
   
