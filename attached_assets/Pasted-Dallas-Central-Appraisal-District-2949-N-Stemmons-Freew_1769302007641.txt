@@ -1,0 +1,36 @@
+Dallas Central Appraisal District
+2949 N. Stemmons Freeway
+Dallas, Texas  75247
+(214) 631-0520
+
+Certified Data Dictionary
+
+For the most part, the DCAD believes that the names of the fields in the accompanying data tables are self-explanatory.  This assumes that the user is generally familiar with property appraisal and property appraisal terms.  This document attempts to explain those items that are not self-explanatory.  The entries in this data dictionary are organized alphabetically by table then by field.
+
+Abatement_Exempt		table, it contains information about properties for which abatements have been granted by taxing entities.
+
+Account_Apprl_Year		table, this is the primary or central table in this dataset, it contains summary information about all appraisal accounts.  Detail information for the appraisal accounts are contained in related tables.
+
+Account_Info	table, it contains auxiliary data for each appraisal account in Account_Apprl_Year.
+
+Account_TIF	table, it contains information about appraisal accounts in Tax Increment Finance districts.
+
+Acct_Exempt_Value	table, it contains the value of each exemption granted
+
+Applied_Std_Exempt	table, it contains information about standard exemptions granted.
+
+Com_Detail	table, it contains detail information about the various taxable objects of a commercial appraisal account.  For instance, a commercial property may have two buildings, each built at differing times of differing materials and construction types and each is a separate taxable object, but both are part of the same appraisal account.
+
+Freeport_Exemption	table, it contains a record for any appraisal account that is located in a freeport zone.  The two indicator fields may or may not be empty.
+
+Land	table, it contains information about the land component(s) of a residential or commercial appraisal account.
+
+Res_Addl	table, it contains information about additional improvements to residential appraisal accounts.  These tend to be improvements such as a storage building or a garage enclosure.
+
+Res_Detail	table, it contains information about the primary improvement on a residential appraisal account.  This is usually the home.
+
+Taxable_Object	table, it contains a record for each component of a commercial appraisal account (i.e., improvement.)
+
+Total_Exemption	table, it contains a record for each appraisal account that is totally exempt.  There is no data in this table, just a record to link to.
+
+
