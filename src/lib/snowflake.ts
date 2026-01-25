@@ -2,8 +2,76 @@ import snowflake from 'snowflake-sdk';
 
 snowflake.configure({ logLevel: 'ERROR' });
 
-const TABLE_NAME = 'nationwide_parcel_data__premium_schema__free_sample.premium_parcels.tx_dallas';
+// Use the joined COMMERCIAL_PROPERTIES table from DCAD
+const TABLE_NAME = 'DCAD_LAND_2025.PUBLIC.COMMERCIAL_PROPERTIES';
 
+export interface CommercialProperty {
+  // Regrid parcel data
+  parcelId: string;
+  address: string;
+  city: string;
+  zip: string;
+  lat: number;
+  lon: number;
+  usedesc: string;
+  usecode: string;
+  regridYearBuilt: number | null;
+  regridNumStories: number | null;
+  regridImprovVal: number | null;
+  regridLandVal: number | null;
+  regridTotalVal: number | null;
+  lotAcres: number | null;
+  lotSqft: number | null;
+  bldgFootprintSqft: number | null;
+  
+  // DCAD Core appraisal data
+  accountNum: string;
+  divisionCd: string; // COM, RES
+  dcadImprovVal: number | null;
+  dcadLandVal: number | null;
+  dcadTotalVal: number | null;
+  bldgClassCd: string | null;
+  cityJurisDesc: string | null;
+  isdJurisDesc: string | null;
+  
+  // DCAD Account info (owner details)
+  bizName: string | null;
+  ownerName1: string | null;
+  ownerName2: string | null;
+  ownerAddressLine1: string | null;
+  ownerCity: string | null;
+  ownerState: string | null;
+  ownerZipcode: string | null;
+  ownerPhone: string | null;
+  deedTxfrDate: string | null;
+  
+  // DCAD Land details
+  dcadZoning: string | null;
+  frontDim: number | null;
+  depthDim: number | null;
+  landArea: number | null;
+  landAreaUom: string | null;
+  landCostPerUom: number | null;
+  
+  // DCAD Commercial building details
+  taxObjId: string | null;
+  propertyName: string | null;
+  bldgClassDesc: string | null;
+  dcadYearBuilt: number | null;
+  remodelYr: number | null;
+  grossBldgArea: number | null;
+  dcadNumStories: number | null;
+  numUnits: number | null;
+  netLeaseArea: number | null;
+  constructionType: string | null;
+  foundationType: string | null;
+  heatingType: string | null;
+  acType: string | null;
+  qualityGrade: string | null;
+  conditionGrade: string | null;
+}
+
+// Legacy interface for backwards compatibility
 export interface RegridParcel {
   ll_uuid: string;
   ll_stack_uuid: string | null;
@@ -64,6 +132,9 @@ export interface AggregatedProperty {
   zoningDescription: string[];
   parcelCount: number;
   rawParcelsJson: RegridParcel[];
+  
+  // DCAD enriched fields
+  dcad?: CommercialProperty;
 }
 
 function formatPrivateKey(key: string): string {
@@ -235,4 +306,184 @@ export async function getPropertyByKey(propertyKey: string): Promise<AggregatedP
       sunit: r.SUNIT,
     })),
   };
+}
+
+// Fetch commercial properties from the joined DCAD+Regrid table
+export async function getCommercialPropertiesByZip(
+  zipCode: string,
+  divisionCd: 'COM' | 'RES' | 'ALL' = 'COM',
+  limit: number = 1000
+): Promise<CommercialProperty[]> {
+  const divisionFilter = divisionCd === 'ALL' 
+    ? '' 
+    : `AND DIVISION_CD = '${divisionCd}'`;
+    
+  const sql = `
+    SELECT *
+    FROM ${TABLE_NAME}
+    WHERE ZIP LIKE '${zipCode.replace(/'/g, "''")}%'
+    ${divisionFilter}
+    LIMIT ${limit}
+  `;
+  
+  const rows = await executeQuery<any>(sql);
+  
+  return rows.map(r => ({
+    parcelId: r.PARCEL_ID,
+    address: r.address || '',  // lowercase in Snowflake
+    city: r.CITY || '',
+    zip: (r.ZIP || '').trim(),
+    lat: parseFloat(r.lat) || 0,  // lowercase
+    lon: parseFloat(r.lon) || 0,  // lowercase
+    usedesc: r.usedesc || '',  // lowercase
+    usecode: r.usecode || '',  // lowercase
+    regridYearBuilt: r.REGRID_YEAR_BUILT,
+    regridNumStories: r.REGRID_NUM_STORIES,
+    regridImprovVal: r.REGRID_IMPROV_VAL,
+    regridLandVal: r.REGRID_LAND_VAL,
+    regridTotalVal: r.REGRID_TOTAL_VAL,
+    lotAcres: r.LOT_ACRES,
+    lotSqft: r.LOT_SQFT,
+    bldgFootprintSqft: r.BLDG_FOOTPRINT_SQFT,
+    
+    accountNum: r.ACCOUNT_NUM || '',
+    divisionCd: r.DIVISION_CD || '',
+    dcadImprovVal: r.DCAD_IMPROV_VAL,
+    dcadLandVal: r.DCAD_LAND_VAL,
+    dcadTotalVal: r.DCAD_TOTAL_VAL,
+    bldgClassCd: r.BLDG_CLASS_CD,
+    cityJurisDesc: r.CITY_JURIS_DESC,
+    isdJurisDesc: r.ISD_JURIS_DESC,
+    
+    bizName: r.BIZ_NAME,
+    ownerName1: r.OWNER_NAME1,
+    ownerName2: r.OWNER_NAME2,
+    ownerAddressLine1: r.OWNER_ADDRESS_LINE1,
+    ownerCity: r.OWNER_CITY,
+    ownerState: r.OWNER_STATE,
+    ownerZipcode: r.OWNER_ZIPCODE,
+    ownerPhone: r.OWNER_PHONE,
+    deedTxfrDate: r.DEED_TXFR_DATE,
+    
+    dcadZoning: r.DCAD_ZONING,
+    frontDim: r.FRONT_DIM,
+    depthDim: r.DEPTH_DIM,
+    landArea: r.LAND_AREA,
+    landAreaUom: r.LAND_AREA_UOM,
+    landCostPerUom: r.LAND_COST_PER_UOM,
+    
+    taxObjId: r.TAX_OBJ_ID,
+    propertyName: r.PROPERTY_NAME,
+    bldgClassDesc: r.BLDG_CLASS_DESC,
+    dcadYearBuilt: r.DCAD_YEAR_BUILT,
+    remodelYr: r.REMODEL_YR,
+    grossBldgArea: r.GROSS_BLDG_AREA,
+    dcadNumStories: r.DCAD_NUM_STORIES,
+    numUnits: r.NUM_UNITS,
+    netLeaseArea: r.NET_LEASE_AREA,
+    constructionType: r.CONSTRUCTION_TYPE,
+    foundationType: r.FOUNDATION_TYPE,
+    heatingType: r.HEATING_TYPE,
+    acType: r.AC_TYPE,
+    qualityGrade: r.QUALITY_GRADE,
+    conditionGrade: r.CONDITION_GRADE,
+  }));
+}
+
+// Get a single commercial property by parcel ID
+export async function getCommercialPropertyByParcelId(
+  parcelId: string
+): Promise<CommercialProperty | null> {
+  const sql = `
+    SELECT *
+    FROM ${TABLE_NAME}
+    WHERE PARCEL_ID = '${parcelId.replace(/'/g, "''")}'
+    LIMIT 1
+  `;
+  
+  const rows = await executeQuery<any>(sql);
+  
+  if (rows.length === 0) return null;
+  
+  const r = rows[0];
+  return {
+    parcelId: r.PARCEL_ID,
+    address: r.address || '',  // lowercase in Snowflake
+    city: r.CITY || '',
+    zip: (r.ZIP || '').trim(),
+    lat: parseFloat(r.lat) || 0,  // lowercase
+    lon: parseFloat(r.lon) || 0,  // lowercase
+    usedesc: r.usedesc || '',  // lowercase
+    usecode: r.usecode || '',  // lowercase
+    regridYearBuilt: r.REGRID_YEAR_BUILT,
+    regridNumStories: r.REGRID_NUM_STORIES,
+    regridImprovVal: r.REGRID_IMPROV_VAL,
+    regridLandVal: r.REGRID_LAND_VAL,
+    regridTotalVal: r.REGRID_TOTAL_VAL,
+    lotAcres: r.LOT_ACRES,
+    lotSqft: r.LOT_SQFT,
+    bldgFootprintSqft: r.BLDG_FOOTPRINT_SQFT,
+    
+    accountNum: r.ACCOUNT_NUM || '',
+    divisionCd: r.DIVISION_CD || '',
+    dcadImprovVal: r.DCAD_IMPROV_VAL,
+    dcadLandVal: r.DCAD_LAND_VAL,
+    dcadTotalVal: r.DCAD_TOTAL_VAL,
+    bldgClassCd: r.BLDG_CLASS_CD,
+    cityJurisDesc: r.CITY_JURIS_DESC,
+    isdJurisDesc: r.ISD_JURIS_DESC,
+    
+    bizName: r.BIZ_NAME,
+    ownerName1: r.OWNER_NAME1,
+    ownerName2: r.OWNER_NAME2,
+    ownerAddressLine1: r.OWNER_ADDRESS_LINE1,
+    ownerCity: r.OWNER_CITY,
+    ownerState: r.OWNER_STATE,
+    ownerZipcode: r.OWNER_ZIPCODE,
+    ownerPhone: r.OWNER_PHONE,
+    deedTxfrDate: r.DEED_TXFR_DATE,
+    
+    dcadZoning: r.DCAD_ZONING,
+    frontDim: r.FRONT_DIM,
+    depthDim: r.DEPTH_DIM,
+    landArea: r.LAND_AREA,
+    landAreaUom: r.LAND_AREA_UOM,
+    landCostPerUom: r.LAND_COST_PER_UOM,
+    
+    taxObjId: r.TAX_OBJ_ID,
+    propertyName: r.PROPERTY_NAME,
+    bldgClassDesc: r.BLDG_CLASS_DESC,
+    dcadYearBuilt: r.DCAD_YEAR_BUILT,
+    remodelYr: r.REMODEL_YR,
+    grossBldgArea: r.GROSS_BLDG_AREA,
+    dcadNumStories: r.DCAD_NUM_STORIES,
+    numUnits: r.NUM_UNITS,
+    netLeaseArea: r.NET_LEASE_AREA,
+    constructionType: r.CONSTRUCTION_TYPE,
+    foundationType: r.FOUNDATION_TYPE,
+    heatingType: r.HEATING_TYPE,
+    acType: r.AC_TYPE,
+    qualityGrade: r.QUALITY_GRADE,
+    conditionGrade: r.CONDITION_GRADE,
+  };
+}
+
+// Count commercial properties by ZIP
+export async function countCommercialPropertiesByZip(
+  zipCode: string,
+  divisionCd: 'COM' | 'RES' | 'ALL' = 'COM'
+): Promise<number> {
+  const divisionFilter = divisionCd === 'ALL' 
+    ? '' 
+    : `AND DIVISION_CD = '${divisionCd}'`;
+    
+  const sql = `
+    SELECT COUNT(*) as CNT
+    FROM ${TABLE_NAME}
+    WHERE ZIP LIKE '${zipCode.replace(/'/g, "''")}%'
+    ${divisionFilter}
+  `;
+  
+  const rows = await executeQuery<any>(sql);
+  return rows[0]?.CNT || 0;
 }

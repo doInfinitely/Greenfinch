@@ -98,6 +98,50 @@ export const properties = pgTable('properties', {
   managementCompanyDomain: text('management_company_domain'),
   managementConfidence: real('management_confidence'),
   
+  // DCAD Appraisal Data
+  dcadAccountNum: text('dcad_account_num'),
+  dcadDivisionCd: text('dcad_division_cd'), // COM, RES, BPP
+  dcadBldgClassCd: text('dcad_bldg_class_cd'),
+  dcadBldgClassDesc: text('dcad_bldg_class_desc'),
+  dcadImprovVal: integer('dcad_improv_val'),
+  dcadLandVal: integer('dcad_land_val'),
+  dcadTotalVal: integer('dcad_total_val'),
+  dcadCityJuris: text('dcad_city_juris'),
+  dcadIsdJuris: text('dcad_isd_juris'),
+  
+  // DCAD Owner Info
+  dcadBizName: text('dcad_biz_name'),
+  dcadOwnerName1: text('dcad_owner_name1'),
+  dcadOwnerName2: text('dcad_owner_name2'),
+  dcadOwnerAddress: text('dcad_owner_address'),
+  dcadOwnerCity: text('dcad_owner_city'),
+  dcadOwnerState: text('dcad_owner_state'),
+  dcadOwnerZip: text('dcad_owner_zip'),
+  dcadOwnerPhone: text('dcad_owner_phone'),
+  dcadDeedTransferDate: text('dcad_deed_transfer_date'),
+  
+  // DCAD Land Details
+  dcadZoning: text('dcad_zoning'),
+  dcadLandFrontDim: integer('dcad_land_front_dim'),
+  dcadLandDepthDim: integer('dcad_land_depth_dim'),
+  dcadLandArea: real('dcad_land_area'),
+  dcadLandAreaUom: text('dcad_land_area_uom'),
+  
+  // DCAD Commercial Building Details
+  dcadPropertyName: text('dcad_property_name'),
+  dcadYearBuilt: integer('dcad_year_built'),
+  dcadRemodelYear: integer('dcad_remodel_year'),
+  dcadGrossBldgArea: integer('dcad_gross_bldg_area'),
+  dcadNumStories: integer('dcad_num_stories'),
+  dcadNumUnits: integer('dcad_num_units'),
+  dcadNetLeaseArea: integer('dcad_net_lease_area'),
+  dcadConstructionType: text('dcad_construction_type'),
+  dcadFoundationType: text('dcad_foundation_type'),
+  dcadHeatingType: text('dcad_heating_type'),
+  dcadAcType: text('dcad_ac_type'),
+  dcadQualityGrade: text('dcad_quality_grade'),
+  dcadConditionGrade: text('dcad_condition_grade'),
+  
   // Raw data
   rawParcelsJson: json('raw_parcels_json'),
   enrichmentJson: json('enrichment_json'),
