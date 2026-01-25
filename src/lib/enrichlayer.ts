@@ -322,7 +322,10 @@ export interface WorkEmailResult {
   creditsUsed?: number;
 }
 
-export async function lookupWorkEmail(linkedinUrl: string): Promise<WorkEmailResult> {
+export async function lookupWorkEmail(linkedinUrl: string, options?: {
+  validate?: boolean;
+  useCache?: 'if-present' | 'if-recent' | 'never';
+}): Promise<WorkEmailResult> {
   if (!ENRICHLAYER_API_KEY) {
     console.error('[EnrichLayer] API key not configured');
     return { success: false, email: null, status: null, error: 'EnrichLayer API key not configured' };
@@ -332,10 +335,21 @@ export async function lookupWorkEmail(linkedinUrl: string): Promise<WorkEmailRes
     await waitForRateLimit();
     const params = new URLSearchParams();
     params.append('profile_url', linkedinUrl);
+    
+    // Add validation to ensure deliverability (costs extra credits but ensures freshness)
+    if (options?.validate !== false) {
+      params.append('email_validation', 'include');
+    }
+    
+    // Control cache behavior to avoid stale emails from old jobs
+    // 'if-recent' only uses cache if data is fresh, otherwise fetches live
+    if (options?.useCache) {
+      params.append('use_cache', options.useCache);
+    }
 
     // Use the dedicated work email lookup endpoint: /api/v2/profile/email
     const url = `${ENRICHLAYER_BASE_URL}/profile/email?${params.toString()}`;
-    console.log('[EnrichLayer] Work email lookup:', { linkedinUrl });
+    console.log('[EnrichLayer] Work email lookup:', { linkedinUrl, validate: options?.validate !== false });
 
     const response = await fetch(url, {
       method: 'GET',

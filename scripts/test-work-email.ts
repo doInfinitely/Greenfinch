@@ -11,7 +11,8 @@ const contacts = [
 ];
 
 async function main() {
-  console.log("=== WORK EMAIL COMPARISON (AI vs EnrichLayer) ===\n");
+  console.log("=== WORK EMAIL COMPARISON (AI vs EnrichLayer) ===");
+  console.log("With email validation enabled for freshness\n");
   
   const results: Array<{ name: string; aiEmail: string; linkedIn: string | null; workEmail: string | null; status: string }> = [];
   
@@ -34,8 +35,11 @@ async function main() {
     
     console.log(`  LinkedIn: ${personResult.linkedinUrl}`);
     
-    // Step 2: Look up work email using the work-email endpoint
-    const emailResult = await lookupWorkEmail(personResult.linkedinUrl);
+    // Step 2: Look up work email with validation enabled
+    const emailResult = await lookupWorkEmail(personResult.linkedinUrl, {
+      validate: true,        // Validate email deliverability
+      useCache: 'if-recent', // Only use cache if recent, otherwise fetch fresh
+    });
     
     if (emailResult.success && emailResult.email) {
       console.log(`  ✓ Work Email: ${emailResult.email}`);
@@ -43,12 +47,12 @@ async function main() {
       console.log(`  Match: ${emailResult.email.toLowerCase() === contact.aiEmail.toLowerCase() ? 'YES' : 'NO'}`);
       results.push({ name: contact.fullName, aiEmail: contact.aiEmail, linkedIn: personResult.linkedinUrl, workEmail: emailResult.email, status: "found" });
     } else {
-      console.log(`  ✗ Work email not found: ${emailResult.status || emailResult.error}`);
+      console.log(`  ✗ Work email: ${emailResult.status || emailResult.error}`);
       results.push({ name: contact.fullName, aiEmail: contact.aiEmail, linkedIn: personResult.linkedinUrl, workEmail: null, status: emailResult.status || "error" });
     }
     
-    // Rate limit pause
-    await new Promise(r => setTimeout(r, 1000));
+    // Small pause between contacts
+    await new Promise(r => setTimeout(r, 500));
   }
   
   console.log("\n\n=== COMPARISON TABLE ===\n");
