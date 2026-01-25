@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { propertyIds, propertyKeys, limit, onlyUnenriched } = body;
+    const { propertyIds, propertyKeys, limit, onlyUnenriched, concurrency } = body;
 
     if (isBatchRunning()) {
       return NextResponse.json(
@@ -29,13 +29,14 @@ export async function POST(request: NextRequest) {
     const maxBatchSize = getMaxBatchSize();
     const requestedLimit = limit ? Math.min(limit, maxBatchSize) : maxBatchSize;
 
-    console.log(`[API] Starting batch enrichment with limit: ${requestedLimit}`);
+    console.log(`[API] Starting batch enrichment with limit: ${requestedLimit}, concurrency: ${concurrency || 'default'}`);
 
     const batchStatus = await startBatch({
       propertyIds,
       propertyKeys,
       limit: requestedLimit,
       onlyUnenriched: onlyUnenriched ?? false,
+      concurrency: concurrency ? Math.min(Math.max(1, concurrency), 50) : undefined,
     });
 
     return NextResponse.json({
@@ -43,6 +44,7 @@ export async function POST(request: NextRequest) {
       message: 'Batch enrichment started',
       batchId: batchStatus.batchId,
       totalProperties: batchStatus.progress.total,
+      concurrency: batchStatus.concurrency,
       maxBatchSize,
       status: batchStatus.status,
       checkStatusAt: '/api/admin/enrich-status',
@@ -69,12 +71,14 @@ export async function GET() {
         propertyKeys: ['optional-array-of-property-keys'],
         limit: 50,
         onlyUnenriched: true,
+        concurrency: 15,
       },
     },
     notes: [
       'If propertyIds or propertyKeys provided, those specific properties will be enriched',
       'If onlyUnenriched=true, properties with null or pending enrichmentStatus will be enriched',
-      'limit is capped at ENRICHMENT_MAX_BATCH_SIZE environment variable (default: 100)',
+      'limit is capped at ENRICHMENT_MAX_BATCH_SIZE environment variable (default: 200)',
+      'concurrency controls parallel property processing (1-50, default: 15)',
     ],
   });
 }

@@ -8,9 +8,13 @@ import { findEmail } from "./hunter";
 import { validateEmail } from "./neverbounce";
 import { findContainingPlace } from "./google-places";
 import pLimit from "p-limit";
-// @ts-ignore - name-match has no type declarations
-import { isMatch as nameLibMatch, NameNormalizer } from "name-match";
 import { CONCURRENCY } from "./constants";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+// @ts-ignore - name-match has no type declarations  
+const nameMatch = require("name-match");
+const { isMatch: nameLibMatch, NameNormalizer } = nameMatch;
 
 // Google Custom Search API for LinkedIn lookups
 interface GoogleSearchResult {

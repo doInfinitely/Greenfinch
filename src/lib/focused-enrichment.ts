@@ -1,6 +1,10 @@
 import { GoogleGenAI } from "@google/genai";
+import pLimit from "p-limit";
 import type { CommercialProperty, DCADBuilding } from "./snowflake";
-import { ASSET_CATEGORIES } from "./constants";
+import { ASSET_CATEGORIES, CONCURRENCY } from "./constants";
+
+// Global rate limiter for Gemini API calls across all concurrent property enrichments
+const geminiLimit = pLimit(CONCURRENCY.GEMINI);
 
 function getGeminiClient(): GoogleGenAI {
   if (process.env.GOOGLE_GENAI_API_KEY) {
@@ -187,14 +191,14 @@ Return JSON:
 
   console.log('[FocusedEnrichment] Stage 1: Classification and physical verification...');
   
-  const response = await client.models.generateContent({
+  const response = await geminiLimit(() => client.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: prompt,
     config: { 
       temperature: 0.1,
       tools: [{ googleSearch: {} }]
     }
-  });
+  }));
 
   const text = response.text?.trim() || '';
   console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
@@ -269,7 +273,8 @@ async function callGeminiWithTimeout<T>(
       });
       
       console.log(`[FocusedEnrichment] API call attempt ${attempt}/${retries}...`);
-      const result = await Promise.race([fn(), timeoutPromise]);
+      // Use global gemini rate limiter to control concurrent API calls
+      const result = await Promise.race([geminiLimit(fn), timeoutPromise]);
       return result;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));

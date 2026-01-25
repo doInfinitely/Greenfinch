@@ -32,9 +32,9 @@ export const CONFIDENCE = {
 // Gemini Flash can handle hundreds of requests per minute
 // SERP API, Hunter, NeverBounce have lower limits
 export const CONCURRENCY = {
-  GEMINI: 25,           // Main AI enrichment - Gemini Flash is fast
+  GEMINI: 50,           // Main AI enrichment - Gemini Flash is fast
   SERP: 10,             // SERP API for LinkedIn lookups
-  HUNTER: 10,           // Hunter.io email discovery
-  NEVERBOUNCE: 10,      // NeverBounce email validation
-  PROPERTIES: 15,       // Concurrent property enrichments
+  HUNTER: 3,            // Hunter.io email discovery - very low rate limit
+  NEVERBOUNCE: 5,       // NeverBounce email validation
+  PROPERTIES: 20,       // Concurrent property enrichments
 };
