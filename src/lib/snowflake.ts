@@ -2,8 +2,8 @@ import snowflake from 'snowflake-sdk';
 
 snowflake.configure({ logLevel: 'ERROR' });
 
-// Regrid parcel data table
-const REGRID_TABLE = 'NATIONWIDE_PARCEL_DATA__PREMIUM_SCHEMA__FREE_SAMPLE.PREMIUM.DEED';
+// Regrid parcel data table (correct schema path)
+const REGRID_TABLE = 'NATIONWIDE_PARCEL_DATA__PREMIUM_SCHEMA__FREE_SAMPLE.PREMIUM_PARCELS.TX_DALLAS';
 
 // Individual building details from DCAD COM_DETAIL
 export interface DCADBuilding {
