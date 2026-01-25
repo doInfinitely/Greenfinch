@@ -52,7 +52,10 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Clickable Records**: Contact and organization cards/rows are fully clickable (no "View Details" links) for better mobile UX. Chevron indicators show navigable items. Links (email, domain, LinkedIn) work independently via stopPropagation.
 
 ### Technical Implementations
-- **Property Classification**: Employs a rule-based system in `src/lib/zoning-classification.ts` for categorizing properties as `single_family`, `multifamily`, `commercial`, or `public` based on `zoning_description` and `usedesc` fields.
+- **Property Classification**: Uses Texas PTAD state property type codes (SPTD_CD) from DCAD's ACCOUNT_APPRL_YEAR table. Filtering is defined in `src/lib/property-classifications.ts`:
+  - **Included**: B11 (Apartments), B12 (Duplexes), F10 (Commercial), F20 (Industrial)
+  - **Excluded**: Single-family (A11-A20), vacant land (C11-C14), agricultural (D10-D20), utilities (J10-J80), personal property, exempt properties, etc.
+- **Parcel Aggregation**: Properties are aggregated by GIS_PARCEL_ID to represent physical complexes. Parent properties contain constituent accounts (e.g., Northpark Mall with Neiman Marcus, Nordstrom as constituents).
 - **Map Management**: A dedicated `DashboardMap` controller manages Mapbox GL lifecycle and state, ensuring a consistent and performant map experience.
 - **Search Functionality**: Integrates Mapbox Search Box API for POI, address, and location searches, providing context-aware results and smart zoom levels.
 

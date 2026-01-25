@@ -3,10 +3,14 @@ import { db } from './db';
 import { properties } from './schema';
 import { eq } from 'drizzle-orm';
 import { normalizeAddress, normalizeOwnerName, normalizeCity } from './normalization';
+import { INCLUDED_SPTD_CODES } from './property-classifications';
 
 snowflake.configure({ logLevel: 'ERROR' });
 
 const COMMERCIAL_PROPERTIES_TABLE = 'DCAD_LAND_2025.PUBLIC.COMMERCIAL_PROPERTIES';
+const ACCOUNT_APPRL_TABLE = 'DCAD_LAND_2025.PUBLIC.ACCOUNT_APPRL_YEAR';
+const ACCOUNT_INFO_TABLE = 'DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO';
+const REGRID_TABLE = 'NATIONWIDE_PARCEL_DATA__PREMIUM_SCHEMA__FREE_SAMPLE.PREMIUM_PARCELS.TX_DALLAS';
 
 export interface DCadBuildingRow {
   taxObjId: string | null;
@@ -224,10 +228,14 @@ export async function sampleAccountInfo(zipCode: string): Promise<any[]> {
 }
 
 export async function countCommercialPropertiesByZip(zipCode: string): Promise<number> {
+  const sptdCodesList = INCLUDED_SPTD_CODES.map(c => `'${c}'`).join(', ');
+  
   const sql = `
     SELECT COUNT(*) as CNT 
-    FROM ${COMMERCIAL_PROPERTIES_TABLE} 
-    WHERE ZIP LIKE '${zipCode}%'
+    FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
+    JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
+    WHERE cp.ZIP LIKE '${zipCode}%'
+      AND aa.SPTD_CD IN (${sptdCodesList})
   `;
   const rows = await executeQuery<any>(sql);
   return rows[0]?.CNT || 0;
@@ -238,65 +246,70 @@ export async function getCommercialPropertiesByZip(
   limit: number = 1000,
   offset: number = 0
 ): Promise<DCadCommercialProperty[]> {
+  const sptdCodesList = INCLUDED_SPTD_CODES.map(c => `'${c}'`).join(', ');
+  
   const sql = `
     SELECT 
-      PARCEL_ID,
-      "address",
-      CITY,
-      ZIP,
-      "lat",
-      "lon",
-      "usedesc",
-      "usecode",
-      REGRID_YEAR_BUILT,
-      REGRID_NUM_STORIES,
-      REGRID_IMPROV_VAL,
-      REGRID_LAND_VAL,
-      REGRID_TOTAL_VAL,
-      LOT_ACRES,
-      LOT_SQFT,
-      BLDG_FOOTPRINT_SQFT,
-      ACCOUNT_NUM,
-      DIVISION_CD,
-      DCAD_IMPROV_VAL,
-      DCAD_LAND_VAL,
-      DCAD_TOTAL_VAL,
-      BLDG_CLASS_CD,
-      CITY_JURIS_DESC,
-      ISD_JURIS_DESC,
-      BIZ_NAME,
-      OWNER_NAME1,
-      OWNER_NAME2,
-      OWNER_ADDRESS_LINE1,
-      OWNER_CITY,
-      OWNER_STATE,
-      OWNER_ZIPCODE,
-      OWNER_PHONE,
-      DEED_TXFR_DATE,
-      DCAD_ZONING,
-      FRONT_DIM,
-      DEPTH_DIM,
-      LAND_AREA,
-      LAND_AREA_UOM,
-      LAND_COST_PER_UOM,
-      TAX_OBJ_ID,
-      PROPERTY_NAME,
-      BLDG_CLASS_DESC,
-      DCAD_YEAR_BUILT,
-      REMODEL_YR,
-      GROSS_BLDG_AREA,
-      DCAD_NUM_STORIES,
-      NUM_UNITS,
-      NET_LEASE_AREA,
-      CONSTRUCTION_TYPE,
-      FOUNDATION_TYPE,
-      HEATING_TYPE,
-      AC_TYPE,
-      QUALITY_GRADE,
-      CONDITION_GRADE
-    FROM ${COMMERCIAL_PROPERTIES_TABLE}
-    WHERE ZIP LIKE '${zipCode}%'
-    ORDER BY DCAD_TOTAL_VAL DESC NULLS LAST
+      cp.PARCEL_ID,
+      cp."address",
+      cp.CITY,
+      cp.ZIP,
+      cp."lat",
+      cp."lon",
+      cp."usedesc",
+      cp."usecode",
+      cp.REGRID_YEAR_BUILT,
+      cp.REGRID_NUM_STORIES,
+      cp.REGRID_IMPROV_VAL,
+      cp.REGRID_LAND_VAL,
+      cp.REGRID_TOTAL_VAL,
+      cp.LOT_ACRES,
+      cp.LOT_SQFT,
+      cp.BLDG_FOOTPRINT_SQFT,
+      cp.ACCOUNT_NUM,
+      cp.DIVISION_CD,
+      cp.DCAD_IMPROV_VAL,
+      cp.DCAD_LAND_VAL,
+      cp.DCAD_TOTAL_VAL,
+      cp.BLDG_CLASS_CD,
+      cp.CITY_JURIS_DESC,
+      cp.ISD_JURIS_DESC,
+      cp.BIZ_NAME,
+      cp.OWNER_NAME1,
+      cp.OWNER_NAME2,
+      cp.OWNER_ADDRESS_LINE1,
+      cp.OWNER_CITY,
+      cp.OWNER_STATE,
+      cp.OWNER_ZIPCODE,
+      cp.OWNER_PHONE,
+      cp.DEED_TXFR_DATE,
+      cp.DCAD_ZONING,
+      cp.FRONT_DIM,
+      cp.DEPTH_DIM,
+      cp.LAND_AREA,
+      cp.LAND_AREA_UOM,
+      cp.LAND_COST_PER_UOM,
+      cp.TAX_OBJ_ID,
+      cp.PROPERTY_NAME,
+      cp.BLDG_CLASS_DESC,
+      cp.DCAD_YEAR_BUILT,
+      cp.REMODEL_YR,
+      cp.GROSS_BLDG_AREA,
+      cp.DCAD_NUM_STORIES,
+      cp.NUM_UNITS,
+      cp.NET_LEASE_AREA,
+      cp.CONSTRUCTION_TYPE,
+      cp.FOUNDATION_TYPE,
+      cp.HEATING_TYPE,
+      cp.AC_TYPE,
+      cp.QUALITY_GRADE,
+      cp.CONDITION_GRADE,
+      aa.SPTD_CD
+    FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
+    JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
+    WHERE cp.ZIP LIKE '${zipCode}%'
+      AND aa.SPTD_CD IN (${sptdCodesList})
+    ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
     LIMIT ${limit}
     OFFSET ${offset}
   `;
@@ -315,7 +328,7 @@ function mapRowToProperty(row: any): DCadCommercialProperty {
     lon: parseFloat(row.lon) || 0,
     usedesc: row.usedesc || null,
     usecode: row.usecode || null,
-    stateClass: row.SPTD_CD || row.STATE_CLASS || null,
+    stateClass: row.SPTD_CD || null,
     
     regridYearBuilt: row.REGRID_YEAR_BUILT || null,
     regridNumStories: row.REGRID_NUM_STORIES || null,
