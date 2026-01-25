@@ -38,3 +38,5 @@ export const CONCURRENCY = {
   NEVERBOUNCE: 5,       // NeverBounce email validation
   PROPERTIES: 20,       // Concurrent property enrichments
 };
+
+export const MVP_ZIP_CODE = process.env.MVP_ZIP || '75225';

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { runIngestion, countCommercialPropertiesByZip } from '@/lib/dcad-ingestion';
-import { MVP_ZIP_CODE } from '@/lib/ingestion';
+import { MVP_ZIP_CODE } from '@/lib/constants';
 import { requireAdminAccess } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
