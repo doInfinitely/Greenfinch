@@ -467,9 +467,16 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
       rentableArea = totalGrossBldgArea;
     }
     
-    const primaryName = uniqueBuildings.find(b => b.propertyName)?.propertyName 
-      || firstRow.bizName 
-      || null;
+    // Select best property name: prefer non-parking buildings, then shortest name
+    const buildingsWithNames = uniqueBuildings.filter(b => b.propertyName);
+    const nonParkingBuildings = buildingsWithNames.filter(b => 
+      !b.propertyName?.toUpperCase().includes('PARKING') &&
+      !b.propertyName?.toUpperCase().includes('GARAGE')
+    );
+    // Sort by name length (shorter = more likely to be the main building name)
+    const sortedByLength = (nonParkingBuildings.length > 0 ? nonParkingBuildings : buildingsWithNames)
+      .sort((a, b) => (a.propertyName?.length || 999) - (b.propertyName?.length || 999));
+    const primaryName = sortedByLength[0]?.propertyName || firstRow.bizName || null;
     
     aggregated.push({
       parcelId: firstRow.parcelId,
