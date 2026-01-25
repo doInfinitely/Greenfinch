@@ -8,6 +8,24 @@ snowflake.configure({ logLevel: 'ERROR' });
 
 const COMMERCIAL_PROPERTIES_TABLE = 'DCAD_LAND_2025.PUBLIC.COMMERCIAL_PROPERTIES';
 
+export interface DCadBuildingRow {
+  taxObjId: string | null;
+  propertyName: string | null;
+  bldgClassDesc: string | null;
+  yearBuilt: number | null;
+  remodelYear: number | null;
+  grossBldgArea: number | null;
+  numStories: number | null;
+  numUnits: number | null;
+  netLeaseArea: number | null;
+  constructionType: string | null;
+  foundationType: string | null;
+  heatingType: string | null;
+  acType: string | null;
+  qualityGrade: string | null;
+  conditionGrade: string | null;
+}
+
 export interface DCadCommercialProperty {
   parcelId: string;
   address: string;
@@ -68,6 +86,60 @@ export interface DCadCommercialProperty {
   acType: string | null;
   qualityGrade: string | null;
   conditionGrade: string | null;
+}
+
+export interface AggregatedProperty {
+  parcelId: string;
+  address: string;
+  city: string;
+  zip: string;
+  lat: number;
+  lon: number;
+  usedesc: string | null;
+  usecode: string | null;
+  
+  regridYearBuilt: number | null;
+  regridNumStories: number | null;
+  regridImprovVal: number | null;
+  regridLandVal: number | null;
+  regridTotalVal: number | null;
+  lotAcres: number | null;
+  lotSqft: number | null;
+  bldgFootprintSqft: number | null;
+  
+  accountNum: string;
+  divisionCd: string;
+  dcadImprovVal: number | null;
+  dcadLandVal: number | null;
+  dcadTotalVal: number | null;
+  bldgClassCd: string | null;
+  cityJurisDesc: string | null;
+  isdJurisDesc: string | null;
+  
+  bizName: string | null;
+  ownerName1: string | null;
+  ownerName2: string | null;
+  ownerAddressLine1: string | null;
+  ownerCity: string | null;
+  ownerState: string | null;
+  ownerZipcode: string | null;
+  ownerPhone: string | null;
+  deedTxfrDate: string | null;
+  
+  dcadZoning: string | null;
+  frontDim: number | null;
+  depthDim: number | null;
+  landArea: number | null;
+  landAreaUom: string | null;
+  landCostPerUom: number | null;
+  
+  buildings: DCadBuildingRow[];
+  buildingCount: number;
+  oldestYearBuilt: number | null;
+  newestYearBuilt: number | null;
+  totalGrossBldgArea: number | null;
+  totalUnits: number | null;
+  primaryPropertyName: string | null;
 }
 
 function formatPrivateKey(key: string): string {
@@ -279,8 +351,123 @@ function mapRowToProperty(row: any): DCadCommercialProperty {
   };
 }
 
-export async function upsertPropertyToPostgres(
-  prop: DCadCommercialProperty
+export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): AggregatedProperty[] {
+  const groupedByParcel = new Map<string, DCadCommercialProperty[]>();
+  
+  for (const row of rows) {
+    const key = row.parcelId;
+    if (!groupedByParcel.has(key)) {
+      groupedByParcel.set(key, []);
+    }
+    groupedByParcel.get(key)!.push(row);
+  }
+  
+  const aggregated: AggregatedProperty[] = [];
+  
+  for (const [parcelId, parcelRows] of groupedByParcel) {
+    const firstRow = parcelRows[0];
+    
+    const buildings: DCadBuildingRow[] = parcelRows
+      .filter(r => r.taxObjId)
+      .map(r => ({
+        taxObjId: r.taxObjId,
+        propertyName: r.propertyName,
+        bldgClassDesc: r.bldgClassDesc,
+        yearBuilt: r.dcadYearBuilt,
+        remodelYear: r.remodelYr,
+        grossBldgArea: r.grossBldgArea,
+        numStories: r.dcadNumStories,
+        numUnits: r.numUnits,
+        netLeaseArea: r.netLeaseArea,
+        constructionType: r.constructionType,
+        foundationType: r.foundationType,
+        heatingType: r.heatingType,
+        acType: r.acType,
+        qualityGrade: r.qualityGrade,
+        conditionGrade: r.conditionGrade,
+      }));
+    
+    const uniqueBuildings = buildings.filter((b, i, arr) => 
+      arr.findIndex(x => x.taxObjId === b.taxObjId) === i
+    );
+    
+    const yearsBuilt = uniqueBuildings
+      .map(b => b.yearBuilt)
+      .filter((y): y is number => y !== null && y > 0);
+    const remodelYears = uniqueBuildings
+      .map(b => b.remodelYear)
+      .filter((y): y is number => y !== null && y > 0);
+    const allYears = [...yearsBuilt, ...remodelYears];
+    
+    const totalGrossBldgArea = uniqueBuildings
+      .reduce((sum, b) => sum + (b.grossBldgArea || 0), 0) || null;
+    const totalUnits = uniqueBuildings
+      .reduce((sum, b) => sum + (b.numUnits || 0), 0) || null;
+    
+    const primaryName = uniqueBuildings.find(b => b.propertyName)?.propertyName 
+      || firstRow.bizName 
+      || null;
+    
+    aggregated.push({
+      parcelId,
+      address: firstRow.address,
+      city: firstRow.city,
+      zip: firstRow.zip,
+      lat: firstRow.lat,
+      lon: firstRow.lon,
+      usedesc: firstRow.usedesc,
+      usecode: firstRow.usecode,
+      
+      regridYearBuilt: firstRow.regridYearBuilt,
+      regridNumStories: firstRow.regridNumStories,
+      regridImprovVal: firstRow.regridImprovVal,
+      regridLandVal: firstRow.regridLandVal,
+      regridTotalVal: firstRow.regridTotalVal,
+      lotAcres: firstRow.lotAcres,
+      lotSqft: firstRow.lotSqft,
+      bldgFootprintSqft: firstRow.bldgFootprintSqft,
+      
+      accountNum: firstRow.accountNum,
+      divisionCd: firstRow.divisionCd,
+      dcadImprovVal: firstRow.dcadImprovVal,
+      dcadLandVal: firstRow.dcadLandVal,
+      dcadTotalVal: firstRow.dcadTotalVal,
+      bldgClassCd: firstRow.bldgClassCd,
+      cityJurisDesc: firstRow.cityJurisDesc,
+      isdJurisDesc: firstRow.isdJurisDesc,
+      
+      bizName: firstRow.bizName,
+      ownerName1: firstRow.ownerName1,
+      ownerName2: firstRow.ownerName2,
+      ownerAddressLine1: firstRow.ownerAddressLine1,
+      ownerCity: firstRow.ownerCity,
+      ownerState: firstRow.ownerState,
+      ownerZipcode: firstRow.ownerZipcode,
+      ownerPhone: firstRow.ownerPhone,
+      deedTxfrDate: firstRow.deedTxfrDate,
+      
+      dcadZoning: firstRow.dcadZoning,
+      frontDim: firstRow.frontDim,
+      depthDim: firstRow.depthDim,
+      landArea: firstRow.landArea,
+      landAreaUom: firstRow.landAreaUom,
+      landCostPerUom: firstRow.landCostPerUom,
+      
+      buildings: uniqueBuildings,
+      buildingCount: uniqueBuildings.length || 1,
+      oldestYearBuilt: yearsBuilt.length > 0 ? Math.min(...yearsBuilt) : null,
+      newestYearBuilt: allYears.length > 0 ? Math.max(...allYears) : null,
+      totalGrossBldgArea,
+      totalUnits,
+      primaryPropertyName: primaryName,
+    });
+  }
+  
+  return aggregated;
+}
+
+export async function upsertAggregatedPropertyToPostgres(
+  prop: AggregatedProperty
 ): Promise<{ created: boolean }> {
   const propertyKey = prop.parcelId;
   
@@ -310,10 +497,10 @@ export async function upsertPropertyToPostgres(
     lon: prop.lon,
     
     lotSqft: prop.lotSqft ? Math.round(prop.lotSqft) : null,
-    buildingSqft: prop.grossBldgArea ? Math.round(prop.grossBldgArea) : 
+    buildingSqft: prop.totalGrossBldgArea ? Math.round(prop.totalGrossBldgArea) : 
                   prop.bldgFootprintSqft ? Math.round(prop.bldgFootprintSqft) : null,
-    yearBuilt: prop.dcadYearBuilt || prop.regridYearBuilt || null,
-    numFloors: prop.dcadNumStories || prop.regridNumStories || null,
+    yearBuilt: prop.oldestYearBuilt || prop.regridYearBuilt || null,
+    numFloors: prop.regridNumStories || null,
     
     regridOwner: normalizedOwner,
     regridOwner2: normalizedOwner2,
@@ -342,30 +529,14 @@ export async function upsertPropertyToPostgres(
     dcadLandArea: prop.landArea,
     dcadLandAreaUom: prop.landAreaUom,
     
-    dcadBuildingCount: 1,
-    dcadOldestYearBuilt: prop.dcadYearBuilt,
-    dcadNewestYearBuilt: prop.remodelYr || prop.dcadYearBuilt,
-    dcadTotalGrossBldgArea: prop.grossBldgArea,
-    dcadTotalUnits: prop.numUnits,
-    dcadBuildings: [{
-      taxObjId: prop.taxObjId,
-      propertyName: prop.propertyName,
-      bldgClassDesc: prop.bldgClassDesc,
-      yearBuilt: prop.dcadYearBuilt,
-      remodelYear: prop.remodelYr,
-      grossBldgArea: prop.grossBldgArea,
-      numStories: prop.dcadNumStories,
-      numUnits: prop.numUnits,
-      netLeaseArea: prop.netLeaseArea,
-      constructionType: prop.constructionType,
-      foundationType: prop.foundationType,
-      heatingType: prop.heatingType,
-      acType: prop.acType,
-      qualityGrade: prop.qualityGrade,
-      conditionGrade: prop.conditionGrade,
-    }],
+    dcadBuildingCount: prop.buildingCount,
+    dcadOldestYearBuilt: prop.oldestYearBuilt,
+    dcadNewestYearBuilt: prop.newestYearBuilt,
+    dcadTotalGrossBldgArea: prop.totalGrossBldgArea,
+    dcadTotalUnits: prop.totalUnits,
+    dcadBuildings: prop.buildings,
     
-    commonName: prop.propertyName || prop.bizName || null,
+    commonName: prop.primaryPropertyName || prop.bizName || null,
     
     enrichmentStatus: 'pending' as const,
     lastRegridUpdate: new Date(),
@@ -386,6 +557,16 @@ export async function upsertPropertyToPostgres(
     });
     return { created: true };
   }
+}
+
+export async function upsertPropertyToPostgres(
+  prop: DCadCommercialProperty
+): Promise<{ created: boolean }> {
+  const aggregated = aggregatePropertiesByParcel([prop]);
+  if (aggregated.length > 0) {
+    return upsertAggregatedPropertyToPostgres(aggregated[0]);
+  }
+  return { created: false };
 }
 
 export interface IngestionStats {
@@ -412,17 +593,28 @@ export async function runIngestion(
   };
   
   const count = await countCommercialPropertiesByZip(zipCode);
-  console.log(`[Ingestion] Found ${count} commercial properties in ZIP ${zipCode}`);
+  console.log(`[Ingestion] Found ${count} commercial properties (rows) in ZIP ${zipCode}`);
   
   const commercialProperties = await getCommercialPropertiesByZip(zipCode, limit);
   stats.totalFromSnowflake = commercialProperties.length;
-  console.log(`[Ingestion] Fetched ${commercialProperties.length} properties`);
+  console.log(`[Ingestion] Fetched ${commercialProperties.length} rows from Snowflake`);
   
-  for (let i = 0; i < commercialProperties.length; i++) {
-    const prop = commercialProperties[i];
+  const aggregatedProperties = aggregatePropertiesByParcel(commercialProperties);
+  console.log(`[Ingestion] Aggregated into ${aggregatedProperties.length} unique properties`);
+  
+  const multiBuilding = aggregatedProperties.filter(p => p.buildingCount > 1);
+  if (multiBuilding.length > 0) {
+    console.log(`[Ingestion] ${multiBuilding.length} properties have multiple buildings:`);
+    for (const p of multiBuilding.slice(0, 5)) {
+      console.log(`  - ${p.primaryPropertyName || p.parcelId}: ${p.buildingCount} buildings, ${p.totalGrossBldgArea?.toLocaleString()} sqft`);
+    }
+  }
+  
+  for (let i = 0; i < aggregatedProperties.length; i++) {
+    const prop = aggregatedProperties[i];
     
     try {
-      const result = await upsertPropertyToPostgres(prop);
+      const result = await upsertAggregatedPropertyToPostgres(prop);
       
       if (result.created) {
         stats.propertiesSaved++;
@@ -431,7 +623,7 @@ export async function runIngestion(
       }
       
       if ((i + 1) % 50 === 0) {
-        console.log(`[Ingestion] Progress: ${i + 1}/${commercialProperties.length}`);
+        console.log(`[Ingestion] Progress: ${i + 1}/${aggregatedProperties.length}`);
       }
     } catch (error) {
       stats.errors++;
