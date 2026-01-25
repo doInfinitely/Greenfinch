@@ -164,7 +164,7 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 1: Physical verification...');
   
   const response = await client.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-3.0-flash-preview",
     contents: prompt,
     config: { 
       temperature: 0.1,
@@ -215,7 +215,7 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 2: Classification...');
   
   const response = await client.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-3.0-flash-preview",
     contents: prompt,
     config: { 
       temperature: 0.1,
@@ -270,7 +270,7 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 3: Ownership identification...');
   
   const response = await client.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-3.0-flash-preview",
     contents: prompt,
     config: { 
       temperature: 0.1,
@@ -331,7 +331,7 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 4: Contact discovery...');
   
   const response = await client.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-3.0-flash-preview",
     contents: prompt,
     config: { 
       temperature: 0.1,
