@@ -325,6 +325,7 @@ export interface WorkEmailResult {
 export async function lookupWorkEmail(linkedinUrl: string, options?: {
   validate?: boolean;
   useCache?: 'if-present' | 'if-recent' | 'never';
+  expectedDomain?: string;  // Filter to only accept emails from this domain
 }): Promise<WorkEmailResult> {
   if (!ENRICHLAYER_API_KEY) {
     console.error('[EnrichLayer] API key not configured');
@@ -370,6 +371,22 @@ export async function lookupWorkEmail(linkedinUrl: string, options?: {
 
     // Response format: { email: "...", email_queue_count: 0 }
     if (data.email) {
+      // If expectedDomain is provided, verify the email domain matches
+      if (options?.expectedDomain) {
+        const emailDomain = data.email.split('@')[1]?.toLowerCase();
+        const expectedDomainLower = options.expectedDomain.toLowerCase().replace(/^www\./, '');
+        
+        if (emailDomain !== expectedDomainLower) {
+          console.log(`[EnrichLayer] Email domain mismatch: got ${emailDomain}, expected ${expectedDomainLower}`);
+          return {
+            success: false,
+            email: null,
+            status: 'domain_mismatch',
+            error: `Email ${data.email} doesn't match expected domain ${options.expectedDomain} (may be from previous role)`,
+          };
+        }
+      }
+      
       return {
         success: true,
         email: data.email,

@@ -12,7 +12,7 @@ const contacts = [
 
 async function main() {
   console.log("=== WORK EMAIL COMPARISON (AI vs EnrichLayer) ===");
-  console.log("With email validation enabled for freshness\n");
+  console.log("With fresh fetch (no cache) and domain filtering\n");
   
   const results: Array<{ name: string; aiEmail: string; linkedIn: string | null; workEmail: string | null; status: string }> = [];
   
@@ -35,10 +35,12 @@ async function main() {
     
     console.log(`  LinkedIn: ${personResult.linkedinUrl}`);
     
-    // Step 2: Look up work email with validation enabled
+    // Step 2: Look up work email with fresh fetch and domain filtering
+    // NorthPark uses northparkcntr.com for emails (not northparkcenter.com)
     const emailResult = await lookupWorkEmail(personResult.linkedinUrl, {
-      validate: true,        // Validate email deliverability
-      useCache: 'if-recent', // Only use cache if recent, otherwise fetch fresh
+      validate: true,           // Validate email deliverability
+      useCache: 'never',        // Force fresh fetch - avoid stale emails from old jobs
+      expectedDomain: 'northparkcntr.com', // Filter to current company domain
     });
     
     if (emailResult.success && emailResult.email) {
@@ -51,8 +53,8 @@ async function main() {
       results.push({ name: contact.fullName, aiEmail: contact.aiEmail, linkedIn: personResult.linkedinUrl, workEmail: null, status: emailResult.status || "error" });
     }
     
-    // Small pause between contacts
-    await new Promise(r => setTimeout(r, 500));
+    // Pause between contacts to avoid rate limiting
+    await new Promise(r => setTimeout(r, 3500));
   }
   
   console.log("\n\n=== COMPARISON TABLE ===\n");
