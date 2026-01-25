@@ -548,10 +548,10 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
                        firstRow.lotSqft ? Math.round(firstRow.lotSqft) : null,
       computedLotSqftSource: firstRow.dcadLandSqft ? 'dcad_land' : 
                               firstRow.lotSqft ? 'regrid' : null,
-      // Computed building sqft: DCAD COM_DETAIL > regrid
-      computedBuildingSqft: totalGrossBldgArea ? Math.round(totalGrossBldgArea) : 
+      // Computed building sqft: rentable area (gross minus parking) from DCAD > regrid
+      computedBuildingSqft: rentableArea ? Math.round(rentableArea) : 
                             firstRow.bldgFootprintSqft ? Math.round(firstRow.bldgFootprintSqft) : null,
-      computedBuildingSqftSource: totalGrossBldgArea ? 'dcad_com_detail' : 
+      computedBuildingSqftSource: rentableArea ? 'dcad_com_detail' : 
                                    firstRow.bldgFootprintSqft ? 'regrid' : null,
       
       buildings: uniqueBuildings,
