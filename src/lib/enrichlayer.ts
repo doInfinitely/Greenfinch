@@ -1,8 +1,8 @@
 const ENRICHLAYER_API_KEY = process.env.ENRICHLAYER_API_KEY;
 const ENRICHLAYER_BASE_URL = 'https://enrichlayer.com/api/v2';
 
-// Rate limiting: 10 requests per minute
-const RATE_LIMIT_REQUESTS = 10;
+// Rate limiting: 20 requests per minute (paid plan)
+const RATE_LIMIT_REQUESTS = 20;
 const RATE_LIMIT_WINDOW_MS = 60000;
 const requestTimestamps: number[] = [];
 
@@ -331,10 +331,10 @@ export async function lookupWorkEmail(linkedinUrl: string): Promise<WorkEmailRes
   try {
     await waitForRateLimit();
     const params = new URLSearchParams();
-    params.append('url', linkedinUrl);
-    params.append('work_email', 'include');
+    params.append('profile_url', linkedinUrl);
 
-    const url = `${ENRICHLAYER_BASE_URL}/profile?${params.toString()}`;
+    // Use the dedicated work email lookup endpoint: /api/v2/profile/email
+    const url = `${ENRICHLAYER_BASE_URL}/profile/email?${params.toString()}`;
     console.log('[EnrichLayer] Work email lookup:', { linkedinUrl });
 
     const response = await fetch(url, {
@@ -352,15 +352,25 @@ export async function lookupWorkEmail(linkedinUrl: string): Promise<WorkEmailRes
     }
 
     const data = await response.json();
-    console.log('[EnrichLayer] Work email response:', JSON.stringify(data).slice(0, 300));
+    console.log('[EnrichLayer] Work email response:', JSON.stringify(data));
 
-    const workEmail = data.work_email || data.email;
-    if (workEmail) {
+    // Response format: { email: "...", email_queue_count: 0 }
+    if (data.email) {
       return {
         success: true,
-        email: workEmail,
+        email: data.email,
         status: 'email_found',
-        creditsUsed: data.credits_used || 2,
+        creditsUsed: 3,
+      };
+    }
+
+    // If email_queue_count > 0, the request is still processing (async)
+    if (data.email_queue_count > 0) {
+      return {
+        success: false,
+        email: null,
+        status: 'queued',
+        error: `Email lookup queued (position: ${data.email_queue_count})`,
       };
     }
 
@@ -368,7 +378,7 @@ export async function lookupWorkEmail(linkedinUrl: string): Promise<WorkEmailRes
       success: false,
       email: null,
       status: 'not_found',
-      error: 'Work email not found in profile',
+      error: 'Work email not found',
     };
   } catch (error) {
     console.error('[EnrichLayer] Work email lookup error:', error);
