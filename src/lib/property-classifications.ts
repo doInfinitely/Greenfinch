@@ -1,4 +1,4 @@
-export interface PropertyClassification {
+export interface PTADClassification {
   legacyCode: string;
   dcadDescription: string;
   ptadCode: string;
@@ -7,7 +7,7 @@ export interface PropertyClassification {
   include: boolean;
 }
 
-export const PROPERTY_CLASSIFICATIONS: PropertyClassification[] = [
+export const PROPERTY_CLASSIFICATIONS: PTADClassification[] = [
   // MULTIFAMILY - INCLUDE
   { legacyCode: 'B11', dcadDescription: 'MFR - APARTMENTS', ptadCode: 'B', ptadDescription: 'REAL PROPERTY: MULTIFAMILY RESIDENTIAL', category: 'multifamily', include: true },
   { legacyCode: 'B12', dcadDescription: 'MFR - DUPLEXES', ptadCode: 'B', ptadDescription: 'REAL PROPERTY: MULTIFAMILY RESIDENTIAL', category: 'multifamily', include: true },
