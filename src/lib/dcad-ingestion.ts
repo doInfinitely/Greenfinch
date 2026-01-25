@@ -352,22 +352,22 @@ function mapRowToProperty(row: any): DCadCommercialProperty {
 }
 
 export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): AggregatedProperty[] {
-  const groupedByParcel = new Map<string, DCadCommercialProperty[]>();
+  const groupedByAccount = new Map<string, DCadCommercialProperty[]>();
   
   for (const row of rows) {
-    const key = row.parcelId;
-    if (!groupedByParcel.has(key)) {
-      groupedByParcel.set(key, []);
+    const key = row.accountNum;
+    if (!groupedByAccount.has(key)) {
+      groupedByAccount.set(key, []);
     }
-    groupedByParcel.get(key)!.push(row);
+    groupedByAccount.get(key)!.push(row);
   }
   
   const aggregated: AggregatedProperty[] = [];
   
-  for (const [parcelId, parcelRows] of groupedByParcel) {
-    const firstRow = parcelRows[0];
+  for (const [accountNum, accountRows] of groupedByAccount) {
+    const firstRow = accountRows[0];
     
-    const buildings: DCadBuildingRow[] = parcelRows
+    const buildings: DCadBuildingRow[] = accountRows
       .filter(r => r.taxObjId)
       .map(r => ({
         taxObjId: r.taxObjId,
@@ -409,7 +409,7 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
       || null;
     
     aggregated.push({
-      parcelId,
+      parcelId: firstRow.parcelId,
       address: firstRow.address,
       city: firstRow.city,
       zip: firstRow.zip,
@@ -469,7 +469,7 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
 export async function upsertAggregatedPropertyToPostgres(
   prop: AggregatedProperty
 ): Promise<{ created: boolean }> {
-  const propertyKey = prop.parcelId;
+  const propertyKey = prop.accountNum;
   
   const existingProperty = await db
     .select({ id: properties.id })
