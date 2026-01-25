@@ -164,7 +164,7 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 1: Physical verification...');
   
   const response = await client.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-2.0-flash",
     contents: prompt,
     config: { 
       temperature: 0.1,
@@ -173,6 +173,22 @@ Return JSON:
   });
 
   const text = response.text?.trim() || '';
+  console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
+  
+  if (!text) {
+    console.warn('[FocusedEnrichment] Empty response from Gemini, returning null data');
+    return {
+      data: {
+        lotAcres: null,
+        lotAcresConfidence: null,
+        netSqft: null,
+        netSqftConfidence: null,
+      },
+      rationale: 'No response from AI model',
+      sources: [],
+    };
+  }
+  
   const sources = extractGroundedSources(response);
   const parsed = parseJsonResponse(text);
   
@@ -215,7 +231,7 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 2: Classification...');
   
   const response = await client.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-2.0-flash",
     contents: prompt,
     config: { 
       temperature: 0.1,
@@ -224,6 +240,25 @@ Return JSON:
   });
 
   const text = response.text?.trim() || '';
+  console.log('[FocusedEnrichment] Stage 2 response length:', text.length, 'chars');
+  
+  if (!text) {
+    console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 2, returning defaults');
+    return {
+      data: {
+        propertyName: '',
+        canonicalAddress: property.address || '',
+        category: '',
+        subcategory: '',
+        confidence: 0,
+        propertyClass: null,
+        propertyClassConfidence: null,
+      },
+      rationale: 'No response from AI model',
+      sources: [],
+    };
+  }
+  
   const sources = extractGroundedSources(response);
   const parsed = parseJsonResponse(text);
   
@@ -270,7 +305,7 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 3: Ownership identification...');
   
   const response = await client.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-2.0-flash",
     contents: prompt,
     config: { 
       temperature: 0.1,
@@ -279,6 +314,20 @@ Return JSON:
   });
 
   const text = response.text?.trim() || '';
+  console.log('[FocusedEnrichment] Stage 3 response length:', text.length, 'chars');
+  
+  if (!text) {
+    console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 3, returning defaults');
+    return {
+      data: {
+        beneficialOwner: { name: null, type: null, confidence: 0 },
+        managementCompany: { name: null, domain: null, confidence: 0 },
+      },
+      rationale: 'No response from AI model',
+      sources: [],
+    };
+  }
+  
   const sources = extractGroundedSources(response);
   const parsed = parseJsonResponse(text);
   
@@ -331,7 +380,7 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 4: Contact discovery...');
   
   const response = await client.models.generateContent({
-    model: "gemini-3-flash-preview",
+    model: "gemini-2.0-flash",
     contents: prompt,
     config: { 
       temperature: 0.1,
@@ -340,6 +389,17 @@ Return JSON:
   });
 
   const text = response.text?.trim() || '';
+  console.log('[FocusedEnrichment] Stage 4 response length:', text.length, 'chars');
+  
+  if (!text) {
+    console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 4, returning empty contacts');
+    return {
+      data: { contacts: [], organizations: [] },
+      rationale: 'No response from AI model',
+      sources: [],
+    };
+  }
+  
   const sources = extractGroundedSources(response);
   const parsed = parseJsonResponse(text);
   
