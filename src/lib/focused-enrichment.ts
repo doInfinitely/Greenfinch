@@ -106,9 +106,12 @@ Return ONLY valid JSON (no markdown):
 {"propertyName":"Descriptive name for entire property","canonicalAddress":"Single formatted address","category":"Category from schema","subcategory":"Subcategory from schema","confidence":0.0-1.0,"rationale":"Brief 1-sentence explanation"}`;
 
   const response = await client.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3-flash-preview",
     contents: prompt,
-    config: { temperature: 0.1 }
+    config: { 
+      temperature: 0.1,
+      tools: [{ googleSearch: {} }]
+    }
   });
 
   const text = response.text?.trim() || '';
@@ -142,9 +145,12 @@ Return ONLY valid JSON (no markdown):
 {"beneficialOwner":{"name":"Entity name or null","type":"REIT|Private Equity|Family Office|Individual|Corporation|null","confidence":0.0-1.0},"managementCompany":{"name":"Company name or null","domain":"website.com or null","confidence":0.0-1.0}}`;
 
   const response = await client.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3-flash-preview",
     contents: prompt,
-    config: { temperature: 0.1 }
+    config: { 
+      temperature: 0.1,
+      tools: [{ googleSearch: {} }]
+    }
   });
 
   const text = response.text?.trim() || '';
@@ -185,9 +191,12 @@ Return ONLY valid JSON array (no markdown):
 Only include contacts verifiably connected to this property. Return empty array [] if none found with confidence > 0.5.`;
 
   const response = await client.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3-flash-preview",
     contents: prompt,
-    config: { temperature: 0.1 }
+    config: { 
+      temperature: 0.1,
+      tools: [{ googleSearch: {} }]
+    }
   });
 
   const text = response.text?.trim() || '';
