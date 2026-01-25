@@ -149,10 +149,17 @@ export async function classifyAndVerifyProperty(property: CommercialProperty): P
   const parentBuilding = property.buildings?.[0];
   const dcadQualityGrade = parentBuilding?.qualityGrade || null;
   
+  // Format SPTD code for context (F10=Commercial, F20=Industrial, B11=Apartments)
+  const sptdDescription = property.sptdCode === 'F10' ? 'Commercial' :
+                          property.sptdCode === 'F20' ? 'Industrial' :
+                          property.sptdCode === 'B11' ? 'Apartments/Multifamily' :
+                          property.sptdCode || 'Unknown';
+  
   const prompt = `Search the web to verify and classify this commercial property. Return ONLY valid JSON.
 
 PROPERTY DATA:
 Address: ${property.address}, ${property.city}, TX ${property.zip}
+DCAD Property Type: ${sptdDescription} (SPTD Code: ${property.sptdCode || 'Unknown'})
 Buildings: ${property.buildingCount || 0} buildings, ${property.totalGrossBldgArea?.toLocaleString() || 'unknown'} sqft total
 Zoning/Use: ${property.usedesc || 'Unknown'}
 Deed Owner: ${primaryOwner}

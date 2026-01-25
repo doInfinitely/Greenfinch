@@ -45,6 +45,8 @@ export interface CommercialProperty {
   
   // DCAD Core appraisal data
   accountNum: string;
+  gisParcelId: string | null;
+  sptdCode: string | null;
   divisionCd: string; // COM, RES
   dcadImprovVal: number | null;
   dcadLandVal: number | null;
@@ -504,6 +506,8 @@ function mapRowToCommercialProperty(r: any): CommercialProperty {
     bldgFootprintSqft: r.BLDG_FOOTPRINT_SQFT,
     
     accountNum: r.ACCOUNT_NUM || '',
+    gisParcelId: r.GIS_PARCEL_ID || null,
+    sptdCode: r.SPTD_CODE || null,
     divisionCd: r.DIVISION_CD || '',
     dcadImprovVal: r.DCAD_IMPROV_VAL,
     dcadLandVal: r.DCAD_LAND_VAL,

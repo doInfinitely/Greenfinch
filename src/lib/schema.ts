@@ -108,6 +108,8 @@ export const properties = pgTable('properties', {
   
   // DCAD Appraisal Data
   dcadAccountNum: text('dcad_account_num'),
+  dcadGisParcelId: text('dcad_gis_parcel_id'),
+  dcadSptdCode: text('dcad_sptd_code'),
   dcadDivisionCd: text('dcad_division_cd'), // COM, RES
   dcadImprovVal: integer('dcad_improv_val'),
   dcadLandVal: integer('dcad_land_val'),

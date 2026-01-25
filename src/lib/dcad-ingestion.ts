@@ -31,6 +31,8 @@ export interface DCadBuildingRow {
 
 export interface DCadCommercialProperty {
   parcelId: string;
+  gisParcelId: string;
+  llUuid: string | null;
   address: string;
   city: string;
   zip: string;
@@ -39,6 +41,7 @@ export interface DCadCommercialProperty {
   usedesc: string | null;
   usecode: string | null;
   stateClass: string | null;
+  sptdCode: string | null;
   
   regridYearBuilt: number | null;
   regridNumStories: number | null;
@@ -97,6 +100,8 @@ export interface DCadCommercialProperty {
 
 export interface AggregatedProperty {
   parcelId: string;
+  gisParcelId: string;
+  llUuid: string | null;
   address: string;
   city: string;
   zip: string;
@@ -104,6 +109,7 @@ export interface AggregatedProperty {
   lon: number;
   usedesc: string | null;
   usecode: string | null;
+  sptdCode: string | null;
   
   regridYearBuilt: number | null;
   regridNumStories: number | null;
@@ -200,6 +206,8 @@ export async function getCommercialPropertiesByZip(
   const sql = `
     SELECT 
       cp.PARCEL_ID,
+      ai.GIS_PARCEL_ID,
+      r."ll_uuid" AS REGRID_LL_UUID,
       cp."address",
       cp.CITY,
       cp.ZIP,
@@ -258,7 +266,9 @@ export async function getCommercialPropertiesByZip(
       land.AREA_UOM_DESC AS LAND_AREA_UOM_DESC
     FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
     JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
+    JOIN ${ACCOUNT_INFO_TABLE} ai ON cp.ACCOUNT_NUM = ai.ACCOUNT_NUM
     LEFT JOIN ${LAND_TABLE} land ON cp.ACCOUNT_NUM = land.ACCOUNT_NUM AND land.APPRAISAL_YR = 2025
+    LEFT JOIN ${REGRID_TABLE} r ON ai.GIS_PARCEL_ID = r."parcelnumb"
     WHERE cp.ZIP LIKE '${zipCode}%'
       AND aa.SPTD_CODE IN (${sptdCodesList})
     ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
@@ -273,6 +283,8 @@ export async function getCommercialPropertiesByZip(
 function mapRowToProperty(row: any): DCadCommercialProperty {
   return {
     parcelId: row.PARCEL_ID || '',
+    gisParcelId: row.GIS_PARCEL_ID || '',
+    llUuid: row.REGRID_LL_UUID || null,
     address: row.address || '',
     city: row.CITY || '',
     zip: (row.ZIP || '').trim(),
@@ -281,6 +293,7 @@ function mapRowToProperty(row: any): DCadCommercialProperty {
     usedesc: row.usedesc || null,
     usecode: row.usecode || null,
     stateClass: row.SPTD_CODE || null,
+    sptdCode: row.SPTD_CODE || null,
     
     regridYearBuilt: row.REGRID_YEAR_BUILT || null,
     regridNumStories: row.REGRID_NUM_STORIES || null,
@@ -433,6 +446,8 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
     
     aggregated.push({
       parcelId: firstRow.parcelId,
+      gisParcelId: firstRow.gisParcelId,
+      llUuid: firstRow.llUuid,
       address: firstRow.address,
       city: firstRow.city,
       zip: firstRow.zip,
@@ -440,6 +455,7 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
       lon: firstRow.lon,
       usedesc: firstRow.usedesc,
       usecode: firstRow.usecode,
+      sptdCode: firstRow.sptdCode,
       
       regridYearBuilt: firstRow.regridYearBuilt,
       regridNumStories: firstRow.regridNumStories,
@@ -505,47 +521,43 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
   return aggregated;
 }
 
-// Identify parent property for a given parcel
-// Parent = account that matches parcel ID, or ends with '0000'
-function determineParentAccountNum(parcelId: string, accountNums: string[]): string | null {
-  // First priority: account that exactly matches the parcel ID
-  const matchesParcel = accountNums.find(acc => acc === parcelId);
-  if (matchesParcel) return matchesParcel;
-  
-  // Second priority: account ending with '0000' (typically the parent)
-  const endsWithZeros = accountNums.find(acc => acc.endsWith('0000'));
-  if (endsWithZeros) return endsWithZeros;
-  
-  // Third priority: shortest account number (often the parent)
-  const sorted = [...accountNums].sort((a, b) => a.length - b.length);
-  return sorted[0] || null;
-}
-
-// Group aggregated properties by parcel ID and identify parent/constituent relationships
+// Identify parent/constituent relationships using GIS_PARCEL_ID from DCAD
+// Parent = account where ACCOUNT_NUM equals GIS_PARCEL_ID
+// Constituents = other accounts that share the same GIS_PARCEL_ID
 export function identifyParcelRelationships(properties: AggregatedProperty[]): Map<string, {
   parentAccountNum: string;
   constituentAccountNums: string[];
+  llUuid: string | null;
 }> {
-  // Group by parcel ID
-  const byParcel = new Map<string, AggregatedProperty[]>();
+  // Group by GIS_PARCEL_ID (from DCAD ACCOUNT_INFO)
+  const byGisParcel = new Map<string, AggregatedProperty[]>();
   for (const prop of properties) {
-    const parcelId = prop.parcelId;
-    if (!byParcel.has(parcelId)) {
-      byParcel.set(parcelId, []);
+    const gisParcelId = prop.gisParcelId;
+    if (!gisParcelId) continue;
+    
+    if (!byGisParcel.has(gisParcelId)) {
+      byGisParcel.set(gisParcelId, []);
     }
-    byParcel.get(parcelId)!.push(prop);
+    byGisParcel.get(gisParcelId)!.push(prop);
   }
   
-  const relationships = new Map<string, { parentAccountNum: string; constituentAccountNums: string[] }>();
+  const relationships = new Map<string, { parentAccountNum: string; constituentAccountNums: string[]; llUuid: string | null }>();
   
-  for (const [parcelId, parcelProps] of byParcel) {
-    const accountNums = parcelProps.map(p => p.accountNum);
-    const parentAccountNum = determineParentAccountNum(parcelId, accountNums);
+  for (const [gisParcelId, parcelProps] of byGisParcel) {
+    // Parent is where ACCOUNT_NUM = GIS_PARCEL_ID
+    const parentProp = parcelProps.find(p => p.accountNum === gisParcelId);
+    const parentAccountNum = parentProp?.accountNum || null;
+    const llUuid = parentProp?.llUuid || parcelProps[0]?.llUuid || null;
     
-    if (parentAccountNum && accountNums.length > 1) {
-      // Multiple accounts on same parcel - this is a complex
-      const constituentAccountNums = accountNums.filter(acc => acc !== parentAccountNum);
-      relationships.set(parcelId, { parentAccountNum, constituentAccountNums });
+    if (parentAccountNum && parcelProps.length > 1) {
+      // Multiple accounts on same GIS_PARCEL_ID - this is a complex
+      const constituentAccountNums = parcelProps
+        .filter(p => p.accountNum !== parentAccountNum)
+        .map(p => p.accountNum);
+      relationships.set(gisParcelId, { parentAccountNum, constituentAccountNums, llUuid });
+    } else if (parentAccountNum && parcelProps.length === 1) {
+      // Standalone property - parent with no constituents
+      relationships.set(gisParcelId, { parentAccountNum, constituentAccountNums: [], llUuid });
     }
   }
   
@@ -554,18 +566,18 @@ export function identifyParcelRelationships(properties: AggregatedProperty[]): M
 
 export async function upsertAggregatedPropertyToPostgres(
   prop: AggregatedProperty,
-  relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[] }>
+  relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[]; llUuid?: string | null }>
 ): Promise<{ created: boolean }> {
   const propertyKey = prop.accountNum;
-  const parcelId = prop.parcelId;
+  const gisParcelId = prop.gisParcelId;
   
-  // Determine parent/constituent status
-  // A property is a "parent" if:
-  // 1. It's the main account for a complex (parcelRel.parentAccountNum matches), OR
-  // 2. It's a standalone property (no entry in relationships map = single account for parcel)
-  const parcelRel = relationships?.get(parcelId);
-  const isParentProperty = !parcelRel || parcelRel.parentAccountNum === propertyKey;
-  const parentPropertyKey = parcelRel && !isParentProperty ? parcelRel.parentAccountNum : null;
+  // Determine parent/constituent status using GIS_PARCEL_ID
+  // A property is a "parent" if ACCOUNT_NUM = GIS_PARCEL_ID
+  const isParentProperty = prop.accountNum === prop.gisParcelId;
+  
+  // Look up relationship data for this GIS_PARCEL_ID
+  const parcelRel = gisParcelId ? relationships?.get(gisParcelId) : undefined;
+  const parentPropertyKey = !isParentProperty && parcelRel ? parcelRel.parentAccountNum : null;
   const constituentAccountNums = isParentProperty && parcelRel ? parcelRel.constituentAccountNums : null;
   const constituentCount = isParentProperty && parcelRel ? (parcelRel.constituentAccountNums.length || 0) : 0;
   
@@ -582,8 +594,10 @@ export async function upsertAggregatedPropertyToPostgres(
 
   const propertyData = {
     propertyKey,
-    sourceLlUuid: prop.parcelId,
+    sourceLlUuid: prop.llUuid || prop.parcelId,
     llStackUuid: null,
+    dcadGisParcelId: gisParcelId,
+    dcadSptdCode: prop.sptdCode,
     
     regridAddress: normalizedAddress,
     city: normalizedCity,
