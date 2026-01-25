@@ -4,7 +4,8 @@ import { db } from "./db";
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations } from "./schema";
 import { eq } from "drizzle-orm";
 import type { AggregatedProperty } from "./snowflake";
-import { findEmail, validateEmail } from "./leadmagic";
+import { findEmail } from "./leadmagic";
+import { validateEmail } from "./neverbounce";
 import { findContainingPlace } from "./google-places";
 import pLimit from "p-limit";
 // @ts-ignore - name-match has no type declarations
@@ -1013,7 +1014,7 @@ function parseNameParts(fullName: string): { firstName: string; lastName: string
   return { firstName, lastName };
 }
 
-// Enrich contacts with emails using LeadMagic
+// Enrich contacts with emails using LeadMagic (email finder) + NeverBounce (validation)
 export async function enrichContactsWithEmail(contacts: EnrichedContact[]): Promise<EnrichedContact[]> {
   console.log(`[Enrichment] Enriching ${contacts.length} contacts with email discovery...`);
   

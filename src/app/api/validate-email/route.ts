@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { validateEmail, validateAndUpdateContact, getCreditsUsed } from '@/lib/leadmagic';
+import { validateEmail, validateAndUpdateContact, getCreditsUsed } from '@/lib/neverbounce';
 
 export async function POST(request: NextRequest) {
   try {
