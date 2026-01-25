@@ -1839,7 +1839,7 @@ export async function enrichServiceProvider(
     console.log(`[ServiceProvider Enrichment] Enriching: ${companyName} (${domain})`);
 
     const response = await genai.models.generateContent({
-      model: 'gemini-3.0-flash-preview',
+      model: 'gemini-3-flash-preview',
       contents: prompt,
     });
 

@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
     try {
       const client = getGeminiClient();
       const testResponse = await client.models.generateContent({
-        model: "gemini-3.0-flash-preview",
+        model: "gemini-3-flash-preview",
         contents: "Say hello in one word",
       });
       const testText = testResponse.text?.trim();
