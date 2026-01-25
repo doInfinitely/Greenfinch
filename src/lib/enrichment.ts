@@ -4,7 +4,7 @@ import { db } from "./db";
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations } from "./schema";
 import { eq } from "drizzle-orm";
 import type { AggregatedProperty } from "./snowflake";
-import { findEmail } from "./leadmagic";
+import { findEmail } from "./hunter";
 import { validateEmail } from "./neverbounce";
 import { findContainingPlace } from "./google-places";
 import pLimit from "p-limit";
