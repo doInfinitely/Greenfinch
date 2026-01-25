@@ -67,4 +67,8 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Google Gemini**: Utilized for AI-based property enrichment, including contact discovery, beneficial owner identification, and management company detection.
 
 ## AI Enrichment Rules
+- **Model**: ALWAYS use `gemini-3-flash-preview` with search grounding (`tools: [{ googleSearch: {} }]`). NEVER change this model - if it returns empty responses, investigate the root cause rather than switching models.
 - **Condo/HOA Exclusion**: The AI enrichment prompt explicitly excludes individual condo unit owners and HOA board members from being listed as beneficial owners or having their companies associated with properties. Instead, it focuses on finding management companies, building developers, and master association contacts for commercial decisions.
+- **Building Square Footage**: Calculated as sum of all building taxable objects MINUS parking structures. Parking sqft is tracked separately in `dcad_parking_sqft`.
+- **Lot Square Footage**: Sourced from DCAD LAND table (AREA_SIZE converted to sqft based on AREA_UOM_DESC).
+- **Source Tracking**: Both lot_sqft and building_sqft have source tracking fields (lot_sqft_source, building_sqft_source) with precedence: AI validated (70%+ confidence) > DCAD > Regrid.
