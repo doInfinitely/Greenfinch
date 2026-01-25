@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCommercialPropertyByParcelId, getCommercialPropertiesByZip, type CommercialProperty } from '@/lib/snowflake';
-import { runFocusedEnrichment, classifyProperty, identifyOwnership, discoverContacts } from '@/lib/focused-enrichment';
+import { runFocusedEnrichment, classifyAndVerifyProperty, identifyOwnership, discoverContacts } from '@/lib/focused-enrichment';
 
 export async function GET(request: NextRequest) {
   const parcelId = request.nextUrl.searchParams.get('parcelId');
@@ -30,7 +30,7 @@ export async function GET(request: NextRequest) {
 
     if (step === 'classify') {
       const startTime = Date.now();
-      const classification = await classifyProperty(property);
+      const stage1 = await classifyAndVerifyProperty(property);
       const elapsed = Date.now() - startTime;
       
       return NextResponse.json({
@@ -43,35 +43,35 @@ export async function GET(request: NextRequest) {
           totalSqft: property.totalGrossBldgArea,
           buildings: property.buildings?.slice(0, 5)
         },
-        result: classification,
+        result: stage1,
         timing: { ms: elapsed }
       });
     }
 
     if (step === 'ownership') {
-      const classification = await classifyProperty(property);
+      const stage1 = await classifyAndVerifyProperty(property);
       const startTime = Date.now();
-      const ownership = await identifyOwnership(property, classification);
+      const ownership = await identifyOwnership(property, stage1.data.classification);
       const elapsed = Date.now() - startTime;
       
       return NextResponse.json({
         step: 'ownership',
-        classification,
+        classification: stage1.data.classification,
         result: ownership,
         timing: { ms: elapsed }
       });
     }
 
     if (step === 'contacts') {
-      const classification = await classifyProperty(property);
-      const ownership = await identifyOwnership(property, classification);
+      const stage1 = await classifyAndVerifyProperty(property);
+      const ownership = await identifyOwnership(property, stage1.data.classification);
       const startTime = Date.now();
-      const contacts = await discoverContacts(property, classification, ownership);
+      const contacts = await discoverContacts(property, stage1.data.classification, ownership.data);
       const elapsed = Date.now() - startTime;
       
       return NextResponse.json({
         step: 'contacts',
-        classification,
+        classification: stage1.data.classification,
         ownership,
         result: contacts,
         timing: { ms: elapsed }
@@ -93,10 +93,7 @@ export async function GET(request: NextRequest) {
         buildings: property.buildings?.slice(0, 5)
       },
       result,
-      usage: {
-        estimatedInputTokens: result.tokenEstimate.total,
-        estimatedCost: `$${((result.tokenEstimate.total / 1000000) * 0.075).toFixed(4)}`
-      }
+      timing: result.timing
     });
     
   } catch (error) {

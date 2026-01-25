@@ -55,6 +55,11 @@ export interface PropertyClassification {
   propertyClassConfidence: number | null;
 }
 
+export interface PropertyDataAndClassification {
+  physical: PropertyPhysicalData;
+  classification: PropertyClassification;
+}
+
 export interface OwnershipInfo {
   beneficialOwner: {
     name: string | null;
@@ -139,84 +144,16 @@ function parseJsonResponse(text: string): any {
   return JSON.parse(jsonMatch[0]);
 }
 
-export async function verifyPhysicalData(property: CommercialProperty): Promise<StageResult<PropertyPhysicalData>> {
+export async function classifyAndVerifyProperty(property: CommercialProperty): Promise<StageResult<PropertyDataAndClassification>> {
   const client = getGeminiClient();
   const primaryOwner = property.bizName || property.ownerName1 || 'Unknown';
   const currentLotSqft = property.lotSqft || (property.lotAcres ? property.lotAcres * 43560 : null);
   const currentBldgSqft = property.totalGrossBldgArea || null;
   
-  const prompt = `Research property physical data and return JSON.
-
-ADDRESS: ${property.address}, ${property.city}, TX ${property.zip}
-OWNER: ${primaryOwner}
-CURRENT RECORDS: Lot ${currentLotSqft?.toLocaleString() || 'Unknown'} sqft, Building ${currentBldgSqft?.toLocaleString() || 'Unknown'} gross sqft
-
-Find from county records, commercial listings, or property databases:
-- Lot size in acres
-- Net leasable area (total sqft minus parking and mechanical)
-
-Confidence 0.0-1.0 based on source reliability.
-
-Return JSON:
-{"lot_acres":number|null,"lot_acres_confidence":0.0-1.0,"net_sqft":number|null,"net_sqft_confidence":0.0-1.0,"rationale":"Brief explanation of sources used"}`;
-
-  console.log('[FocusedEnrichment] Stage 1: Physical verification...');
+  const parentBuilding = property.buildings?.[0];
+  const dcadQualityGrade = parentBuilding?.qualityGrade || null;
   
-  const response = await client.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: prompt,
-    config: { 
-      temperature: 0.1,
-      tools: [{ googleSearch: {} }]
-    }
-  });
-
-  // Log full response structure for debugging
-  console.log('[FocusedEnrichment] Stage 1 raw response keys:', Object.keys(response || {}));
-  if (response.candidates) {
-    console.log('[FocusedEnrichment] Stage 1 candidates:', JSON.stringify(response.candidates, null, 2).substring(0, 500));
-  }
-  
-  const text = response.text?.trim() || '';
-  console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
-  
-  if (!text) {
-    console.warn('[FocusedEnrichment] Empty response from Gemini, returning null data');
-    console.warn('[FocusedEnrichment] Full response object:', JSON.stringify(response, null, 2).substring(0, 1000));
-    return {
-      data: {
-        lotAcres: null,
-        lotAcresConfidence: null,
-        netSqft: null,
-        netSqftConfidence: null,
-      },
-      rationale: 'No response from AI model',
-      sources: [],
-    };
-  }
-  
-  const sources = extractGroundedSources(response);
-  const parsed = parseJsonResponse(text);
-  
-  console.log(`[FocusedEnrichment] Physical verification complete with ${sources.length} grounded sources`);
-  
-  return {
-    data: {
-      lotAcres: parsed.lot_acres ?? null,
-      lotAcresConfidence: parsed.lot_acres_confidence ?? null,
-      netSqft: parsed.net_sqft ?? null,
-      netSqftConfidence: parsed.net_sqft_confidence ?? null,
-    },
-    rationale: parsed.rationale || '',
-    sources,
-  };
-}
-
-export async function classifyProperty(property: CommercialProperty): Promise<StageResult<PropertyClassification>> {
-  const client = getGeminiClient();
-  const primaryOwner = property.bizName || property.ownerName1 || 'Unknown';
-  
-  const prompt = `Classify this commercial property. Return ONLY valid JSON.
+  const prompt = `Classify this commercial property and verify physical data. Return ONLY valid JSON.
 
 BUILDINGS ON PARCEL:
 ${formatBuildings(property.buildings)}
@@ -226,15 +163,34 @@ ADDRESS: ${property.address}, ${property.city}, TX ${property.zip}
 ZONING/USE: ${property.usedesc || 'Unknown'}
 DEED OWNER: ${primaryOwner}
 VALUE: $${property.dcadTotalVal?.toLocaleString() || 0}
+CURRENT LOT DATA: ${currentLotSqft?.toLocaleString() || 'Unknown'} sqft
+DCAD QUALITY GRADE: ${dcadQualityGrade || 'Unknown'}
 
 CATEGORIES: ${formatCategorySchema()}
 
-BUILDING CLASS: A (premium/new), B (good), C (older/value-add), D (distressed)
+BUILDING CLASS (use DCAD quality grade as primary indicator):
+- A (premium/new) = DCAD grades like "Excellent", "Superior"  
+- B (good) = DCAD grades like "Good", "Average+"
+- C (older/value-add) = DCAD grades like "Average", "Fair"
+- D (distressed) = DCAD grades like "Poor", "Unsound"
 
 Return JSON:
-{"propertyName":"Descriptive name","canonicalAddress":"Full address","category":"Category","subcategory":"Subcategory","confidence":0.0-1.0,"property_class":"A/B/C/D","property_class_confidence":0.0-1.0,"rationale":"1-3 sentences on classification reasoning"}`;
+{
+  "propertyName":"Descriptive name",
+  "canonicalAddress":"Full address",
+  "category":"Category",
+  "subcategory":"Subcategory",
+  "confidence":0.0-1.0,
+  "property_class":"A/B/C/D",
+  "property_class_confidence":0.0-1.0,
+  "lot_acres":number|null,
+  "lot_acres_confidence":0.0-1.0,
+  "net_sqft":number|null,
+  "net_sqft_confidence":0.0-1.0,
+  "rationale":"Brief explanation of classification and data sources"
+}`;
 
-  console.log('[FocusedEnrichment] Stage 2: Classification...');
+  console.log('[FocusedEnrichment] Stage 1: Classification and physical verification...');
   
   const response = await client.models.generateContent({
     model: "gemini-3-flash-preview",
@@ -246,19 +202,30 @@ Return JSON:
   });
 
   const text = response.text?.trim() || '';
-  console.log('[FocusedEnrichment] Stage 2 response length:', text.length, 'chars');
+  console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
   
   if (!text) {
-    console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 2, returning defaults');
+    console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 1');
+    if (response.candidates) {
+      console.warn('[FocusedEnrichment] Candidates:', JSON.stringify(response.candidates, null, 2).substring(0, 500));
+    }
     return {
       data: {
-        propertyName: '',
-        canonicalAddress: property.address || '',
-        category: '',
-        subcategory: '',
-        confidence: 0,
-        propertyClass: null,
-        propertyClassConfidence: null,
+        physical: {
+          lotAcres: null,
+          lotAcresConfidence: null,
+          netSqft: null,
+          netSqftConfidence: null,
+        },
+        classification: {
+          propertyName: '',
+          canonicalAddress: property.address || '',
+          category: '',
+          subcategory: '',
+          confidence: 0,
+          propertyClass: null,
+          propertyClassConfidence: null,
+        },
       },
       rationale: 'No response from AI model',
       sources: [],
@@ -268,17 +235,25 @@ Return JSON:
   const sources = extractGroundedSources(response);
   const parsed = parseJsonResponse(text);
   
-  console.log(`[FocusedEnrichment] Classification complete with ${sources.length} grounded sources`);
+  console.log(`[FocusedEnrichment] Classification and verification complete with ${sources.length} grounded sources`);
   
   return {
     data: {
-      propertyName: parsed.propertyName || '',
-      canonicalAddress: parsed.canonicalAddress || '',
-      category: parsed.category || '',
-      subcategory: parsed.subcategory || '',
-      confidence: parsed.confidence ?? 0,
-      propertyClass: parsed.property_class ?? null,
-      propertyClassConfidence: parsed.property_class_confidence ?? null,
+      physical: {
+        lotAcres: parsed.lot_acres ?? null,
+        lotAcresConfidence: parsed.lot_acres_confidence ?? null,
+        netSqft: parsed.net_sqft ?? null,
+        netSqftConfidence: parsed.net_sqft_confidence ?? null,
+      },
+      classification: {
+        propertyName: parsed.propertyName || '',
+        canonicalAddress: parsed.canonicalAddress || '',
+        category: parsed.category || '',
+        subcategory: parsed.subcategory || '',
+        confidence: parsed.confidence ?? 0,
+        propertyClass: parsed.property_class ?? null,
+        propertyClassConfidence: parsed.property_class_confidence ?? null,
+      },
     },
     rationale: parsed.rationale || '',
     sources,
@@ -453,13 +428,21 @@ export interface FocusedEnrichmentResult {
 export async function runFocusedEnrichment(property: CommercialProperty): Promise<FocusedEnrichmentResult> {
   const startTotal = Date.now();
   
-  const startPhysical = Date.now();
-  const physical = await verifyPhysicalData(property);
-  const physicalMs = Date.now() - startPhysical;
+  const startStage1 = Date.now();
+  const stage1Result = await classifyAndVerifyProperty(property);
+  const stage1Ms = Date.now() - startStage1;
   
-  const startClassification = Date.now();
-  const classification = await classifyProperty(property);
-  const classificationMs = Date.now() - startClassification;
+  const physical: StageResult<PropertyPhysicalData> = {
+    data: stage1Result.data.physical,
+    rationale: stage1Result.rationale,
+    sources: stage1Result.sources,
+  };
+  
+  const classification: StageResult<PropertyClassification> = {
+    data: stage1Result.data.classification,
+    rationale: stage1Result.rationale,
+    sources: stage1Result.sources,
+  };
   
   const startOwnership = Date.now();
   const ownership = await identifyOwnership(property, classification.data);
@@ -480,8 +463,8 @@ export async function runFocusedEnrichment(property: CommercialProperty): Promis
     ownership,
     contacts,
     timing: {
-      physicalMs,
-      classificationMs,
+      physicalMs: stage1Ms,
+      classificationMs: 0,
       ownershipMs,
       contactsMs,
       totalMs
