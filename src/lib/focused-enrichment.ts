@@ -260,6 +260,37 @@ Return JSON:
   };
 }
 
+async function callGeminiWithTimeout<T>(
+  fn: () => Promise<T>,
+  timeoutMs: number = 60000,
+  retries: number = 2
+): Promise<T> {
+  let lastError: Error | null = null;
+  
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`Gemini API timeout after ${timeoutMs}ms`)), timeoutMs);
+      });
+      
+      console.log(`[FocusedEnrichment] API call attempt ${attempt}/${retries}...`);
+      const result = await Promise.race([fn(), timeoutPromise]);
+      return result;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+      console.warn(`[FocusedEnrichment] API call attempt ${attempt} failed: ${lastError.message}`);
+      
+      if (attempt < retries) {
+        const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+        console.log(`[FocusedEnrichment] Retrying in ${backoffMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, backoffMs));
+      }
+    }
+  }
+  
+  throw lastError || new Error('All retry attempts failed');
+}
+
 export async function identifyOwnership(
   property: CommercialProperty,
   classification: PropertyClassification
@@ -284,44 +315,61 @@ Return JSON:
 {"beneficialOwner":{"name":"Entity name or null","type":"REIT|Private Equity|Family Office|Individual|Corporation|null","confidence":0.0-1.0},"managementCompany":{"name":"Company or null","domain":"website.com or null","confidence":0.0-1.0},"rationale":"1-3 sentences on ownership findings"}`;
 
   console.log('[FocusedEnrichment] Stage 3: Ownership identification...');
+  console.log(`[FocusedEnrichment] Stage 3 input - Property: ${classification.propertyName}, Owner: ${primaryOwner}`);
   
-  const response = await client.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: prompt,
-    config: { 
-      temperature: 0.1,
-      tools: [{ googleSearch: {} }]
-    }
-  });
+  try {
+    const response = await callGeminiWithTimeout(
+      () => client.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: { 
+          temperature: 0.1,
+          tools: [{ googleSearch: {} }]
+        }
+      }),
+      90000,
+      2
+    );
 
-  const text = response.text?.trim() || '';
-  console.log('[FocusedEnrichment] Stage 3 response length:', text.length, 'chars');
-  
-  if (!text) {
-    console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 3, returning defaults');
+    const text = response.text?.trim() || '';
+    console.log('[FocusedEnrichment] Stage 3 response length:', text.length, 'chars');
+    
+    if (!text) {
+      console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 3, returning defaults');
+      return {
+        data: {
+          beneficialOwner: { name: null, type: null, confidence: 0 },
+          managementCompany: { name: null, domain: null, confidence: 0 },
+        },
+        rationale: 'No response from AI model',
+        sources: [],
+      };
+    }
+    
+    const sources = extractGroundedSources(response);
+    const parsed = parseJsonResponse(text);
+    
+    console.log(`[FocusedEnrichment] Ownership identification complete with ${sources.length} grounded sources`);
+    
+    return {
+      data: {
+        beneficialOwner: parsed.beneficialOwner || { name: null, type: null, confidence: 0 },
+        managementCompany: parsed.managementCompany || { name: null, domain: null, confidence: 0 },
+      },
+      rationale: parsed.rationale || '',
+      sources,
+    };
+  } catch (error) {
+    console.error(`[FocusedEnrichment] Stage 3 failed after retries: ${error instanceof Error ? error.message : error}`);
     return {
       data: {
         beneficialOwner: { name: null, type: null, confidence: 0 },
         managementCompany: { name: null, domain: null, confidence: 0 },
       },
-      rationale: 'No response from AI model',
+      rationale: `Failed to identify ownership: ${error instanceof Error ? error.message : 'Unknown error'}`,
       sources: [],
     };
   }
-  
-  const sources = extractGroundedSources(response);
-  const parsed = parseJsonResponse(text);
-  
-  console.log(`[FocusedEnrichment] Ownership identification complete with ${sources.length} grounded sources`);
-  
-  return {
-    data: {
-      beneficialOwner: parsed.beneficialOwner || { name: null, type: null, confidence: 0 },
-      managementCompany: parsed.managementCompany || { name: null, domain: null, confidence: 0 },
-    },
-    rationale: parsed.rationale || '',
-    sources,
-  };
 }
 
 export async function discoverContacts(
@@ -359,55 +407,69 @@ Return JSON:
 {"contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8}],"organizations":[{"name":"Org name","domain":"domain.com","org_type":"owner|management|tenant|developer","roles":["property_manager","owner"]}],"rationale":"1-3 sentences on contact discovery approach"}`;
 
   console.log('[FocusedEnrichment] Stage 4: Contact discovery...');
+  console.log(`[FocusedEnrichment] Stage 4 input - Property: ${classification.propertyName}, Mgmt: ${managementInfo}`);
   
-  const response = await client.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: prompt,
-    config: { 
-      temperature: 0.1,
-      tools: [{ googleSearch: {} }]
-    }
-  });
+  try {
+    const response = await callGeminiWithTimeout(
+      () => client.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: prompt,
+        config: { 
+          temperature: 0.1,
+          tools: [{ googleSearch: {} }]
+        }
+      }),
+      90000,
+      2
+    );
 
-  const text = response.text?.trim() || '';
-  console.log('[FocusedEnrichment] Stage 4 response length:', text.length, 'chars');
+    const text = response.text?.trim() || '';
+    console.log('[FocusedEnrichment] Stage 4 response length:', text.length, 'chars');
+    
+    if (!text) {
+      console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 4, returning empty contacts');
+      return {
+        data: { contacts: [], organizations: [] },
+        rationale: 'No response from AI model',
+        sources: [],
+      };
+    }
+    
+    const sources = extractGroundedSources(response);
+    const parsed = parseJsonResponse(text);
   
-  if (!text) {
-    console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 4, returning empty contacts');
+    const contacts: DiscoveredContact[] = (parsed.contacts || []).map((c: any) => ({
+      name: c.name || '',
+      title: c.title ?? null,
+      company: c.company ?? null,
+      companyDomain: c.company_domain ?? null,
+      role: c.role || 'other',
+      roleConfidence: c.role_confidence ?? 0.5,
+      priorityRank: c.priority_rank ?? 10,
+    }));
+    
+    const organizations: DiscoveredOrganization[] = (parsed.organizations || []).map((o: any) => ({
+      name: o.name || '',
+      domain: o.domain ?? null,
+      orgType: o.org_type || 'other',
+      roles: o.roles || [],
+    }));
+    
+    console.log(`[FocusedEnrichment] Contact discovery complete: ${contacts.length} contacts, ${organizations.length} orgs, ${sources.length} grounded sources`);
+    
+    return {
+      data: { contacts, organizations },
+      rationale: parsed.rationale || '',
+      sources,
+    };
+  } catch (error) {
+    console.error(`[FocusedEnrichment] Stage 4 failed after retries: ${error instanceof Error ? error.message : error}`);
     return {
       data: { contacts: [], organizations: [] },
-      rationale: 'No response from AI model',
+      rationale: `Failed to discover contacts: ${error instanceof Error ? error.message : 'Unknown error'}`,
       sources: [],
     };
   }
-  
-  const sources = extractGroundedSources(response);
-  const parsed = parseJsonResponse(text);
-  
-  const contacts: DiscoveredContact[] = (parsed.contacts || []).map((c: any) => ({
-    name: c.name || '',
-    title: c.title ?? null,
-    company: c.company ?? null,
-    companyDomain: c.company_domain ?? null,
-    role: c.role || 'other',
-    roleConfidence: c.role_confidence ?? 0.5,
-    priorityRank: c.priority_rank ?? 10,
-  }));
-  
-  const organizations: DiscoveredOrganization[] = (parsed.organizations || []).map((o: any) => ({
-    name: o.name || '',
-    domain: o.domain ?? null,
-    orgType: o.org_type || 'other',
-    roles: o.roles || [],
-  }));
-  
-  console.log(`[FocusedEnrichment] Contact discovery complete: ${contacts.length} contacts, ${organizations.length} orgs, ${sources.length} grounded sources`);
-  
-  return {
-    data: { contacts, organizations },
-    rationale: parsed.rationale || '',
-    sources,
-  };
 }
 
 export interface FocusedEnrichmentResult {
