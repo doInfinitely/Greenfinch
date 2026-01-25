@@ -55,7 +55,6 @@ export interface DiscoveredContact {
   company: string | null;
   email: string | null;
   phone: string | null;
-  linkedinUrl: string | null;
   source: string;
   confidence: number;
 }
@@ -186,7 +185,7 @@ OWNER: ${ownerInfo}
 Target roles: Property Manager, Facilities Manager, Operations Director, Leasing Agent, Asset Manager
 
 Return ONLY valid JSON array (no markdown):
-[{"name":"Full Name","title":"Job Title","company":"Employer","email":"email@domain.com or null","phone":"phone or null","linkedinUrl":"url or null","source":"Where found","confidence":0.0-1.0}]
+[{"name":"Full Name","title":"Job Title","company":"Employer","email":"email@domain.com or null","phone":"phone or null","source":"Where found","confidence":0.0-1.0}]
 
 Only include contacts verifiably connected to this property. Return empty array [] if none found with confidence > 0.5.`;
 
