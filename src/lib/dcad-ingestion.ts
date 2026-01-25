@@ -139,6 +139,8 @@ export interface AggregatedProperty {
   newestYearBuilt: number | null;
   totalGrossBldgArea: number | null;
   totalUnits: number | null;
+  rentableArea: number | null;
+  parkingSqft: number | null;
   primaryPropertyName: string | null;
 }
 
@@ -404,6 +406,27 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
     const totalUnits = uniqueBuildings
       .reduce((sum, b) => sum + (b.numUnits || 0), 0) || null;
     
+    // Calculate parking sqft (buildings with PARKING in name)
+    const parkingSqft = uniqueBuildings
+      .filter(b => b.propertyName?.toUpperCase().includes('PARKING'))
+      .reduce((sum, b) => sum + (b.grossBldgArea || 0), 0) || null;
+    
+    // Calculate rentable area with priority:
+    // 1. Sum of NET_LEASE_AREA when available
+    // 2. GROSS minus parking sqft
+    // 3. If no parking and no net lease, use GROSS
+    const totalNetLeaseArea = uniqueBuildings
+      .reduce((sum, b) => sum + (b.netLeaseArea || 0), 0);
+    
+    let rentableArea: number | null = null;
+    if (totalNetLeaseArea > 0) {
+      rentableArea = totalNetLeaseArea;
+    } else if (parkingSqft && parkingSqft > 0 && totalGrossBldgArea) {
+      rentableArea = totalGrossBldgArea - parkingSqft;
+    } else {
+      rentableArea = totalGrossBldgArea;
+    }
+    
     const primaryName = uniqueBuildings.find(b => b.propertyName)?.propertyName 
       || firstRow.bizName 
       || null;
@@ -459,6 +482,8 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
       newestYearBuilt: allYears.length > 0 ? Math.max(...allYears) : null,
       totalGrossBldgArea,
       totalUnits,
+      rentableArea,
+      parkingSqft,
       primaryPropertyName: primaryName,
     });
   }
@@ -534,6 +559,8 @@ export async function upsertAggregatedPropertyToPostgres(
     dcadNewestYearBuilt: prop.newestYearBuilt,
     dcadTotalGrossBldgArea: prop.totalGrossBldgArea,
     dcadTotalUnits: prop.totalUnits,
+    dcadRentableArea: prop.rentableArea,
+    dcadParkingSqft: prop.parkingSqft,
     dcadBuildings: prop.buildings,
     
     commonName: prop.primaryPropertyName || prop.bizName || null,

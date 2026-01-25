@@ -131,6 +131,8 @@ export const properties = pgTable('properties', {
   dcadNewestYearBuilt: integer('dcad_newest_year_built'),
   dcadTotalGrossBldgArea: integer('dcad_total_gross_bldg_area'),
   dcadTotalUnits: integer('dcad_total_units'),
+  dcadRentableArea: integer('dcad_rentable_area'),
+  dcadParkingSqft: integer('dcad_parking_sqft'),
   
   // DCAD Buildings Array (all buildings on this parcel as JSONB)
   dcadBuildings: json('dcad_buildings'),
