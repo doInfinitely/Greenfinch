@@ -1,6 +1,29 @@
 const ENRICHLAYER_API_KEY = process.env.ENRICHLAYER_API_KEY;
 const ENRICHLAYER_BASE_URL = 'https://enrichlayer.com/api/v2';
 
+// Rate limiting: 10 requests per minute
+const RATE_LIMIT_REQUESTS = 10;
+const RATE_LIMIT_WINDOW_MS = 60000;
+const requestTimestamps: number[] = [];
+
+async function waitForRateLimit(): Promise<void> {
+  const now = Date.now();
+  // Remove timestamps older than the window
+  while (requestTimestamps.length > 0 && requestTimestamps[0] < now - RATE_LIMIT_WINDOW_MS) {
+    requestTimestamps.shift();
+  }
+  
+  // If at limit, wait until oldest request expires
+  if (requestTimestamps.length >= RATE_LIMIT_REQUESTS) {
+    const waitTime = requestTimestamps[0] + RATE_LIMIT_WINDOW_MS - now + 100;
+    console.log(`[EnrichLayer] Rate limit reached, waiting ${Math.ceil(waitTime / 1000)}s...`);
+    await new Promise(resolve => setTimeout(resolve, waitTime));
+    return waitForRateLimit();
+  }
+  
+  requestTimestamps.push(now);
+}
+
 export interface EnrichLayerPersonInput {
   firstName: string;
   lastName?: string;
@@ -87,6 +110,7 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
   }
 
   try {
+    await waitForRateLimit();
     const params = new URLSearchParams();
     params.append('first_name', input.firstName);
     if (input.lastName) {
@@ -178,6 +202,7 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
   }
 
   try {
+    await waitForRateLimit();
     const params = new URLSearchParams();
     params.append('profile_url', linkedinUrl);
     
@@ -304,6 +329,7 @@ export async function lookupWorkEmail(linkedinUrl: string): Promise<WorkEmailRes
   }
 
   try {
+    await waitForRateLimit();
     const params = new URLSearchParams();
     params.append('url', linkedinUrl);
     params.append('work_email', 'include');
