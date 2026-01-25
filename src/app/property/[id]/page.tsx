@@ -40,6 +40,8 @@ interface Property {
   totalParval: number;
   totalImprovval: number;
   landval: number;
+  accountOwner: string | null;  // Primary owner at the account level
+  constituentOwners: string[];  // Other owners from sub-parcels/buildings if different
   allOwners: string[];
   primaryOwner: string | null;
   usedesc: string[];
@@ -444,6 +446,16 @@ export default function PropertyDetailPage() {
           if (prop.dcadOwnerName1) ownersSet.add(prop.dcadOwnerName1.toUpperCase());
           if (prop.dcadOwnerName2) ownersSet.add(prop.dcadOwnerName2.toUpperCase());
           
+          // Determine account owner (primary owner at account level)
+          // Priority: dcadBizName > dcadOwnerName1 > regridOwner
+          const accountOwner = (prop.dcadBizName || prop.dcadOwnerName1 || prop.regridOwner || '').toUpperCase() || null;
+          
+          // Constituent owners are all other owners that differ from account owner
+          const allOwnersArray = Array.from(ownersSet);
+          const constituentOwners = allOwnersArray.filter(o => 
+            accountOwner && o.toUpperCase() !== accountOwner.toUpperCase()
+          );
+          
           // Use pre-aggregated values from properties table (source of truth)
           const lotAcres = prop.lotSqft ? prop.lotSqft / 43560 : 0;
           
@@ -463,7 +475,9 @@ export default function PropertyDetailPage() {
             totalParval: 0,
             totalImprovval: 0,
             landval: 0,
-            allOwners: Array.from(ownersSet),
+            accountOwner: accountOwner,
+            constituentOwners: constituentOwners,
+            allOwners: allOwnersArray,
             primaryOwner: prop.regridOwner || null,
             usedesc: Array.from(usedescSet),
             usecode: [],
@@ -961,16 +975,30 @@ export default function PropertyDetailPage() {
                 </div>
               )}
 
-              {property.allOwners && property.allOwners.length > 0 && (
+              {/* Account Owner - Primary owner at account level */}
+              {property.accountOwner && (
+                <div className="py-2">
+                  <span className="text-sm text-gray-500 block mb-1">Account Owner</span>
+                  <div className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg border border-gray-200">
+                    <svg className="w-5 h-5 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                    </svg>
+                    <span className="text-gray-900 font-medium">{toTitleCase(property.accountOwner)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Constituent Owners - Other registered owners if different from account owner */}
+              {property.constituentOwners && property.constituentOwners.length > 0 && (
                 <details className="group">
                   <summary className="flex items-center justify-between cursor-pointer py-2 text-sm text-gray-600 hover:text-gray-800">
-                    <span className="font-medium">Registered Owners ({property.allOwners.length})</span>
+                    <span className="font-medium">Other Registered Owners ({property.constituentOwners.length})</span>
                     <svg className="w-4 h-4 transform transition-transform group-open:rotate-180" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                     </svg>
                   </summary>
                   <div className="mt-2 space-y-2">
-                    {property.allOwners.map((owner, i) => (
+                    {property.constituentOwners.map((owner, i) => (
                       <div key={i} className="flex items-center space-x-2 p-2 bg-gray-50 rounded text-sm">
                         <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
@@ -982,7 +1010,7 @@ export default function PropertyDetailPage() {
                 </details>
               )}
 
-              {!enrichedProperty?.beneficialOwner && !enrichedProperty?.managementCompany && (!property.allOwners || property.allOwners.length === 0) && (
+              {!enrichedProperty?.beneficialOwner && !enrichedProperty?.managementCompany && !property.accountOwner && (!property.constituentOwners || property.constituentOwners.length === 0) && (
                 <p className="text-gray-500">No ownership information available</p>
               )}
             </div>
