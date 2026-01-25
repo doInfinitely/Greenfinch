@@ -208,6 +208,21 @@ async function executeQuery<T>(sqlText: string): Promise<T[]> {
   });
 }
 
+export async function describeTable(tableName: string): Promise<any[]> {
+  const sql = `DESCRIBE TABLE ${tableName}`;
+  return executeQuery<any>(sql);
+}
+
+export async function sampleAccountInfo(zipCode: string): Promise<any[]> {
+  const sql = `
+    SELECT * 
+    FROM DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO
+    WHERE PROPERTY_ZIPCODE LIKE '${zipCode}%'
+    LIMIT 1
+  `;
+  return executeQuery<any>(sql);
+}
+
 export async function countCommercialPropertiesByZip(zipCode: string): Promise<number> {
   const sql = `
     SELECT COUNT(*) as CNT 
@@ -300,6 +315,7 @@ function mapRowToProperty(row: any): DCadCommercialProperty {
     lon: parseFloat(row.lon) || 0,
     usedesc: row.usedesc || null,
     usecode: row.usecode || null,
+    stateClass: row.SPTD_CD || row.STATE_CLASS || null,
     
     regridYearBuilt: row.REGRID_YEAR_BUILT || null,
     regridNumStories: row.REGRID_NUM_STORIES || null,
