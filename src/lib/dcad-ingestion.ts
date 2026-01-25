@@ -501,10 +501,66 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
   return aggregated;
 }
 
+// Identify parent property for a given parcel
+// Parent = account that matches parcel ID, or ends with '0000'
+function determineParentAccountNum(parcelId: string, accountNums: string[]): string | null {
+  // First priority: account that exactly matches the parcel ID
+  const matchesParcel = accountNums.find(acc => acc === parcelId);
+  if (matchesParcel) return matchesParcel;
+  
+  // Second priority: account ending with '0000' (typically the parent)
+  const endsWithZeros = accountNums.find(acc => acc.endsWith('0000'));
+  if (endsWithZeros) return endsWithZeros;
+  
+  // Third priority: shortest account number (often the parent)
+  const sorted = [...accountNums].sort((a, b) => a.length - b.length);
+  return sorted[0] || null;
+}
+
+// Group aggregated properties by parcel ID and identify parent/constituent relationships
+export function identifyParcelRelationships(properties: AggregatedProperty[]): Map<string, {
+  parentAccountNum: string;
+  constituentAccountNums: string[];
+}> {
+  // Group by parcel ID
+  const byParcel = new Map<string, AggregatedProperty[]>();
+  for (const prop of properties) {
+    const parcelId = prop.parcelId;
+    if (!byParcel.has(parcelId)) {
+      byParcel.set(parcelId, []);
+    }
+    byParcel.get(parcelId)!.push(prop);
+  }
+  
+  const relationships = new Map<string, { parentAccountNum: string; constituentAccountNums: string[] }>();
+  
+  for (const [parcelId, parcelProps] of byParcel) {
+    const accountNums = parcelProps.map(p => p.accountNum);
+    const parentAccountNum = determineParentAccountNum(parcelId, accountNums);
+    
+    if (parentAccountNum && accountNums.length > 1) {
+      // Multiple accounts on same parcel - this is a complex
+      const constituentAccountNums = accountNums.filter(acc => acc !== parentAccountNum);
+      relationships.set(parcelId, { parentAccountNum, constituentAccountNums });
+    }
+  }
+  
+  return relationships;
+}
+
 export async function upsertAggregatedPropertyToPostgres(
-  prop: AggregatedProperty
+  prop: AggregatedProperty,
+  relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[] }>
 ): Promise<{ created: boolean }> {
   const propertyKey = prop.accountNum;
+  const parcelId = prop.parcelId;
+  
+  // Determine parent/constituent status
+  const parcelRel = relationships?.get(parcelId);
+  const isParentProperty = parcelRel?.parentAccountNum === propertyKey;
+  const parentPropertyKey = parcelRel && !isParentProperty ? parcelRel.parentAccountNum : null;
+  const constituentAccountNums = isParentProperty ? parcelRel?.constituentAccountNums : null;
+  const constituentCount = isParentProperty ? (parcelRel?.constituentAccountNums.length || 0) : 0;
   
   const existingProperty = await db
     .select({ id: properties.id })
@@ -575,6 +631,12 @@ export async function upsertAggregatedPropertyToPostgres(
     
     commonName: prop.primaryPropertyName || prop.bizName || null,
     
+    // Parcel-level relationships
+    isParentProperty: isParentProperty,
+    parentPropertyKey: parentPropertyKey,
+    constituentAccountNums: constituentAccountNums,
+    constituentCount: constituentCount,
+    
     enrichmentStatus: 'pending' as const,
     lastRegridUpdate: new Date(),
     updatedAt: new Date(),
@@ -639,6 +701,17 @@ export async function runIngestion(
   const aggregatedProperties = aggregatePropertiesByParcel(commercialProperties);
   console.log(`[Ingestion] Aggregated into ${aggregatedProperties.length} unique properties`);
   
+  // Identify parent/constituent relationships based on parcel ID
+  const relationships = identifyParcelRelationships(aggregatedProperties);
+  const complexCount = relationships.size;
+  if (complexCount > 0) {
+    console.log(`[Ingestion] Found ${complexCount} property complexes with multiple accounts:`);
+    for (const [parcelId, rel] of [...relationships.entries()].slice(0, 5)) {
+      const parent = aggregatedProperties.find(p => p.accountNum === rel.parentAccountNum);
+      console.log(`  - ${parent?.primaryPropertyName || parcelId}: ${rel.constituentAccountNums.length + 1} accounts`);
+    }
+  }
+  
   const multiBuilding = aggregatedProperties.filter(p => p.buildingCount > 1);
   if (multiBuilding.length > 0) {
     console.log(`[Ingestion] ${multiBuilding.length} properties have multiple buildings:`);
@@ -651,7 +724,7 @@ export async function runIngestion(
     const prop = aggregatedProperties[i];
     
     try {
-      const result = await upsertAggregatedPropertyToPostgres(prop);
+      const result = await upsertAggregatedPropertyToPostgres(prop, relationships);
       
       if (result.created) {
         stats.propertiesSaved++;

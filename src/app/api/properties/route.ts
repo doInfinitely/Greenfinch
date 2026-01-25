@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchPropertiesFromPostgres, getPropertiesInBoundsFromPostgres } from '@/lib/postgres-queries';
+import { searchPropertiesFromPostgres, getPropertiesInBoundsFromPostgres, getPropertiesByKeys } from '@/lib/postgres-queries';
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
@@ -55,6 +55,17 @@ export async function GET(request: NextRequest) {
         maxLon,
         limit
       );
+      return NextResponse.json({ properties });
+    }
+
+    // Fetch multiple properties by property keys (for constituent properties)
+    const keysParam = searchParams.get('keys');
+    if (keysParam) {
+      const keys = keysParam.split(',').map(k => k.trim()).filter(k => k.length > 0).slice(0, 50);
+      if (keys.length === 0) {
+        return NextResponse.json({ error: 'No valid property keys provided' }, { status: 400 });
+      }
+      const properties = await getPropertiesByKeys(keys);
       return NextResponse.json({ properties });
     }
 

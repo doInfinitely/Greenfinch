@@ -1,6 +1,6 @@
 import { db } from './db';
 import { properties, parcelToProperty } from './schema';
-import { and, or, ilike, gte, lte, eq, sql } from 'drizzle-orm';
+import { and, or, ilike, gte, lte, eq, sql, inArray } from 'drizzle-orm';
 
 export interface PropertyResult {
   id: string;
@@ -23,6 +23,11 @@ export interface PropertyResult {
   assetCategory: string | null;
   commonName: string | null;
   enrichmentStatus: string | null;
+  dcadBizName: string | null;
+  isParentProperty: boolean;
+  parentPropertyKey: string | null;
+  constituentAccountNums: string[] | null;
+  constituentCount: number;
 }
 
 function formatPropertyResult(row: typeof properties.$inferSelect): PropertyResult {
@@ -75,6 +80,11 @@ function formatPropertyResult(row: typeof properties.$inferSelect): PropertyResu
     assetCategory: row.assetCategory,
     commonName: row.commonName,
     enrichmentStatus: row.enrichmentStatus,
+    dcadBizName: row.dcadBizName,
+    isParentProperty: row.isParentProperty || false,
+    parentPropertyKey: row.parentPropertyKey,
+    constituentAccountNums: row.constituentAccountNums as string[] | null,
+    constituentCount: row.constituentCount || 0,
   };
 }
 
@@ -153,6 +163,24 @@ export async function getPropertyByKeyFromPostgres(
   
   if (results.length === 0) return null;
   return formatPropertyResult(results[0]);
+}
+
+export async function getPropertiesByKeys(
+  propertyKeys: string[]
+): Promise<PropertyResult[]> {
+  if (propertyKeys.length === 0) return [];
+  
+  const results = await db
+    .select()
+    .from(properties)
+    .where(
+      and(
+        eq(properties.isActive, true),
+        inArray(properties.propertyKey, propertyKeys)
+      )
+    );
+  
+  return results.map(formatPropertyResult);
 }
 
 export async function resolveParcelToProperty(

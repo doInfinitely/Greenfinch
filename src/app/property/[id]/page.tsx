@@ -47,6 +47,18 @@ interface Property {
   usedesc: string[];
   usecode: string[];
   parcelCount: number;
+  // Parcel relationship fields
+  isParentProperty: boolean;
+  parentPropertyKey: string | null;
+  constituentAccountNums: string[] | null;
+  constituentCount: number;
+}
+
+interface ConstituentProperty {
+  propertyKey: string;
+  commonName: string | null;
+  buildingSqft: number | null;
+  dcadBizName: string | null;
 }
 
 interface EnrichedPropertyData {
@@ -322,6 +334,10 @@ export default function PropertyDetailPage() {
   const [isSubmittingFlag, setIsSubmittingFlag] = useState(false);
   const [flagMessage, setFlagMessage] = useState<string | null>(null);
   
+  // Constituent properties state (for parent properties)
+  const [constituentProperties, setConstituentProperties] = useState<ConstituentProperty[]>([]);
+  const [parentProperty, setParentProperty] = useState<{ propertyKey: string; commonName: string | null } | null>(null);
+  
   // Service providers state
   interface PropertyServiceProvider {
     id: string;
@@ -482,7 +498,33 @@ export default function PropertyDetailPage() {
             usedesc: Array.from(usedescSet),
             usecode: [],
             parcelCount: rawParcels.length || 1,
+            // Parcel relationship fields
+            isParentProperty: prop.isParentProperty || false,
+            parentPropertyKey: prop.parentPropertyKey || null,
+            constituentAccountNums: prop.constituentAccountNums || null,
+            constituentCount: prop.constituentCount || 0,
           });
+          
+          // If this is a parent property, fetch constituent properties
+          if (prop.isParentProperty && prop.constituentAccountNums?.length > 0) {
+            const constituentRes = await fetch(`/api/properties?keys=${prop.constituentAccountNums.join(',')}`);
+            if (constituentRes.ok) {
+              const constituentData = await constituentRes.json();
+              setConstituentProperties(constituentData.properties || []);
+            }
+          }
+          
+          // If this is a constituent property, fetch parent info
+          if (prop.parentPropertyKey) {
+            const parentRes = await fetch(`/api/properties/${prop.parentPropertyKey}`);
+            if (parentRes.ok) {
+              const parentData = await parentRes.json();
+              setParentProperty({
+                propertyKey: prop.parentPropertyKey,
+                commonName: parentData.property?.commonName || parentData.property?.dcadBizName || null,
+              });
+            }
+          }
 
           // Set enriched data if any enrichment fields are present
           const hasEnrichedData = prop.assetCategory || prop.commonName || prop.beneficialOwner || prop.managementCompany;
@@ -1014,6 +1056,68 @@ export default function PropertyDetailPage() {
                 <p className="text-gray-500">No ownership information available</p>
               )}
             </div>
+
+            {/* Parent Property Link (for constituent properties) */}
+            {parentProperty && (
+              <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                  </svg>
+                  <span className="text-sm font-medium text-blue-800">Part of Complex</span>
+                </div>
+                <a 
+                  href={`/property/${parentProperty.propertyKey}`}
+                  className="block hover:bg-blue-100 rounded p-2 -m-2 transition-colors"
+                >
+                  <p className="text-blue-900 font-semibold">{parentProperty.commonName || 'Parent Property'}</p>
+                  <p className="text-xs text-blue-600 mt-0.5">View parent property details</p>
+                </a>
+              </div>
+            )}
+
+            {/* Constituent Properties (for parent properties) */}
+            {property.isParentProperty && constituentProperties.length > 0 && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <div className="flex items-center gap-2 mb-4">
+                  <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                  </svg>
+                  <h2 className="text-lg font-semibold text-gray-900">Properties in Complex</h2>
+                  <span className="ml-auto bg-emerald-100 text-emerald-800 text-xs font-medium px-2 py-0.5 rounded-full">
+                    {constituentProperties.length} properties
+                  </span>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">
+                  This property is a parent complex with multiple registered accounts on the same parcel.
+                </p>
+                <div className="space-y-2">
+                  {constituentProperties.map((constituent) => (
+                    <a
+                      key={constituent.propertyKey}
+                      href={`/property/${constituent.propertyKey}`}
+                      className="block p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="font-medium text-gray-900">
+                            {constituent.commonName || constituent.dcadBizName || 'Unnamed Property'}
+                          </p>
+                          {constituent.buildingSqft && (
+                            <p className="text-sm text-gray-500">
+                              {constituent.buildingSqft.toLocaleString()} sq ft
+                            </p>
+                          )}
+                        </div>
+                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {enrichmentStatus === 'completed' && enrichedProperty && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">

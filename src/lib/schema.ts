@@ -159,6 +159,12 @@ export const properties = pgTable('properties', {
   aiRationale: text('ai_rationale'),
   enrichmentSources: json('enrichment_sources'),
   
+  // Parcel-level relationships (for complex properties with multiple accounts)
+  isParentProperty: boolean('is_parent_property').default(false),
+  parentPropertyKey: text('parent_property_key'),
+  constituentAccountNums: json('constituent_account_nums'),
+  constituentCount: integer('constituent_count').default(0),
+  
   // Timestamps
   lastRegridUpdate: timestamp('last_regrid_update'),
   lastEnrichedAt: timestamp('last_enriched_at'),
