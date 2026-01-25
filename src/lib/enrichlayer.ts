@@ -288,3 +288,64 @@ export async function enrichContact(contact: {
     title: contact.title || undefined,
   });
 }
+
+export interface WorkEmailResult {
+  success: boolean;
+  email: string | null;
+  status: string | null;
+  error?: string;
+  creditsUsed?: number;
+}
+
+export async function lookupWorkEmail(linkedinUrl: string): Promise<WorkEmailResult> {
+  if (!ENRICHLAYER_API_KEY) {
+    console.error('[EnrichLayer] API key not configured');
+    return { success: false, email: null, status: null, error: 'EnrichLayer API key not configured' };
+  }
+
+  try {
+    const params = new URLSearchParams();
+    params.append('url', linkedinUrl);
+    params.append('work_email', 'include');
+
+    const url = `${ENRICHLAYER_BASE_URL}/profile?${params.toString()}`;
+    console.log('[EnrichLayer] Work email lookup:', { linkedinUrl });
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${ENRICHLAYER_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('[EnrichLayer] Work email API error:', response.status, errorText);
+      return { success: false, email: null, status: null, error: `API error: ${response.status} - ${errorText}` };
+    }
+
+    const data = await response.json();
+    console.log('[EnrichLayer] Work email response:', JSON.stringify(data).slice(0, 300));
+
+    const workEmail = data.work_email || data.email;
+    if (workEmail) {
+      return {
+        success: true,
+        email: workEmail,
+        status: 'email_found',
+        creditsUsed: data.credits_used || 2,
+      };
+    }
+
+    return {
+      success: false,
+      email: null,
+      status: 'not_found',
+      error: 'Work email not found in profile',
+    };
+  } catch (error) {
+    console.error('[EnrichLayer] Work email lookup error:', error);
+    return { success: false, email: null, status: null, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}
