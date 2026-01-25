@@ -235,7 +235,7 @@ export async function countCommercialPropertiesByZip(zipCode: string): Promise<n
     FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
     JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
     WHERE cp.ZIP LIKE '${zipCode}%'
-      AND aa.SPTD_CD IN (${sptdCodesList})
+      AND aa.SPTD_CODE IN (${sptdCodesList})
   `;
   const rows = await executeQuery<any>(sql);
   return rows[0]?.CNT || 0;
@@ -304,11 +304,11 @@ export async function getCommercialPropertiesByZip(
       cp.AC_TYPE,
       cp.QUALITY_GRADE,
       cp.CONDITION_GRADE,
-      aa.SPTD_CD
+      aa.SPTD_CODE
     FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
     JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
     WHERE cp.ZIP LIKE '${zipCode}%'
-      AND aa.SPTD_CD IN (${sptdCodesList})
+      AND aa.SPTD_CODE IN (${sptdCodesList})
     ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
     LIMIT ${limit}
     OFFSET ${offset}
@@ -328,7 +328,7 @@ function mapRowToProperty(row: any): DCadCommercialProperty {
     lon: parseFloat(row.lon) || 0,
     usedesc: row.usedesc || null,
     usecode: row.usecode || null,
-    stateClass: row.SPTD_CD || null,
+    stateClass: row.SPTD_CODE || null,
     
     regridYearBuilt: row.REGRID_YEAR_BUILT || null,
     regridNumStories: row.REGRID_NUM_STORIES || null,
