@@ -144,6 +144,12 @@ export interface AggregatedProperty {
   parcelCount: number;
   rawParcelsJson: RegridParcel[];
   
+  // Computed lot/building with source tracking
+  computedLotSqft?: number | null;
+  computedLotSqftSource?: string | null;
+  computedBuildingSqft?: number | null;
+  computedBuildingSqftSource?: string | null;
+  
   // DCAD enriched fields
   dcad?: CommercialProperty;
 }

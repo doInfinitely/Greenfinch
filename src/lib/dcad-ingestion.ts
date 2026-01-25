@@ -145,6 +145,12 @@ export interface AggregatedProperty {
   // From LAND table (parent account)
   dcadLandSqft: number | null;
   
+  // Computed lot/building with source tracking
+  computedLotSqft: number | null;
+  computedLotSqftSource: string | null;
+  computedBuildingSqft: number | null;
+  computedBuildingSqftSource: string | null;
+  
   buildings: DCadBuildingRow[];
   buildingCount: number;
   oldestYearBuilt: number | null;
@@ -537,6 +543,17 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
       // Use LAND table data for lot size
       dcadLandSqft: firstRow.dcadLandSqft,
       
+      // Computed values with source tracking: DCAD LAND > regrid
+      computedLotSqft: firstRow.dcadLandSqft ? Math.round(firstRow.dcadLandSqft) : 
+                       firstRow.lotSqft ? Math.round(firstRow.lotSqft) : null,
+      computedLotSqftSource: firstRow.dcadLandSqft ? 'dcad_land' : 
+                              firstRow.lotSqft ? 'regrid' : null,
+      // Computed building sqft: DCAD COM_DETAIL > regrid
+      computedBuildingSqft: totalGrossBldgArea ? Math.round(totalGrossBldgArea) : 
+                            firstRow.bldgFootprintSqft ? Math.round(firstRow.bldgFootprintSqft) : null,
+      computedBuildingSqftSource: totalGrossBldgArea ? 'dcad_com_detail' : 
+                                   firstRow.bldgFootprintSqft ? 'regrid' : null,
+      
       buildings: uniqueBuildings,
       buildingCount: uniqueBuildings.length || 1,
       oldestYearBuilt: yearsBuilt.length > 0 ? Math.min(...yearsBuilt) : null,
@@ -641,14 +658,11 @@ export async function upsertAggregatedPropertyToPostgres(
     lat: prop.lat,
     lon: prop.lon,
     
-    // Use DCAD LAND table lot size, fall back to regrid
-    lotSqft: prop.dcadLandSqft ? Math.round(prop.dcadLandSqft) : 
-             prop.lotSqft ? Math.round(prop.lotSqft) : null,
-    lotSqftSource: prop.dcadLandSqft ? 'dcad_land' : prop.lotSqft ? 'regrid' : null,
-    buildingSqft: prop.totalGrossBldgArea ? Math.round(prop.totalGrossBldgArea) : 
-                  prop.bldgFootprintSqft ? Math.round(prop.bldgFootprintSqft) : null,
-    buildingSqftSource: prop.totalGrossBldgArea ? 'dcad_com_detail' : 
-                        prop.bldgFootprintSqft ? 'regrid' : null,
+    // Use precomputed lot/building with source tracking
+    lotSqft: prop.computedLotSqft,
+    lotSqftSource: prop.computedLotSqftSource,
+    buildingSqft: prop.computedBuildingSqft,
+    buildingSqftSource: prop.computedBuildingSqftSource,
     yearBuilt: prop.oldestYearBuilt || prop.regridYearBuilt || null,
     numFloors: prop.regridNumStories || null,
     

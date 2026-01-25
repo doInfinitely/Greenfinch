@@ -1588,7 +1588,7 @@ export async function storeEnrichmentResults(
       if (aiLotAcres && aiConf && aiConf >= 0.70) {
         return 'ai_validated';
       }
-      return 'dcad_land';
+      return aggregatedProperty.computedLotSqftSource || 'dcad_land';
     })(),
     buildingSqft: (() => {
       const aiNetSqft = (result.property as any).aiNetSqft;
@@ -1605,7 +1605,7 @@ export async function storeEnrichmentResults(
       if (aiNetSqft && aiConf && aiConf >= 0.70) {
         return 'ai_validated';
       }
-      return 'dcad_com_detail';
+      return aggregatedProperty.computedBuildingSqftSource || 'dcad_com_detail';
     })(),
     yearBuilt: aggregatedProperty.yearBuilt,
     numFloors: aggregatedProperty.numFloors,
