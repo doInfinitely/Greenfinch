@@ -11,26 +11,31 @@ async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedP
   const [prop] = await db.select().from(properties).where(eq(properties.propertyKey, propertyKey));
   if (!prop) return null;
   
-  const rawParcels = Array.isArray(prop.rawParcelsJson) ? prop.rawParcelsJson as any[] : [];
+  // Collect all owners from DCAD and Regrid data
   const allOwners = new Set<string>();
-  const usedescSet = new Set<string>();
-  const usecodeSet = new Set<string>();
-  let totalParval = 0;
-  let totalImprovval = 0;
-  let maxLandval = 0;
-  
-  for (const parcel of rawParcels) {
-    if (parcel.owner) allOwners.add(parcel.owner);
-    if (parcel.owner2) allOwners.add(parcel.owner2);
-    if (parcel.usedesc) usedescSet.add(parcel.usedesc);
-    if (parcel.usecode) usecodeSet.add(parcel.usecode);
-    totalParval += parcel.parval || 0;
-    totalImprovval += parcel.improvval || 0;
-    maxLandval = Math.max(maxLandval, parcel.landval || 0);
-  }
-  
+  if (prop.dcadBizName) allOwners.add(prop.dcadBizName);
+  if (prop.dcadOwnerName1) allOwners.add(prop.dcadOwnerName1);
+  if (prop.dcadOwnerName2) allOwners.add(prop.dcadOwnerName2);
   if (prop.regridOwner) allOwners.add(prop.regridOwner);
   if (prop.regridOwner2) allOwners.add(prop.regridOwner2);
+  
+  // Get DCAD values or fallback to legacy rawParcels if available
+  const rawParcels = Array.isArray(prop.rawParcelsJson) ? prop.rawParcelsJson as any[] : [];
+  const usedescSet = new Set<string>();
+  const usecodeSet = new Set<string>();
+  
+  for (const parcel of rawParcels) {
+    if (parcel.usedesc) usedescSet.add(parcel.usedesc);
+    if (parcel.usecode) usecodeSet.add(parcel.usecode);
+  }
+  
+  // Use DCAD values when available, fallback to computed from rawParcels
+  const totalParval = prop.dcadTotalVal || rawParcels.reduce((sum, p) => sum + (p.parval || 0), 0);
+  const totalImprovval = prop.dcadImprovVal || rawParcels.reduce((sum, p) => sum + (p.improvval || 0), 0);
+  const landval = prop.dcadLandVal || Math.max(...rawParcels.map(p => p.landval || 0), 0);
+  
+  // Build DCAD property data for enrichment context
+  const dcadBuildings = Array.isArray(prop.dcadBuildings) ? prop.dcadBuildings as any[] : [];
   
   return {
     propertyKey: prop.propertyKey,
@@ -44,20 +49,67 @@ async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedP
     lat: prop.lat || 0,
     lon: prop.lon || 0,
     lotSqft: prop.lotSqft || 0,
-    buildingSqft: prop.buildingSqft || null,
-    yearBuilt: prop.yearBuilt || null,
+    buildingSqft: prop.buildingSqft || prop.dcadTotalGrossBldgArea || null,
+    yearBuilt: prop.yearBuilt || prop.dcadOldestYearBuilt || null,
     numFloors: prop.numFloors || null,
     totalParval,
     totalImprovval,
-    landval: maxLandval,
+    landval,
     allOwners: Array.from(allOwners),
-    primaryOwner: prop.regridOwner || null,
+    primaryOwner: prop.dcadBizName || prop.dcadOwnerName1 || prop.regridOwner || null,
     usedesc: Array.from(usedescSet),
     usecode: Array.from(usecodeSet),
-    zoning: [],
+    zoning: prop.dcadZoning ? [prop.dcadZoning] : [],
     zoningDescription: [],
     parcelCount: rawParcels.length || 1,
     rawParcelsJson: rawParcels,
+    // Include DCAD data for enrichment context
+    dcad: prop.dcadAccountNum ? {
+      parcelId: prop.propertyKey,
+      address: prop.regridAddress || '',
+      city: prop.city || '',
+      zip: prop.zip || '',
+      lat: prop.lat || 0,
+      lon: prop.lon || 0,
+      usedesc: '',
+      usecode: '',
+      regridYearBuilt: prop.yearBuilt,
+      regridNumStories: prop.numFloors,
+      regridImprovVal: null,
+      regridLandVal: null,
+      regridTotalVal: null,
+      lotAcres: null,
+      lotSqft: prop.lotSqft,
+      bldgFootprintSqft: null,
+      accountNum: prop.dcadAccountNum,
+      divisionCd: prop.dcadDivisionCd || 'COM',
+      dcadImprovVal: prop.dcadImprovVal,
+      dcadLandVal: prop.dcadLandVal,
+      dcadTotalVal: prop.dcadTotalVal,
+      cityJurisDesc: prop.dcadCityJuris,
+      isdJurisDesc: prop.dcadIsdJuris,
+      bizName: prop.dcadBizName,
+      ownerName1: prop.dcadOwnerName1,
+      ownerName2: prop.dcadOwnerName2,
+      ownerAddressLine1: prop.dcadOwnerAddress,
+      ownerCity: prop.dcadOwnerCity,
+      ownerState: prop.dcadOwnerState,
+      ownerZipcode: prop.dcadOwnerZip,
+      ownerPhone: prop.dcadOwnerPhone,
+      deedTxfrDate: prop.dcadDeedTransferDate,
+      dcadZoning: prop.dcadZoning,
+      frontDim: prop.dcadLandFrontDim,
+      depthDim: prop.dcadLandDepthDim,
+      landArea: prop.dcadLandArea,
+      landAreaUom: prop.dcadLandAreaUom,
+      landCostPerUom: null,
+      buildingCount: prop.dcadBuildingCount || 1,
+      oldestYearBuilt: prop.dcadOldestYearBuilt,
+      newestYearBuilt: prop.dcadNewestYearBuilt,
+      totalGrossBldgArea: prop.dcadTotalGrossBldgArea,
+      totalUnits: prop.dcadTotalUnits,
+      buildings: dcadBuildings,
+    } : undefined,
   };
 }
 
