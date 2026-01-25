@@ -34,6 +34,7 @@ interface GroundedSource {
 
 interface StageResult<T> {
   data: T;
+  summary: string;
   rationale: string;
   sources: GroundedSource[];
 }
@@ -153,30 +154,33 @@ export async function classifyAndVerifyProperty(property: CommercialProperty): P
   const parentBuilding = property.buildings?.[0];
   const dcadQualityGrade = parentBuilding?.qualityGrade || null;
   
-  const prompt = `Classify this commercial property and verify physical data. Return ONLY valid JSON.
+  const prompt = `Search the web to verify and classify this commercial property. Return ONLY valid JSON.
 
-BUILDINGS ON PARCEL:
+PROPERTY DATA:
+Address: ${property.address}, ${property.city}, TX ${property.zip}
+Buildings: ${property.buildingCount || 0} buildings, ${property.totalGrossBldgArea?.toLocaleString() || 'unknown'} sqft total
+Zoning/Use: ${property.usedesc || 'Unknown'}
+Deed Owner: ${primaryOwner}
+Value: $${property.dcadTotalVal?.toLocaleString() || 0}
+Lot Size: ${currentLotSqft?.toLocaleString() || 'Unknown'} sqft
+DCAD Quality Grade: ${dcadQualityGrade || 'Unknown'}
+
+BUILDING DETAILS:
 ${formatBuildings(property.buildings)}
-
-SUMMARY: ${property.buildingCount || 0} buildings, ${property.totalGrossBldgArea?.toLocaleString() || 'unknown'} sqft total
-ADDRESS: ${property.address}, ${property.city}, TX ${property.zip}
-ZONING/USE: ${property.usedesc || 'Unknown'}
-DEED OWNER: ${primaryOwner}
-VALUE: $${property.dcadTotalVal?.toLocaleString() || 0}
-CURRENT LOT DATA: ${currentLotSqft?.toLocaleString() || 'Unknown'} sqft
-DCAD QUALITY GRADE: ${dcadQualityGrade || 'Unknown'}
 
 CATEGORIES: ${formatCategorySchema()}
 
 BUILDING CLASS (use DCAD quality grade as primary indicator):
-- A (premium/new) = DCAD grades like "Excellent", "Superior"  
-- B (good) = DCAD grades like "Good", "Average+"
-- C (older/value-add) = DCAD grades like "Average", "Fair"
-- D (distressed) = DCAD grades like "Poor", "Unsound"
+- A (premium/new) = Excellent, Superior
+- B (good) = Good, Average+
+- C (older/value-add) = Average, Fair
+- D (distressed) = Poor, Unsound
+
+TASK: Search the web to find current information about this property. Look for anchor tenants, year built, renovations, and property details.
 
 Return JSON:
 {
-  "propertyName":"Descriptive name",
+  "propertyName":"Descriptive name (e.g., 'Preston Center Plaza')",
   "canonicalAddress":"Full address",
   "category":"Category",
   "subcategory":"Subcategory",
@@ -187,7 +191,8 @@ Return JSON:
   "lot_acres_confidence":0.0-1.0,
   "net_sqft":number|null,
   "net_sqft_confidence":0.0-1.0,
-  "rationale":"Brief explanation of classification and data sources"
+  "summary":"One sentence: '[Name] is a Class [X] [category] [anchored by X / featuring Y], built in [year] [and renovated in year if applicable].'",
+  "rationale":"Evidence supporting the classification"
 }`;
 
   console.log('[FocusedEnrichment] Stage 1: Classification and physical verification...');
@@ -227,6 +232,7 @@ Return JSON:
           propertyClassConfidence: null,
         },
       },
+      summary: '',
       rationale: 'No response from AI model',
       sources: [],
     };
@@ -235,7 +241,7 @@ Return JSON:
   const sources = extractGroundedSources(response);
   const parsed = parseJsonResponse(text);
   
-  console.log(`[FocusedEnrichment] Classification and verification complete with ${sources.length} grounded sources`);
+  console.log(`[FocusedEnrichment] Stage 1 complete with ${sources.length} grounded sources`);
   
   return {
     data: {
@@ -255,6 +261,7 @@ Return JSON:
         propertyClassConfidence: parsed.property_class_confidence ?? null,
       },
     },
+    summary: parsed.summary || '',
     rationale: parsed.rationale || '',
     sources,
   };
@@ -299,7 +306,7 @@ export async function identifyOwnership(
   const primaryOwner = property.bizName || property.ownerName1 || 'Unknown';
   const allOwners = [property.ownerName1, property.ownerName2].filter(Boolean).join(', ') || 'Unknown';
   
-  const prompt = `Identify property ownership and management. Return ONLY valid JSON.
+  const prompt = `Search the web to identify the ownership and management of this commercial property. Return ONLY valid JSON.
 
 PROPERTY: ${classification.propertyName}
 ADDRESS: ${classification.canonicalAddress}
@@ -309,13 +316,20 @@ DEED OWNER: ${primaryOwner}
 ALL OWNERS: ${allOwners}
 VALUE: $${property.dcadTotalVal?.toLocaleString() || 0}
 
-Find beneficial owner (true owner behind LLC/trust) and management company if third-party managed.
+TASK: Search the web to find:
+1. The beneficial owner (true owner behind any LLC/trust) and when they acquired the property
+2. The property management company (if third-party managed) and their specialty
 
 Return JSON:
-{"beneficialOwner":{"name":"Entity name or null","type":"REIT|Private Equity|Family Office|Individual|Corporation|null","confidence":0.0-1.0},"managementCompany":{"name":"Company or null","domain":"website.com or null","confidence":0.0-1.0},"rationale":"1-3 sentences on ownership findings"}`;
+{
+  "beneficialOwner":{"name":"Entity name or null","type":"REIT|Private Equity|Family Office|Individual|Corporation|null","confidence":0.0-1.0},
+  "managementCompany":{"name":"Company or null","domain":"website.com or null","confidence":0.0-1.0},
+  "summary":"One sentence: 'The property was [acquired/developed] by [Owner] in [year] and is [self-managed / managed by Company], [a firm specializing in X].'",
+  "rationale":"Evidence supporting ownership findings"
+}`;
 
-  console.log('[FocusedEnrichment] Stage 3: Ownership identification...');
-  console.log(`[FocusedEnrichment] Stage 3 input - Property: ${classification.propertyName}, Owner: ${primaryOwner}`);
+  console.log('[FocusedEnrichment] Stage 2: Ownership identification...');
+  console.log(`[FocusedEnrichment] Stage 2 input - Property: ${classification.propertyName}, Owner: ${primaryOwner}`);
   
   try {
     const response = await callGeminiWithTimeout(
@@ -332,15 +346,16 @@ Return JSON:
     );
 
     const text = response.text?.trim() || '';
-    console.log('[FocusedEnrichment] Stage 3 response length:', text.length, 'chars');
+    console.log('[FocusedEnrichment] Stage 2 response length:', text.length, 'chars');
     
     if (!text) {
-      console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 3, returning defaults');
+      console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 2, returning defaults');
       return {
         data: {
           beneficialOwner: { name: null, type: null, confidence: 0 },
           managementCompany: { name: null, domain: null, confidence: 0 },
         },
+        summary: '',
         rationale: 'No response from AI model',
         sources: [],
       };
@@ -349,23 +364,25 @@ Return JSON:
     const sources = extractGroundedSources(response);
     const parsed = parseJsonResponse(text);
     
-    console.log(`[FocusedEnrichment] Ownership identification complete with ${sources.length} grounded sources`);
+    console.log(`[FocusedEnrichment] Stage 2 complete with ${sources.length} grounded sources`);
     
     return {
       data: {
         beneficialOwner: parsed.beneficialOwner || { name: null, type: null, confidence: 0 },
         managementCompany: parsed.managementCompany || { name: null, domain: null, confidence: 0 },
       },
+      summary: parsed.summary || '',
       rationale: parsed.rationale || '',
       sources,
     };
   } catch (error) {
-    console.error(`[FocusedEnrichment] Stage 3 failed after retries: ${error instanceof Error ? error.message : error}`);
+    console.error(`[FocusedEnrichment] Stage 2 failed after retries: ${error instanceof Error ? error.message : error}`);
     return {
       data: {
         beneficialOwner: { name: null, type: null, confidence: 0 },
         managementCompany: { name: null, domain: null, confidence: 0 },
       },
+      summary: '',
       rationale: `Failed to identify ownership: ${error instanceof Error ? error.message : 'Unknown error'}`,
       sources: [],
     };
@@ -385,7 +402,7 @@ export async function discoverContacts(
   
   const ownerInfo = ownership.beneficialOwner?.name || property.bizName || property.ownerName1 || 'Unknown';
   
-  const prompt = `Find decision-maker contacts for this commercial property. Return ONLY valid JSON.
+  const prompt = `Search the web to find decision-maker contacts for this commercial property. Return ONLY valid JSON.
 
 PROPERTY: ${classification.propertyName}
 TYPE: ${classification.category} - ${classification.subcategory}
@@ -393,21 +410,25 @@ ADDRESS: ${classification.canonicalAddress}
 MANAGEMENT COMPANY: ${managementInfo}
 OWNER: ${ownerInfo}
 
-Find 3-8 contacts who make property decisions:
-- Property/Facilities managers at THIS location
-- Management company contacts
+TASK: Search the web to find 3-8 contacts who make property decisions:
+- Property/Facilities managers at THIS specific location
+- Management company contacts responsible for this property
 - Owners/principals
 - Leasing agents
 
 DO NOT include: condo unit owners, HOA board members, residential tenants
-
 DO NOT guess email/phone/LinkedIn - leave null (will be enriched separately).
 
 Return JSON:
-{"contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8}],"organizations":[{"name":"Org name","domain":"domain.com","org_type":"owner|management|tenant|developer","roles":["property_manager","owner"]}],"rationale":"1-3 sentences on contact discovery approach"}`;
+{
+  "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8}],
+  "organizations":[{"name":"Org name","domain":"domain.com","org_type":"owner|management|tenant|developer","roles":["property_manager","owner"]}],
+  "summary":"2-3 sentences citing evidence: 'Based on [source], the primary contact is [Name], listed on [website] as [role]. [Secondary contact] at [company] handles [responsibility].'",
+  "rationale":"Evidence supporting each contact's relevance to this property"
+}`;
 
-  console.log('[FocusedEnrichment] Stage 4: Contact discovery...');
-  console.log(`[FocusedEnrichment] Stage 4 input - Property: ${classification.propertyName}, Mgmt: ${managementInfo}`);
+  console.log('[FocusedEnrichment] Stage 3: Contact discovery...');
+  console.log(`[FocusedEnrichment] Stage 3 input - Property: ${classification.propertyName}, Mgmt: ${managementInfo}`);
   
   try {
     const response = await callGeminiWithTimeout(
@@ -424,12 +445,13 @@ Return JSON:
     );
 
     const text = response.text?.trim() || '';
-    console.log('[FocusedEnrichment] Stage 4 response length:', text.length, 'chars');
+    console.log('[FocusedEnrichment] Stage 3 response length:', text.length, 'chars');
     
     if (!text) {
-      console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 4, returning empty contacts');
+      console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 3, returning empty contacts');
       return {
         data: { contacts: [], organizations: [] },
+        summary: '',
         rationale: 'No response from AI model',
         sources: [],
       };
@@ -455,17 +477,19 @@ Return JSON:
       roles: o.roles || [],
     }));
     
-    console.log(`[FocusedEnrichment] Contact discovery complete: ${contacts.length} contacts, ${organizations.length} orgs, ${sources.length} grounded sources`);
+    console.log(`[FocusedEnrichment] Stage 3 complete: ${contacts.length} contacts, ${organizations.length} orgs, ${sources.length} grounded sources`);
     
     return {
       data: { contacts, organizations },
+      summary: parsed.summary || '',
       rationale: parsed.rationale || '',
       sources,
     };
   } catch (error) {
-    console.error(`[FocusedEnrichment] Stage 4 failed after retries: ${error instanceof Error ? error.message : error}`);
+    console.error(`[FocusedEnrichment] Stage 3 failed after retries: ${error instanceof Error ? error.message : error}`);
     return {
       data: { contacts: [], organizations: [] },
+      summary: '',
       rationale: `Failed to discover contacts: ${error instanceof Error ? error.message : 'Unknown error'}`,
       sources: [],
     };
@@ -496,12 +520,14 @@ export async function runFocusedEnrichment(property: CommercialProperty): Promis
   
   const physical: StageResult<PropertyPhysicalData> = {
     data: stage1Result.data.physical,
+    summary: stage1Result.summary,
     rationale: stage1Result.rationale,
     sources: stage1Result.sources,
   };
   
   const classification: StageResult<PropertyClassification> = {
     data: stage1Result.data.classification,
+    summary: stage1Result.summary,
     rationale: stage1Result.rationale,
     sources: stage1Result.sources,
   };
