@@ -35,6 +35,7 @@ export interface DCadCommercialProperty {
   lon: number;
   usedesc: string | null;
   usecode: string | null;
+  stateClass: string | null;
   
   regridYearBuilt: number | null;
   regridNumStories: number | null;

@@ -1,0 +1,66 @@
+Here’s the breakdown of DCAD/Texas property classification codes for Greenfinch filtering:
+
+## Texas PTAD State Codes (Standard Across Counties)
+
+### Single-Family Residential (EXCLUDE)
+
+|Code |Description                |
+|-----|---------------------------|
+|**A**|Single-Family Residential  |
+|A1   |Single Family Residences   |
+|A2   |Mobile Home on Owner’s Land|
+|A3   |Townhouses                 |
+|A4   |Condominiums               |
+
+### Multifamily (INCLUDE - Target for Greenfinch)
+
+|Code |Description            |
+|-----|-----------------------|
+|**B**|Multifamily Residential|
+|B1   |Apartments             |
+|B2   |Duplexes               |
+|B3   |Tri-Plexes             |
+|B4   |Four-Plexes            |
+
+### Commercial (INCLUDE - Primary Target)
+
+|Code  |Description             |
+|------|------------------------|
+|**F1**|Commercial Real Property|
+
+### Industrial (INCLUDE)
+
+|Code  |Description             |
+|------|------------------------|
+|**F2**|Industrial Real Property|
+
+## DCAD-Specific Codes (Legacy/MARS System)
+
+From DCAD’s cross-reference document:
+
+|DCAD Code|Description                |Maps To    |
+|---------|---------------------------|-----------|
+|A11      |Single Family Residences   |A (exclude)|
+|A12      |SFR - Townhouses           |A (exclude)|
+|A13      |SFR - Condominiums         |A (exclude)|
+|A20      |Mobile Home on Owner’s Land|A (exclude)|
+|**B11**  |MFR - Apartments           |B (include)|
+|**B12**  |MFR - Duplexes             |B (include)|
+|C12      |Commercial - Vacant Lots   |C1         |
+|C13      |Industrial - Vacant Lots   |C1         |
+
+## Quick Filter Logic for Greenfinch
+
+```sql
+-- Include commercial, industrial, multifamily
+WHERE state_class IN ('B', 'F1', 'F2')
+   OR state_class LIKE 'B%'  -- catches B1, B11, B12, etc.
+   OR state_class LIKE 'F1%'
+   OR state_class LIKE 'F2%'
+
+-- Exclude single-family
+WHERE state_class NOT IN ('A', 'A1', 'A2', 'A3', 'A4')
+  AND state_class NOT LIKE 'A%'
+```
+
+**Note**: Hotels/motels are classified as **F1** (commercial), not B (multifamily) - so they’d be included in your commercial targeting.​​​​​​​​​​​​​​​​
