@@ -1571,21 +1571,42 @@ export async function storeEnrichmentResults(
     lat: aggregatedProperty.lat,
     lon: aggregatedProperty.lon,
     geocodeConfidence: result.property.geocodeConfidence,
-    // Prefer AI-returned values over Regrid when available with 70%+ confidence
-    lotSqft: (result.property.lotSqft && result.property.lotSqftConfidence && result.property.lotSqftConfidence >= 0.70) 
-      ? result.property.lotSqft 
-      : aggregatedProperty.lotSqft,
-    lotSqftConfidence: result.property.lotSqftConfidence || null,
-    lotSqftSource: (result.property.lotSqft && result.property.lotSqftConfidence && result.property.lotSqftConfidence >= 0.70) 
-      ? result.property.lotSqftSource 
-      : 'regrid',
-    buildingSqft: (result.property.buildingSqft && result.property.buildingSqftConfidence && result.property.buildingSqftConfidence >= 0.70) 
-      ? result.property.buildingSqft 
-      : aggregatedProperty.buildingSqft,
-    buildingSqftConfidence: result.property.buildingSqftConfidence || null,
-    buildingSqftSource: (result.property.buildingSqft && result.property.buildingSqftConfidence && result.property.buildingSqftConfidence >= 0.70) 
-      ? result.property.buildingSqftSource 
-      : 'regrid',
+    // Prefer AI-returned values when available with 70%+ confidence
+    // Priority: AI-validated > DCAD > Regrid
+    lotSqft: (() => {
+      const aiLotAcres = (result.property as any).aiLotAcres;
+      const aiConf = (result.property as any).aiLotAcresConfidence;
+      if (aiLotAcres && aiConf && aiConf >= 0.70) {
+        return Math.round(aiLotAcres * 43560); // Convert acres to sqft
+      }
+      return aggregatedProperty.lotSqft;
+    })(),
+    lotSqftConfidence: (result.property as any).aiLotAcresConfidence || null,
+    lotSqftSource: (() => {
+      const aiLotAcres = (result.property as any).aiLotAcres;
+      const aiConf = (result.property as any).aiLotAcresConfidence;
+      if (aiLotAcres && aiConf && aiConf >= 0.70) {
+        return 'ai_validated';
+      }
+      return 'dcad_land';
+    })(),
+    buildingSqft: (() => {
+      const aiNetSqft = (result.property as any).aiNetSqft;
+      const aiConf = (result.property as any).aiNetSqftConfidence;
+      if (aiNetSqft && aiConf && aiConf >= 0.70) {
+        return aiNetSqft;
+      }
+      return aggregatedProperty.buildingSqft;
+    })(),
+    buildingSqftConfidence: (result.property as any).aiNetSqftConfidence || null,
+    buildingSqftSource: (() => {
+      const aiNetSqft = (result.property as any).aiNetSqft;
+      const aiConf = (result.property as any).aiNetSqftConfidence;
+      if (aiNetSqft && aiConf && aiConf >= 0.70) {
+        return 'ai_validated';
+      }
+      return 'dcad_com_detail';
+    })(),
     yearBuilt: aggregatedProperty.yearBuilt,
     numFloors: aggregatedProperty.numFloors,
     assetCategory: result.property.assetCategory,

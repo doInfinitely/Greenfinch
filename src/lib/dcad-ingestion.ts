@@ -10,6 +10,7 @@ snowflake.configure({ logLevel: 'ERROR' });
 const COMMERCIAL_PROPERTIES_TABLE = 'DCAD_LAND_2025.PUBLIC.COMMERCIAL_PROPERTIES';
 const ACCOUNT_APPRL_TABLE = 'DCAD_LAND_2025.PUBLIC.ACCOUNT_APPRL_YEAR';
 const ACCOUNT_INFO_TABLE = 'DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO';
+const LAND_TABLE = 'DCAD_LAND_2025.PUBLIC.LAND';
 const REGRID_TABLE = 'NATIONWIDE_PARCEL_DATA__PREMIUM_SCHEMA__FREE_SAMPLE.PREMIUM_PARCELS.TX_DALLAS';
 
 export interface DCadBuildingRow {
@@ -76,6 +77,9 @@ export interface DCadCommercialProperty {
   landAreaUom: string | null;
   landCostPerUom: number | null;
   
+  // From LAND table (parent account)
+  dcadLandSqft: number | null;
+  
   taxObjId: string | null;
   propertyName: string | null;
   bldgClassDesc: string | null;
@@ -137,6 +141,9 @@ export interface AggregatedProperty {
   landArea: number | null;
   landAreaUom: string | null;
   landCostPerUom: number | null;
+  
+  // From LAND table (parent account)
+  dcadLandSqft: number | null;
   
   buildings: DCadBuildingRow[];
   buildingCount: number;
@@ -304,9 +311,12 @@ export async function getCommercialPropertiesByZip(
       cp.AC_TYPE,
       cp.QUALITY_GRADE,
       cp.CONDITION_GRADE,
-      aa.SPTD_CODE
+      aa.SPTD_CODE,
+      land.AREA_SIZE AS LAND_AREA_SIZE,
+      land.AREA_UOM_DESC AS LAND_AREA_UOM_DESC
     FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
     JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
+    LEFT JOIN ${LAND_TABLE} land ON cp.ACCOUNT_NUM = land.ACCOUNT_NUM AND land.APPRAISAL_YR = 2025
     WHERE cp.ZIP LIKE '${zipCode}%'
       AND aa.SPTD_CODE IN (${sptdCodesList})
     ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
@@ -364,6 +374,13 @@ function mapRowToProperty(row: any): DCadCommercialProperty {
     landArea: row.LAND_AREA || null,
     landAreaUom: row.LAND_AREA_UOM || null,
     landCostPerUom: row.LAND_COST_PER_UOM || null,
+    
+    // From LAND table - convert to sqft if needed
+    dcadLandSqft: row.LAND_AREA_SIZE ? (
+      row.LAND_AREA_UOM_DESC === 'ACRES' 
+        ? Math.round(row.LAND_AREA_SIZE * 43560) 
+        : Math.round(row.LAND_AREA_SIZE)
+    ) : null,
     
     taxObjId: row.TAX_OBJ_ID || null,
     propertyName: row.PROPERTY_NAME || null,
@@ -517,6 +534,9 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
       landAreaUom: firstRow.landAreaUom,
       landCostPerUom: firstRow.landCostPerUom,
       
+      // Use LAND table data for lot size
+      dcadLandSqft: firstRow.dcadLandSqft,
+      
       buildings: uniqueBuildings,
       buildingCount: uniqueBuildings.length || 1,
       oldestYearBuilt: yearsBuilt.length > 0 ? Math.min(...yearsBuilt) : null,
@@ -621,9 +641,14 @@ export async function upsertAggregatedPropertyToPostgres(
     lat: prop.lat,
     lon: prop.lon,
     
-    lotSqft: prop.lotSqft ? Math.round(prop.lotSqft) : null,
+    // Use DCAD LAND table lot size, fall back to regrid
+    lotSqft: prop.dcadLandSqft ? Math.round(prop.dcadLandSqft) : 
+             prop.lotSqft ? Math.round(prop.lotSqft) : null,
+    lotSqftSource: prop.dcadLandSqft ? 'dcad_land' : prop.lotSqft ? 'regrid' : null,
     buildingSqft: prop.totalGrossBldgArea ? Math.round(prop.totalGrossBldgArea) : 
                   prop.bldgFootprintSqft ? Math.round(prop.bldgFootprintSqft) : null,
+    buildingSqftSource: prop.totalGrossBldgArea ? 'dcad_com_detail' : 
+                        prop.bldgFootprintSqft ? 'regrid' : null,
     yearBuilt: prop.oldestYearBuilt || prop.regridYearBuilt || null,
     numFloors: prop.regridNumStories || null,
     
