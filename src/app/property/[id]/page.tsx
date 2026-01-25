@@ -931,7 +931,7 @@ export default function PropertyDetailPage() {
                   </p>
                 </div>
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 mb-1">Building Size</p>
+                  <p className="text-sm text-gray-600 mb-1">Leasable Area</p>
                   <p className="text-xl font-semibold text-gray-800">
                     {property.buildingSqft && property.buildingSqft > 0 ? `${formatBuildingSqft(property.buildingSqft)} sq ft` : 'N/A'}
                   </p>

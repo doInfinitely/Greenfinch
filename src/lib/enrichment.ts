@@ -511,7 +511,7 @@ Before you begin, internalize these rules:
 
 **Physical Characteristics**
 - Lot Size: ${property.lotSqft?.toLocaleString() || 'Unknown'} sq ft
-- Building Size: ${property.buildingSqft?.toLocaleString() || 'Unknown'} sq ft
+- Leasable Area: ${property.buildingSqft?.toLocaleString() || 'Unknown'} sq ft (excludes parking)
 - Year Built: ${property.yearBuilt || 'Unknown'}
 - Floors: ${property.numFloors || 'Unknown'}
 
