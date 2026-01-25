@@ -21,6 +21,18 @@ export async function GET(
       );
     }
 
+    // Find property first to get UUID id
+    const isUuid = UUID_REGEX.test(id);
+    const [property] = await db
+      .select({ id: properties.id })
+      .from(properties)
+      .where(isUuid ? eq(properties.id, id) : eq(properties.propertyKey, id))
+      .limit(1);
+
+    if (!property) {
+      return NextResponse.json({ providers: [] });
+    }
+
     const providers = await db
       .select({
         id: propertyServiceProviders.id,
@@ -35,7 +47,7 @@ export async function GET(
       })
       .from(propertyServiceProviders)
       .leftJoin(serviceProviders, eq(propertyServiceProviders.serviceProviderId, serviceProviders.id))
-      .where(eq(propertyServiceProviders.propertyId, id));
+      .where(eq(propertyServiceProviders.propertyId, property.id));
 
     return NextResponse.json({ providers });
   } catch (error) {
@@ -80,9 +92,10 @@ export async function POST(
       );
     }
 
-    // Verify property exists
+    // Verify property exists - handle both UUID and DCAD key formats
+    const isUuid = UUID_REGEX.test(id);
     const property = await db.query.properties.findFirst({
-      where: eq(properties.id, id),
+      where: isUuid ? eq(properties.id, id) : eq(properties.propertyKey, id),
     });
 
     if (!property) {
@@ -92,7 +105,7 @@ export async function POST(
     // Check if a provider already exists for this service category
     const existing = await db.query.propertyServiceProviders.findFirst({
       where: and(
-        eq(propertyServiceProviders.propertyId, id),
+        eq(propertyServiceProviders.propertyId, property.id),
         eq(propertyServiceProviders.serviceCategory, serviceCategory)
       ),
     });
@@ -112,7 +125,7 @@ export async function POST(
     } else {
       // Create new
       await db.insert(propertyServiceProviders).values({
-        propertyId: id,
+        propertyId: property.id,
         serviceProviderId,
         serviceCategory,
         notes,

@@ -20,11 +20,12 @@ export async function GET(
       );
     }
 
-    // First try to find in Postgres by ID or property_key
+    // Find property - only compare against UUID column if input is a valid UUID
+    const isUuid = UUID_REGEX.test(id);
     const [dbProperty] = await db
       .select()
       .from(properties)
-      .where(or(eq(properties.id, id), eq(properties.propertyKey, id)))
+      .where(isUuid ? or(eq(properties.id, id), eq(properties.propertyKey, id)) : eq(properties.propertyKey, id))
       .limit(1);
 
     if (!dbProperty) {

@@ -40,9 +40,10 @@ export async function POST(
       );
     }
 
-    // Verify property exists (id param is propertyKey)
+    // Verify property exists - handle both UUID and DCAD key formats
+    const isUuid = UUID_REGEX.test(id);
     const property = await db.query.properties.findFirst({
-      where: eq(properties.propertyKey, id),
+      where: isUuid ? eq(properties.id, id) : eq(properties.propertyKey, id),
     });
 
     if (!property) {
@@ -104,9 +105,10 @@ export async function GET(
       );
     }
 
-    // First find the property by propertyKey
+    // Find property - handle both UUID and DCAD key formats
+    const isUuid = UUID_REGEX.test(id);
     const property = await db.query.properties.findFirst({
-      where: eq(properties.propertyKey, id),
+      where: isUuid ? eq(properties.id, id) : eq(properties.propertyKey, id),
     });
 
     if (!property) {
