@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
     const conditions = [
       isNotNull(properties.lat),
       eq(properties.isActive, true),
+      // Only show parent properties on the map (not constituent accounts like parking decks)
+      eq(properties.isParentProperty, true),
     ];
 
     if (category) {

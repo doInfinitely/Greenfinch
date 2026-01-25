@@ -586,11 +586,14 @@ export async function upsertAggregatedPropertyToPostgres(
   const parcelId = prop.parcelId;
   
   // Determine parent/constituent status
+  // A property is a "parent" if:
+  // 1. It's the main account for a complex (parcelRel.parentAccountNum matches), OR
+  // 2. It's a standalone property (no entry in relationships map = single account for parcel)
   const parcelRel = relationships?.get(parcelId);
-  const isParentProperty = parcelRel?.parentAccountNum === propertyKey;
+  const isParentProperty = !parcelRel || parcelRel.parentAccountNum === propertyKey;
   const parentPropertyKey = parcelRel && !isParentProperty ? parcelRel.parentAccountNum : null;
-  const constituentAccountNums = isParentProperty ? parcelRel?.constituentAccountNums : null;
-  const constituentCount = isParentProperty ? (parcelRel?.constituentAccountNums.length || 0) : 0;
+  const constituentAccountNums = isParentProperty && parcelRel ? parcelRel.constituentAccountNums : null;
+  const constituentCount = isParentProperty && parcelRel ? (parcelRel.constituentAccountNums.length || 0) : 0;
   
   const existingProperty = await db
     .select({ id: properties.id })

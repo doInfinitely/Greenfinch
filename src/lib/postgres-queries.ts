@@ -100,6 +100,7 @@ export async function searchPropertiesFromPostgres(
     .where(
       and(
         eq(properties.isActive, true),
+        eq(properties.isParentProperty, true), // Only show parent properties
         or(
           ilike(properties.regridAddress, searchTerm),
           ilike(properties.validatedAddress, searchTerm),
@@ -128,6 +129,7 @@ export async function getPropertiesInBoundsFromPostgres(
     .where(
       and(
         eq(properties.isActive, true),
+        eq(properties.isParentProperty, true), // Only show parent properties
         gte(properties.lat, minLat),
         lte(properties.lat, maxLat),
         gte(properties.lon, minLon),
