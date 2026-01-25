@@ -27,3 +27,14 @@ export const CONFIDENCE = {
   BENEFICIAL_OWNER_THRESHOLD: 0.50,
   MANAGEMENT_THRESHOLD: 0.75
 };
+
+// Concurrency limits for parallel API calls
+// Gemini Flash can handle hundreds of requests per minute
+// SERP API, Hunter, NeverBounce have lower limits
+export const CONCURRENCY = {
+  GEMINI: 25,           // Main AI enrichment - Gemini Flash is fast
+  SERP: 10,             // SERP API for LinkedIn lookups
+  HUNTER: 10,           // Hunter.io email discovery
+  NEVERBOUNCE: 10,      // NeverBounce email validation
+  PROPERTIES: 15,       // Concurrent property enrichments
+};

@@ -10,6 +10,7 @@ import { findContainingPlace } from "./google-places";
 import pLimit from "p-limit";
 // @ts-ignore - name-match has no type declarations
 import { isMatch as nameLibMatch, NameNormalizer } from "name-match";
+import { CONCURRENCY } from "./constants";
 
 // Google Custom Search API for LinkedIn lookups
 interface GoogleSearchResult {
@@ -1239,7 +1240,7 @@ export async function enrichContactsWithLinkedIn(contacts: EnrichedContact[]): P
   
   console.log(`[Enrichment] LinkedIn discovery for ${contactsNeedingLinkedIn.length} contacts (max ${MAX_LINKEDIN_LOOKUPS})...`);
   
-  const limit = pLimit(2);
+  const limit = pLimit(CONCURRENCY.SERP);
   
   const linkedInResults = await Promise.all(
     contactsNeedingLinkedIn.map(contact => 
@@ -1286,83 +1287,84 @@ export async function enrichContactsWithLinkedIn(contacts: EnrichedContact[]): P
   return enrichedContacts;
 }
 
-// Auto-validation flow for high-priority contacts
+// Auto-validation flow for high-priority contacts - now with parallel processing
 export async function validateHighPriorityContacts(contacts: EnrichedContact[]): Promise<EnrichedContact[]> {
   const highPriorityRoles = ['property_manager', 'facilities', 'asset_manager'];
   
-  console.log(`[Enrichment] Validating high-priority contacts...`);
+  console.log(`[Enrichment] Validating high-priority contacts in parallel...`);
   
-  const enrichedContacts: EnrichedContact[] = [];
+  const nonHighPriority = contacts.filter(c => !highPriorityRoles.includes(c.role));
+  const highPriority = contacts.filter(c => highPriorityRoles.includes(c.role));
   
-  for (const contact of contacts) {
-    if (!highPriorityRoles.includes(contact.role)) {
-      enrichedContacts.push(contact);
-      continue;
-    }
-    
-    console.log(`[Enrichment] Validating high-priority contact: ${contact.fullName} (${contact.role})`);
-    
-    let updatedContact = { ...contact };
-    
-    try {
-      if (!updatedContact.email && updatedContact.companyDomain) {
-        console.log(`[Enrichment] Attempting to find email for ${updatedContact.fullName}...`);
-        const { firstName, lastName } = parseNameParts(updatedContact.fullName);
-        
-        if (firstName && lastName) {
-          const findResult = await findEmail(firstName, lastName, updatedContact.companyDomain);
-          
-          if (findResult.email && findResult.confidence > 80) {
-            console.log(`[Enrichment] Found email ${findResult.email} for high-priority contact`);
-            updatedContact.email = findResult.email;
-            updatedContact.normalizedEmail = findResult.email.toLowerCase().trim();
-            updatedContact.emailConfidence = findResult.confidence / 100;
-          }
-        } else {
-          console.log(`[Enrichment] Cannot find email for ${updatedContact.fullName} - incomplete name (first: ${firstName}, last: ${lastName})`);
-          if (!updatedContact.needsReview) {
-            updatedContact.needsReview = true;
-            updatedContact.reviewReason = 'High-priority contact with incomplete name - cannot search email';
-          }
-        }
-      }
-      
-      if (updatedContact.email) {
-        console.log(`[Enrichment] Validating email for ${updatedContact.fullName}...`);
-        const validationResult = await validateEmail(updatedContact.email);
-        
-        if (!validationResult.isValid && validationResult.status === 'invalid') {
-          console.log(`[Enrichment] Email ${updatedContact.email} is invalid, clearing...`);
-          updatedContact.email = null;
-          updatedContact.normalizedEmail = null;
-          updatedContact.emailConfidence = null;
-        } else {
-          updatedContact.emailConfidence = validationResult.confidence;
-        }
-      }
-      
-      const hasValidContact = updatedContact.email || updatedContact.phone || updatedContact.linkedinUrl;
-      if (!hasValidContact) {
-        updatedContact.needsReview = true;
-        updatedContact.reviewReason = 'High-priority contact missing all contact information';
-      }
-      
-      enrichedContacts.push(updatedContact);
-    } catch (error) {
-      console.error(`[Enrichment] Error validating high-priority contact ${contact.fullName}:`, error);
-      enrichedContacts.push({
-        ...contact,
-        needsReview: true,
-        reviewReason: `High-priority contact validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      });
-    }
+  if (highPriority.length === 0) {
+    return contacts;
   }
   
-  const highPriorityCount = enrichedContacts.filter(c => highPriorityRoles.includes(c.role)).length;
-  const withContact = enrichedContacts.filter(c => 
-    highPriorityRoles.includes(c.role) && (c.email || c.phone || c.linkedinUrl)
-  ).length;
-  console.log(`[Enrichment] High-priority validation complete: ${withContact}/${highPriorityCount} have contact info`);
+  const hunterLimit = pLimit(CONCURRENCY.HUNTER);
+  const neverBounceLimit = pLimit(CONCURRENCY.NEVERBOUNCE);
+  
+  const validatedContacts = await Promise.all(
+    highPriority.map(contact =>
+      hunterLimit(async () => {
+        console.log(`[Enrichment] Validating high-priority contact: ${contact.fullName} (${contact.role})`);
+        let updatedContact = { ...contact };
+        
+        try {
+          if (!updatedContact.email && updatedContact.companyDomain) {
+            const { firstName, lastName } = parseNameParts(updatedContact.fullName);
+            
+            if (firstName && lastName) {
+              const findResult = await findEmail(firstName, lastName, updatedContact.companyDomain);
+              
+              if (findResult.email && findResult.confidence > 80) {
+                console.log(`[Enrichment] Found email ${findResult.email} for high-priority contact`);
+                updatedContact.email = findResult.email;
+                updatedContact.normalizedEmail = findResult.email.toLowerCase().trim();
+                updatedContact.emailConfidence = findResult.confidence / 100;
+              }
+            } else {
+              if (!updatedContact.needsReview) {
+                updatedContact.needsReview = true;
+                updatedContact.reviewReason = 'High-priority contact with incomplete name - cannot search email';
+              }
+            }
+          }
+          
+          if (updatedContact.email) {
+            const validationResult = await neverBounceLimit(() => validateEmail(updatedContact.email!));
+            
+            if (!validationResult.isValid && validationResult.status === 'invalid') {
+              console.log(`[Enrichment] Email ${updatedContact.email} is invalid, clearing...`);
+              updatedContact.email = null;
+              updatedContact.normalizedEmail = null;
+              updatedContact.emailConfidence = null;
+            } else {
+              updatedContact.emailConfidence = validationResult.confidence;
+            }
+          }
+          
+          const hasValidContact = updatedContact.email || updatedContact.phone || updatedContact.linkedinUrl;
+          if (!hasValidContact) {
+            updatedContact.needsReview = true;
+            updatedContact.reviewReason = 'High-priority contact missing all contact information';
+          }
+          
+          return updatedContact;
+        } catch (error) {
+          console.error(`[Enrichment] Error validating high-priority contact ${contact.fullName}:`, error);
+          return {
+            ...contact,
+            needsReview: true,
+            reviewReason: `High-priority contact validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+          };
+        }
+      })
+    )
+  );
+  
+  const enrichedContacts = [...validatedContacts, ...nonHighPriority];
+  const withContact = validatedContacts.filter(c => c.email || c.phone || c.linkedinUrl).length;
+  console.log(`[Enrichment] High-priority validation complete: ${withContact}/${highPriority.length} have contact info`);
   
   return enrichedContacts;
 }

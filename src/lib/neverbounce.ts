@@ -1,8 +1,10 @@
 import axios from 'axios';
 import pRetry from 'p-retry';
+import pLimit from 'p-limit';
 import { db } from './db';
 import { contacts } from './schema';
 import { eq } from 'drizzle-orm';
+import { CONCURRENCY } from './constants';
 
 const NEVERBOUNCE_API_BASE = 'https://api.neverbounce.com/v4.2';
 
@@ -207,18 +209,17 @@ export async function validateAndUpdateContact(contactId: string): Promise<Email
   }
 }
 
-export async function validateEmailBatch(emails: string[], batchSize = 5): Promise<EmailValidationResult[]> {
-  const results: EmailValidationResult[] = [];
+export async function validateEmailBatch(emails: string[]): Promise<EmailValidationResult[]> {
+  const limit = pLimit(CONCURRENCY.NEVERBOUNCE);
   
-  for (let i = 0; i < emails.length; i += batchSize) {
-    const batch = emails.slice(i, i + batchSize);
-    const batchResults = await Promise.all(batch.map(validateEmail));
-    results.push(...batchResults);
-    
-    if (i + batchSize < emails.length) {
-      await delay(1000);
-    }
-  }
+  console.log(`[NeverBounce] Validating ${emails.length} emails with concurrency=${CONCURRENCY.NEVERBOUNCE}`);
+  
+  const results = await Promise.all(
+    emails.map(email => limit(() => validateEmail(email)))
+  );
+  
+  const valid = results.filter(r => r.isValid).length;
+  console.log(`[NeverBounce] Batch complete: ${valid}/${emails.length} valid`);
   
   return results;
 }

@@ -1,15 +1,15 @@
 import { v4 as uuidv4 } from 'uuid';
+import pLimit from 'p-limit';
 import { db } from './db';
 import { properties } from './schema';
 import { eq, or, isNull, inArray } from 'drizzle-orm';
 import { enrichAndStoreProperty } from './enrichment';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
+import { CONCURRENCY } from './constants';
 
-const ENRICHMENT_MAX_BATCH_SIZE = parseInt(process.env.ENRICHMENT_MAX_BATCH_SIZE || '100', 10);
-const RATE_LIMIT_DELAY_MS = 10;
+const ENRICHMENT_MAX_BATCH_SIZE = parseInt(process.env.ENRICHMENT_MAX_BATCH_SIZE || '200', 10);
 
-// Get property from Postgres and convert to AggregatedProperty format for enrichment
 async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedProperty | null> {
   const [dbProperty] = await db
     .select()
@@ -23,7 +23,6 @@ async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedP
 
   const rawParcels = (dbProperty.rawParcelsJson as any[]) || [];
   
-  // Reconstruct aggregated values from rawParcelsJson for enrichment parity with Snowflake
   let totalParval = 0;
   let totalImprovval = 0;
   let maxLandval = 0;
@@ -58,7 +57,6 @@ async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedP
     }
   }
 
-  // Also include owners from property record if not in rawParcels
   if (dbProperty.regridOwner && !allOwners.includes(dbProperty.regridOwner)) {
     allOwners.unshift(dbProperty.regridOwner);
   }
@@ -100,6 +98,8 @@ export interface QueueProgress {
   processed: number;
   succeeded: number;
   failed: number;
+  propertiesPerMinute?: number;
+  estimatedSecondsRemaining?: number;
 }
 
 export interface BatchStatus {
@@ -109,6 +109,7 @@ export interface BatchStatus {
   startedAt: Date | null;
   completedAt: Date | null;
   errors: Array<{ propertyKey: string; error: string }>;
+  concurrency: number;
 }
 
 interface QueueItem {
@@ -119,7 +120,6 @@ interface QueueItem {
 let currentBatch: BatchStatus | null = null;
 let queue: QueueItem[] = [];
 let isProcessing = false;
-let lastRequestTime = 0;
 
 export function getQueueStatus(): BatchStatus | null {
   return currentBatch;
@@ -133,17 +133,50 @@ export function addToQueue(items: QueueItem[]): void {
   queue.push(...items);
 }
 
-async function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+async function processPropertyItem(
+  item: QueueItem,
+  startTime: number
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    let property = await getPropertyFromPostgres(item.propertyKey);
+    
+    if (!property) {
+      console.log(`[EnrichmentQueue] Property not in Postgres, trying Snowflake: ${item.propertyKey}`);
+      property = await getPropertyByKey(item.propertyKey);
+    }
+    
+    if (!property) {
+      return { success: false, error: 'Property not found in database' };
+    }
+
+    const { result } = await enrichAndStoreProperty(property);
+    return { success: result.success, error: result.error };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error' 
+    };
+  }
 }
 
-async function enforceRateLimit(): Promise<void> {
-  const now = Date.now();
-  const timeSinceLastRequest = now - lastRequestTime;
-  if (timeSinceLastRequest < RATE_LIMIT_DELAY_MS) {
-    await delay(RATE_LIMIT_DELAY_MS - timeSinceLastRequest);
+function updateProgressStats(startTime: number): void {
+  if (!currentBatch) return;
+  
+  const elapsedMs = Date.now() - startTime;
+  const elapsedMinutes = elapsedMs / 60000;
+  
+  if (elapsedMinutes > 0 && currentBatch.progress.processed > 0) {
+    currentBatch.progress.propertiesPerMinute = Math.round(
+      currentBatch.progress.processed / elapsedMinutes
+    );
+    
+    const remaining = currentBatch.progress.total - currentBatch.progress.processed;
+    if (currentBatch.progress.propertiesPerMinute > 0) {
+      currentBatch.progress.estimatedSecondsRemaining = Math.round(
+        (remaining / currentBatch.progress.propertiesPerMinute) * 60
+      );
+    }
   }
-  lastRequestTime = Date.now();
 }
 
 export async function processQueue(): Promise<void> {
@@ -158,38 +191,22 @@ export async function processQueue(): Promise<void> {
   }
 
   isProcessing = true;
+  const startTime = Date.now();
+  const concurrencyLimit = currentBatch?.concurrency || CONCURRENCY.PROPERTIES;
+  const limit = pLimit(concurrencyLimit);
+  
+  console.log(`[EnrichmentQueue] Starting parallel processing with concurrency=${concurrencyLimit}`);
 
   try {
-    while (queue.length > 0) {
-      const item = queue.shift()!;
-      
-      try {
-        await enforceRateLimit();
+    const items = [...queue];
+    queue = [];
+    
+    const promises = items.map((item, index) =>
+      limit(async () => {
+        const itemStart = Date.now();
+        console.log(`[EnrichmentQueue] [${index + 1}/${items.length}] Processing: ${item.propertyKey}`);
         
-        console.log(`[EnrichmentQueue] Processing property: ${item.propertyKey}`);
-        
-        // Try Postgres first (for ingested properties), then fall back to Snowflake
-        let property = await getPropertyFromPostgres(item.propertyKey);
-        
-        if (!property) {
-          console.log(`[EnrichmentQueue] Property not in Postgres, trying Snowflake: ${item.propertyKey}`);
-          property = await getPropertyByKey(item.propertyKey);
-        }
-        
-        if (!property) {
-          console.error(`[EnrichmentQueue] Property not found anywhere: ${item.propertyKey}`);
-          if (currentBatch) {
-            currentBatch.progress.processed++;
-            currentBatch.progress.failed++;
-            currentBatch.errors.push({
-              propertyKey: item.propertyKey,
-              error: 'Property not found in database',
-            });
-          }
-          continue;
-        }
-
-        const { result } = await enrichAndStoreProperty(property);
+        const result = await processPropertyItem(item, startTime);
         
         if (currentBatch) {
           currentBatch.progress.processed++;
@@ -202,25 +219,30 @@ export async function processQueue(): Promise<void> {
               error: result.error || 'Unknown error',
             });
           }
+          updateProgressStats(startTime);
         }
+        
+        const elapsed = ((Date.now() - itemStart) / 1000).toFixed(1);
+        const status = result.success ? 'SUCCESS' : 'FAILED';
+        const ppm = currentBatch?.progress.propertiesPerMinute || 0;
+        const eta = currentBatch?.progress.estimatedSecondsRemaining;
+        const etaStr = eta ? `ETA: ${Math.round(eta / 60)}m ${eta % 60}s` : '';
+        
+        console.log(`[EnrichmentQueue] [${index + 1}/${items.length}] ${status} (${elapsed}s) | Rate: ${ppm}/min | ${etaStr}`);
+        
+        return result;
+      })
+    );
 
-        console.log(`[EnrichmentQueue] Completed property: ${item.propertyKey} (success: ${result.success})`);
-      } catch (error) {
-        console.error(`[EnrichmentQueue] Error processing property ${item.propertyKey}:`, error);
-        if (currentBatch) {
-          currentBatch.progress.processed++;
-          currentBatch.progress.failed++;
-          currentBatch.errors.push({
-            propertyKey: item.propertyKey,
-            error: error instanceof Error ? error.message : 'Unknown error',
-          });
-        }
-      }
-    }
+    await Promise.all(promises);
 
     if (currentBatch) {
       currentBatch.status = 'completed';
       currentBatch.completedAt = new Date();
+      
+      const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
+      const finalRate = currentBatch.progress.propertiesPerMinute || 0;
+      console.log(`[EnrichmentQueue] Batch complete: ${currentBatch.progress.succeeded}/${currentBatch.progress.total} succeeded in ${totalTime}s (${finalRate}/min)`);
     }
   } catch (error) {
     console.error('[EnrichmentQueue] Queue processing failed:', error);
@@ -238,6 +260,7 @@ export interface StartBatchOptions {
   propertyKeys?: string[];
   limit?: number;
   onlyUnenriched?: boolean;
+  concurrency?: number;
 }
 
 export async function startBatch(options: StartBatchOptions): Promise<BatchStatus> {
@@ -247,6 +270,7 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
 
   const batchId = uuidv4();
   const limit = Math.min(options.limit || ENRICHMENT_MAX_BATCH_SIZE, ENRICHMENT_MAX_BATCH_SIZE);
+  const concurrency = options.concurrency || CONCURRENCY.PROPERTIES;
   
   let propertyKeysToEnrich: string[] = [];
 
@@ -288,7 +312,10 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
     startedAt: new Date(),
     completedAt: null,
     errors: [],
+    concurrency,
   };
+
+  console.log(`[EnrichmentQueue] Starting batch ${batchId}: ${propertyKeysToEnrich.length} properties with concurrency=${concurrency}`);
 
   addToQueue(propertyKeysToEnrich.map(key => ({ propertyKey: key })));
 
@@ -301,14 +328,4 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
 
 export function getMaxBatchSize(): number {
   return ENRICHMENT_MAX_BATCH_SIZE;
-}
-
-export async function checkRateLimitForIndividual(): Promise<boolean> {
-  const now = Date.now();
-  const timeSinceLastRequest = now - lastRequestTime;
-  return timeSinceLastRequest >= RATE_LIMIT_DELAY_MS;
-}
-
-export function updateLastRequestTime(): void {
-  lastRequestTime = Date.now();
 }
