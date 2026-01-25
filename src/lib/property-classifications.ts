@@ -8,9 +8,9 @@ export interface PTADClassification {
 }
 
 export const PROPERTY_CLASSIFICATIONS: PTADClassification[] = [
-  // MULTIFAMILY - INCLUDE
+  // MULTIFAMILY - INCLUDE APARTMENTS ONLY (exclude duplexes as they are residential)
   { legacyCode: 'B11', dcadDescription: 'MFR - APARTMENTS', ptadCode: 'B', ptadDescription: 'REAL PROPERTY: MULTIFAMILY RESIDENTIAL', category: 'multifamily', include: true },
-  { legacyCode: 'B12', dcadDescription: 'MFR - DUPLEXES', ptadCode: 'B', ptadDescription: 'REAL PROPERTY: MULTIFAMILY RESIDENTIAL', category: 'multifamily', include: true },
+  { legacyCode: 'B12', dcadDescription: 'MFR - DUPLEXES', ptadCode: 'B', ptadDescription: 'REAL PROPERTY: MULTIFAMILY RESIDENTIAL', category: 'multifamily', include: false },
   
   // COMMERCIAL - INCLUDE
   { legacyCode: 'F10', dcadDescription: 'COMMERCIAL IMPROVEMENTS', ptadCode: 'F1', ptadDescription: 'REAL PROPERTY: COMMERCIAL', category: 'commercial', include: true },
