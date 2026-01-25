@@ -172,11 +172,18 @@ Return JSON:
     }
   });
 
+  // Log full response structure for debugging
+  console.log('[FocusedEnrichment] Stage 1 raw response keys:', Object.keys(response || {}));
+  if (response.candidates) {
+    console.log('[FocusedEnrichment] Stage 1 candidates:', JSON.stringify(response.candidates, null, 2).substring(0, 500));
+  }
+  
   const text = response.text?.trim() || '';
   console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
   
   if (!text) {
     console.warn('[FocusedEnrichment] Empty response from Gemini, returning null data');
+    console.warn('[FocusedEnrichment] Full response object:', JSON.stringify(response, null, 2).substring(0, 1000));
     return {
       data: {
         lotAcres: null,
