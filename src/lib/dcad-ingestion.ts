@@ -468,13 +468,10 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
     }
     
     // Select best property name: prefer non-parking buildings, then shortest name
-    const buildingsWithNames = uniqueBuildings.filter(b => b.propertyName);
-    const nonParkingBuildings = buildingsWithNames.filter(b => 
-      !b.propertyName?.toUpperCase().includes('PARKING') &&
-      !b.propertyName?.toUpperCase().includes('GARAGE')
-    );
+    // nonParkingBuildings is already defined above
+    const buildingsWithNames = nonParkingBuildings.filter(b => b.propertyName);
     // Sort by name length (shorter = more likely to be the main building name)
-    const sortedByLength = (nonParkingBuildings.length > 0 ? nonParkingBuildings : buildingsWithNames)
+    const sortedByLength = (buildingsWithNames.length > 0 ? buildingsWithNames : uniqueBuildings.filter(b => b.propertyName))
       .sort((a, b) => (a.propertyName?.length || 999) - (b.propertyName?.length || 999));
     const primaryName = sortedByLength[0]?.propertyName || firstRow.bizName || null;
     
