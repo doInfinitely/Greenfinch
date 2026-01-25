@@ -467,12 +467,10 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
       rentableArea = totalGrossBldgArea;
     }
     
-    // Select primary property name: use shortest name (main building is typically shorter than variants)
-    const buildingsWithNames = uniqueBuildings.filter(b => b.propertyName);
-    const sortedByLength = buildingsWithNames.sort((a, b) => 
-      (a.propertyName?.length || 999) - (b.propertyName?.length || 999)
-    );
-    const primaryName = sortedByLength[0]?.propertyName || firstRow.bizName || null;
+    // Select primary property name: use PROPERTY_NAME from building where TAX_OBJ_ID = ACCOUNT_NUM
+    // This is the parent taxable object row in COM_DETAIL
+    const parentTaxableObject = uniqueBuildings.find(b => b.taxObjId === accountNum);
+    const primaryName = parentTaxableObject?.propertyName || firstRow.bizName || null;
     
     aggregated.push({
       parcelId: firstRow.parcelId,
