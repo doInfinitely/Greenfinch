@@ -145,21 +145,20 @@ export async function verifyPhysicalData(property: CommercialProperty): Promise<
   const currentLotSqft = property.lotSqft || (property.lotAcres ? property.lotAcres * 43560 : null);
   const currentBldgSqft = property.totalGrossBldgArea || null;
   
-  const prompt = `Verify property physical characteristics. Return ONLY valid JSON.
+  const prompt = `Research property physical data and return JSON.
 
-PROPERTY: ${property.address}, ${property.city}, TX ${property.zip}
-COORDINATES: ${property.lat}, ${property.lon}
+ADDRESS: ${property.address}, ${property.city}, TX ${property.zip}
 OWNER: ${primaryOwner}
-CURRENT DATA: Lot ${currentLotSqft?.toLocaleString() || 'Unknown'} sqft, Building ${currentBldgSqft?.toLocaleString() || 'Unknown'} gross sqft
+CURRENT RECORDS: Lot ${currentLotSqft?.toLocaleString() || 'Unknown'} sqft, Building ${currentBldgSqft?.toLocaleString() || 'Unknown'} gross sqft
 
-TASK: Research and verify:
-1. Lot size in ACRES (1 acre = 43,560 sqft)
-2. Net leasable/rentable sqft (excludes parking, mechanical, common areas)
+Find from county records, commercial listings, or property databases:
+- Lot size in acres
+- Net leasable area (total sqft minus parking and mechanical)
 
-Use county records, property listings, commercial databases. Confidence 0.0-1.0.
+Confidence 0.0-1.0 based on source reliability.
 
 Return JSON:
-{"lot_acres":number|null,"lot_acres_confidence":0.0-1.0,"net_sqft":number|null,"net_sqft_confidence":0.0-1.0,"rationale":"1-3 sentences on data sources and findings"}`;
+{"lot_acres":number|null,"lot_acres_confidence":0.0-1.0,"net_sqft":number|null,"net_sqft_confidence":0.0-1.0,"rationale":"Brief explanation of sources used"}`;
 
   console.log('[FocusedEnrichment] Stage 1: Physical verification...');
   
