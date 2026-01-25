@@ -192,7 +192,7 @@ function createConnection() {
   });
 }
 
-async function executeQuery<T>(sqlText: string): Promise<T[]> {
+export async function executeQuery<T>(sqlText: string): Promise<T[]> {
   return new Promise((resolve, reject) => {
     const connection = createConnection();
     

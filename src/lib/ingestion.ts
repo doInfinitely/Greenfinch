@@ -1,53 +1,14 @@
-import snowflake from 'snowflake-sdk';
 import { db } from './db';
 import { properties, parcelToProperty } from './schema';
 import { eq } from 'drizzle-orm';
-import type { RegridParcel, AggregatedProperty } from './snowflake';
+import { executeQuery, type RegridParcel, type AggregatedProperty } from './snowflake';
 import { normalizeAddress, normalizeOwnerName, normalizeCity, normalizeCounty } from './normalization';
 import { classifyPropertyType, isCommercialOrMultifamily, type PropertyClassification } from './zoning-classification';
 import { getCommonNameFromGooglePlaces } from './google-places';
 
-snowflake.configure({ logLevel: 'ERROR' });
-
 const TABLE_NAME = 'nationwide_parcel_data__premium_schema__free_sample.premium_parcels.tx_dallas';
 
 export const MVP_ZIP_CODE = process.env.MVP_ZIP || '75225';
-
-
-function createConnection() {
-  return snowflake.createConnection({
-    account: process.env.SNOWFLAKE_ACCOUNT_GF!,
-    username: process.env.SNOWFLAKE_USER_GF || process.env.SNOWFLAKE_USER!,
-    password: process.env.SNOWFLAKE_PASSWORD!,
-    database: process.env.SNOWFLAKE_DATABASE || 'SNOWFLAKE_LEARNING_DB',
-    warehouse: process.env.SNOWFLAKE_WAREHOUSE!,
-  });
-}
-
-async function executeQuery<T>(sqlText: string): Promise<T[]> {
-  return new Promise((resolve, reject) => {
-    const connection = createConnection();
-    
-    connection.connect((err) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      
-      connection.execute({
-        sqlText,
-        complete: (err, stmt, rows) => {
-          connection.destroy(() => {});
-          if (err) {
-            reject(err);
-          } else {
-            resolve((rows || []) as T[]);
-          }
-        }
-      });
-    });
-  });
-}
 
 export function aggregateParcelsToProperties(parcels: RegridParcel[]): Map<string, AggregatedProperty> {
   const propertyMap = new Map<string, AggregatedProperty>();

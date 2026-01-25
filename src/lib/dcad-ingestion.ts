@@ -1,11 +1,9 @@
-import snowflake from 'snowflake-sdk';
 import { db } from './db';
 import { properties } from './schema';
 import { eq } from 'drizzle-orm';
 import { normalizeAddress, normalizeOwnerName, normalizeCity } from './normalization';
 import { INCLUDED_SPTD_CODES } from './property-classifications';
-
-snowflake.configure({ logLevel: 'ERROR' });
+import { executeQuery } from './snowflake';
 
 const COMMERCIAL_PROPERTIES_TABLE = 'DCAD_LAND_2025.PUBLIC.COMMERCIAL_PROPERTIES';
 const ACCOUNT_APPRL_TABLE = 'DCAD_LAND_2025.PUBLIC.ACCOUNT_APPRL_YEAR';
@@ -162,68 +160,6 @@ export interface AggregatedProperty {
   primaryPropertyName: string | null;
 }
 
-function formatPrivateKey(key: string): string {
-  let formatted = key.trim();
-  
-  if (!formatted.includes('\n')) {
-    formatted = formatted
-      .replace('-----BEGIN PRIVATE KEY-----', '-----BEGIN PRIVATE KEY-----\n')
-      .replace('-----END PRIVATE KEY-----', '\n-----END PRIVATE KEY-----');
-    
-    const header = '-----BEGIN PRIVATE KEY-----\n';
-    const footer = '\n-----END PRIVATE KEY-----';
-    const body = formatted.slice(header.length - 1, formatted.length - footer.length + 1).trim();
-    
-    const bodyWithNewlines = body.match(/.{1,64}/g)?.join('\n') || body;
-    formatted = `-----BEGIN PRIVATE KEY-----\n${bodyWithNewlines}\n-----END PRIVATE KEY-----`;
-  }
-  
-  return formatted;
-}
-
-function createConnection() {
-  const privateKey = process.env.SNOWFLAKE_PRIVATE_KEY;
-  
-  if (!privateKey) {
-    throw new Error('SNOWFLAKE_PRIVATE_KEY environment variable is not set');
-  }
-
-  const formattedKey = formatPrivateKey(privateKey);
-
-  return snowflake.createConnection({
-    account: process.env.SNOWFLAKE_ACCOUNT_GF!,
-    username: process.env.SNOWFLAKE_USER_GF!,
-    authenticator: 'SNOWFLAKE_JWT',
-    privateKey: formattedKey,
-    database: process.env.SNOWFLAKE_REGRID_DB!,
-    warehouse: process.env.SNOWFLAKE_WAREHOUSE!,
-  });
-}
-
-async function executeQuery<T>(sqlText: string): Promise<T[]> {
-  return new Promise((resolve, reject) => {
-    const connection = createConnection();
-    
-    connection.connect((err) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      
-      connection.execute({
-        sqlText,
-        complete: (err, stmt, rows) => {
-          connection.destroy(() => {});
-          if (err) {
-            reject(err);
-          } else {
-            resolve((rows || []) as T[]);
-          }
-        }
-      });
-    });
-  });
-}
 
 export async function describeTable(tableName: string): Promise<any[]> {
   const sql = `DESCRIBE TABLE ${tableName}`;
