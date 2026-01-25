@@ -1,16 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 import type { CommercialProperty, DCADBuilding } from "./snowflake";
-
-const ASSET_CATEGORIES: Record<string, string[]> = {
-  "Multifamily": ["Apartment Complex", "Duplex/Triplex/Quadplex", "Senior Living", "Student Housing", "Other Multifamily"],
-  "Office": ["Office Building", "Medical Office", "Business Park", "Flex Office", "Other Office"],
-  "Retail": ["Shopping Center", "Restaurant/Food Service", "Convenience/Gas Station", "Standalone Retail", "Other Retail"],
-  "Industrial": ["Warehouse/Distribution", "Manufacturing", "Flex/Light Industrial", "Self-Storage", "Other Industrial"],
-  "Hospitality": ["Hotel", "Motel", "Resort", "Extended Stay", "Other Hospitality"],
-  "Healthcare": ["Hospital", "Medical Center", "Assisted Living", "Outpatient Clinic", "Other Healthcare"],
-  "Mixed Use": ["Retail/Residential", "Office/Retail", "Office/Residential", "Commercial/Industrial", "Other Mixed Use"],
-  "Special Purpose": ["Parking", "Sports/Fitness", "Entertainment", "Auto Service", "Religious", "Education", "Other Special Purpose"]
-};
+import { ASSET_CATEGORIES } from "./constants";
 
 function getGeminiClient(): GoogleGenAI {
   if (process.env.GOOGLE_GENAI_API_KEY) {
