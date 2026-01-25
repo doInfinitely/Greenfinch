@@ -68,6 +68,8 @@ export interface DiscoveredContact {
   title: string | null;
   company: string | null;
   companyDomain: string | null;
+  email: string | null;
+  emailSource: 'ai_discovered' | 'hunter' | null;
   role: string;
   roleConfidence: number;
   priorityRank: number;
@@ -399,11 +401,12 @@ TASK: Search the web to find 3-8 contacts who make property decisions:
 - Leasing agents
 
 DO NOT include: condo unit owners, HOA board members, residential tenants
-DO NOT guess email/phone/LinkedIn - leave null (will be enriched separately).
+If you find an email address from a credible web source (company website, LinkedIn, press release), include it.
+Do NOT guess or construct emails - only include emails you actually found on the web.
 
 Return JSON:
 {
-  "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8}],
+  "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","email":"found@email.com or null","role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8}],
   "organizations":[{"name":"Org name","domain":"domain.com","org_type":"owner|management|tenant|developer","roles":["property_manager","owner"]}],
   "summary":"2-3 sentences citing evidence: 'Based on [source], the primary contact is [Name], listed on [website] as [role]. [Secondary contact] at [company] handles [responsibility].'"
 }`;
@@ -445,6 +448,8 @@ Return JSON:
       title: c.title ?? null,
       company: c.company ?? null,
       companyDomain: c.company_domain ?? null,
+      email: c.email && c.email !== 'null' ? c.email : null,
+      emailSource: c.email && c.email !== 'null' ? 'ai_discovered' as const : null,
       role: c.role || 'other',
       roleConfidence: c.role_confidence ?? 0.5,
       priorityRank: c.priority_rank ?? 10,
