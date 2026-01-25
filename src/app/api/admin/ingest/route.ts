@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runMVPIngestion, countParcelsInZipCode, MVP_ZIP_CODE } from '@/lib/ingestion';
+import { runIngestion, countCommercialPropertiesByZip } from '@/lib/dcad-ingestion';
+import { MVP_ZIP_CODE } from '@/lib/ingestion';
 import { requireAdminAccess } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.mode === 'count') {
-      const mvpParcels = await countParcelsInZipCode(MVP_ZIP_CODE);
+      const mvpParcels = await countCommercialPropertiesByZip(MVP_ZIP_CODE);
       return NextResponse.json({
         success: true,
         mvpParcels,
@@ -49,8 +50,8 @@ export async function POST(request: NextRequest) {
     }
 
     const zipCode = body.zipCode || MVP_ZIP_CODE;
-    console.log(`Starting MVP ingestion for ZIP ${zipCode}`);
-    const stats = await runMVPIngestion(zipCode);
+    console.log(`Starting DCAD-based ingestion for ZIP ${zipCode}`);
+    const stats = await runIngestion(zipCode, 500);
     
     return NextResponse.json({
       success: true,
