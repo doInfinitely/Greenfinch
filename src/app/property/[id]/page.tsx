@@ -439,6 +439,10 @@ export default function PropertyDetailPage() {
           // Also include property-level owners (normalized to uppercase for deduplication)
           if (prop.regridOwner) ownersSet.add(prop.regridOwner.toUpperCase());
           if (prop.regridOwner2) ownersSet.add(prop.regridOwner2.toUpperCase());
+          // Include DCAD owner fields
+          if (prop.dcadBizName) ownersSet.add(prop.dcadBizName.toUpperCase());
+          if (prop.dcadOwnerName1) ownersSet.add(prop.dcadOwnerName1.toUpperCase());
+          if (prop.dcadOwnerName2) ownersSet.add(prop.dcadOwnerName2.toUpperCase());
           
           // Use pre-aggregated values from properties table (source of truth)
           const lotAcres = prop.lotSqft ? prop.lotSqft / 43560 : 0;
