@@ -17,9 +17,9 @@ export const MVP_ZIP_CODE = process.env.MVP_ZIP || '75225';
 function createConnection() {
   return snowflake.createConnection({
     account: process.env.SNOWFLAKE_ACCOUNT_GF!,
-    username: process.env.SNOWFLAKE_USER!,
+    username: process.env.SNOWFLAKE_USER_GF || process.env.SNOWFLAKE_USER!,
     password: process.env.SNOWFLAKE_PASSWORD!,
-    database: process.env.SNOWFLAKE_DATABASE!,
+    database: process.env.SNOWFLAKE_DATABASE || 'SNOWFLAKE_LEARNING_DB',
     warehouse: process.env.SNOWFLAKE_WAREHOUSE!,
   });
 }

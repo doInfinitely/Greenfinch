@@ -41,7 +41,7 @@ waitForPort = 5000
 [userenv]
 
 [userenv.shared]
-MVP_ZIP = "75205"
+MVP_ZIP = "75225"
 NEXT_PUBLIC_CLERK_SIGN_IN_URL = "/sign-in"
 NEXT_PUBLIC_CLERK_SIGN_UP_URL = "/sign-up"
 NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL = "/dashboard/map"
