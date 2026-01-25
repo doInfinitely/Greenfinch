@@ -71,6 +71,14 @@ export const properties = pgTable('properties', {
   yearBuilt: integer('year_built'),
   numFloors: integer('num_floors'),
   
+  // AI-enriched physical characteristics (overrides when high confidence)
+  aiLotAcres: real('ai_lot_acres'),
+  aiLotAcresConfidence: real('ai_lot_acres_confidence'),
+  aiLotAcresRationale: text('ai_lot_acres_rationale'),
+  aiNetSqft: integer('ai_net_sqft'),
+  aiNetSqftConfidence: real('ai_net_sqft_confidence'),
+  aiNetSqftRationale: text('ai_net_sqft_rationale'),
+  
   // Classification
   assetCategory: text('asset_category'),
   assetSubcategory: text('asset_subcategory'),

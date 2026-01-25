@@ -1345,76 +1345,143 @@ export async function validateHighPriorityContacts(contacts: EnrichedContact[]):
   return enrichedContacts;
 }
 
-// Main enrichment function
+// Main enrichment function - uses focused multi-stage enrichment
 export async function enrichProperty(aggregatedProperty: AggregatedProperty): Promise<EnrichmentResult> {
-  console.log(`[Enrichment] Starting enrichment for property: ${aggregatedProperty.propertyKey}`);
+  console.log(`[Enrichment] Starting focused multi-stage enrichment for: ${aggregatedProperty.propertyKey}`);
   
   try {
-    const client = getGeminiClient();
-    const prompt = buildEnrichmentPrompt(aggregatedProperty);
+    // Import focused enrichment dynamically to avoid circular dependencies
+    const { runFocusedEnrichment } = await import('./focused-enrichment');
     
-    console.log(`[Enrichment] Calling Gemini 3 Flash Preview with search grounding...`);
+    // Convert AggregatedProperty to CommercialProperty format for focused enrichment
+    const commercialProperty = {
+      parcelId: aggregatedProperty.propertyKey,
+      accountNum: (aggregatedProperty as any).dcad?.accountNum || aggregatedProperty.propertyKey,
+      address: aggregatedProperty.address,
+      city: aggregatedProperty.city,
+      zip: aggregatedProperty.zip,
+      lat: aggregatedProperty.lat,
+      lon: aggregatedProperty.lon,
+      usedesc: Array.isArray(aggregatedProperty.usedesc) ? aggregatedProperty.usedesc[0] : aggregatedProperty.usedesc,
+      lotSqft: aggregatedProperty.lotSqft,
+      lotAcres: aggregatedProperty.lotSqft ? aggregatedProperty.lotSqft / 43560 : null,
+      bizName: (aggregatedProperty as any).dcad?.bizName || aggregatedProperty.primaryOwner,
+      ownerName1: (aggregatedProperty as any).dcad?.ownerName1 || aggregatedProperty.primaryOwner,
+      ownerName2: (aggregatedProperty as any).dcad?.ownerName2 || null,
+      dcadTotalVal: aggregatedProperty.totalParval,
+      totalGrossBldgArea: aggregatedProperty.buildingSqft,
+      buildingCount: (aggregatedProperty as any).dcad?.buildingCount || 1,
+      buildings: (aggregatedProperty as any).dcad?.buildings || [],
+    };
     
-    const response = await client.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: prompt,
-      config: {
-        tools: [{ googleSearch: {} }],
-      },
-    });
+    const focusedResult = await runFocusedEnrichment(commercialProperty as any);
+    
+    // Map focused enrichment results to legacy EnrichmentResult format
+    const classification = focusedResult.classification?.data;
+    const ownership = focusedResult.ownership?.data;
+    const physical = focusedResult.physical?.data;
+    const contactsData = focusedResult.contacts?.data;
+    
+    // Collect all grounded sources
+    const allSources = [
+      ...(focusedResult.physical?.sources || []),
+      ...(focusedResult.classification?.sources || []),
+      ...(focusedResult.ownership?.sources || []),
+      ...(focusedResult.contacts?.sources || []),
+    ];
+    
+    // Build rationale combining all stage rationales
+    const combinedRationale = [
+      focusedResult.physical?.rationale ? `Physical: ${focusedResult.physical.rationale}` : null,
+      focusedResult.classification?.rationale ? `Classification: ${focusedResult.classification.rationale}` : null,
+      focusedResult.ownership?.rationale ? `Ownership: ${focusedResult.ownership.rationale}` : null,
+      focusedResult.contacts?.rationale ? `Contacts: ${focusedResult.contacts.rationale}` : null,
+    ].filter(Boolean).join(' | ');
+    
+    const property = {
+      validatedAddress: classification?.canonicalAddress || null,
+      validatedAddressConfidence: classification?.confidence || null,
+      geocodeConfidence: null,
+      assetCategory: classification?.category || null,
+      assetSubcategory: classification?.subcategory || null,
+      categoryConfidence: classification?.confidence || null,
+      categoryRationale: focusedResult.classification?.rationale || null,
+      propertyClass: classification?.propertyClass || null,
+      propertyClassRationale: null,
+      commonName: classification?.propertyName || null,
+      commonNameConfidence: classification?.confidence || null,
+      containingPlace: null,
+      containingPlaceType: null,
+      beneficialOwner: ownership?.beneficialOwner?.name || null,
+      beneficialOwnerConfidence: ownership?.beneficialOwner?.confidence || null,
+      beneficialOwnerType: ownership?.beneficialOwner?.type || null,
+      managementType: ownership?.managementCompany?.name ? 'third_party' : 'self_managed',
+      managementCompany: ownership?.managementCompany?.name || null,
+      managementCompanyDomain: ownership?.managementCompany?.domain || null,
+      managementConfidence: ownership?.managementCompany?.confidence || null,
+      propertyWebsite: null,
+      propertyManagerWebsite: ownership?.managementCompany?.domain ? `https://${ownership.managementCompany.domain}` : null,
+      aiRationale: combinedRationale,
+      enrichmentSources: allSources.map((s, i) => ({ id: i + 1, title: s.title, url: s.url, type: 'grounded' })),
+      buildingSqft: null,
+      buildingSqftConfidence: null,
+      buildingSqftSource: null,
+      lotSqft: null,
+      lotSqftConfidence: null,
+      lotSqftSource: null,
+      // New AI physical data fields
+      aiLotAcres: physical?.lotAcres || null,
+      aiLotAcresConfidence: physical?.lotAcresConfidence || null,
+      aiLotAcresRationale: focusedResult.physical?.rationale || null,
+      aiNetSqft: physical?.netSqft || null,
+      aiNetSqftConfidence: physical?.netSqftConfidence || null,
+      aiNetSqftRationale: focusedResult.physical?.rationale || null,
+    };
+    
+    // Map contacts to legacy format with required properties
+    const enrichedContacts: EnrichedContact[] = (contactsData?.contacts || []).map((c, i) => ({
+      id: uuidv5(`${aggregatedProperty.propertyKey}-contact-${c.name}-${i}`, '6ba7b810-9dad-11d1-80b4-00c04fd430c8'),
+      fullName: c.name,
+      normalizedName: c.name.toLowerCase().replace(/[^a-z\s]/g, '').trim(),
+      nameConfidence: c.roleConfidence,
+      email: null,
+      normalizedEmail: null,
+      emailConfidence: null,
+      phone: null,
+      normalizedPhone: null,
+      phoneConfidence: null,
+      linkedinUrl: null,
+      linkedinConfidence: null,
+      title: c.title,
+      titleConfidence: c.roleConfidence,
+      employerName: c.company,
+      companyDomain: c.companyDomain,
+      location: `${aggregatedProperty.city}, ${aggregatedProperty.state || 'TX'}`,
+      role: c.role || 'other',
+      roleConfidence: c.roleConfidence,
+      contactRationale: focusedResult.contacts?.rationale || null,
+      source: 'focused_enrichment',
+      needsReview: false,
+      reviewReason: null,
+    }));
+    
+    // Map organizations with required properties
+    const enrichedOrgs: EnrichedOrganization[] = (contactsData?.organizations || []).map((o, i) => ({
+      id: uuidv5(`${aggregatedProperty.propertyKey}-org-${o.name}-${i}`, '6ba7b810-9dad-11d1-80b4-00c04fd430c8'),
+      name: o.name,
+      domain: o.domain,
+      orgType: o.orgType || 'other',
+      roles: o.roles || [],
+      relationshipVerified: true,
+      verificationSource: 1,
+    }));
 
-    const text = response.text;
-    if (!text) {
-      throw new Error("Empty response from Gemini");
-    }
-
-    console.log(`[Enrichment] Received response, parsing...`);
-    
-    // Extract grounding sources from response metadata (verified URLs from Google Search)
-    const groundingSources = extractGroundingSources(response);
-    
-    const rawResponse = parseGeminiResponse(text);
-    
-    // Use grounding sources from API metadata instead of AI-generated sources
-    // This provides verified, working URLs instead of hallucinated ones
-    if (groundingSources.length > 0) {
-      console.log(`[Enrichment] Using ${groundingSources.length} grounding sources from API metadata (verified URLs)`);
-      rawResponse.sources = groundingSources;
-    } else if (rawResponse.sources && rawResponse.sources.length > 0) {
-      console.log(`[Enrichment] WARNING: Using ${rawResponse.sources.length} AI-generated sources (may have broken URLs)`);
-    } else {
-      console.log(`[Enrichment] No sources available from grounding metadata or AI response`);
-    }
-    
-    const { property, contacts: enrichedContacts, organizations: enrichedOrgs } = processEnrichmentResponse(
-      aggregatedProperty.propertyKey,
-      rawResponse
-    );
-
-    console.log(`[Enrichment] Parsed ${enrichedContacts.length} contacts and ${enrichedOrgs.length} organizations`);
-
-    if (aggregatedProperty.lat && aggregatedProperty.lon) {
-      console.log(`[Enrichment] Looking up containing place via Google Places...`);
-      try {
-        const containingResult = await findContainingPlace(aggregatedProperty.lat, aggregatedProperty.lon);
-        if (containingResult.containingPlace) {
-          console.log(`[Enrichment] Found containing place: ${containingResult.containingPlace}`);
-          property.containingPlace = containingResult.containingPlace;
-          property.containingPlaceType = containingResult.containingPlaceType;
-          
-          if (!property.commonName && containingResult.confidence >= 0.8) {
-            property.commonName = containingResult.containingPlace;
-            property.commonNameConfidence = containingResult.confidence;
-          }
-        }
-      } catch (error) {
-        console.warn(`[Enrichment] Error looking up containing place:`, error);
-      }
-    }
-
+    // Enrich contacts with email/LinkedIn
     const contactsWithEmails = await enrichContactsWithEmail(enrichedContacts);
     const contactsWithLinkedIn = await enrichContactsWithLinkedIn(contactsWithEmails);
     const validatedContacts = await validateHighPriorityContacts(contactsWithLinkedIn);
+
+    console.log(`[Enrichment] Focused enrichment complete: ${validatedContacts.length} contacts, ${enrichedOrgs.length} orgs`);
 
     return {
       success: true,
@@ -1422,7 +1489,14 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
       property,
       contacts: validatedContacts,
       organizations: enrichedOrgs,
-      rawResponse,
+      rawResponse: {
+        verification: { property_verified: true },
+        property: classification,
+        contacts: contactsData?.contacts || [],
+        organizations: contactsData?.organizations || [],
+        sources: allSources,
+        timing: focusedResult.timing,
+      },
     };
   } catch (error) {
     console.error(`[Enrichment] Error enriching property ${aggregatedProperty.propertyKey}:`, error);
@@ -1536,6 +1610,13 @@ export async function storeEnrichmentResults(
     propertyManagerWebsite: result.property.propertyManagerWebsite,
     aiRationale: result.property.aiRationale,
     enrichmentSources: result.property.enrichmentSources,
+    // AI-enriched physical data with rationales
+    aiLotAcres: (result.property as any).aiLotAcres || null,
+    aiLotAcresConfidence: (result.property as any).aiLotAcresConfidence || null,
+    aiLotAcresRationale: (result.property as any).aiLotAcresRationale || null,
+    aiNetSqft: (result.property as any).aiNetSqft || null,
+    aiNetSqftConfidence: (result.property as any).aiNetSqftConfidence || null,
+    aiNetSqftRationale: (result.property as any).aiNetSqftRationale || null,
     rawParcelsJson: aggregatedProperty.rawParcelsJson,
     enrichmentJson: result.rawResponse,
     lastEnrichedAt: new Date(),

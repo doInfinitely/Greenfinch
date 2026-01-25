@@ -412,18 +412,28 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
       .reduce((sum, b) => sum + (b.grossBldgArea || 0), 0) || null;
     
     // Calculate rentable area with priority:
-    // 1. Sum of NET_LEASE_AREA when available
+    // 1. Sum of NET_LEASE_AREA when fully populated (all non-parking buildings have it)
     // 2. GROSS minus parking sqft
     // 3. If no parking and no net lease, use GROSS
+    const nonParkingBuildings = uniqueBuildings.filter(
+      b => !b.propertyName?.toUpperCase().includes('PARKING')
+    );
+    const buildingsWithNetLease = nonParkingBuildings.filter(b => b.netLeaseArea && b.netLeaseArea > 0);
+    const netLeaseFullyPopulated = nonParkingBuildings.length > 0 && 
+      buildingsWithNetLease.length >= nonParkingBuildings.length * 0.8; // 80% coverage threshold
+    
     const totalNetLeaseArea = uniqueBuildings
       .reduce((sum, b) => sum + (b.netLeaseArea || 0), 0);
     
     let rentableArea: number | null = null;
-    if (totalNetLeaseArea > 0) {
+    if (netLeaseFullyPopulated && totalNetLeaseArea > 0) {
+      // Only use net lease if most buildings have it populated
       rentableArea = totalNetLeaseArea;
     } else if (parkingSqft && parkingSqft > 0 && totalGrossBldgArea) {
+      // Fall back to gross minus parking
       rentableArea = totalGrossBldgArea - parkingSqft;
     } else {
+      // No parking structures, use gross
       rentableArea = totalGrossBldgArea;
     }
     
