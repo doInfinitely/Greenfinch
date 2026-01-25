@@ -314,6 +314,8 @@ export interface EnrichedContact {
   email: string | null;
   normalizedEmail: string | null;
   emailConfidence: number | null;
+  emailSource: 'ai_discovered' | 'hunter' | null;
+  emailValidated: boolean;
   phone: string | null;
   normalizedPhone: string | null;
   phoneConfidence: number | null;
@@ -963,6 +965,8 @@ function processEnrichmentResponse(
         email: c.email || null,
         normalizedEmail: c.email ? normalizeEmail(c.email) : null,
         emailConfidence: c.email_confidence || null,
+        emailSource: c.email ? 'ai_discovered' : null,
+        emailValidated: false,
         phone: c.phone || null,
         normalizedPhone: c.phone ? normalizePhone(c.phone) : null,
         phoneConfidence: c.phone_confidence || null,
@@ -1014,18 +1018,62 @@ function parseNameParts(fullName: string): { firstName: string; lastName: string
   return { firstName, lastName };
 }
 
-// Enrich contacts with emails using LeadMagic (email finder) + NeverBounce (validation)
+// Enrich contacts with emails using Hunter.io (email finder) + NeverBounce (validation)
+// Also validates AI-discovered emails with NeverBounce
 export async function enrichContactsWithEmail(contacts: EnrichedContact[]): Promise<EnrichedContact[]> {
   console.log(`[Enrichment] Enriching ${contacts.length} contacts with email discovery...`);
   
   const enrichedContacts: EnrichedContact[] = [];
   
-  for (const contact of contacts) {
-    if (contact.email) {
+  for (let contact of contacts) {
+    // If AI already discovered an email, validate it with NeverBounce
+    if (contact.email && contact.emailSource === 'ai_discovered' && !contact.emailValidated) {
+      console.log(`[Enrichment] Validating AI-discovered email for ${contact.fullName}: ${contact.email}`);
+      try {
+        const validationResult = await validateEmail(contact.email);
+        
+        if (validationResult.isValid) {
+          console.log(`[Enrichment] AI email validated as ${validationResult.status}`);
+          enrichedContacts.push({
+            ...contact,
+            emailConfidence: validationResult.confidence,
+            emailValidated: true,
+          });
+          continue;
+        } else {
+          console.log(`[Enrichment] AI email validation failed: ${validationResult.status}, will try Hunter.io`);
+          // Clear invalid email, fall through to Hunter.io discovery
+          contact = {
+            ...contact,
+            email: null,
+            normalizedEmail: null,
+            emailConfidence: null,
+            emailSource: null,
+            emailValidated: false,
+          };
+          // Don't continue - fall through to Hunter.io lookup below
+        }
+      } catch (error) {
+        console.error(`[Enrichment] Error validating AI email for ${contact.fullName}:`, error);
+        // Fall through to try Hunter.io
+        contact = {
+          ...contact,
+          email: null,
+          normalizedEmail: null,
+          emailConfidence: null,
+          emailSource: null,
+          emailValidated: false,
+        };
+      }
+    }
+    
+    // If contact already has a validated email, skip
+    if (contact.email && contact.emailValidated) {
       enrichedContacts.push(contact);
       continue;
     }
     
+    // No email - try Hunter.io if we have a company domain
     if (!contact.companyDomain) {
       console.log(`[Enrichment] Skipping ${contact.fullName} - no company domain`);
       enrichedContacts.push(contact);
@@ -1045,7 +1093,7 @@ export async function enrichContactsWithEmail(contacts: EnrichedContact[]): Prom
       
       const findResult = await findEmail(firstName, lastName, contact.companyDomain);
       
-      if (findResult.email && findResult.confidence > 80) {
+      if (findResult.email && findResult.confidence > 0.5) {
         console.log(`[Enrichment] Found email ${findResult.email} with confidence ${findResult.confidence}`);
         
         const validationResult = await validateEmail(findResult.email);
@@ -1056,7 +1104,9 @@ export async function enrichContactsWithEmail(contacts: EnrichedContact[]): Prom
             ...contact,
             email: findResult.email,
             normalizedEmail: findResult.email.toLowerCase().trim(),
-            emailConfidence: findResult.confidence / 100,
+            emailConfidence: validationResult.confidence,
+            emailSource: 'hunter',
+            emailValidated: true,
           });
         } else {
           console.log(`[Enrichment] Email validation failed: ${validationResult.status}`);
@@ -1072,8 +1122,8 @@ export async function enrichContactsWithEmail(contacts: EnrichedContact[]): Prom
     }
   }
   
-  const emailsFound = enrichedContacts.filter(c => c.email).length;
-  console.log(`[Enrichment] Email enrichment complete: ${emailsFound}/${contacts.length} contacts have emails`);
+  const emailsFound = enrichedContacts.filter(c => c.email && c.emailValidated).length;
+  console.log(`[Enrichment] Email enrichment complete: ${emailsFound}/${contacts.length} contacts have validated emails`);
   
   return enrichedContacts;
 }
@@ -1410,14 +1460,17 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
     };
     
     // Map contacts to legacy format with required properties
+    // Pass through AI-discovered emails for validation
     const enrichedContacts: EnrichedContact[] = (contactsData?.contacts || []).map((c, i) => ({
       id: uuidv5(`${aggregatedProperty.propertyKey}-contact-${c.name}-${i}`, '6ba7b810-9dad-11d1-80b4-00c04fd430c8'),
       fullName: c.name,
       normalizedName: c.name.toLowerCase().replace(/[^a-z\s]/g, '').trim(),
       nameConfidence: c.roleConfidence,
-      email: null,
-      normalizedEmail: null,
-      emailConfidence: null,
+      email: c.email || null,
+      normalizedEmail: c.email ? c.email.toLowerCase().trim() : null,
+      emailConfidence: c.email ? 0.7 : null,
+      emailSource: c.emailSource || null,
+      emailValidated: false,
       phone: null,
       normalizedPhone: null,
       phoneConfidence: null,
