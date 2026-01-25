@@ -41,13 +41,12 @@ export function resetCreditsTracker(): void {
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 async function makeApiRequest(email: string, apiKey: string): Promise<NeverBounceResponse> {
-  const encodedEmail = encodeURIComponent(email);
   const response = await axios.get<NeverBounceResponse>(
     `${NEVERBOUNCE_API_BASE}/single/check`,
     {
       params: {
         key: apiKey,
-        email: encodedEmail,
+        email: email,
         credits_info: 1,
       },
       timeout: 30000,
@@ -104,9 +103,7 @@ export async function validateEmail(email: string): Promise<EmailValidationResul
       }
     );
 
-    const creditsUsed = data.credits_info 
-      ? (data.credits_info.paid_credits_used || 0) + (data.credits_info.free_credits_used || 0)
-      : 1;
+    const creditsUsed = 1;
     totalCreditsUsed += creditsUsed;
 
     let status: 'valid' | 'invalid' | 'disposable' | 'catchall' | 'unknown' = 'unknown';
@@ -134,10 +131,16 @@ export async function validateEmail(email: string): Promise<EmailValidationResul
         isValid = true;
         confidence = 0.6;
         break;
-      default:
+      case 'unknown':
         status = 'unknown';
         isValid = false;
         confidence = 0.3;
+        break;
+      default:
+        console.warn(`NeverBounce returned unexpected result: ${data.result}`);
+        status = 'invalid';
+        isValid = false;
+        confidence = 0.8;
     }
 
     return {
