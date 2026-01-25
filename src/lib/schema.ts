@@ -100,9 +100,7 @@ export const properties = pgTable('properties', {
   
   // DCAD Appraisal Data
   dcadAccountNum: text('dcad_account_num'),
-  dcadDivisionCd: text('dcad_division_cd'), // COM, RES, BPP
-  dcadBldgClassCd: text('dcad_bldg_class_cd'),
-  dcadBldgClassDesc: text('dcad_bldg_class_desc'),
+  dcadDivisionCd: text('dcad_division_cd'), // COM, RES
   dcadImprovVal: integer('dcad_improv_val'),
   dcadLandVal: integer('dcad_land_val'),
   dcadTotalVal: integer('dcad_total_val'),
@@ -127,20 +125,15 @@ export const properties = pgTable('properties', {
   dcadLandArea: real('dcad_land_area'),
   dcadLandAreaUom: text('dcad_land_area_uom'),
   
-  // DCAD Commercial Building Details
-  dcadPropertyName: text('dcad_property_name'),
-  dcadYearBuilt: integer('dcad_year_built'),
-  dcadRemodelYear: integer('dcad_remodel_year'),
-  dcadGrossBldgArea: integer('dcad_gross_bldg_area'),
-  dcadNumStories: integer('dcad_num_stories'),
-  dcadNumUnits: integer('dcad_num_units'),
-  dcadNetLeaseArea: integer('dcad_net_lease_area'),
-  dcadConstructionType: text('dcad_construction_type'),
-  dcadFoundationType: text('dcad_foundation_type'),
-  dcadHeatingType: text('dcad_heating_type'),
-  dcadAcType: text('dcad_ac_type'),
-  dcadQualityGrade: text('dcad_quality_grade'),
-  dcadConditionGrade: text('dcad_condition_grade'),
+  // DCAD Building Summary (aggregated from all buildings on parcel)
+  dcadBuildingCount: integer('dcad_building_count'),
+  dcadOldestYearBuilt: integer('dcad_oldest_year_built'),
+  dcadNewestYearBuilt: integer('dcad_newest_year_built'),
+  dcadTotalGrossBldgArea: integer('dcad_total_gross_bldg_area'),
+  dcadTotalUnits: integer('dcad_total_units'),
+  
+  // DCAD Buildings Array (all buildings on this parcel as JSONB)
+  dcadBuildings: json('dcad_buildings'),
   
   // Raw data
   rawParcelsJson: json('raw_parcels_json'),

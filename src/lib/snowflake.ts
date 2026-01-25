@@ -2,8 +2,27 @@ import snowflake from 'snowflake-sdk';
 
 snowflake.configure({ logLevel: 'ERROR' });
 
-// Use the joined COMMERCIAL_PROPERTIES table from DCAD
-const TABLE_NAME = 'DCAD_LAND_2025.PUBLIC.COMMERCIAL_PROPERTIES';
+// Regrid parcel data table
+const REGRID_TABLE = 'NATIONWIDE_PARCEL_DATA__PREMIUM_SCHEMA__FREE_SAMPLE.PREMIUM.DEED';
+
+// Individual building details from DCAD COM_DETAIL
+export interface DCADBuilding {
+  taxObjId: string;
+  propertyName: string | null;
+  bldgClassDesc: string | null;
+  yearBuilt: number | null;
+  remodelYear: number | null;
+  grossBldgArea: number | null;
+  numStories: number | null;
+  numUnits: number | null;
+  netLeaseArea: number | null;
+  constructionType: string | null;
+  foundationType: string | null;
+  heatingType: string | null;
+  acType: string | null;
+  qualityGrade: string | null;
+  conditionGrade: string | null;
+}
 
 export interface CommercialProperty {
   // Regrid parcel data
@@ -30,7 +49,6 @@ export interface CommercialProperty {
   dcadImprovVal: number | null;
   dcadLandVal: number | null;
   dcadTotalVal: number | null;
-  bldgClassCd: string | null;
   cityJurisDesc: string | null;
   isdJurisDesc: string | null;
   
@@ -53,22 +71,15 @@ export interface CommercialProperty {
   landAreaUom: string | null;
   landCostPerUom: number | null;
   
-  // DCAD Commercial building details
-  taxObjId: string | null;
-  propertyName: string | null;
-  bldgClassDesc: string | null;
-  dcadYearBuilt: number | null;
-  remodelYr: number | null;
-  grossBldgArea: number | null;
-  dcadNumStories: number | null;
-  numUnits: number | null;
-  netLeaseArea: number | null;
-  constructionType: string | null;
-  foundationType: string | null;
-  heatingType: string | null;
-  acType: string | null;
-  qualityGrade: string | null;
-  conditionGrade: string | null;
+  // Aggregated building summary
+  buildingCount: number;
+  oldestYearBuilt: number | null;
+  newestYearBuilt: number | null;
+  totalGrossBldgArea: number | null;
+  totalUnits: number | null;
+  
+  // Array of all buildings on this parcel
+  buildings: DCADBuilding[];
 }
 
 // Legacy interface for backwards compatibility
@@ -232,7 +243,7 @@ export async function getPropertyByKey(propertyKey: string): Promise<AggregatedP
       "mail_city",
       "mail_state2",
       "mail_zip"
-    FROM ${TABLE_NAME}
+    FROM ${REGRID_TABLE}
     WHERE "ll_uuid" = '${propertyKey.replace(/'/g, "''")}'
        OR "ll_stack_uuid" = '${propertyKey.replace(/'/g, "''")}'
     LIMIT 100
@@ -308,7 +319,7 @@ export async function getPropertyByKey(propertyKey: string): Promise<AggregatedP
   };
 }
 
-// Fetch commercial properties from the joined DCAD+Regrid table
+// Fetch commercial properties with aggregated building data from DCAD+Regrid
 export async function getCommercialPropertiesByZip(
   zipCode: string,
   divisionCd: 'COM' | 'RES' | 'ALL' = 'COM',
@@ -316,96 +327,158 @@ export async function getCommercialPropertiesByZip(
 ): Promise<CommercialProperty[]> {
   const divisionFilter = divisionCd === 'ALL' 
     ? '' 
-    : `AND DIVISION_CD = '${divisionCd}'`;
+    : `AND ai.DIVISION_CD = '${divisionCd}'`;
     
   const sql = `
-    SELECT *
-    FROM ${TABLE_NAME}
-    WHERE ZIP LIKE '${zipCode.replace(/'/g, "''")}%'
+    WITH building_data AS (
+      SELECT 
+        ai.ACCOUNT_NUM,
+        cd.TAX_OBJ_ID,
+        cd.PROPERTY_NAME,
+        cd.BLDG_CLASS_DESC,
+        cd.YEAR_BUILT,
+        cd.REMODEL_YR,
+        cd.GROSS_BLDG_AREA,
+        cd.NUM_STORIES,
+        cd.NUM_UNITS,
+        cd.NET_LEASE_AREA,
+        cd.CONSTR_TYP_DESC as CONSTRUCTION_TYPE,
+        cd.FOUNDATION_TYP_DESC as FOUNDATION_TYPE,
+        cd.HEATING_TYP_DESC as HEATING_TYPE,
+        cd.AC_TYP_DESC as AC_TYPE,
+        cd.PROPERTY_QUAL_DESC as QUALITY_GRADE,
+        cd.PROPERTY_COND_DESC as CONDITION_GRADE
+      FROM DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO ai
+      JOIN DCAD_LAND_2025.PUBLIC.TAXABLE_OBJECT tob ON ai.ACCOUNT_NUM = tob.ACCOUNT_NUM
+      JOIN DCAD_LAND_2025.PUBLIC.COM_DETAIL cd ON tob.TAX_OBJ_ID = cd.TAX_OBJ_ID
+      WHERE ai.APPRAISAL_YR = 2025
+        AND ai.PROPERTY_ZIPCODE LIKE '${zipCode.replace(/'/g, "''")}%'
+    ),
+    building_agg AS (
+      SELECT 
+        ACCOUNT_NUM,
+        COUNT(*) as BUILDING_COUNT,
+        MIN(YEAR_BUILT) as OLDEST_YEAR_BUILT,
+        MAX(YEAR_BUILT) as NEWEST_YEAR_BUILT,
+        SUM(GROSS_BLDG_AREA) as TOTAL_GROSS_BLDG_AREA,
+        SUM(NUM_UNITS) as TOTAL_UNITS,
+        ARRAY_AGG(
+          OBJECT_CONSTRUCT(
+            'taxObjId', TAX_OBJ_ID,
+            'propertyName', PROPERTY_NAME,
+            'bldgClassDesc', BLDG_CLASS_DESC,
+            'yearBuilt', YEAR_BUILT,
+            'remodelYear', REMODEL_YR,
+            'grossBldgArea', GROSS_BLDG_AREA,
+            'numStories', NUM_STORIES,
+            'numUnits', NUM_UNITS,
+            'netLeaseArea', NET_LEASE_AREA,
+            'constructionType', CONSTRUCTION_TYPE,
+            'foundationType', FOUNDATION_TYPE,
+            'heatingType', HEATING_TYPE,
+            'acType', AC_TYPE,
+            'qualityGrade', QUALITY_GRADE,
+            'conditionGrade', CONDITION_GRADE
+          )
+        ) as BUILDINGS
+      FROM building_data
+      GROUP BY ACCOUNT_NUM
+    )
+    SELECT 
+      r.parcelnumb as PARCEL_ID,
+      r.address,
+      r.scity as CITY,
+      r.szip as ZIP,
+      r.lat,
+      r.lon,
+      r.usedesc,
+      r.usecode,
+      r.yearbuilt as REGRID_YEAR_BUILT,
+      r.numstories as REGRID_NUM_STORIES,
+      r.improvval as REGRID_IMPROV_VAL,
+      r.landval as REGRID_LAND_VAL,
+      r.parval as REGRID_TOTAL_VAL,
+      r.ll_gisacre as LOT_ACRES,
+      r.sqft as LOT_SQFT,
+      r.ll_bldg_footprint_sqft as BLDG_FOOTPRINT_SQFT,
+      
+      ai.ACCOUNT_NUM,
+      ai.DIVISION_CD,
+      aa.IMPR_VAL as DCAD_IMPROV_VAL,
+      aa.LAND_VAL as DCAD_LAND_VAL,
+      aa.TOT_VAL as DCAD_TOTAL_VAL,
+      aa.CITY_JURIS_DESC,
+      aa.ISD_JURIS_DESC,
+      ai.BIZ_NAME,
+      ai.OWNER_NAME1,
+      ai.OWNER_NAME2,
+      ai.OWNER_ADDRESS_LINE1,
+      ai.OWNER_CITY,
+      ai.OWNER_STATE,
+      ai.OWNER_ZIPCODE,
+      ai.PHONE_NUM as OWNER_PHONE,
+      ai.DEED_TXFR_DATE,
+      
+      l.ZONING_DESC as DCAD_ZONING,
+      l.FRONT_DIM,
+      l.DEPTH_DIM,
+      l.LAND_AREA,
+      l.LAND_AREA_UOM,
+      l.COST_PER_UOM as LAND_COST_PER_UOM,
+      
+      COALESCE(ba.BUILDING_COUNT, 0) as BUILDING_COUNT,
+      ba.OLDEST_YEAR_BUILT,
+      ba.NEWEST_YEAR_BUILT,
+      ba.TOTAL_GROSS_BLDG_AREA,
+      ba.TOTAL_UNITS,
+      ba.BUILDINGS
+      
+    FROM NATIONWIDE_PARCEL_DATA__PREMIUM_SCHEMA__FREE_SAMPLE.PREMIUM.DEED r
+    JOIN DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO ai ON r.parcelnumb = ai.GIS_PARCEL_ID AND ai.APPRAISAL_YR = 2025
+    JOIN DCAD_LAND_2025.PUBLIC.ACCOUNT_APPRL_YEAR aa ON ai.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
+    LEFT JOIN DCAD_LAND_2025.PUBLIC.LAND l ON ai.ACCOUNT_NUM = l.ACCOUNT_NUM AND l.LAND_TYPE_CD = 'L'
+    LEFT JOIN building_agg ba ON ai.ACCOUNT_NUM = ba.ACCOUNT_NUM
+    WHERE ai.PROPERTY_ZIPCODE LIKE '${zipCode.replace(/'/g, "''")}%'
     ${divisionFilter}
     LIMIT ${limit}
   `;
   
   const rows = await executeQuery<any>(sql);
   
-  return rows.map(r => ({
-    parcelId: r.PARCEL_ID,
-    address: r.address || '',  // lowercase in Snowflake
-    city: r.CITY || '',
-    zip: (r.ZIP || '').trim(),
-    lat: parseFloat(r.lat) || 0,  // lowercase
-    lon: parseFloat(r.lon) || 0,  // lowercase
-    usedesc: r.usedesc || '',  // lowercase
-    usecode: r.usecode || '',  // lowercase
-    regridYearBuilt: r.REGRID_YEAR_BUILT,
-    regridNumStories: r.REGRID_NUM_STORIES,
-    regridImprovVal: r.REGRID_IMPROV_VAL,
-    regridLandVal: r.REGRID_LAND_VAL,
-    regridTotalVal: r.REGRID_TOTAL_VAL,
-    lotAcres: r.LOT_ACRES,
-    lotSqft: r.LOT_SQFT,
-    bldgFootprintSqft: r.BLDG_FOOTPRINT_SQFT,
-    
-    accountNum: r.ACCOUNT_NUM || '',
-    divisionCd: r.DIVISION_CD || '',
-    dcadImprovVal: r.DCAD_IMPROV_VAL,
-    dcadLandVal: r.DCAD_LAND_VAL,
-    dcadTotalVal: r.DCAD_TOTAL_VAL,
-    bldgClassCd: r.BLDG_CLASS_CD,
-    cityJurisDesc: r.CITY_JURIS_DESC,
-    isdJurisDesc: r.ISD_JURIS_DESC,
-    
-    bizName: r.BIZ_NAME,
-    ownerName1: r.OWNER_NAME1,
-    ownerName2: r.OWNER_NAME2,
-    ownerAddressLine1: r.OWNER_ADDRESS_LINE1,
-    ownerCity: r.OWNER_CITY,
-    ownerState: r.OWNER_STATE,
-    ownerZipcode: r.OWNER_ZIPCODE,
-    ownerPhone: r.OWNER_PHONE,
-    deedTxfrDate: r.DEED_TXFR_DATE,
-    
-    dcadZoning: r.DCAD_ZONING,
-    frontDim: r.FRONT_DIM,
-    depthDim: r.DEPTH_DIM,
-    landArea: r.LAND_AREA,
-    landAreaUom: r.LAND_AREA_UOM,
-    landCostPerUom: r.LAND_COST_PER_UOM,
-    
-    taxObjId: r.TAX_OBJ_ID,
-    propertyName: r.PROPERTY_NAME,
-    bldgClassDesc: r.BLDG_CLASS_DESC,
-    dcadYearBuilt: r.DCAD_YEAR_BUILT,
-    remodelYr: r.REMODEL_YR,
-    grossBldgArea: r.GROSS_BLDG_AREA,
-    dcadNumStories: r.DCAD_NUM_STORIES,
-    numUnits: r.NUM_UNITS,
-    netLeaseArea: r.NET_LEASE_AREA,
-    constructionType: r.CONSTRUCTION_TYPE,
-    foundationType: r.FOUNDATION_TYPE,
-    heatingType: r.HEATING_TYPE,
-    acType: r.AC_TYPE,
-    qualityGrade: r.QUALITY_GRADE,
-    conditionGrade: r.CONDITION_GRADE,
-  }));
+  return rows.map(r => mapRowToCommercialProperty(r));
 }
 
-// Get a single commercial property by parcel ID
-export async function getCommercialPropertyByParcelId(
-  parcelId: string
-): Promise<CommercialProperty | null> {
-  const sql = `
-    SELECT *
-    FROM ${TABLE_NAME}
-    WHERE PARCEL_ID = '${parcelId.replace(/'/g, "''")}'
-    LIMIT 1
-  `;
-  
-  const rows = await executeQuery<any>(sql);
-  
-  if (rows.length === 0) return null;
-  
-  const r = rows[0];
+// Helper function to map Snowflake row to CommercialProperty
+function mapRowToCommercialProperty(r: any): CommercialProperty {
+  // Parse the BUILDINGS array from Snowflake (comes as JSON string or array)
+  let buildings: DCADBuilding[] = [];
+  if (r.BUILDINGS) {
+    try {
+      const rawBuildings = typeof r.BUILDINGS === 'string' 
+        ? JSON.parse(r.BUILDINGS) 
+        : r.BUILDINGS;
+      buildings = rawBuildings.map((b: any) => ({
+        taxObjId: b.taxObjId || '',
+        propertyName: b.propertyName || null,
+        bldgClassDesc: b.bldgClassDesc || null,
+        yearBuilt: b.yearBuilt || null,
+        remodelYear: b.remodelYear || null,
+        grossBldgArea: b.grossBldgArea || null,
+        numStories: b.numStories || null,
+        numUnits: b.numUnits || null,
+        netLeaseArea: b.netLeaseArea || null,
+        constructionType: b.constructionType || null,
+        foundationType: b.foundationType || null,
+        heatingType: b.heatingType || null,
+        acType: b.acType || null,
+        qualityGrade: b.qualityGrade || null,
+        conditionGrade: b.conditionGrade || null,
+      }));
+    } catch (e) {
+      console.error('Error parsing buildings array:', e);
+    }
+  }
+
   return {
     parcelId: r.PARCEL_ID,
     address: r.address || '',  // lowercase in Snowflake
@@ -429,7 +502,6 @@ export async function getCommercialPropertyByParcelId(
     dcadImprovVal: r.DCAD_IMPROV_VAL,
     dcadLandVal: r.DCAD_LAND_VAL,
     dcadTotalVal: r.DCAD_TOTAL_VAL,
-    bldgClassCd: r.BLDG_CLASS_CD,
     cityJurisDesc: r.CITY_JURIS_DESC,
     isdJurisDesc: r.ISD_JURIS_DESC,
     
@@ -450,37 +522,155 @@ export async function getCommercialPropertyByParcelId(
     landAreaUom: r.LAND_AREA_UOM,
     landCostPerUom: r.LAND_COST_PER_UOM,
     
-    taxObjId: r.TAX_OBJ_ID,
-    propertyName: r.PROPERTY_NAME,
-    bldgClassDesc: r.BLDG_CLASS_DESC,
-    dcadYearBuilt: r.DCAD_YEAR_BUILT,
-    remodelYr: r.REMODEL_YR,
-    grossBldgArea: r.GROSS_BLDG_AREA,
-    dcadNumStories: r.DCAD_NUM_STORIES,
-    numUnits: r.NUM_UNITS,
-    netLeaseArea: r.NET_LEASE_AREA,
-    constructionType: r.CONSTRUCTION_TYPE,
-    foundationType: r.FOUNDATION_TYPE,
-    heatingType: r.HEATING_TYPE,
-    acType: r.AC_TYPE,
-    qualityGrade: r.QUALITY_GRADE,
-    conditionGrade: r.CONDITION_GRADE,
+    buildingCount: r.BUILDING_COUNT || 0,
+    oldestYearBuilt: r.OLDEST_YEAR_BUILT,
+    newestYearBuilt: r.NEWEST_YEAR_BUILT,
+    totalGrossBldgArea: r.TOTAL_GROSS_BLDG_AREA,
+    totalUnits: r.TOTAL_UNITS,
+    buildings: buildings,
   };
 }
 
-// Count commercial properties by ZIP
+// Get a single commercial property by parcel ID with aggregated building data
+export async function getCommercialPropertyByParcelId(
+  parcelId: string
+): Promise<CommercialProperty | null> {
+  const sql = `
+    WITH building_data AS (
+      SELECT 
+        ai.ACCOUNT_NUM,
+        cd.TAX_OBJ_ID,
+        cd.PROPERTY_NAME,
+        cd.BLDG_CLASS_DESC,
+        cd.YEAR_BUILT,
+        cd.REMODEL_YR,
+        cd.GROSS_BLDG_AREA,
+        cd.NUM_STORIES,
+        cd.NUM_UNITS,
+        cd.NET_LEASE_AREA,
+        cd.CONSTR_TYP_DESC as CONSTRUCTION_TYPE,
+        cd.FOUNDATION_TYP_DESC as FOUNDATION_TYPE,
+        cd.HEATING_TYP_DESC as HEATING_TYPE,
+        cd.AC_TYP_DESC as AC_TYPE,
+        cd.PROPERTY_QUAL_DESC as QUALITY_GRADE,
+        cd.PROPERTY_COND_DESC as CONDITION_GRADE
+      FROM DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO ai
+      JOIN DCAD_LAND_2025.PUBLIC.TAXABLE_OBJECT tob ON ai.ACCOUNT_NUM = tob.ACCOUNT_NUM
+      JOIN DCAD_LAND_2025.PUBLIC.COM_DETAIL cd ON tob.TAX_OBJ_ID = cd.TAX_OBJ_ID
+      WHERE ai.APPRAISAL_YR = 2025
+        AND ai.GIS_PARCEL_ID = '${parcelId.replace(/'/g, "''")}'
+    ),
+    building_agg AS (
+      SELECT 
+        ACCOUNT_NUM,
+        COUNT(*) as BUILDING_COUNT,
+        MIN(YEAR_BUILT) as OLDEST_YEAR_BUILT,
+        MAX(YEAR_BUILT) as NEWEST_YEAR_BUILT,
+        SUM(GROSS_BLDG_AREA) as TOTAL_GROSS_BLDG_AREA,
+        SUM(NUM_UNITS) as TOTAL_UNITS,
+        ARRAY_AGG(
+          OBJECT_CONSTRUCT(
+            'taxObjId', TAX_OBJ_ID,
+            'propertyName', PROPERTY_NAME,
+            'bldgClassDesc', BLDG_CLASS_DESC,
+            'yearBuilt', YEAR_BUILT,
+            'remodelYear', REMODEL_YR,
+            'grossBldgArea', GROSS_BLDG_AREA,
+            'numStories', NUM_STORIES,
+            'numUnits', NUM_UNITS,
+            'netLeaseArea', NET_LEASE_AREA,
+            'constructionType', CONSTRUCTION_TYPE,
+            'foundationType', FOUNDATION_TYPE,
+            'heatingType', HEATING_TYPE,
+            'acType', AC_TYPE,
+            'qualityGrade', QUALITY_GRADE,
+            'conditionGrade', CONDITION_GRADE
+          )
+        ) as BUILDINGS
+      FROM building_data
+      GROUP BY ACCOUNT_NUM
+    )
+    SELECT 
+      r.parcelnumb as PARCEL_ID,
+      r.address,
+      r.scity as CITY,
+      r.szip as ZIP,
+      r.lat,
+      r.lon,
+      r.usedesc,
+      r.usecode,
+      r.yearbuilt as REGRID_YEAR_BUILT,
+      r.numstories as REGRID_NUM_STORIES,
+      r.improvval as REGRID_IMPROV_VAL,
+      r.landval as REGRID_LAND_VAL,
+      r.parval as REGRID_TOTAL_VAL,
+      r.ll_gisacre as LOT_ACRES,
+      r.sqft as LOT_SQFT,
+      r.ll_bldg_footprint_sqft as BLDG_FOOTPRINT_SQFT,
+      
+      ai.ACCOUNT_NUM,
+      ai.DIVISION_CD,
+      aa.IMPR_VAL as DCAD_IMPROV_VAL,
+      aa.LAND_VAL as DCAD_LAND_VAL,
+      aa.TOT_VAL as DCAD_TOTAL_VAL,
+      aa.CITY_JURIS_DESC,
+      aa.ISD_JURIS_DESC,
+      ai.BIZ_NAME,
+      ai.OWNER_NAME1,
+      ai.OWNER_NAME2,
+      ai.OWNER_ADDRESS_LINE1,
+      ai.OWNER_CITY,
+      ai.OWNER_STATE,
+      ai.OWNER_ZIPCODE,
+      ai.PHONE_NUM as OWNER_PHONE,
+      ai.DEED_TXFR_DATE,
+      
+      l.ZONING_DESC as DCAD_ZONING,
+      l.FRONT_DIM,
+      l.DEPTH_DIM,
+      l.LAND_AREA,
+      l.LAND_AREA_UOM,
+      l.COST_PER_UOM as LAND_COST_PER_UOM,
+      
+      COALESCE(ba.BUILDING_COUNT, 0) as BUILDING_COUNT,
+      ba.OLDEST_YEAR_BUILT,
+      ba.NEWEST_YEAR_BUILT,
+      ba.TOTAL_GROSS_BLDG_AREA,
+      ba.TOTAL_UNITS,
+      ba.BUILDINGS
+      
+    FROM NATIONWIDE_PARCEL_DATA__PREMIUM_SCHEMA__FREE_SAMPLE.PREMIUM.DEED r
+    JOIN DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO ai ON r.parcelnumb = ai.GIS_PARCEL_ID AND ai.APPRAISAL_YR = 2025
+    JOIN DCAD_LAND_2025.PUBLIC.ACCOUNT_APPRL_YEAR aa ON ai.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
+    LEFT JOIN DCAD_LAND_2025.PUBLIC.LAND l ON ai.ACCOUNT_NUM = l.ACCOUNT_NUM AND l.LAND_TYPE_CD = 'L'
+    LEFT JOIN building_agg ba ON ai.ACCOUNT_NUM = ba.ACCOUNT_NUM
+    WHERE r.parcelnumb = '${parcelId.replace(/'/g, "''")}'
+    LIMIT 1
+  `;
+  
+  const rows = await executeQuery<any>(sql);
+  
+  if (rows.length === 0) return null;
+  
+  return mapRowToCommercialProperty(rows[0]);
+}
+
+// Count commercial properties by ZIP (queries source tables)
 export async function countCommercialPropertiesByZip(
   zipCode: string,
   divisionCd: 'COM' | 'RES' | 'ALL' = 'COM'
 ): Promise<number> {
   const divisionFilter = divisionCd === 'ALL' 
     ? '' 
-    : `AND DIVISION_CD = '${divisionCd}'`;
+    : `AND ai.DIVISION_CD = '${divisionCd}'`;
     
   const sql = `
-    SELECT COUNT(*) as CNT
-    FROM ${TABLE_NAME}
-    WHERE ZIP LIKE '${zipCode.replace(/'/g, "''")}%'
+    SELECT COUNT(DISTINCT r.parcelnumb) as CNT
+    FROM ${REGRID_TABLE} r
+    JOIN DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO ai 
+      ON r.parcelnumb = ai.GIS_PARCEL_ID 
+      AND ai.APPRAISAL_YR = 2025
+    WHERE ai.PROPERTY_ZIPCODE LIKE '${zipCode.replace(/'/g, "''")}%'
     ${divisionFilter}
   `;
   
