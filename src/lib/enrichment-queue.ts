@@ -120,6 +120,8 @@ interface QueueItem {
 let currentBatch: BatchStatus | null = null;
 let queue: QueueItem[] = [];
 let isProcessing = false;
+let lastIndividualRequestTime = 0;
+const INDIVIDUAL_RATE_LIMIT_MS = 2000; // 2 seconds between individual requests
 
 export function getQueueStatus(): BatchStatus | null {
   return currentBatch;
@@ -127,6 +129,16 @@ export function getQueueStatus(): BatchStatus | null {
 
 export function isBatchRunning(): boolean {
   return isProcessing || (currentBatch?.status === 'running');
+}
+
+export async function checkRateLimitForIndividual(): Promise<boolean> {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastIndividualRequestTime;
+  return timeSinceLastRequest >= INDIVIDUAL_RATE_LIMIT_MS;
+}
+
+export function updateLastRequestTime(): void {
+  lastIndividualRequestTime = Date.now();
 }
 
 export function addToQueue(items: QueueItem[]): void {
