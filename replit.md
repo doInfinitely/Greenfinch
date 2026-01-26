@@ -48,8 +48,14 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 ### UI/UX Decisions
 - **Interactive Maps**: Utilizes Mapbox for displaying property data, clusters, and interactive elements.
 - **Dashboard**: Features a tab-based interface for map and list views, with synchronized property lists and a search bar.
-- **Property Details**: Dedicated pages for detailed property information, contacts, and organizations.
+- **Property Details**: Dedicated pages for detailed property information, contacts, and organizations. Account Owner section is hidden when beneficial owner has been enriched.
 - **Clickable Records**: Contact and organization cards/rows are fully clickable (no "View Details" links) for better mobile UX. Chevron indicators show navigable items. Links (email, domain, LinkedIn) work independently via stopPropagation.
+- **Property Filters**: Collapsible filter panel with sections for:
+  - Size filters (lot sqft range, net building sqft range)
+  - Category/subcategory selection
+  - Building class (A+/A/B/C/D)
+  - HVAC types (AC type, heating type)
+  - Linked records (organization/contact search with autocomplete)
 
 ### Technical Implementations
 - **Property Classification**: Uses Texas PTAD state property type codes (SPTD_CD) from DCAD's ACCOUNT_APPRL_YEAR table. Filtering is defined in `src/lib/property-classifications.ts`:
