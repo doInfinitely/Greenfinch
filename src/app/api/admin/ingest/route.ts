@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runIngestion, countCommercialPropertiesByZip } from '@/lib/dcad-ingestion';
-import { MVP_ZIP_CODE } from '@/lib/constants';
+import { runIngestion, runMultiZipIngestion, countCommercialPropertiesByZip } from '@/lib/dcad-ingestion';
+import { MVP_ZIP_CODE, MVP_ZIP_CODES } from '@/lib/constants';
 import { requireAdminAccess } from '@/lib/auth';
 
 export async function POST(request: NextRequest) {
@@ -23,9 +23,9 @@ export async function POST(request: NextRequest) {
     } catch {
     }
 
-    if (body.mode !== undefined && body.mode !== 'count' && body.mode !== 'mvp') {
+    if (body.mode !== undefined && body.mode !== 'count' && body.mode !== 'mvp' && body.mode !== 'multi-zip') {
       return NextResponse.json(
-        { error: 'Invalid mode. Must be "count" or "mvp"' },
+        { error: 'Invalid mode. Must be "count", "mvp", or "multi-zip"' },
         { status: 400 }
       );
     }
@@ -41,11 +41,29 @@ export async function POST(request: NextRequest) {
     }
 
     if (body.mode === 'count') {
-      const mvpParcels = await countCommercialPropertiesByZip(MVP_ZIP_CODE);
+      const zipCounts: Record<string, number> = {};
+      let totalParcels = 0;
+      for (const zip of MVP_ZIP_CODES) {
+        const count = await countCommercialPropertiesByZip(zip);
+        zipCounts[zip] = count;
+        totalParcels += count;
+      }
       return NextResponse.json({
         success: true,
-        mvpParcels,
-        mvpZipCode: MVP_ZIP_CODE,
+        totalParcels,
+        zipCounts,
+        mvpZipCodes: MVP_ZIP_CODES,
+      });
+    }
+
+    if (body.mode === 'multi-zip') {
+      console.log(`Starting DCAD-based ingestion for ${MVP_ZIP_CODES.length} ZIP codes: ${MVP_ZIP_CODES.join(', ')}`);
+      const stats = await runMultiZipIngestion(MVP_ZIP_CODES, 500);
+      return NextResponse.json({
+        success: true,
+        mode: 'multi-zip',
+        zipCodes: MVP_ZIP_CODES,
+        stats,
       });
     }
 
