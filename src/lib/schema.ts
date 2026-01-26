@@ -258,15 +258,81 @@ export const contacts = pgTable('contacts', {
   nameDomainIdx: index('idx_contacts_name_domain').on(table.normalizedName, table.companyDomain),
 }));
 
-// Organizations table
+// Organizations table (Clearbit-compatible schema for provider flexibility)
 export const organizations = pgTable('organizations', {
   id: uuid('id').primaryKey().defaultRandom(),
   name: text('name'),
+  legalName: text('legal_name'),
   domain: text('domain').unique(),
+  domainAliases: json('domain_aliases').$type<string[]>(),
   orgType: text('org_type'),
+  
+  // Description and classification
+  description: text('description'),
+  foundedYear: integer('founded_year'),
+  
+  // Industry/category (Clearbit schema)
+  sector: text('sector'),
+  industryGroup: text('industry_group'),
+  industry: text('industry'),
+  subIndustry: text('sub_industry'),
+  gicsCode: text('gics_code'),
+  sicCode: text('sic_code'),
+  naicsCode: text('naics_code'),
+  tags: json('tags').$type<string[]>(),
+  
+  // Company size and metrics
+  employees: integer('employees'),
+  employeesRange: text('employees_range'),
+  estimatedAnnualRevenue: text('estimated_annual_revenue'),
+  
+  // Location
+  location: text('location'),
+  streetAddress: text('street_address'),
+  city: text('city'),
+  state: text('state'),
+  stateCode: text('state_code'),
+  postalCode: text('postal_code'),
+  country: text('country'),
+  countryCode: text('country_code'),
+  lat: real('lat'),
+  lng: real('lng'),
+  
+  // Social profiles
+  linkedinHandle: text('linkedin_handle'),
+  twitterHandle: text('twitter_handle'),
+  facebookHandle: text('facebook_handle'),
+  crunchbaseHandle: text('crunchbase_handle'),
+  
+  // Logo
+  logoUrl: text('logo_url'),
+  
+  // Parent company relationships
+  parentDomain: text('parent_domain'),
+  parentOrgId: uuid('parent_org_id'),
+  ultimateParentDomain: text('ultimate_parent_domain'),
+  ultimateParentOrgId: uuid('ultimate_parent_org_id'),
+  
+  // Technology stack
+  tech: json('tech').$type<string[]>(),
+  techCategories: json('tech_categories').$type<string[]>(),
+  
+  // Contact info
+  phoneNumbers: json('phone_numbers').$type<string[]>(),
+  emailAddresses: json('email_addresses').$type<string[]>(),
+  
+  // Enrichment metadata
+  enrichmentSource: text('enrichment_source'),
+  enrichmentStatus: text('enrichment_status').default('pending'),
+  lastEnrichedAt: timestamp('last_enriched_at'),
+  rawEnrichmentJson: json('raw_enrichment_json'),
+  
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
-});
+}, (table) => ({
+  parentOrgIdx: index('idx_organizations_parent').on(table.parentOrgId),
+  ultimateParentOrgIdx: index('idx_organizations_ultimate_parent').on(table.ultimateParentOrgId),
+}));
 
 // Junction: Property <-> Contact
 export const propertyContacts = pgTable('property_contacts', {

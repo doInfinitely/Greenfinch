@@ -33,8 +33,49 @@ interface ContactRelation {
 interface Organization {
   id: string;
   name: string | null;
+  legalName: string | null;
   domain: string | null;
   orgType: string | null;
+  description: string | null;
+  foundedYear: number | null;
+  
+  // Industry classification
+  sector: string | null;
+  industryGroup: string | null;
+  industry: string | null;
+  subIndustry: string | null;
+  
+  // Company size
+  employees: number | null;
+  employeesRange: string | null;
+  estimatedAnnualRevenue: string | null;
+  
+  // Location
+  location: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  
+  // Social profiles
+  linkedinHandle: string | null;
+  twitterHandle: string | null;
+  facebookHandle: string | null;
+  crunchbaseHandle: string | null;
+  
+  // Logo
+  logoUrl: string | null;
+  
+  // Parent companies
+  parentDomain: string | null;
+  parentOrgId: string | null;
+  ultimateParentDomain: string | null;
+  ultimateParentOrgId: string | null;
+  
+  // Enrichment status
+  enrichmentStatus: string | null;
+  enrichmentSource: string | null;
+  lastEnrichedAt: string | null;
+  
   createdAt: string;
   updatedAt: string;
 }
@@ -79,6 +120,33 @@ export default function OrganizationDetailPage() {
   const [contacts, setContacts] = useState<ContactRelation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isEnriching, setIsEnriching] = useState(false);
+  const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
+
+  const handleEnrichOrganization = async () => {
+    if (!organization) return;
+    
+    setIsEnriching(true);
+    setEnrichMessage(null);
+    
+    try {
+      const response = await fetch(`/api/organizations/${orgId}/enrich`, {
+        method: 'POST',
+      });
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Enrichment failed');
+      }
+      
+      setOrganization(data.organization);
+      setEnrichMessage('Organization enriched successfully');
+    } catch (err) {
+      setEnrichMessage(err instanceof Error ? err.message : 'Failed to enrich');
+    } finally {
+      setIsEnriching(false);
+    }
+  };
 
   useEffect(() => {
     if (!orgId) return;
@@ -142,6 +210,21 @@ export default function OrganizationDetailPage() {
     );
   }
 
+  const linkedinUrl = organization.linkedinHandle 
+    ? `https://www.linkedin.com/company/${organization.linkedinHandle}` 
+    : null;
+  const twitterUrl = organization.twitterHandle 
+    ? `https://twitter.com/${organization.twitterHandle}` 
+    : null;
+  const facebookUrl = organization.facebookHandle 
+    ? `https://facebook.com/${organization.facebookHandle}` 
+    : null;
+  const crunchbaseUrl = organization.crunchbaseHandle 
+    ? `https://www.crunchbase.com/organization/${organization.crunchbaseHandle}` 
+    : null;
+  
+  const industryDisplay = [organization.industry, organization.subIndustry].filter(Boolean).join(' - ');
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
@@ -159,12 +242,26 @@ export default function OrganizationDetailPage() {
             Back
           </button>
 
-          <div className="flex items-start justify-between">
-            <div>
+          <div className="flex items-start gap-4">
+            {organization.logoUrl && (
+              <img 
+                src={organization.logoUrl} 
+                alt={`${organization.name} logo`}
+                className="w-16 h-16 rounded-lg object-contain bg-white border border-gray-200 p-1"
+                data-testid="img-org-logo"
+                onError={(e) => {
+                  (e.target as HTMLImageElement).style.display = 'none';
+                }}
+              />
+            )}
+            <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900" data-testid="text-org-name">
                 {organization.name || 'Unnamed Organization'}
               </h1>
-              <div className="flex items-center gap-3 mt-2">
+              {organization.legalName && organization.legalName !== organization.name && (
+                <p className="text-sm text-gray-500">{organization.legalName}</p>
+              )}
+              <div className="flex items-center gap-3 mt-2 flex-wrap">
                 {organization.orgType && (
                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ORG_TYPE_COLORS[organization.orgType] || ORG_TYPE_COLORS.other}`}>
                     {organization.orgType}
@@ -181,10 +278,158 @@ export default function OrganizationDetailPage() {
                     {organization.domain}
                   </a>
                 )}
+                {linkedinUrl && (
+                  <a
+                    href={linkedinUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-blue-600 hover:text-blue-700"
+                    title="LinkedIn"
+                    data-testid="link-org-linkedin"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
+                    </svg>
+                  </a>
+                )}
+                {twitterUrl && (
+                  <a
+                    href={twitterUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-sky-500 hover:text-sky-600"
+                    title="Twitter/X"
+                  >
+                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+                    </svg>
+                  </a>
+                )}
+                {organization.domain && organization.enrichmentStatus !== 'complete' && (
+                  <button
+                    onClick={handleEnrichOrganization}
+                    disabled={isEnriching}
+                    className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid="button-enrich-org"
+                  >
+                    {isEnriching ? (
+                      <>
+                        <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                        Enriching...
+                      </>
+                    ) : (
+                      'Enrich Company'
+                    )}
+                  </button>
+                )}
+                {enrichMessage && (
+                  <span className={`text-xs ${enrichMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
+                    {enrichMessage}
+                  </span>
+                )}
               </div>
             </div>
           </div>
         </div>
+
+        {organization.description && (
+          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <p className="text-gray-700 text-sm leading-relaxed" data-testid="text-org-description">
+              {organization.description}
+            </p>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {industryDisplay && (
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Industry</p>
+              <p className="text-sm font-medium text-gray-900" data-testid="text-org-industry">{industryDisplay}</p>
+              {organization.sector && (
+                <p className="text-xs text-gray-500 mt-1">Sector: {organization.sector}</p>
+              )}
+            </div>
+          )}
+          
+          {(organization.employees || organization.employeesRange) && (
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Company Size</p>
+              <p className="text-sm font-medium text-gray-900" data-testid="text-org-employees">
+                {organization.employees?.toLocaleString() || organization.employeesRange} employees
+              </p>
+              {organization.estimatedAnnualRevenue && (
+                <p className="text-xs text-gray-500 mt-1">Revenue: {organization.estimatedAnnualRevenue}</p>
+              )}
+            </div>
+          )}
+          
+          {organization.location && (
+            <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Location</p>
+              <p className="text-sm font-medium text-gray-900" data-testid="text-org-location">{organization.location}</p>
+              {organization.foundedYear && (
+                <p className="text-xs text-gray-500 mt-1">Founded: {organization.foundedYear}</p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {(organization.parentDomain || organization.ultimateParentDomain) && (
+          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Parent Companies</p>
+            <div className="flex flex-wrap gap-4">
+              {organization.parentDomain && (
+                <div>
+                  <p className="text-xs text-gray-500">Parent</p>
+                  {organization.parentOrgId ? (
+                    <Link
+                      href={`/organization/${organization.parentOrgId}`}
+                      className="text-sm text-green-600 hover:text-green-700 hover:underline"
+                      data-testid="link-parent-org"
+                    >
+                      {organization.parentDomain}
+                    </Link>
+                  ) : (
+                    <a
+                      href={`https://${organization.parentDomain}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-green-600 hover:text-green-700 hover:underline"
+                    >
+                      {organization.parentDomain}
+                    </a>
+                  )}
+                </div>
+              )}
+              {organization.ultimateParentDomain && organization.ultimateParentDomain !== organization.parentDomain && (
+                <div>
+                  <p className="text-xs text-gray-500">Ultimate Parent</p>
+                  {organization.ultimateParentOrgId ? (
+                    <Link
+                      href={`/organization/${organization.ultimateParentOrgId}`}
+                      className="text-sm text-green-600 hover:text-green-700 hover:underline"
+                      data-testid="link-ultimate-parent-org"
+                    >
+                      {organization.ultimateParentDomain}
+                    </Link>
+                  ) : (
+                    <a
+                      href={`https://${organization.ultimateParentDomain}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-green-600 hover:text-green-700 hover:underline"
+                    >
+                      {organization.ultimateParentDomain}
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">

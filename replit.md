@@ -69,8 +69,21 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Snowflake**: For Regrid parcel data access and ingestion.
 - **Mapbox**: Used for interactive mapping, geocoding, and Point of Interest (POI) enrichment.
 - **LeadMagic**: Provides email validation services.
+- **Hunter.io**: Organization domain enrichment (Company Enrichment API) for company data, industry classification, social profiles, logos, and parent company relationships.
+- **EnrichLayer**: LinkedIn profile photo fetching (0 credits per call).
 - **Clerk Auth**: Handles user authentication with automatic legacy user migration.
 - **Google Gemini**: Utilized for AI-based property enrichment, including contact discovery, beneficial owner identification, and management company detection.
+
+## Organization Domain Enrichment (Hunter.io)
+- **Implementation**: `src/lib/organization-enrichment.ts` and `src/lib/hunter.ts`
+- **Schema**: Uses Clearbit-compatible schema for future provider flexibility
+- **Trigger**: Automatic enrichment when organizations with domains are created during property enrichment
+- **Manual Trigger**: Organization detail page has "Enrich Company" button for orgs that haven't been enriched
+- **Parent Company Discovery**: Automatically creates and enriches parent and ultimate parent org records
+- **Recursive Enrichment**: Depth-limited to 2 levels to prevent infinite loops
+- **Domain Normalization**: All domains are lowercase and trimmed for consistent matching
+- **Data Stored**: Company name, description, industry (sector/group/industry/subIndustry), employees, revenue estimates, location, social handles (LinkedIn, Twitter, Facebook, Crunchbase), logo URL, parent domains, technology stack, phone numbers, email addresses
+- **API Endpoint**: `POST /api/organizations/[id]/enrich` for manual enrichment
 
 ## AI Enrichment Rules
 - **Model**: ALWAYS use `gemini-3-flash-preview` with search grounding (`tools: [{ googleSearch: {} }]`). NEVER change this model - if it returns empty responses, investigate the root cause rather than switching models.

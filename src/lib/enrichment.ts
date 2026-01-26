@@ -8,6 +8,7 @@ import { findEmail } from "./hunter";
 import { validateEmail } from "./neverbounce";
 import { findContainingPlace } from "./google-places";
 import { getProfilePicture } from "./enrichlayer";
+import { enrichOrganizationByDomain } from "./organization-enrichment";
 import pLimit from "p-limit";
 import { CONCURRENCY } from "./constants";
 import { createRequire } from "module";
@@ -1786,6 +1787,8 @@ export async function storeEnrichmentResults(
 
   // Store organizations
   const orgIds: string[] = [];
+  const orgsToEnrich: string[] = [];
+  
   for (const org of result.organizations) {
     const existingOrg = org.domain
       ? await db.query.organizations.findFirst({
@@ -1794,8 +1797,11 @@ export async function storeEnrichmentResults(
       : null;
 
     let orgId: string;
+    let needsEnrichment = false;
+    
     if (existingOrg) {
       orgId = existingOrg.id;
+      needsEnrichment = existingOrg.enrichmentStatus !== 'complete' && !!existingOrg.domain;
     } else {
       const [inserted] = await db.insert(organizations)
         .values({
@@ -1803,12 +1809,18 @@ export async function storeEnrichmentResults(
           name: org.name,
           domain: org.domain,
           orgType: org.orgType,
+          enrichmentStatus: org.domain ? 'pending' : undefined,
         })
         .onConflictDoNothing()
         .returning({ id: organizations.id });
       orgId = inserted?.id || org.id;
+      needsEnrichment = !!org.domain;
     }
     orgIds.push(orgId);
+    
+    if (needsEnrichment && org.domain) {
+      orgsToEnrich.push(org.domain);
+    }
 
     // Link to property (store roles as comma-separated string)
     await db.insert(propertyOrganizations)
@@ -1821,6 +1833,20 @@ export async function storeEnrichmentResults(
   }
 
   console.log(`[Enrichment] Stored ${orgIds.length} organizations`);
+  
+  // Enrich organizations with domain data from Hunter.io (runs in background)
+  if (orgsToEnrich.length > 0) {
+    console.log(`[Enrichment] Enriching ${orgsToEnrich.length} organizations with Hunter.io domain data...`);
+    Promise.all(
+      orgsToEnrich.map(domain => 
+        enrichOrganizationByDomain(domain).catch(err => {
+          console.error(`[Enrichment] Failed to enrich org domain ${domain}:`, err);
+        })
+      )
+    ).then(() => {
+      console.log(`[Enrichment] Organization domain enrichment complete for ${orgsToEnrich.length} orgs`);
+    });
+  }
 
   // Store contacts
   const contactIds: string[] = [];
