@@ -331,19 +331,45 @@ export async function identifyOwnership(
   const primaryOwner = property.bizName || property.ownerName1 || 'Unknown';
   const allOwners = [property.ownerName1, property.ownerName2].filter(Boolean).join(', ') || 'Unknown';
   
+  // Build owner info JSON for AI context
+  const ownerInfo = {
+    bizName: property.bizName || null,
+    ownerName1: property.ownerName1 || null,
+    ownerName2: property.ownerName2 || null,
+    ownerAddress: property.ownerAddressLine1 || null,
+    ownerCity: property.ownerCity || null,
+    ownerState: property.ownerState || null,
+    ownerZip: property.ownerZipcode || null,
+    ownerPhone: property.ownerPhone || null,
+    deedTransferDate: property.deedTxfrDate || null,
+  };
+  
+  // Combine legal description fields
+  const legalDescription = [
+    property.legal1,
+    property.legal2,
+    property.legal3,
+    property.legal4
+  ].filter(Boolean).join(' ') || null;
+  
   const prompt = `Search the web to identify the ownership and management of this commercial property. Return ONLY valid JSON.
 
 PROPERTY: ${classification.propertyName}
 ADDRESS: ${classification.canonicalAddress}
 TYPE: ${classification.category} - ${classification.subcategory}
 SIZE: ${property.totalGrossBldgArea?.toLocaleString() || 'unknown'} sqft
-DEED OWNER: ${primaryOwner}
-ALL OWNERS: ${allOwners}
 VALUE: $${property.dcadTotalVal?.toLocaleString() || 0}
+
+DCAD OWNER RECORDS (from Dallas County Appraisal District):
+${JSON.stringify(ownerInfo, null, 2)}
+
+${legalDescription ? `LEGAL DESCRIPTION: ${legalDescription}` : ''}
 
 TASK: Search the web to find:
 1. The beneficial owner (true owner behind any LLC/trust) and when they acquired the property
 2. The property management company (if third-party managed) and their specialty
+
+Use the owner information above as a starting point for your research. The bizName and ownerName fields may contain LLCs, trusts, or holding companies - search to find the actual beneficial owner behind them.
 
 Return JSON:
 {

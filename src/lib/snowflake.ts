@@ -65,6 +65,12 @@ export interface CommercialProperty {
   ownerPhone: string | null;
   deedTxfrDate: string | null;
   
+  // Legal description fields
+  legal1: string | null;
+  legal2: string | null;
+  legal3: string | null;
+  legal4: string | null;
+  
   // DCAD Land details
   dcadZoning: string | null;
   frontDim: number | null;
@@ -426,6 +432,10 @@ export async function getCommercialPropertiesByZip(
       ai.OWNER_ZIPCODE,
       ai.PHONE_NUM as OWNER_PHONE,
       ai.DEED_TXFR_DATE,
+      ai.LEGAL_1,
+      ai.LEGAL_2,
+      ai.LEGAL_3,
+      ai.LEGAL_4,
       
       l.ZONING_DESC as DCAD_ZONING,
       l.FRONT_DIM,
@@ -524,6 +534,11 @@ function mapRowToCommercialProperty(r: any): CommercialProperty {
     ownerZipcode: r.OWNER_ZIPCODE,
     ownerPhone: r.OWNER_PHONE,
     deedTxfrDate: r.DEED_TXFR_DATE,
+    
+    legal1: r.LEGAL_1 || null,
+    legal2: r.LEGAL_2 || null,
+    legal3: r.LEGAL_3 || null,
+    legal4: r.LEGAL_4 || null,
     
     dcadZoning: r.DCAD_ZONING,
     frontDim: r.FRONT_DIM,
@@ -634,6 +649,10 @@ export async function getCommercialPropertyByParcelId(
       ai.OWNER_ZIPCODE,
       ai.PHONE_NUM as OWNER_PHONE,
       ai.DEED_TXFR_DATE,
+      ai.LEGAL_1,
+      ai.LEGAL_2,
+      ai.LEGAL_3,
+      ai.LEGAL_4,
       
       l.ZONING_DESC as DCAD_ZONING,
       l.FRONT_DIM,
