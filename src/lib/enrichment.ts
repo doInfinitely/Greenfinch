@@ -1422,6 +1422,8 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
     const commercialProperty = {
       parcelId: aggregatedProperty.propertyKey,
       accountNum: (aggregatedProperty as any).dcad?.accountNum || aggregatedProperty.propertyKey,
+      gisParcelId: (aggregatedProperty as any).dcad?.gisParcelId || null,
+      sptdCode: (aggregatedProperty as any).dcad?.sptdCode || null,
       address: aggregatedProperty.address,
       city: aggregatedProperty.city,
       zip: aggregatedProperty.zip,

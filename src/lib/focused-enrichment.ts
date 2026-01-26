@@ -202,23 +202,44 @@ Return JSON:
 
   console.log('[FocusedEnrichment] Stage 1: Classification and physical verification...');
   
-  const response = await geminiLimit(() => client.models.generateContent({
-    model: "gemini-3-flash-preview",
-    contents: prompt,
-    config: { 
-      temperature: 0.1,
-      tools: [{ googleSearch: {} }]
-    }
-  }));
-
-  const text = response.text?.trim() || '';
-  console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
+  // Use retry wrapper with empty response detection
+  let response: any;
+  let text = '';
+  const maxRetries = 3;
   
-  if (!text) {
-    console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 1');
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${maxRetries}...`);
+    
+    response = await geminiLimit(() => client.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: prompt,
+      config: { 
+        temperature: 0.1,
+        tools: [{ googleSearch: {} }]
+      }
+    }));
+    
+    text = response.text?.trim() || '';
+    console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
+    
+    if (text) {
+      break; // Got a valid response
+    }
+    
+    console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 1 (attempt ${attempt})`);
     if (response.candidates) {
       console.warn('[FocusedEnrichment] Candidates:', JSON.stringify(response.candidates, null, 2).substring(0, 500));
     }
+    
+    if (attempt < maxRetries) {
+      const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+      console.log(`[FocusedEnrichment] Retrying Stage 1 in ${backoffMs}ms...`);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
+    }
+  }
+  
+  if (!text) {
+    console.error('[FocusedEnrichment] Stage 1 failed after all retries - returning empty result');
     return {
       data: {
         physical: {
