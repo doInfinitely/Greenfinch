@@ -110,10 +110,9 @@ export default function MapPage() {
 
   const filteredProperties = useMemo(() => {
     return allProperties.filter((f) => {
-      if (filters.minLotAcres) {
-        const lotAcres = f.properties.lotSqft / 43560;
-        if (lotAcres < filters.minLotAcres) return false;
-      }
+      const lotAcres = f.properties.lotSqft / 43560;
+      if (filters.minLotAcres && lotAcres < filters.minLotAcres) return false;
+      if (filters.maxLotAcres && lotAcres > filters.maxLotAcres) return false;
       if (filters.categories.length > 0) {
         if (!f.properties.category || !filters.categories.includes(f.properties.category)) {
           return false;
@@ -170,7 +169,7 @@ export default function MapPage() {
           <h2 className="font-semibold text-gray-900">
             Properties in View <span className="text-green-600 font-normal">({visibleProperties.length})</span>
           </h2>
-          {(filters.minLotAcres || filters.categories.length > 0) && (
+          {(filters.minLotAcres || filters.maxLotAcres || filters.categories.length > 0 || filters.organizationId || filters.contactId) && (
             <p className="text-xs text-gray-500 mt-1">
               Filtered from {allProperties.length} total
             </p>

@@ -3,8 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 
 export interface FilterState {
-  minLotSqft: number | null;
-  maxLotSqft: number | null;
+  minLotAcres: number | null;
+  maxLotAcres: number | null;
   minNetSqft: number | null;
   maxNetSqft: number | null;
   categories: string[];
@@ -14,8 +14,9 @@ export interface FilterState {
   heatingTypes: string[];
   organizationId: string | null;
   contactId: string | null;
-  // Legacy field for backwards compatibility
-  minLotAcres: number | null;
+  // Legacy fields for backwards compatibility
+  minLotSqft: number | null;
+  maxLotSqft: number | null;
 }
 
 interface PropertyFiltersProps {
@@ -42,8 +43,8 @@ const DEFAULT_CATEGORIES = [
 const DEFAULT_BUILDING_CLASSES = ['A+', 'A', 'B', 'C', 'D'];
 
 export const emptyFilters: FilterState = {
-  minLotSqft: null,
-  maxLotSqft: null,
+  minLotAcres: null,
+  maxLotAcres: null,
   minNetSqft: null,
   maxNetSqft: null,
   categories: [],
@@ -53,7 +54,8 @@ export const emptyFilters: FilterState = {
   heatingTypes: [],
   organizationId: null,
   contactId: null,
-  minLotAcres: null,
+  minLotSqft: null,
+  maxLotSqft: null,
 };
 
 export default function PropertyFilters({
@@ -67,11 +69,11 @@ export default function PropertyFilters({
 }: PropertyFiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [activeSection, setActiveSection] = useState<string | null>('size');
-  const [localMinLotSqft, setLocalMinLotSqft] = useState<string>(
-    filters.minLotSqft ? String(filters.minLotSqft) : ''
+  const [localMinLotAcres, setLocalMinLotAcres] = useState<string>(
+    filters.minLotAcres ? String(filters.minLotAcres) : ''
   );
-  const [localMaxLotSqft, setLocalMaxLotSqft] = useState<string>(
-    filters.maxLotSqft ? String(filters.maxLotSqft) : ''
+  const [localMaxLotAcres, setLocalMaxLotAcres] = useState<string>(
+    filters.maxLotAcres ? String(filters.maxLotAcres) : ''
   );
   const [localMinNetSqft, setLocalMinNetSqft] = useState<string>(
     filters.minNetSqft ? String(filters.minNetSqft) : ''
@@ -115,7 +117,6 @@ export default function PropertyFilters({
     }
   }, [isOpen]);
 
-  // Organization search
   useEffect(() => {
     if (orgSearch.length < 2) {
       setOrgResults([]);
@@ -129,7 +130,6 @@ export default function PropertyFilters({
     return () => controller.abort();
   }, [orgSearch]);
 
-  // Contact search
   useEffect(() => {
     if (contactSearch.length < 2) {
       setContactResults([]);
@@ -142,6 +142,18 @@ export default function PropertyFilters({
       .catch(() => {});
     return () => controller.abort();
   }, [contactSearch]);
+
+  const handleAcresChange = (field: 'minLotAcres' | 'maxLotAcres', value: string, setter: (v: string) => void) => {
+    setter(value);
+    const numValue = parseFloat(value);
+    const sqftValue = isNaN(numValue) || numValue <= 0 ? null : Math.round(numValue * 43560);
+    const acresValue = isNaN(numValue) || numValue <= 0 ? null : numValue;
+    onFiltersChange({
+      ...filters,
+      [field]: acresValue,
+      [field === 'minLotAcres' ? 'minLotSqft' : 'maxLotSqft']: sqftValue,
+    });
+  };
 
   const handleNumberChange = (field: keyof FilterState, value: string, setter: (v: string) => void) => {
     setter(value);
@@ -160,9 +172,13 @@ export default function PropertyFilters({
     onFiltersChange({ ...filters, [field]: newArray });
   };
 
+  const handleClearArray = (field: keyof FilterState) => {
+    onFiltersChange({ ...filters, [field]: [] });
+  };
+
   const handleClearFilters = () => {
-    setLocalMinLotSqft('');
-    setLocalMaxLotSqft('');
+    setLocalMinLotAcres('');
+    setLocalMaxLotAcres('');
     setLocalMinNetSqft('');
     setLocalMaxNetSqft('');
     setOrgSearch('');
@@ -197,7 +213,7 @@ export default function PropertyFilters({
   };
 
   const activeFilterCount =
-    (filters.minLotSqft || filters.maxLotSqft ? 1 : 0) +
+    (filters.minLotAcres || filters.maxLotAcres ? 1 : 0) +
     (filters.minNetSqft || filters.maxNetSqft ? 1 : 0) +
     (filters.categories.length > 0 ? 1 : 0) +
     (filters.subcategories.length > 0 ? 1 : 0) +
@@ -207,29 +223,40 @@ export default function PropertyFilters({
     (filters.organizationId ? 1 : 0) +
     (filters.contactId ? 1 : 0);
 
-  const SectionHeader = ({ id, title, count }: { id: string; title: string; count?: number }) => (
-    <button
-      onClick={() => setActiveSection(activeSection === id ? null : id)}
-      className="w-full flex items-center justify-between py-2 text-sm font-medium text-gray-700 hover:text-gray-900"
-      data-testid={`section-${id}`}
-    >
-      <span className="flex items-center gap-2">
-        {title}
-        {count !== undefined && count > 0 && (
-          <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
-            {count}
-          </span>
-        )}
-      </span>
-      <svg
-        className={`w-4 h-4 transition-transform ${activeSection === id ? 'rotate-180' : ''}`}
-        fill="none"
-        stroke="currentColor"
-        viewBox="0 0 24 24"
+  const SectionHeader = ({ id, title, count, onClear }: { id: string; title: string; count?: number; onClear?: () => void }) => (
+    <div className="flex items-center justify-between py-2">
+      <button
+        onClick={() => setActiveSection(activeSection === id ? null : id)}
+        className="flex-1 flex items-center justify-between text-sm font-medium text-gray-700 hover:text-gray-900"
+        data-testid={`section-${id}`}
       >
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-      </svg>
-    </button>
+        <span className="flex items-center gap-2">
+          {title}
+          {count !== undefined && count > 0 && (
+            <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded">
+              {count}
+            </span>
+          )}
+        </span>
+        <svg
+          className={`w-4 h-4 transition-transform ${activeSection === id ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+      {onClear && count !== undefined && count > 0 && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onClear(); }}
+          className="ml-2 text-xs text-gray-400 hover:text-gray-600"
+          data-testid={`button-clear-${id}`}
+        >
+          Clear
+        </button>
+      )}
+    </div>
   );
 
   const FilterContent = () => (
@@ -247,29 +274,111 @@ export default function PropertyFilters({
         )}
       </div>
 
+      {/* Organization Search - Top Level */}
+      <div className="border-b border-gray-100 pb-3">
+        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Organization</label>
+        {selectedOrg ? (
+          <div className="flex items-center justify-between bg-green-50 border border-green-200 px-2 py-1.5 rounded text-sm">
+            <span className="text-green-800 truncate">{selectedOrg.name}</span>
+            <button onClick={clearOrg} className="text-green-600 hover:text-green-800 ml-2 flex-shrink-0" data-testid="button-clear-org">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <div className="relative">
+            <input
+              type="text"
+              value={orgSearch}
+              onChange={(e) => setOrgSearch(e.target.value)}
+              placeholder="Search organizations..."
+              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+              data-testid="input-org-search"
+            />
+            {orgResults.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-32 overflow-y-auto">
+                {orgResults.map((org) => (
+                  <button
+                    key={org.id}
+                    onClick={() => selectOrg(org)}
+                    className="w-full text-left px-2 py-1.5 text-sm hover:bg-gray-100"
+                    data-testid={`org-result-${org.id}`}
+                  >
+                    {org.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Contact Search - Top Level */}
+      <div className="border-b border-gray-100 pb-3">
+        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Contact</label>
+        {selectedContact ? (
+          <div className="flex items-center justify-between bg-green-50 border border-green-200 px-2 py-1.5 rounded text-sm">
+            <span className="text-green-800 truncate">{selectedContact.fullName}</span>
+            <button onClick={clearContact} className="text-green-600 hover:text-green-800 ml-2 flex-shrink-0" data-testid="button-clear-contact">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <div className="relative">
+            <input
+              type="text"
+              value={contactSearch}
+              onChange={(e) => setContactSearch(e.target.value)}
+              placeholder="Search contacts..."
+              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+              data-testid="input-contact-search"
+            />
+            {contactResults.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-32 overflow-y-auto">
+                {contactResults.map((contact) => (
+                  <button
+                    key={contact.id}
+                    onClick={() => selectContact(contact)}
+                    className="w-full text-left px-2 py-1.5 text-sm hover:bg-gray-100"
+                    data-testid={`contact-result-${contact.id}`}
+                  >
+                    {contact.fullName}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
       {/* Size Filters */}
       <div className="border-b border-gray-100 pb-2">
-        <SectionHeader id="size" title="Size" count={(filters.minLotSqft || filters.maxLotSqft ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0)} />
+        <SectionHeader id="size" title="Size" count={(filters.minLotAcres || filters.maxLotAcres ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0)} />
         {activeSection === 'size' && (
           <div className="mt-2 space-y-3">
             <div>
-              <label className="block text-xs text-gray-600 mb-1">Lot Size (sq ft)</label>
+              <label className="block text-xs text-gray-600 mb-1">Lot Size (acres)</label>
               <div className="flex gap-2">
                 <input
                   type="number"
-                  value={localMinLotSqft}
-                  onChange={(e) => handleNumberChange('minLotSqft', e.target.value, setLocalMinLotSqft)}
+                  step="0.1"
+                  value={localMinLotAcres}
+                  onChange={(e) => handleAcresChange('minLotAcres', e.target.value, setLocalMinLotAcres)}
                   placeholder="Min"
                   className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                  data-testid="input-min-lot-sqft"
+                  data-testid="input-min-lot-acres"
                 />
                 <input
                   type="number"
-                  value={localMaxLotSqft}
-                  onChange={(e) => handleNumberChange('maxLotSqft', e.target.value, setLocalMaxLotSqft)}
+                  step="0.1"
+                  value={localMaxLotAcres}
+                  onChange={(e) => handleAcresChange('maxLotAcres', e.target.value, setLocalMaxLotAcres)}
                   placeholder="Max"
                   className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                  data-testid="input-max-lot-sqft"
+                  data-testid="input-max-lot-acres"
                 />
               </div>
             </div>
@@ -300,7 +409,12 @@ export default function PropertyFilters({
 
       {/* Category & Subcategory */}
       <div className="border-b border-gray-100 pb-2">
-        <SectionHeader id="category" title="Category" count={filters.categories.length + filters.subcategories.length} />
+        <SectionHeader 
+          id="category" 
+          title="Category" 
+          count={filters.categories.length + filters.subcategories.length}
+          onClear={() => { handleClearArray('categories'); handleClearArray('subcategories'); }}
+        />
         {activeSection === 'category' && (
           <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
             {availableCategories.map((cat) => (
@@ -338,7 +452,12 @@ export default function PropertyFilters({
 
       {/* Building Class */}
       <div className="border-b border-gray-100 pb-2">
-        <SectionHeader id="class" title="Building Class" count={filters.buildingClasses.length} />
+        <SectionHeader 
+          id="class" 
+          title="Building Class" 
+          count={filters.buildingClasses.length}
+          onClear={() => handleClearArray('buildingClasses')}
+        />
         {activeSection === 'class' && (
           <div className="mt-2 flex flex-wrap gap-2">
             {availableBuildingClasses.map((cls) => (
@@ -362,7 +481,12 @@ export default function PropertyFilters({
       {/* HVAC */}
       {(availableAcTypes.length > 0 || availableHeatingTypes.length > 0) && (
         <div className="border-b border-gray-100 pb-2">
-          <SectionHeader id="hvac" title="HVAC" count={filters.acTypes.length + filters.heatingTypes.length} />
+          <SectionHeader 
+            id="hvac" 
+            title="HVAC" 
+            count={filters.acTypes.length + filters.heatingTypes.length}
+            onClear={() => { handleClearArray('acTypes'); handleClearArray('heatingTypes'); }}
+          />
           {activeSection === 'hvac' && (
             <div className="mt-2 space-y-3">
               {availableAcTypes.length > 0 && (
@@ -411,101 +535,6 @@ export default function PropertyFilters({
           )}
         </div>
       )}
-
-      {/* Organization & Contact Search */}
-      <div className="border-b border-gray-100 pb-2">
-        <SectionHeader id="linked" title="Linked Records" count={(filters.organizationId ? 1 : 0) + (filters.contactId ? 1 : 0)} />
-        {activeSection === 'linked' && (
-          <div className="mt-2 space-y-3">
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">Organization</label>
-              {selectedOrg ? (
-                <div className="flex items-center justify-between bg-gray-100 px-2 py-1 rounded text-sm">
-                  <span>{selectedOrg.name}</span>
-                  <button onClick={clearOrg} className="text-gray-400 hover:text-gray-600" data-testid="button-clear-org">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ) : (
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={orgSearch}
-                    onChange={(e) => setOrgSearch(e.target.value)}
-                    placeholder="Search organizations..."
-                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                    data-testid="input-org-search"
-                  />
-                  {orgResults.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-32 overflow-y-auto">
-                      {orgResults.map((org) => (
-                        <button
-                          key={org.id}
-                          onClick={() => selectOrg(org)}
-                          className="w-full text-left px-2 py-1.5 text-sm hover:bg-gray-100"
-                          data-testid={`org-result-${org.id}`}
-                        >
-                          {org.name}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div>
-              <label className="block text-xs text-gray-600 mb-1">Contact</label>
-              {selectedContact ? (
-                <div className="flex items-center justify-between bg-gray-100 px-2 py-1 rounded text-sm">
-                  <span>{selectedContact.fullName}</span>
-                  <button onClick={clearContact} className="text-gray-400 hover:text-gray-600" data-testid="button-clear-contact">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ) : (
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={contactSearch}
-                    onChange={(e) => setContactSearch(e.target.value)}
-                    placeholder="Search contacts..."
-                    className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                    data-testid="input-contact-search"
-                  />
-                  {contactResults.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-32 overflow-y-auto">
-                      {contactResults.map((contact) => (
-                        <button
-                          key={contact.id}
-                          onClick={() => selectContact(contact)}
-                          className="w-full text-left px-2 py-1.5 text-sm hover:bg-gray-100"
-                          data-testid={`contact-result-${contact.id}`}
-                        >
-                          {contact.fullName}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      <div className="pt-2">
-        <button
-          onClick={() => setIsOpen(false)}
-          className="w-full px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 transition-colors"
-          data-testid="button-apply-filters"
-        >
-          Apply Filters
-        </button>
-      </div>
     </div>
   );
 
