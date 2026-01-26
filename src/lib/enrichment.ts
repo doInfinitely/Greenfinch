@@ -340,6 +340,7 @@ export interface EnrichedContact {
   location: string | null;
   role: string;
   roleConfidence: number;
+  contactType: 'individual' | 'general';
   contactRationale: string | null;
   source: string;
   needsReview: boolean;
@@ -1019,6 +1020,7 @@ function processEnrichmentResponse(
         location: c.location || null,
         role: c.role || 'other',
         roleConfidence: c.role_confidence || 0.5,
+        contactType: c.contact_type === 'general' ? 'general' as const : 'individual' as const,
         contactRationale: c.contact_rationale || null,
         source: 'ai',
         needsReview,
@@ -1577,6 +1579,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
         location: `${aggregatedProperty.city}, ${aggregatedProperty.state || 'TX'}`,
         role: c.role || 'other',
         roleConfidence: c.roleConfidence,
+        contactType: c.contactType || 'individual',
         contactRationale: focusedResult.contacts?.summary || null,
         source: 'focused_enrichment',
         needsReview: false,
@@ -1853,6 +1856,7 @@ export async function storeEnrichmentResults(
           employerName: contact.employerName,
           linkedinUrl: contact.linkedinUrl,
           linkedinConfidence: contact.linkedinConfidence,
+          contactType: contact.contactType,
           source: contact.source,
           contactRationale: contact.contactRationale,
           needsReview: contact.needsReview,
@@ -1887,6 +1891,7 @@ export async function storeEnrichmentResults(
           linkedinUrl: contact.linkedinUrl,
           linkedinConfidence: contact.linkedinConfidence,
           location: contact.location,
+          contactType: contact.contactType,
           source: contact.source,
           contactRationale: contact.contactRationale,
           needsReview: contact.needsReview,

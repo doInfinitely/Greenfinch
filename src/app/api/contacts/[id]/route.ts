@@ -83,6 +83,7 @@ export async function GET(
         linkedinStatus: contact.linkedinStatus,
         linkedinSearchResults: contact.linkedinSearchResults,
         linkedinFlagged: contact.linkedinFlagged,
+        contactType: contact.contactType,
         source: contact.source,
         needsReview: contact.needsReview,
         reviewReason: contact.reviewReason,

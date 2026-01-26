@@ -59,6 +59,7 @@ interface Contact {
   linkedinStatus: string | null;
   linkedinSearchResults: LinkedInSearchResult[] | null;
   linkedinFlagged: boolean | null;
+  contactType: 'individual' | 'general' | null;
   source: string | null;
   needsReview: boolean | null;
   reviewReason: string | null;
@@ -367,7 +368,14 @@ export default function ContactDetailPage() {
           
           <div className="flex items-start justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900">{contact.fullName || 'Unknown Contact'}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-2xl font-bold text-gray-900">{contact.fullName || 'Unknown Contact'}</h1>
+                {contact.contactType === 'general' && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                    Office Line
+                  </span>
+                )}
+              </div>
               {contact.title && (
                 <p className="text-lg text-gray-600 mt-1">{contact.title}</p>
               )}

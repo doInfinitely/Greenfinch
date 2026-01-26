@@ -80,6 +80,7 @@ export interface DiscoveredContact {
   role: string;
   roleConfidence: number;
   priorityRank: number;
+  contactType: 'individual' | 'general'; // individual = named person, general = office/main line
 }
 
 export interface DiscoveredOrganization {
@@ -427,10 +428,14 @@ CONTACT INFORMATION TO CAPTURE:
 
 Return JSON:
 {
-  "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","email":"found@email.com or null","phone":"+1-555-123-4567 or null","phone_label":"direct_work|office|personal|mobile|null","phone_confidence":0.0-1.0,"role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8}],
+  "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","email":"found@email.com or null","phone":"+1-555-123-4567 or null","phone_label":"direct_work|office|personal|mobile|null","phone_confidence":0.0-1.0,"role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8,"contact_type":"individual|general"}],
   "organizations":[{"name":"Org name","domain":"domain.com","org_type":"owner|management|tenant|developer","roles":["property_manager","owner"]}],
   "summary":"2-3 sentences citing evidence: 'Based on [source], the primary contact is [Name], listed on [website] as [role]. [Secondary contact] at [company] handles [responsibility].'"
-}`;
+}
+
+contact_type values:
+- "individual": A named person with a real first and last name (e.g., "John Smith", "Sarah Johnson")
+- "general": A generic/office contact, main line, or placeholder name (e.g., "Property Management Office", "Leasing Office", "Main Line", company name used as contact name)`;
 
   console.log('[FocusedEnrichment] Stage 3: Contact discovery...');
   console.log(`[FocusedEnrichment] Stage 3 input - Property: ${classification.propertyName}, Mgmt: ${managementInfo}`);
@@ -477,6 +482,7 @@ Return JSON:
       role: c.role || 'other',
       roleConfidence: c.role_confidence ?? 0.5,
       priorityRank: c.priority_rank ?? 10,
+      contactType: c.contact_type === 'general' ? 'general' : 'individual',
     }));
     
     const organizations: DiscoveredOrganization[] = (parsed.organizations || []).map((o: any) => ({

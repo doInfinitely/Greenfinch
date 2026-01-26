@@ -186,6 +186,7 @@ export const contacts = pgTable('contacts', {
   fullName: text('full_name'),
   normalizedName: text('normalized_name'),
   nameConfidence: real('name_confidence'),
+  contactType: text('contact_type'), // 'individual' or 'general' (office lines, main numbers)
   
   email: text('email'),
   normalizedEmail: text('normalized_email'),
