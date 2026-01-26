@@ -143,6 +143,7 @@ export default function ContactDetailPage() {
   const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const [isLoadingPhoto, setIsLoadingPhoto] = useState(false);
+  const [photoFetchError, setPhotoFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!contactId) return;
@@ -177,12 +178,14 @@ export default function ContactDetailPage() {
     if (!contact) {
       setProfilePhotoUrl(null);
       setIsLoadingPhoto(false);
+      setPhotoFetchError(null);
       return;
     }
     
     // Only use cached photo from the database
     if (contact.photoUrl) {
       setProfilePhotoUrl(contact.photoUrl);
+      setPhotoFetchError(null);
     }
   }, [contact?.id, contact?.photoUrl]);
 
@@ -418,14 +421,18 @@ export default function ContactDetailPage() {
                     variant="outline"
                     onClick={async () => {
                       setIsLoadingPhoto(true);
+                      setPhotoFetchError(null);
                       try {
                         const response = await fetch(`/api/contacts/${contact.id}/profile-photo`, { method: 'POST' });
                         const data = await response.json();
                         if (data.success && data.url) {
                           setProfilePhotoUrl(data.url);
+                        } else {
+                          setPhotoFetchError(data.error || 'Photo not available');
                         }
                       } catch (err) {
                         console.error('Failed to fetch profile photo:', err);
+                        setPhotoFetchError('Failed to fetch photo');
                       } finally {
                         setIsLoadingPhoto(false);
                       }
@@ -436,6 +443,11 @@ export default function ContactDetailPage() {
                   >
                     <Camera className="h-4 w-4" />
                   </Button>
+                )}
+                {photoFetchError && (
+                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs text-red-500" data-testid="photo-fetch-error">
+                    {photoFetchError}
+                  </div>
                 )}
               </div>
               
