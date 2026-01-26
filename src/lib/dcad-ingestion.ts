@@ -678,17 +678,19 @@ export async function upsertAggregatedPropertyToPostgres(
     });
   }
 
-  if (prop.llUuid) {
-    const mappedPropertyKey = isParentProperty ? propertyKey : (parentPropertyKey || propertyKey);
+  // Only insert parcel_to_property mapping for parent properties
+  // Parent properties are where ACCOUNT_NUM = GIS_PARCEL_ID
+  // This ensures tile lookups always resolve to the parent property with correct bizName
+  if (prop.llUuid && isParentProperty) {
     await db
       .insert(parcelToProperty)
       .values({
         llUuid: prop.llUuid,
-        propertyKey: mappedPropertyKey,
+        propertyKey: propertyKey,
       })
       .onConflictDoUpdate({
         target: parcelToProperty.llUuid,
-        set: { propertyKey: mappedPropertyKey },
+        set: { propertyKey: propertyKey },
       });
   }
 
