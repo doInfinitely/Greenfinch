@@ -951,64 +951,141 @@ export default function PropertyDetailPage() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Ownership & Management</h2>
               
-              {enrichedProperty?.beneficialOwner && (
-                <div className="mb-4 p-4 bg-purple-50 rounded-lg border border-purple-100">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-purple-700 mb-1">Beneficial Owner</p>
-                      <p className="font-medium text-gray-900">{enrichedProperty.beneficialOwner}</p>
-                      {enrichedProperty.beneficialOwnerType && (
-                        <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded">
-                          {enrichedProperty.beneficialOwnerType}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      onClick={() => openFlagDialog('owner')}
-                      className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors"
-                      title="Something doesn't look right? Flag for review by the greenfinch.ai team"
-                      data-testid="button-flag-owner"
-                    >
-                      <Flag className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {enrichedProperty?.managementCompany && (
-                <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-100">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <p className="text-sm font-medium text-blue-700 mb-1">Management Company</p>
-                      <p className="font-medium text-gray-900">{enrichedProperty.managementCompany}</p>
-                      <div className="flex flex-wrap items-center gap-2 mt-1">
-                        {enrichedProperty.managementType && (
-                          <span className="inline-block px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded">
-                            {enrichedProperty.managementType.replace('_', ' ')}
-                          </span>
-                        )}
-                        {enrichedProperty.managementCompanyDomain && (
-                          <a 
-                            href={`https://${enrichedProperty.managementCompanyDomain}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+              {/* Show organizations with their roles - clickable to org records */}
+              {organizations.length > 0 ? (
+                <div className="space-y-3 mb-4">
+                  {organizations.map((org) => {
+                    const displayRoles = org.roles?.length ? org.roles : (org.role ? [org.role] : []);
+                    const isOwner = displayRoles.includes('owner');
+                    const isManager = displayRoles.includes('property_manager') || displayRoles.includes('facilities_manager');
+                    const bgColor = isOwner ? 'bg-purple-50 border-purple-100' : isManager ? 'bg-blue-50 border-blue-100' : 'bg-gray-50 border-gray-200';
+                    const labelColor = isOwner ? 'text-purple-700' : isManager ? 'text-blue-700' : 'text-gray-700';
+                    
+                    return (
+                      <div 
+                        key={org.id || org.name}
+                        className={`p-4 rounded-lg border ${bgColor} ${org.id ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
+                        onClick={() => org.id && router.push(`/organization/${org.id}`)}
+                        data-testid={`ownership-org-${org.id}`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap gap-1 mb-1">
+                              {displayRoles.map((role, idx) => (
+                                <span 
+                                  key={idx}
+                                  className={`text-xs font-medium ${labelColor}`}
+                                >
+                                  {ROLE_LABELS[role] || role}{idx < displayRoles.length - 1 ? ' · ' : ''}
+                                </span>
+                              ))}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-medium text-gray-900">{org.name}</p>
+                              {org.id && (
+                                <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
+                              {org.orgType && (
+                                <span className={`inline-block px-2 py-0.5 text-xs rounded ${isOwner ? 'bg-purple-100 text-purple-700' : isManager ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
+                                  {org.orgType}
+                                </span>
+                              )}
+                              {org.domain && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.open(`https://${org.domain}`, '_blank');
+                                  }}
+                                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                >
+                                  {org.domain}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openFlagDialog(isOwner ? 'owner' : 'management_company');
+                            }}
+                            className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors"
+                            title="Something doesn't look right? Flag for review by the greenfinch.ai team"
+                            data-testid={`button-flag-org-${org.id}`}
                           >
-                            {enrichedProperty.managementCompanyDomain}
-                          </a>
-                        )}
+                            <Flag className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <>
+                  {/* Fallback: Show enriched data if no organizations linked yet */}
+                  {enrichedProperty?.beneficialOwner && (
+                    <div className="mb-4 p-4 bg-purple-50 rounded-lg border border-purple-100">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-purple-700 mb-1">Beneficial Owner</p>
+                          <p className="font-medium text-gray-900">{enrichedProperty.beneficialOwner}</p>
+                          {enrichedProperty.beneficialOwnerType && (
+                            <span className="inline-block mt-1 px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded">
+                              {enrichedProperty.beneficialOwnerType}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => openFlagDialog('owner')}
+                          className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors"
+                          title="Something doesn't look right? Flag for review by the greenfinch.ai team"
+                          data-testid="button-flag-owner"
+                        >
+                          <Flag className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
-                    <button
-                      onClick={() => openFlagDialog('management_company')}
-                      className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors"
-                      title="Something doesn't look right? Flag for review by the greenfinch.ai team"
-                      data-testid="button-flag-management"
-                    >
-                      <Flag className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
+                  )}
+
+                  {enrichedProperty?.managementCompany && (
+                    <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-100">
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <p className="text-sm font-medium text-blue-700 mb-1">Management Company</p>
+                          <p className="font-medium text-gray-900">{enrichedProperty.managementCompany}</p>
+                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                            {enrichedProperty.managementType && (
+                              <span className="inline-block px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded">
+                                {enrichedProperty.managementType.replace('_', ' ')}
+                              </span>
+                            )}
+                            {enrichedProperty.managementCompanyDomain && (
+                              <a 
+                                href={`https://${enrichedProperty.managementCompanyDomain}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-blue-600 hover:text-blue-800 hover:underline"
+                              >
+                                {enrichedProperty.managementCompanyDomain}
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => openFlagDialog('management_company')}
+                          className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors"
+                          title="Something doesn't look right? Flag for review by the greenfinch.ai team"
+                          data-testid="button-flag-management"
+                        >
+                          <Flag className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
 
               {/* Account Owner - Only show when no beneficial owner has been enriched */}
@@ -1316,65 +1393,6 @@ export default function PropertyDetailPage() {
                   >
                     Click "Find Decision Makers" to discover contacts
                   </button>
-                </div>
-              )}
-            </div>
-
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Organizations ({organizations.length})
-              </h2>
-              {organizations.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {organizations.map((org) => (
-                    <div 
-                      key={org.id || org.domain || org.name} 
-                      className={`p-4 bg-gray-50 rounded-lg transition-colors ${org.id ? 'cursor-pointer hover:bg-gray-100' : ''}`}
-                      onClick={() => org.id && router.push(`/organization/${org.id}`)}
-                      data-testid={`org-row-${org.id}`}
-                    >
-                      <div className="flex items-start justify-between mb-2">
-                        <p className="font-medium text-gray-900">{org.name}</p>
-                        <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                      {/* Role badges using same colors as contacts */}
-                      {(() => {
-                        const displayRoles = org.roles?.length ? org.roles : (org.role ? [org.role] : []);
-                        return displayRoles.length > 0 && (
-                          <div className="flex flex-wrap gap-1 mb-2">
-                            {displayRoles.map((role, idx) => (
-                              <span 
-                                key={idx}
-                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[role] || ROLE_COLORS.other}`}
-                              >
-                                {ROLE_LABELS[role] || role}
-                              </span>
-                            ))}
-                          </div>
-                        );
-                      })()}
-                      {org.domain && (
-                        <span 
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            window.open(`https://${org.domain}`, '_blank');
-                          }}
-                          className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                        >
-                          {org.domain}
-                        </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                  </svg>
-                  <p className="text-gray-500">No organizations discovered yet</p>
                 </div>
               )}
             </div>
