@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchPropertiesFromPostgres, getPropertiesInBoundsFromPostgres, getPropertiesByKeys } from '@/lib/postgres-queries';
+import { searchPropertiesFromPostgres, getPropertiesInBoundsFromPostgres, getPropertiesByKeys, getFilteredPropertiesFromPostgres, PropertyFilters } from '@/lib/postgres-queries';
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
@@ -18,6 +18,49 @@ function validateCoordinate(value: string | null, min: number, max: number): num
   return parsed;
 }
 
+function parseFilters(searchParams: URLSearchParams): PropertyFilters {
+  const parseNumber = (val: string | null) => {
+    if (!val) return null;
+    const num = parseInt(val, 10);
+    return isNaN(num) ? null : num;
+  };
+  
+  const parseArray = (val: string | null) => {
+    if (!val) return [];
+    return val.split(',').map(s => s.trim()).filter(s => s.length > 0);
+  };
+
+  return {
+    minLotSqft: parseNumber(searchParams.get('minLotSqft')),
+    maxLotSqft: parseNumber(searchParams.get('maxLotSqft')),
+    minNetSqft: parseNumber(searchParams.get('minNetSqft')),
+    maxNetSqft: parseNumber(searchParams.get('maxNetSqft')),
+    categories: parseArray(searchParams.get('categories')),
+    subcategories: parseArray(searchParams.get('subcategories')),
+    buildingClasses: parseArray(searchParams.get('buildingClasses')),
+    acTypes: parseArray(searchParams.get('acTypes')),
+    heatingTypes: parseArray(searchParams.get('heatingTypes')),
+    organizationId: searchParams.get('organizationId') || null,
+    contactId: searchParams.get('contactId') || null,
+  };
+}
+
+function hasActiveFilters(filters: PropertyFilters): boolean {
+  return !!(
+    filters.minLotSqft ||
+    filters.maxLotSqft ||
+    filters.minNetSqft ||
+    filters.maxNetSqft ||
+    (filters.categories && filters.categories.length > 0) ||
+    (filters.subcategories && filters.subcategories.length > 0) ||
+    (filters.buildingClasses && filters.buildingClasses.length > 0) ||
+    (filters.acTypes && filters.acTypes.length > 0) ||
+    (filters.heatingTypes && filters.heatingTypes.length > 0) ||
+    filters.organizationId ||
+    filters.contactId
+  );
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -27,6 +70,7 @@ export async function GET(request: NextRequest) {
     const minLonStr = searchParams.get('minLon');
     const maxLonStr = searchParams.get('maxLon');
     const limit = validateLimit(searchParams.get('limit'));
+    const filters = parseFilters(searchParams);
 
     if (minLatStr && maxLatStr && minLonStr && maxLonStr) {
       const minLat = validateCoordinate(minLatStr, -90, 90);
@@ -46,6 +90,19 @@ export async function GET(request: NextRequest) {
           { error: 'Invalid bounds: min must be less than max' },
           { status: 400 }
         );
+      }
+
+      // Use filtered query if any filters are active
+      if (hasActiveFilters(filters)) {
+        const properties = await getFilteredPropertiesFromPostgres(
+          minLat,
+          maxLat,
+          minLon,
+          maxLon,
+          filters,
+          limit
+        );
+        return NextResponse.json({ properties });
       }
 
       const properties = await getPropertiesInBoundsFromPostgres(

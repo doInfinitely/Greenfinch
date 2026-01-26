@@ -141,6 +141,95 @@ export async function getPropertiesInBoundsFromPostgres(
   return results.map(formatPropertyResult);
 }
 
+export interface PropertyFilters {
+  minLotSqft?: number | null;
+  maxLotSqft?: number | null;
+  minNetSqft?: number | null;
+  maxNetSqft?: number | null;
+  categories?: string[];
+  subcategories?: string[];
+  buildingClasses?: string[];
+  acTypes?: string[];
+  heatingTypes?: string[];
+  organizationId?: string | null;
+  contactId?: string | null;
+}
+
+export async function getFilteredPropertiesFromPostgres(
+  minLat: number,
+  maxLat: number,
+  minLon: number,
+  maxLon: number,
+  filters: PropertyFilters,
+  limit: number = 50
+): Promise<PropertyResult[]> {
+  const conditions = [
+    eq(properties.isActive, true),
+    eq(properties.isParentProperty, true),
+    gte(properties.lat, minLat),
+    lte(properties.lat, maxLat),
+    gte(properties.lon, minLon),
+    lte(properties.lon, maxLon),
+  ];
+
+  // Size filters
+  if (filters.minLotSqft) {
+    conditions.push(gte(properties.lotSqft, filters.minLotSqft));
+  }
+  if (filters.maxLotSqft) {
+    conditions.push(lte(properties.lotSqft, filters.maxLotSqft));
+  }
+  if (filters.minNetSqft) {
+    conditions.push(gte(properties.buildingSqft, filters.minNetSqft));
+  }
+  if (filters.maxNetSqft) {
+    conditions.push(lte(properties.buildingSqft, filters.maxNetSqft));
+  }
+
+  // Category filters
+  if (filters.categories && filters.categories.length > 0) {
+    conditions.push(inArray(properties.assetCategory, filters.categories));
+  }
+  if (filters.subcategories && filters.subcategories.length > 0) {
+    conditions.push(inArray(properties.assetSubcategory, filters.subcategories));
+  }
+
+  // Building class filter
+  if (filters.buildingClasses && filters.buildingClasses.length > 0) {
+    conditions.push(inArray(properties.calculatedBuildingClass, filters.buildingClasses));
+  }
+
+  // HVAC filters
+  if (filters.acTypes && filters.acTypes.length > 0) {
+    conditions.push(inArray(properties.dcadPrimaryAcType, filters.acTypes));
+  }
+  if (filters.heatingTypes && filters.heatingTypes.length > 0) {
+    conditions.push(inArray(properties.dcadPrimaryHeatingType, filters.heatingTypes));
+  }
+
+  // Organization filter - use subquery to filter before LIMIT
+  if (filters.organizationId) {
+    conditions.push(
+      sql`${properties.propertyKey} IN (SELECT DISTINCT property_key FROM property_organizations WHERE organization_id = ${filters.organizationId})`
+    );
+  }
+
+  // Contact filter - use subquery to filter before LIMIT
+  if (filters.contactId) {
+    conditions.push(
+      sql`${properties.propertyKey} IN (SELECT DISTINCT property_key FROM property_contacts WHERE contact_id = ${filters.contactId})`
+    );
+  }
+
+  const results = await db
+    .select()
+    .from(properties)
+    .where(and(...conditions))
+    .limit(limit);
+
+  return results.map(formatPropertyResult);
+}
+
 export async function getPropertyByIdFromPostgres(
   id: string
 ): Promise<PropertyResult | null> {

@@ -144,6 +144,18 @@ export const properties = pgTable('properties', {
   dcadRentableArea: integer('dcad_rentable_area'),
   dcadParkingSqft: integer('dcad_parking_sqft'),
   
+  // Aggregated HVAC from buildings (most common types for filtering)
+  dcadPrimaryAcType: text('dcad_primary_ac_type'),
+  dcadPrimaryHeatingType: text('dcad_primary_heating_type'),
+  
+  // Building quality fields for class calculation
+  dcadQualityGrade: text('dcad_quality_grade'),
+  dcadConditionGrade: text('dcad_condition_grade'),
+  
+  // Calculated building class (A+/A/B/C/D) based on quality, condition, age, value
+  calculatedBuildingClass: text('calculated_building_class'),
+  buildingClassRationale: text('building_class_rationale'),
+  
   // DCAD Buildings Array (all buildings on this parcel as JSONB)
   dcadBuildings: json('dcad_buildings'),
   

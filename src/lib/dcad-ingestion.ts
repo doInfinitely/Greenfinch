@@ -4,6 +4,7 @@ import { eq, sql } from 'drizzle-orm';
 import { normalizeAddress, normalizeOwnerName, normalizeCity } from './normalization';
 import { INCLUDED_SPTD_CODES } from './property-classifications';
 import { executeQuery } from './snowflake';
+import { calculateBuildingClass, extractPrimaryHvacTypes, extractPrimaryQualityGrade } from './building-class';
 
 const COMMERCIAL_PROPERTIES_TABLE = 'DCAD_LAND_2025.PUBLIC.COMMERCIAL_PROPERTIES';
 const ACCOUNT_APPRL_TABLE = 'DCAD_LAND_2025.PUBLIC.ACCOUNT_APPRL_YEAR';
@@ -652,6 +653,30 @@ export async function upsertAggregatedPropertyToPostgres(
     dcadParkingSqft: prop.parkingSqft,
     dcadBuildings: prop.buildings,
     
+    // HVAC types (extracted from buildings)
+    dcadPrimaryAcType: extractPrimaryHvacTypes(prop.buildings).acType,
+    dcadPrimaryHeatingType: extractPrimaryHvacTypes(prop.buildings).heatingType,
+    
+    // Quality/condition grades (extracted from buildings)
+    dcadQualityGrade: extractPrimaryQualityGrade(prop.buildings).qualityGrade,
+    dcadConditionGrade: extractPrimaryQualityGrade(prop.buildings).conditionGrade,
+    
+    // Building class calculation
+    calculatedBuildingClass: calculateBuildingClass({
+      qualityGrade: extractPrimaryQualityGrade(prop.buildings).qualityGrade,
+      conditionGrade: extractPrimaryQualityGrade(prop.buildings).conditionGrade,
+      yearBuilt: prop.oldestYearBuilt,
+      totalValue: prop.dcadTotalVal,
+      buildingSqft: prop.rentableArea || prop.totalGrossBldgArea,
+    }).buildingClass,
+    buildingClassRationale: calculateBuildingClass({
+      qualityGrade: extractPrimaryQualityGrade(prop.buildings).qualityGrade,
+      conditionGrade: extractPrimaryQualityGrade(prop.buildings).conditionGrade,
+      yearBuilt: prop.oldestYearBuilt,
+      totalValue: prop.dcadTotalVal,
+      buildingSqft: prop.rentableArea || prop.totalGrossBldgArea,
+    }).rationale,
+    
     commonName: prop.primaryPropertyName || prop.bizName || null,
     
     // Parcel-level relationships
@@ -678,19 +703,21 @@ export async function upsertAggregatedPropertyToPostgres(
     });
   }
 
-  // Only insert parcel_to_property mapping for parent properties
-  // Parent properties are where ACCOUNT_NUM = GIS_PARCEL_ID
-  // This ensures tile lookups always resolve to the parent property with correct bizName
-  if (prop.llUuid && isParentProperty) {
+  // Insert parcel_to_property mapping for all properties, always pointing to parent
+  // This ensures tile lookups resolve to the parent property with correct bizName
+  // For parent properties: ll_uuid -> self (parent)
+  // For constituents: ll_uuid -> parent property key (so clicking any parcel resolves to parent)
+  if (prop.llUuid) {
+    const targetPropertyKey = isParentProperty ? propertyKey : (parentPropertyKey || propertyKey);
     await db
       .insert(parcelToProperty)
       .values({
         llUuid: prop.llUuid,
-        propertyKey: propertyKey,
+        propertyKey: targetPropertyKey,
       })
       .onConflictDoUpdate({
         target: parcelToProperty.llUuid,
-        set: { propertyKey: propertyKey },
+        set: { propertyKey: targetPropertyKey },
       });
   }
 
