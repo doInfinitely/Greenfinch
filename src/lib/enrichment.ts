@@ -1,7 +1,7 @@
 import { GoogleGenAI } from "@google/genai";
 import { v5 as uuidv5 } from "uuid";
 import { db } from "./db";
-import { properties, contacts, organizations, propertyContacts, propertyOrganizations } from "./schema";
+import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from "./schema";
 import { eq } from "drizzle-orm";
 import type { AggregatedProperty } from "./snowflake";
 import { findEmail } from "./hunter";
@@ -1915,6 +1915,25 @@ export async function storeEnrichmentResults(
         discoveredAt: new Date(),
       })
       .onConflictDoNothing();
+    
+    // Link contact to organization by matching domain
+    if (contact.companyDomain) {
+      const matchingOrg = await db.query.organizations.findFirst({
+        where: eq(organizations.domain, contact.companyDomain),
+      });
+      
+      if (matchingOrg) {
+        await db.insert(contactOrganizations)
+          .values({
+            contactId,
+            orgId: matchingOrg.id,
+            title: contact.title,
+            isCurrent: true,
+          })
+          .onConflictDoNothing();
+        console.log(`[Enrichment] Linked contact ${contact.fullName} to org ${matchingOrg.name}`);
+      }
+    }
   }
 
   console.log(`[Enrichment] Stored ${contactIds.length} contacts`);
