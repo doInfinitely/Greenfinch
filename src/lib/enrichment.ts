@@ -1445,20 +1445,62 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
     const physical = focusedResult.physical?.data;
     const contactsData = focusedResult.contacts?.data;
     
-    // Collect all grounded sources
-    const allSources = [
-      ...(focusedResult.physical?.sources || []),
-      ...(focusedResult.classification?.sources || []),
-      ...(focusedResult.ownership?.sources || []),
-      ...(focusedResult.contacts?.sources || []),
+    // Collect all sources from all stages and create a unified source list
+    // First, build a deduplicated list with a mapping from (stage, local_index) -> global_index
+    const allSources: Array<{ url: string; title: string }> = [];
+    const urlToGlobalIndex = new Map<string, number>();
+    
+    // Stages in order: classification, ownership, contacts
+    const stageSourceArrays = [
+      focusedResult.classification?.sources || [],
+      focusedResult.ownership?.sources || [],
+      focusedResult.contacts?.sources || [],
+    ];
+    const stageSummaries = [
+      focusedResult.classification?.summary || '',
+      focusedResult.ownership?.summary || '',
+      focusedResult.contacts?.summary || '',
     ];
     
-    // Build combined summary from all stages
-    const combinedSummary = [
-      focusedResult.classification?.summary,
-      focusedResult.ownership?.summary,
-      focusedResult.contacts?.summary,
-    ].filter(Boolean).join('\n\n');
+    // Build mapping from (stageIndex, localSourceIndex) -> globalIndex
+    // Sources are 1-indexed in summaries
+    const stageLocalToGlobal: Map<string, number>[] = stageSourceArrays.map(() => new Map());
+    
+    for (let stageIdx = 0; stageIdx < stageSourceArrays.length; stageIdx++) {
+      const sources = stageSourceArrays[stageIdx];
+      for (let localIdx = 0; localIdx < sources.length; localIdx++) {
+        const source = sources[localIdx];
+        if (!source.url) continue;
+        
+        let globalIdx: number;
+        if (urlToGlobalIndex.has(source.url)) {
+          globalIdx = urlToGlobalIndex.get(source.url)!;
+        } else {
+          globalIdx = allSources.length + 1; // 1-indexed
+          allSources.push(source);
+          urlToGlobalIndex.set(source.url, globalIdx);
+        }
+        // Map local 1-indexed source to global 1-indexed
+        stageLocalToGlobal[stageIdx].set(String(localIdx + 1), globalIdx);
+      }
+    }
+    
+    // Renumber citations in summaries using the stage-specific mapping
+    const renumberCitations = (summary: string, mapping: Map<string, number>): string => {
+      if (!summary) return '';
+      // Match [1], [2], [9, 11], etc.
+      return summary.replace(/\[(\d+(?:,\s*\d+)*)\]/g, (match, nums) => {
+        const ids = nums.split(/,\s*/).map((n: string) => n.trim());
+        const renumbered = ids.map((id: string) => mapping.get(id) || id);
+        return `[${renumbered.join(', ')}]`;
+      });
+    };
+    
+    // Build combined summary with renumbered citations
+    const combinedSummary = stageSummaries
+      .map((summary, idx) => renumberCitations(summary, stageLocalToGlobal[idx]))
+      .filter(Boolean)
+      .join('\n\n');
     
     const property = {
       validatedAddress: classification?.canonicalAddress || null,

@@ -104,10 +104,27 @@ export async function GET(
         ...row.contact,
         role: row.role,
       })),
-      organizations: propertyOrgRows.map(row => ({
-        ...row.organization,
-        role: row.role,
-      })),
+      organizations: (() => {
+        // Aggregate organizations with multiple roles into a single entry with roles array
+        const orgMap = new Map<string, { organization: typeof propertyOrgRows[0]['organization']; roles: string[] }>();
+        for (const row of propertyOrgRows) {
+          const orgId = row.organization.id;
+          if (!orgMap.has(orgId)) {
+            orgMap.set(orgId, { organization: row.organization, roles: [] });
+          }
+          if (row.role) {
+            const entry = orgMap.get(orgId)!;
+            if (!entry.roles.includes(row.role)) {
+              entry.roles.push(row.role);
+            }
+          }
+        }
+        return Array.from(orgMap.values()).map(({ organization, roles }) => ({
+          ...organization,
+          roles, // Array of roles (e.g., ['owner', 'property_manager'])
+          role: roles[0] || null, // Keep for backward compatibility
+        }));
+      })(),
       source: 'postgres',
     });
   } catch (error) {

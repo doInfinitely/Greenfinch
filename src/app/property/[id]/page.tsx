@@ -116,6 +116,7 @@ interface Organization {
   domain: string | null;
   orgType: string;
   role: string;
+  roles?: string[]; // Array of roles for multi-role organizations
 }
 
 type EnrichmentStatusType = 'not_enriched' | 'pending' | 'completed' | 'failed';
