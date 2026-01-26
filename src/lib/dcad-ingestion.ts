@@ -769,3 +769,46 @@ export async function runIngestion(
   
   return stats;
 }
+
+export interface MultiZipIngestionStats {
+  totalFromSnowflake: number;
+  propertiesSaved: number;
+  propertiesUpdated: number;
+  errors: number;
+  durationMs: number;
+  zipCodeStats: Record<string, IngestionStats>;
+}
+
+export async function runMultiZipIngestion(
+  zipCodes: string[],
+  limitPerZip: number = 500
+): Promise<MultiZipIngestionStats> {
+  console.log(`[Ingestion] Starting multi-ZIP ingestion for ${zipCodes.length} ZIP codes: ${zipCodes.join(', ')}`);
+  
+  const startTime = Date.now();
+  const stats: MultiZipIngestionStats = {
+    totalFromSnowflake: 0,
+    propertiesSaved: 0,
+    propertiesUpdated: 0,
+    errors: 0,
+    durationMs: 0,
+    zipCodeStats: {},
+  };
+  
+  for (const zipCode of zipCodes) {
+    console.log(`\n[Ingestion] --- Processing ZIP ${zipCode} ---`);
+    const zipStats = await runIngestion(zipCode, limitPerZip);
+    
+    stats.totalFromSnowflake += zipStats.totalFromSnowflake;
+    stats.propertiesSaved += zipStats.propertiesSaved;
+    stats.propertiesUpdated += zipStats.propertiesUpdated;
+    stats.errors += zipStats.errors;
+    stats.zipCodeStats[zipCode] = zipStats;
+  }
+  
+  stats.durationMs = Date.now() - startTime;
+  console.log(`\n[Ingestion] Multi-ZIP ingestion complete in ${Math.round(stats.durationMs / 1000)}s`);
+  console.log(`[Ingestion] Total: ${stats.propertiesSaved} new, ${stats.propertiesUpdated} updated, ${stats.errors} errors across ${zipCodes.length} ZIPs`);
+  
+  return stats;
+}

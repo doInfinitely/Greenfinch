@@ -39,4 +39,6 @@ export const CONCURRENCY = {
   PROPERTIES: 20,       // Concurrent property enrichments
 };
 
-export const MVP_ZIP_CODE = process.env.MVP_ZIP || '75225';
+const mvpZipEnv = process.env.MVP_ZIP || '75225';
+export const MVP_ZIP_CODES = mvpZipEnv.split(',').map(z => z.trim()).filter(z => z.length > 0);
+export const MVP_ZIP_CODE = MVP_ZIP_CODES[0];
