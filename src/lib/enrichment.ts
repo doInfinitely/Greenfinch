@@ -324,6 +324,13 @@ export interface EnrichedContact {
   phone: string | null;
   normalizedPhone: string | null;
   phoneConfidence: number | null;
+  phoneLabel: 'direct_work' | 'office' | 'personal' | 'mobile' | null;
+  phoneSource: 'ai' | 'enrichment' | null;
+  aiPhone: string | null;
+  aiPhoneLabel: 'direct_work' | 'office' | 'personal' | 'mobile' | null;
+  aiPhoneConfidence: number | null;
+  enrichmentPhoneWork: string | null;
+  enrichmentPhonePersonal: string | null;
   title: string | null;
   titleConfidence: number | null;
   companyDomain: string | null;
@@ -974,6 +981,10 @@ function processEnrichmentResponse(
         (c.email_confidence && c.email_confidence < CONFIDENCE.MEDIUM) ||
         (c.phone_confidence && c.phone_confidence < CONFIDENCE.MEDIUM);
       
+      const aiPhone = c.phone || null;
+      const aiPhoneLabel = c.phone_label || null;
+      const aiPhoneConfidence = c.phone_confidence || null;
+      
       const contact: EnrichedContact = {
         id: generateContactId({
           email: c.email,
@@ -989,9 +1000,16 @@ function processEnrichmentResponse(
         emailConfidence: c.email_confidence || null,
         emailSource: c.email ? 'ai_discovered' : null,
         emailValidated: false,
-        phone: c.phone || null,
-        normalizedPhone: c.phone ? normalizePhone(c.phone) : null,
-        phoneConfidence: c.phone_confidence || null,
+        phone: aiPhone,
+        normalizedPhone: aiPhone ? normalizePhone(aiPhone) : null,
+        phoneConfidence: aiPhoneConfidence,
+        phoneLabel: aiPhoneLabel,
+        phoneSource: aiPhone ? 'ai' : null,
+        aiPhone,
+        aiPhoneLabel,
+        aiPhoneConfidence,
+        enrichmentPhoneWork: null,
+        enrichmentPhonePersonal: null,
         title: c.title || null,
         titleConfidence: c.title_confidence || null,
         companyDomain: c.company_domain || null,
@@ -1484,33 +1502,45 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
     
     // Map contacts to legacy format with required properties
     // Pass through AI-discovered emails for validation
-    const enrichedContacts: EnrichedContact[] = (contactsData?.contacts || []).map((c, i) => ({
-      id: uuidv5(`${aggregatedProperty.propertyKey}-contact-${c.name}-${i}`, '6ba7b810-9dad-11d1-80b4-00c04fd430c8'),
-      fullName: c.name,
-      normalizedName: c.name.toLowerCase().replace(/[^a-z\s]/g, '').trim(),
-      nameConfidence: c.roleConfidence,
-      email: c.email || null,
-      normalizedEmail: c.email ? c.email.toLowerCase().trim() : null,
-      emailConfidence: c.email ? 0.7 : null,
-      emailSource: c.emailSource || null,
-      emailValidated: false,
-      phone: null,
-      normalizedPhone: null,
-      phoneConfidence: null,
-      linkedinUrl: null,
-      linkedinConfidence: null,
-      title: c.title,
-      titleConfidence: c.roleConfidence,
-      employerName: c.company,
-      companyDomain: c.companyDomain,
-      location: `${aggregatedProperty.city}, ${aggregatedProperty.state || 'TX'}`,
-      role: c.role || 'other',
-      roleConfidence: c.roleConfidence,
-      contactRationale: focusedResult.contacts?.summary || null,
-      source: 'focused_enrichment',
-      needsReview: false,
-      reviewReason: null,
-    }));
+    const enrichedContacts: EnrichedContact[] = (contactsData?.contacts || []).map((c, i) => {
+      const aiPhone = (c as any).phone || null;
+      const aiPhoneLabel = (c as any).phoneLabel || (c as any).phone_label || null;
+      const aiPhoneConfidence = (c as any).phoneConfidence || (c as any).phone_confidence || null;
+      return {
+        id: uuidv5(`${aggregatedProperty.propertyKey}-contact-${c.name}-${i}`, '6ba7b810-9dad-11d1-80b4-00c04fd430c8'),
+        fullName: c.name,
+        normalizedName: c.name.toLowerCase().replace(/[^a-z\s]/g, '').trim(),
+        nameConfidence: c.roleConfidence,
+        email: c.email || null,
+        normalizedEmail: c.email ? c.email.toLowerCase().trim() : null,
+        emailConfidence: c.email ? 0.7 : null,
+        emailSource: c.emailSource || null,
+        emailValidated: false,
+        phone: aiPhone,
+        normalizedPhone: aiPhone ? aiPhone.replace(/[^0-9]/g, '') : null,
+        phoneConfidence: aiPhoneConfidence,
+        phoneLabel: aiPhoneLabel,
+        phoneSource: aiPhone ? 'ai' : null,
+        aiPhone,
+        aiPhoneLabel,
+        aiPhoneConfidence,
+        enrichmentPhoneWork: null,
+        enrichmentPhonePersonal: null,
+        linkedinUrl: null,
+        linkedinConfidence: null,
+        title: c.title,
+        titleConfidence: c.roleConfidence,
+        employerName: c.company,
+        companyDomain: c.companyDomain,
+        location: `${aggregatedProperty.city}, ${aggregatedProperty.state || 'TX'}`,
+        role: c.role || 'other',
+        roleConfidence: c.roleConfidence,
+        contactRationale: focusedResult.contacts?.summary || null,
+        source: 'focused_enrichment',
+        needsReview: false,
+        reviewReason: null,
+      };
+    });
     
     // Map organizations with required properties
     const enrichedOrgs: EnrichedOrganization[] = (contactsData?.organizations || []).map((o, i) => ({
@@ -1768,6 +1798,13 @@ export async function storeEnrichmentResults(
           phone: contact.phone,
           normalizedPhone: contact.normalizedPhone,
           phoneConfidence: contact.phoneConfidence,
+          phoneLabel: contact.phoneLabel,
+          phoneSource: contact.phoneSource,
+          aiPhone: contact.aiPhone,
+          aiPhoneLabel: contact.aiPhoneLabel,
+          aiPhoneConfidence: contact.aiPhoneConfidence,
+          enrichmentPhoneWork: contact.enrichmentPhoneWork,
+          enrichmentPhonePersonal: contact.enrichmentPhonePersonal,
           title: contact.title,
           titleConfidence: contact.titleConfidence,
           companyDomain: contact.companyDomain,
@@ -1794,6 +1831,13 @@ export async function storeEnrichmentResults(
           phone: contact.phone,
           normalizedPhone: contact.normalizedPhone,
           phoneConfidence: contact.phoneConfidence,
+          phoneLabel: contact.phoneLabel,
+          phoneSource: contact.phoneSource,
+          aiPhone: contact.aiPhone,
+          aiPhoneLabel: contact.aiPhoneLabel,
+          aiPhoneConfidence: contact.aiPhoneConfidence,
+          enrichmentPhoneWork: contact.enrichmentPhoneWork,
+          enrichmentPhonePersonal: contact.enrichmentPhonePersonal,
           title: contact.title,
           titleConfidence: contact.titleConfidence,
           companyDomain: contact.companyDomain,
