@@ -199,6 +199,15 @@ export const contacts = pgTable('contacts', {
   phone: text('phone'),
   normalizedPhone: text('normalized_phone'),
   phoneConfidence: real('phone_confidence'),
+  phoneLabel: text('phone_label'),
+  phoneSource: text('phone_source'),
+  
+  aiPhone: text('ai_phone'),
+  aiPhoneLabel: text('ai_phone_label'),
+  aiPhoneConfidence: real('ai_phone_confidence'),
+  
+  enrichmentPhoneWork: text('enrichment_phone_work'),
+  enrichmentPhonePersonal: text('enrichment_phone_personal'),
   
   title: text('title'),
   titleConfidence: real('title_confidence'),
