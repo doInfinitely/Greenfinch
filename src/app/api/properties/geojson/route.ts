@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
         lon: properties.lon,
         regridOwner: properties.regridOwner,
         commonName: properties.commonName,
+        dcadBizName: properties.dcadBizName,
         assetCategory: properties.assetCategory,
         assetSubcategory: properties.assetSubcategory,
         operationalStatus: properties.operationalStatus,
@@ -60,6 +61,7 @@ export async function GET(request: NextRequest) {
       .map(p => {
         const address = p.regridAddress || p.validatedAddress || 'No Address';
         const isEnriched = !!p.lastEnrichedAt;
+        const displayName = p.commonName || p.dcadBizName || '';
 
         return {
           type: 'Feature' as const,
@@ -73,7 +75,7 @@ export async function GET(request: NextRequest) {
             city: p.city || '',
             zip: p.zip || '',
             primaryOwner: p.regridOwner || '',
-            commonName: p.commonName || '',
+            commonName: displayName,
             category: p.assetCategory || '',
             subcategory: p.assetSubcategory || '',
             propertyClass: p.propertyClass || '',
