@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertTriangle, Flag, Check, X, ExternalLink, Camera } from 'lucide-react';
+import { AlertTriangle, Flag, Check, X, ExternalLink } from 'lucide-react';
 import Header from '@/components/Header';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -143,7 +143,6 @@ export default function ContactDetailPage() {
   const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const [isLoadingPhoto, setIsLoadingPhoto] = useState(false);
-  const [photoFetchError, setPhotoFetchError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!contactId) return;
@@ -173,21 +172,54 @@ export default function ContactDetailPage() {
     fetchContact();
   }, [contactId]);
 
-  // Set profile photo from cached contact data (no auto-fetch - user must click to fetch)
+  // Auto-fetch profile photo if contact has LinkedIn URL but no photo
   useEffect(() => {
+    let isMounted = true;
+    
     if (!contact) {
       setProfilePhotoUrl(null);
       setIsLoadingPhoto(false);
-      setPhotoFetchError(null);
       return;
     }
     
-    // Only use cached photo from the database
+    // Use cached photo from the database if available
     if (contact.photoUrl) {
       setProfilePhotoUrl(contact.photoUrl);
-      setPhotoFetchError(null);
+      setIsLoadingPhoto(false);
+      return;
     }
-  }, [contact?.id, contact?.photoUrl]);
+    
+    // Auto-fetch if we have a LinkedIn URL but no photo, and not already loading
+    if (contact.linkedinUrl && !contact.photoUrl && !isLoadingPhoto) {
+      setIsLoadingPhoto(true);
+      
+      fetch(`/api/contacts/${contact.id}/profile-photo`)
+        .then(res => res.json())
+        .then(data => {
+          if (!isMounted) return;
+          if (data.success && data.url) {
+            setProfilePhotoUrl(data.url);
+            // Also update local contact state so UI reflects the change
+            setContact(prev => prev ? { ...prev, photoUrl: data.url } : null);
+          }
+          // If no photo available, the avatar fallback will show initials
+        })
+        .catch(err => {
+          if (!isMounted) return;
+          console.error('Failed to auto-fetch profile photo:', err);
+          // Silent failure - avatar fallback will show initials
+        })
+        .finally(() => {
+          if (isMounted) {
+            setIsLoadingPhoto(false);
+          }
+        });
+    }
+    
+    return () => {
+      isMounted = false;
+    };
+  }, [contact?.id, contact?.photoUrl, contact?.linkedinUrl]);
 
   const handleFindLinkedIn = async () => {
     if (!contact) return;
@@ -415,40 +447,6 @@ export default function ContactDetailPage() {
                     </>
                   )}
                 </Avatar>
-                {contact.linkedinUrl && !profilePhotoUrl && !isLoadingPhoto && (
-                  <Button
-                    size="icon"
-                    variant="outline"
-                    onClick={async () => {
-                      setIsLoadingPhoto(true);
-                      setPhotoFetchError(null);
-                      try {
-                        const response = await fetch(`/api/contacts/${contact.id}/profile-photo`, { method: 'POST' });
-                        const data = await response.json();
-                        if (data.success && data.url) {
-                          setProfilePhotoUrl(data.url);
-                        } else {
-                          setPhotoFetchError(data.error || 'Photo not available');
-                        }
-                      } catch (err) {
-                        console.error('Failed to fetch profile photo:', err);
-                        setPhotoFetchError('Failed to fetch photo');
-                      } finally {
-                        setIsLoadingPhoto(false);
-                      }
-                    }}
-                    className="absolute -bottom-1 -right-1 rounded-full shadow-md"
-                    title="Fetch profile photo from LinkedIn"
-                    data-testid="button-fetch-photo"
-                  >
-                    <Camera className="h-4 w-4" />
-                  </Button>
-                )}
-                {photoFetchError && (
-                  <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs text-red-500" data-testid="photo-fetch-error">
-                    {photoFetchError}
-                  </div>
-                )}
               </div>
               
               <div>

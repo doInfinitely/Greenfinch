@@ -7,6 +7,7 @@ import type { AggregatedProperty } from "./snowflake";
 import { findEmail } from "./hunter";
 import { validateEmail } from "./neverbounce";
 import { findContainingPlace } from "./google-places";
+import { getProfilePicture } from "./enrichlayer";
 import pLimit from "p-limit";
 import { CONCURRENCY } from "./constants";
 import { createRequire } from "module";
@@ -1902,6 +1903,30 @@ export async function storeEnrichmentResults(
         .onConflictDoNothing()
         .returning({ id: contacts.id });
       contactId = inserted?.id || contact.id;
+      
+      // Auto-fetch LinkedIn profile photo if we have a LinkedIn URL
+      if (contact.linkedinUrl && contactId) {
+        // Fetch photo in background (don't block enrichment flow)
+        getProfilePicture(contact.linkedinUrl).then(async (photoResult) => {
+          if (photoResult.success && photoResult.url) {
+            try {
+              await db.update(contacts)
+                .set({ 
+                  photoUrl: photoResult.url,
+                  updatedAt: new Date()
+                })
+                .where(eq(contacts.id, contactId));
+              console.log(`[Enrichment] Auto-fetched profile photo for ${contact.fullName}`);
+            } catch (err) {
+              console.error(`[Enrichment] Failed to save profile photo for ${contact.fullName}:`, err);
+            }
+          } else {
+            console.log(`[Enrichment] No profile photo found for ${contact.fullName} (${photoResult.error || 'unknown'})`);
+          }
+        }).catch(err => {
+          console.error(`[Enrichment] Error fetching profile photo for ${contact.fullName}:`, err);
+        });
+      }
     }
     contactIds.push(contactId);
 
