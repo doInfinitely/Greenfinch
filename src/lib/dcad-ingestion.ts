@@ -1,6 +1,6 @@
 import { db } from './db';
-import { properties } from './schema';
-import { eq } from 'drizzle-orm';
+import { properties, parcelToProperty } from './schema';
+import { eq, sql } from 'drizzle-orm';
 import { normalizeAddress, normalizeOwnerName, normalizeCity } from './normalization';
 import { INCLUDED_SPTD_CODES } from './property-classifications';
 import { executeQuery } from './snowflake';
@@ -670,15 +670,29 @@ export async function upsertAggregatedPropertyToPostgres(
       .update(properties)
       .set(propertyData)
       .where(eq(properties.propertyKey, propertyKey));
-    return { created: false };
   } else {
     await db.insert(properties).values({
       ...propertyData,
       createdAt: new Date(),
       isActive: true,
     });
-    return { created: true };
   }
+
+  if (prop.llUuid) {
+    const mappedPropertyKey = isParentProperty ? propertyKey : (parentPropertyKey || propertyKey);
+    await db
+      .insert(parcelToProperty)
+      .values({
+        llUuid: prop.llUuid,
+        propertyKey: mappedPropertyKey,
+      })
+      .onConflictDoUpdate({
+        target: parcelToProperty.llUuid,
+        set: { propertyKey: mappedPropertyKey },
+      });
+  }
+
+  return { created: existingProperty.length === 0 };
 }
 
 export async function upsertPropertyToPostgres(

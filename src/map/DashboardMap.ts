@@ -363,11 +363,14 @@ export class DashboardMap {
       }
 
       const props = feature.properties || {};
-      const address = props.address || 'Unknown Address';
+      const llUuid = props.ll_uuid || featureId?.toString();
       const center = e.lngLat;
 
-      const propertyInfo = this.findPropertyByLocation(center.lng, center.lat);
+      const propertyInfo = llUuid 
+        ? this.findPropertyByLlUuid(llUuid) 
+        : this.findPropertyByLocation(center.lng, center.lat);
       const commonName = propertyInfo?.commonName;
+      const address = propertyInfo ? (this.getPropertyAddress(propertyInfo.propertyKey) || props.address || 'Unknown Address') : (props.address || 'Unknown Address');
 
       let popupContent = `<div style="font-size: 12px; max-width: 220px;">`;
       if (commonName) {
@@ -467,6 +470,16 @@ export class DashboardMap {
             commonName: props?.commonName || null,
           };
         }
+      }
+    }
+    return null;
+  }
+
+  private getPropertyAddress(propertyKey: string): string | null {
+    for (const feature of this.currentData.features) {
+      const props = feature.properties as any;
+      if (props?.propertyKey === propertyKey) {
+        return props?.address || null;
       }
     }
     return null;
