@@ -154,13 +154,6 @@ const ROLE_COLORS: Record<string, string> = {
   other: 'bg-gray-100 text-gray-700',
 };
 
-const ORG_TYPE_COLORS: Record<string, string> = {
-  owner: 'bg-purple-100 text-purple-700',
-  management: 'bg-blue-100 text-blue-700',
-  tenant: 'bg-green-100 text-green-700',
-  developer: 'bg-orange-100 text-orange-700',
-  other: 'bg-gray-100 text-gray-700',
-};
 
 // Low confidence marker - only shows for items under 70% confidence
 function LowConfidenceMarker({ confidence }: { confidence: number | null | undefined }) {
@@ -1341,17 +1334,23 @@ export default function PropertyDetailPage() {
                     >
                       <div className="flex items-start justify-between mb-2">
                         <p className="font-medium text-gray-900">{org.name}</p>
-                        <div className="flex items-center gap-2">
-                          {org.orgType && (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ORG_TYPE_COLORS[org.orgType] || ORG_TYPE_COLORS.other}`}>
-                              {org.orgType}
-                            </span>
-                          )}
-                          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                          </svg>
-                        </div>
+                        <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
                       </div>
+                      {/* Role badges using same colors as contacts */}
+                      {(org.roles?.length || org.role) && (
+                        <div className="flex flex-wrap gap-1 mb-2">
+                          {(org.roles || [org.role]).filter(Boolean).map((role, idx) => (
+                            <span 
+                              key={idx}
+                              className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[role] || ROLE_COLORS.other}`}
+                            >
+                              {ROLE_LABELS[role] || role}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                       {org.domain && (
                         <span 
                           onClick={(e) => {
@@ -1362,9 +1361,6 @@ export default function PropertyDetailPage() {
                         >
                           {org.domain}
                         </span>
-                      )}
-                      {org.role && (
-                        <p className="text-sm text-gray-500 mt-1">{org.role}</p>
                       )}
                     </div>
                   ))}
