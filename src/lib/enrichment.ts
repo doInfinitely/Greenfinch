@@ -996,7 +996,7 @@ function processEnrichmentResponse(
         fullName: c.full_name,
         normalizedName: normalizeName(c.full_name),
         nameConfidence: c.name_confidence,
-        email: c.email || null,
+        email: c.email ? normalizeEmail(c.email) : null,
         normalizedEmail: c.email ? normalizeEmail(c.email) : null,
         emailConfidence: c.email_confidence || null,
         emailSource: c.email ? 'ai_discovered' : null,
@@ -1144,7 +1144,7 @@ export async function enrichContactsWithEmail(contacts: EnrichedContact[]): Prom
           console.log(`[Enrichment] Email validated as ${validationResult.status}`);
           enrichedContacts.push({
             ...contact,
-            email: findResult.email,
+            email: findResult.email.toLowerCase().trim(),
             normalizedEmail: findResult.email.toLowerCase().trim(),
             emailConfidence: validationResult.confidence,
             emailSource: 'hunter',
@@ -1359,7 +1359,7 @@ export async function validateHighPriorityContacts(contacts: EnrichedContact[]):
               
               if (findResult.email && findResult.confidence > 80) {
                 console.log(`[Enrichment] Found email ${findResult.email} for high-priority contact`);
-                updatedContact.email = findResult.email;
+                updatedContact.email = findResult.email.toLowerCase().trim();
                 updatedContact.normalizedEmail = findResult.email.toLowerCase().trim();
                 updatedContact.emailConfidence = findResult.confidence / 100;
               }
@@ -1555,7 +1555,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
         fullName: c.name,
         normalizedName: c.name.toLowerCase().replace(/[^a-z\s]/g, '').trim(),
         nameConfidence: c.roleConfidence,
-        email: c.email || null,
+        email: c.email ? c.email.toLowerCase().trim() : null,
         normalizedEmail: c.email ? c.email.toLowerCase().trim() : null,
         emailConfidence: c.email ? 0.7 : null,
         emailSource: c.emailSource || null,
