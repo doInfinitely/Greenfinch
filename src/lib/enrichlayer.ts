@@ -416,3 +416,74 @@ export async function lookupWorkEmail(linkedinUrl: string, options?: {
     return { success: false, email: null, status: null, error: error instanceof Error ? error.message : 'Unknown error' };
   }
 }
+
+export interface ProfilePictureResult {
+  success: boolean;
+  url?: string;
+  error?: string;
+}
+
+/**
+ * Fetch a person's profile picture using their LinkedIn URL.
+ * Uses the dedicated Person Profile Picture endpoint which costs 0 credits.
+ */
+export async function getProfilePicture(linkedinUrl: string): Promise<ProfilePictureResult> {
+  if (!ENRICHLAYER_API_KEY) {
+    console.error('[EnrichLayer] API key not configured');
+    return { success: false, error: 'EnrichLayer API key not configured' };
+  }
+
+  if (!linkedinUrl) {
+    return { success: false, error: 'LinkedIn URL required' };
+  }
+
+  try {
+    await waitForRateLimit();
+    
+    const params = new URLSearchParams();
+    params.append('linkedin_profile_url', linkedinUrl);
+
+    const url = `${ENRICHLAYER_BASE_URL}/person/profile-pic?${params.toString()}`;
+    console.log(`[EnrichLayer] Fetching profile picture for: ${linkedinUrl}`);
+
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${ENRICHLAYER_API_KEY}`,
+        'Accept': 'application/json',
+      },
+    });
+
+    if (response.status === 404) {
+      console.log(`[EnrichLayer] Profile picture not found for: ${linkedinUrl}`);
+      return { success: false, error: 'Profile picture not found' };
+    }
+
+    if (response.status === 429) {
+      console.warn('[EnrichLayer] Rate limited');
+      return { success: false, error: 'Rate limited' };
+    }
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[EnrichLayer] API error: ${response.status} ${errorText}`);
+      return { success: false, error: `API error: ${response.status}` };
+    }
+
+    const data = await response.json();
+    console.log('[EnrichLayer] Profile picture response:', JSON.stringify(data));
+
+    // The endpoint returns { tmp_profile_pic_url: "..." }
+    const pictureUrl = data.tmp_profile_pic_url || data.profile_pic_url || data.url;
+    
+    if (pictureUrl) {
+      console.log(`[EnrichLayer] Successfully fetched profile picture`);
+      return { success: true, url: pictureUrl };
+    }
+
+    return { success: false, error: 'No profile picture URL in response' };
+  } catch (error) {
+    console.error('[EnrichLayer] Error fetching profile picture:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+  }
+}

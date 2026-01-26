@@ -3,8 +3,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertTriangle, Flag, Check, X, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Flag, Check, X, ExternalLink, Camera } from 'lucide-react';
 import Header from '@/components/Header';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Button } from '@/components/ui/button';
 
 interface LinkedInSearchResult {
   name: string;
@@ -63,6 +65,7 @@ interface Contact {
   source: string | null;
   needsReview: boolean | null;
   reviewReason: string | null;
+  photoUrl: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -138,6 +141,8 @@ export default function ContactDetailPage() {
   const [selectingAlternative, setSelectingAlternative] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
   const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
+  const [isLoadingPhoto, setIsLoadingPhoto] = useState(false);
 
   useEffect(() => {
     if (!contactId) return;
@@ -166,6 +171,20 @@ export default function ContactDetailPage() {
 
     fetchContact();
   }, [contactId]);
+
+  // Set profile photo from cached contact data (no auto-fetch - user must click to fetch)
+  useEffect(() => {
+    if (!contact) {
+      setProfilePhotoUrl(null);
+      setIsLoadingPhoto(false);
+      return;
+    }
+    
+    // Only use cached photo from the database
+    if (contact.photoUrl) {
+      setProfilePhotoUrl(contact.photoUrl);
+    }
+  }, [contact?.id, contact?.photoUrl]);
 
   const handleFindLinkedIn = async () => {
     if (!contact) return;
@@ -367,21 +386,75 @@ export default function ContactDetailPage() {
           </button>
           
           <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-bold text-gray-900">{contact.fullName || 'Unknown Contact'}</h1>
-                {contact.contactType === 'general' && (
-                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
-                    Office Line
-                  </span>
+            <div className="flex items-start gap-4">
+              {/* Profile Photo Avatar */}
+              <div className="relative flex-shrink-0" data-testid="contact-avatar-container">
+                <Avatar className="w-20 h-20" data-testid="contact-avatar">
+                  {isLoadingPhoto ? (
+                    <AvatarFallback className="bg-muted" data-testid="avatar-loading">
+                      <div className="w-6 h-6 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin"></div>
+                    </AvatarFallback>
+                  ) : (
+                    <>
+                      {profilePhotoUrl && (
+                        <AvatarImage 
+                          src={profilePhotoUrl} 
+                          alt={contact.fullName || 'Contact'}
+                          onError={() => setProfilePhotoUrl(null)}
+                          data-testid="avatar-image"
+                        />
+                      )}
+                      <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-semibold" data-testid="avatar-fallback">
+                        {contact.fullName
+                          ? contact.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
+                          : '?'}
+                      </AvatarFallback>
+                    </>
+                  )}
+                </Avatar>
+                {contact.linkedinUrl && !profilePhotoUrl && !isLoadingPhoto && (
+                  <Button
+                    size="icon"
+                    variant="outline"
+                    onClick={async () => {
+                      setIsLoadingPhoto(true);
+                      try {
+                        const response = await fetch(`/api/contacts/${contact.id}/profile-photo`, { method: 'POST' });
+                        const data = await response.json();
+                        if (data.success && data.url) {
+                          setProfilePhotoUrl(data.url);
+                        }
+                      } catch (err) {
+                        console.error('Failed to fetch profile photo:', err);
+                      } finally {
+                        setIsLoadingPhoto(false);
+                      }
+                    }}
+                    className="absolute -bottom-1 -right-1 rounded-full shadow-md"
+                    title="Fetch profile photo from LinkedIn"
+                    data-testid="button-fetch-photo"
+                  >
+                    <Camera className="h-4 w-4" />
+                  </Button>
                 )}
               </div>
-              {contact.title && (
-                <p className="text-lg text-gray-600 mt-1">{contact.title}</p>
-              )}
-              {contact.employerName && (
-                <p className="text-gray-500">{contact.employerName}</p>
-              )}
+              
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold text-gray-900">{contact.fullName || 'Unknown Contact'}</h1>
+                  {contact.contactType === 'general' && (
+                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
+                      Office Line
+                    </span>
+                  )}
+                </div>
+                {contact.title && (
+                  <p className="text-lg text-gray-600 mt-1">{contact.title}</p>
+                )}
+                {contact.employerName && (
+                  <p className="text-gray-500">{contact.employerName}</p>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <button
