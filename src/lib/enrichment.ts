@@ -559,13 +559,29 @@ ${categoryList}
 
 **Target**: 5-10 contacts maximum. Quality over quantity.
 
-### CRITICAL: Do NOT Guess Contact Details
+### Contact Detail Rules
 
 **ALWAYS set these fields to null** - they will be enriched later via a dedicated data service:
 - \`email\`: ALWAYS null (do not guess or infer email addresses)
-- \`phone\`: ALWAYS null (do not guess or infer phone numbers)  
 - \`linkedin_url\`: ALWAYS null (do not guess or construct LinkedIn URLs)
-- \`email_confidence\`, \`phone_confidence\`, \`linkedin_confidence\`: ALWAYS null
+- \`email_confidence\`, \`linkedin_confidence\`: ALWAYS null
+
+**Phone Numbers - CAPTURE when found in reliable sources**:
+- \`phone\`: Capture phone numbers ONLY if found in official/reliable sources (company websites, property listings, business directories)
+- \`phone_label\`: Classify as one of: "direct_work" (direct line), "office" (general office/company line), "personal", "mobile"
+- \`phone_confidence\`: 0.0-1.0 based on source reliability
+
+**Phone Number Priority (highest to lowest)**:
+1. Direct work line for this person at this property
+2. Direct work line for this person at their company
+3. Property office/leasing office line
+4. General company office line
+5. Personal/mobile (least preferred for business context)
+
+**DO NOT include phone numbers that are**:
+- Clearly outdated (>2 years old)
+- Personal cell phones without business context
+- Main corporate switchboard numbers for large companies
 
 **DO capture these fields** from your research:
 - \`full_name\`: The person's full name
@@ -575,7 +591,7 @@ ${categoryList}
 - \`role\`: Their relationship to THIS property
 - \`contact_rationale\`: Why they are relevant to this property
 
-The contact information (email, phone, LinkedIn) will be populated by a separate enrichment service that uses verified data sources. Your job is to identify the RIGHT people with accurate names, titles, and company affiliations.
+Email and LinkedIn will be populated by a separate enrichment service. Your job is to identify the RIGHT people with accurate names, titles, company affiliations, and phone numbers when available.
 
 ### Source Freshness Requirements
 
@@ -694,8 +710,9 @@ Return ONLY valid JSON matching this structure:
       
       "email": null,
       "email_confidence": null,
-      "phone": null, 
-      "phone_confidence": null,
+      "phone": "+1-555-123-4567 or null if not found",
+      "phone_label": "direct_work | office | personal | mobile | null",
+      "phone_confidence": 0.0-1.0,
       "linkedin_url": null,
       "linkedin_confidence": null,
       
