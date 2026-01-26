@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import type { MapBounds } from '@/map/DashboardMap';
 import type { MapCanvasHandle } from '@/map/MapCanvas';
-import PropertyFilters, { FilterState } from '@/components/PropertyFilters';
+import PropertyFilters, { FilterState, emptyFilters } from '@/components/PropertyFilters';
 import MapSearchBar from '@/components/MapSearchBar';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
@@ -72,7 +72,7 @@ export default function MapPage() {
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 32.8639, lon: -96.7784 });
   const [isLoading, setIsLoading] = useState(true);
-  const [filters, setFilters] = useState<FilterState>({ minLotAcres: null, categories: [] });
+  const [filters, setFilters] = useState<FilterState>(emptyFilters);
 
   useEffect(() => {
     Promise.all([

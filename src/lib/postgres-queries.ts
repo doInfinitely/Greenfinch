@@ -28,6 +28,7 @@ export interface PropertyResult {
   parentPropertyKey: string | null;
   constituentAccountNums: string[] | null;
   constituentCount: number;
+  sourceLlUuid: string | null;
 }
 
 function formatPropertyResult(row: typeof properties.$inferSelect): PropertyResult {
@@ -85,6 +86,7 @@ function formatPropertyResult(row: typeof properties.$inferSelect): PropertyResu
     parentPropertyKey: row.parentPropertyKey,
     constituentAccountNums: row.constituentAccountNums as string[] | null,
     constituentCount: row.constituentCount || 0,
+    sourceLlUuid: row.sourceLlUuid,
   };
 }
 
