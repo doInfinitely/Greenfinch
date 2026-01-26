@@ -66,6 +66,8 @@ async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedP
     // Include DCAD data for enrichment context
     dcad: prop.dcadAccountNum ? {
       parcelId: prop.propertyKey,
+      gisParcelId: prop.dcadGisParcelId || null,
+      sptdCode: prop.dcadSptdCode || null,
       address: prop.regridAddress || '',
       city: prop.city || '',
       zip: prop.zip || '',
