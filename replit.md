@@ -69,20 +69,26 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Snowflake**: For Regrid parcel data access and ingestion.
 - **Mapbox**: Used for interactive mapping, geocoding, and Point of Interest (POI) enrichment.
 - **LeadMagic**: Provides email validation services.
-- **Hunter.io**: Organization domain enrichment (Company Enrichment API) for company data, industry classification, social profiles, logos, and parent company relationships.
-- **EnrichLayer**: LinkedIn profile photo fetching (0 credits per call).
+- **Hunter.io**: Organization domain enrichment (Company Enrichment API) for contact info (emails, phones), social profiles, parent company relationships, tech stack.
+- **EnrichLayer**: LinkedIn-sourced data including profile photos (0 credits), company profiles with industry classification (~6 credits per company).
 - **Clerk Auth**: Handles user authentication with automatic legacy user migration.
 - **Google Gemini**: Utilized for AI-based property enrichment, including contact discovery, beneficial owner identification, and management company detection.
 
-## Organization Domain Enrichment (Hunter.io)
-- **Implementation**: `src/lib/organization-enrichment.ts` and `src/lib/hunter.ts`
+## Organization Domain Enrichment (Hunter.io + EnrichLayer)
+- **Implementation**: `src/lib/organization-enrichment.ts`, `src/lib/hunter.ts`, `src/lib/enrichlayer.ts`
 - **Schema**: Uses Clearbit-compatible schema for future provider flexibility
 - **Trigger**: Automatic enrichment when organizations with domains are created during property enrichment
 - **Manual Trigger**: Organization detail page has "Enrich Company" button for orgs that haven't been enriched
 - **Parent Company Discovery**: Automatically creates and enriches parent and ultimate parent org records
 - **Recursive Enrichment**: Depth-limited to 2 levels to prevent infinite loops
 - **Domain Normalization**: All domains are lowercase and trimmed for consistent matching
-- **Data Stored**: Company name, description, industry (sector/group/industry/subIndustry), employees, revenue estimates, location, social handles (LinkedIn, Twitter, Facebook, Crunchbase), logo URL, parent domains, technology stack, phone numbers, email addresses
+- **Data Sources**:
+  - **EnrichLayer** (LinkedIn-sourced): Industry classification, categories (stored as tags), company name, description, location, logo, founded year, company size
+  - **Hunter.io**: Contact info (phone numbers, emails), social handles (LinkedIn, Twitter, Facebook, Crunchbase), parent/ultimate parent domains, tech stack
+- **Industry Classification**: Uses EnrichLayer for accurate industry data (e.g., "Hospitals and Health Care" vs Hunter.io's misclassified "Air Freight & Logistics"). Hunter.io's industry fields (industryGroup, subIndustry, gicsCode, sicCode, naicsCode) are cleared to null.
+- **EnrichLayer API Endpoints**:
+  - `/api/v2/company/resolve` - Resolves domain to LinkedIn company URL (~1 credit)
+  - `/api/v2/company` - Fetches full company profile with categories (~5 credits)
 - **API Endpoint**: `POST /api/organizations/[id]/enrich` for manual enrichment
 
 ## AI Enrichment Rules
