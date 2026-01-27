@@ -215,11 +215,11 @@ export default function PropertyFilters({
   const activeFilterCount =
     (filters.minLotAcres || filters.maxLotAcres ? 1 : 0) +
     (filters.minNetSqft || filters.maxNetSqft ? 1 : 0) +
-    (filters.categories.length > 0 ? 1 : 0) +
-    (filters.subcategories.length > 0 ? 1 : 0) +
-    (filters.buildingClasses.length > 0 ? 1 : 0) +
-    (filters.acTypes.length > 0 ? 1 : 0) +
-    (filters.heatingTypes.length > 0 ? 1 : 0) +
+    ((filters.categories?.length ?? 0) > 0 ? 1 : 0) +
+    ((filters.subcategories?.length ?? 0) > 0 ? 1 : 0) +
+    ((filters.buildingClasses?.length ?? 0) > 0 ? 1 : 0) +
+    ((filters.acTypes?.length ?? 0) > 0 ? 1 : 0) +
+    ((filters.heatingTypes?.length ?? 0) > 0 ? 1 : 0) +
     (filters.organizationId ? 1 : 0) +
     (filters.contactId ? 1 : 0);
 
@@ -412,7 +412,7 @@ export default function PropertyFilters({
         <SectionHeader 
           id="category" 
           title="Category" 
-          count={filters.categories.length + filters.subcategories.length}
+          count={(filters.categories?.length ?? 0) + (filters.subcategories?.length ?? 0)}
           onClear={() => { handleClearArray('categories'); handleClearArray('subcategories'); }}
         />
         {activeSection === 'category' && (
@@ -421,7 +421,7 @@ export default function PropertyFilters({
               <label key={cat} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 px-1 py-0.5 rounded">
                 <input
                   type="checkbox"
-                  checked={filters.categories.includes(cat)}
+                  checked={filters.categories?.includes(cat) ?? false}
                   onChange={() => handleArrayToggle('categories', cat)}
                   className="w-3.5 h-3.5 text-green-600 rounded"
                   data-testid={`checkbox-category-${cat.toLowerCase().replace(/\s+/g, '-')}`}
@@ -436,7 +436,7 @@ export default function PropertyFilters({
                   <label key={sub} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 px-1 py-0.5 rounded pl-4">
                     <input
                       type="checkbox"
-                      checked={filters.subcategories.includes(sub)}
+                      checked={filters.subcategories?.includes(sub) ?? false}
                       onChange={() => handleArrayToggle('subcategories', sub)}
                       className="w-3.5 h-3.5 text-green-600 rounded"
                       data-testid={`checkbox-subcategory-${sub.toLowerCase().replace(/\s+/g, '-')}`}
@@ -455,7 +455,7 @@ export default function PropertyFilters({
         <SectionHeader 
           id="class" 
           title="Building Class" 
-          count={filters.buildingClasses.length}
+          count={filters.buildingClasses?.length ?? 0}
           onClear={() => handleClearArray('buildingClasses')}
         />
         {activeSection === 'class' && (
@@ -465,7 +465,7 @@ export default function PropertyFilters({
                 key={cls}
                 onClick={() => handleArrayToggle('buildingClasses', cls)}
                 className={`px-3 py-1 text-sm rounded-full border transition-colors ${
-                  filters.buildingClasses.includes(cls)
+                  filters.buildingClasses?.includes(cls)
                     ? 'bg-green-100 border-green-500 text-green-700'
                     : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
                 }`}
@@ -484,7 +484,7 @@ export default function PropertyFilters({
           <SectionHeader 
             id="hvac" 
             title="HVAC" 
-            count={filters.acTypes.length + filters.heatingTypes.length}
+            count={(filters.acTypes?.length ?? 0) + (filters.heatingTypes?.length ?? 0)}
             onClear={() => { handleClearArray('acTypes'); handleClearArray('heatingTypes'); }}
           />
           {activeSection === 'hvac' && (
@@ -498,7 +498,7 @@ export default function PropertyFilters({
                         key={type}
                         onClick={() => handleArrayToggle('acTypes', type)}
                         className={`px-2 py-0.5 text-xs rounded border transition-colors ${
-                          filters.acTypes.includes(type)
+                          filters.acTypes?.includes(type)
                             ? 'bg-blue-100 border-blue-400 text-blue-700'
                             : 'bg-white border-gray-300 text-gray-600'
                         }`}
@@ -519,7 +519,7 @@ export default function PropertyFilters({
                         key={type}
                         onClick={() => handleArrayToggle('heatingTypes', type)}
                         className={`px-2 py-0.5 text-xs rounded border transition-colors ${
-                          filters.heatingTypes.includes(type)
+                          filters.heatingTypes?.includes(type)
                             ? 'bg-orange-100 border-orange-400 text-orange-700'
                             : 'bg-white border-gray-300 text-gray-600'
                         }`}
