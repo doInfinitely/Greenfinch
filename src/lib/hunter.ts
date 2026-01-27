@@ -305,11 +305,12 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnri
   }
   
   try {
+    // Use Companies Find API (Company Enrichment) - correct endpoint
     const response = await pRetry(
       async () => {
         try {
           const res = await axios.get<HunterCompanyEnrichmentResponse>(
-            `${HUNTER_API_BASE}/company-enrichment`,
+            `${HUNTER_API_BASE}/companies/find`,
             {
               params: {
                 domain: domain,
