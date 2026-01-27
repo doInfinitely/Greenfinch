@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import PropertyFilters, { FilterState } from '@/components/PropertyFilters';
+import PropertyFilters, { FilterState, emptyFilters } from '@/components/PropertyFilters';
 
 interface Property {
   propertyKey: string;
@@ -41,7 +41,7 @@ export default function ListPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [filters, setFilters] = useState<FilterState>({ minLotAcres: null, categories: [] });
+  const [filters, setFilters] = useState<FilterState>(emptyFilters);
 
   useEffect(() => {
     const timer = setTimeout(() => {

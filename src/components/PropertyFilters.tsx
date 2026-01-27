@@ -68,7 +68,7 @@ export default function PropertyFilters({
   availableHeatingTypes = [],
 }: PropertyFiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [activeSection, setActiveSection] = useState<string | null>('size');
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['size']));
   const [localMinLotAcres, setLocalMinLotAcres] = useState<string>(
     filters.minLotAcres ? String(filters.minLotAcres) : ''
   );
@@ -223,10 +223,22 @@ export default function PropertyFilters({
     (filters.organizationId ? 1 : 0) +
     (filters.contactId ? 1 : 0);
 
+  const toggleSection = (id: string) => {
+    setOpenSections(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
   const SectionHeader = ({ id, title, count, onClear }: { id: string; title: string; count?: number; onClear?: () => void }) => (
     <div className="flex items-center justify-between py-2">
       <button
-        onClick={() => setActiveSection(activeSection === id ? null : id)}
+        onClick={() => toggleSection(id)}
         className="flex-1 flex items-center justify-between text-sm font-medium text-gray-700 hover:text-gray-900"
         data-testid={`section-${id}`}
       >
@@ -239,7 +251,7 @@ export default function PropertyFilters({
           )}
         </span>
         <svg
-          className={`w-4 h-4 transition-transform ${activeSection === id ? 'rotate-180' : ''}`}
+          className={`w-4 h-4 transition-transform ${openSections.has(id) ? 'rotate-180' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -259,7 +271,7 @@ export default function PropertyFilters({
     </div>
   );
 
-  const FilterContent = () => (
+  const filterContent = (
     <div className="p-4 space-y-2">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-medium text-gray-900">Filter Properties</h3>
@@ -357,7 +369,7 @@ export default function PropertyFilters({
       {/* Size Filters */}
       <div className="border-b border-gray-100 pb-2">
         <SectionHeader id="size" title="Size" count={(filters.minLotAcres || filters.maxLotAcres ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0)} />
-        {activeSection === 'size' && (
+        {openSections.has('size') && (
           <div className="mt-2 space-y-3">
             <div>
               <label className="block text-xs text-gray-600 mb-1">Lot Size (acres)</label>
@@ -415,7 +427,7 @@ export default function PropertyFilters({
           count={(filters.categories?.length ?? 0) + (filters.subcategories?.length ?? 0)}
           onClear={() => { handleClearArray('categories'); handleClearArray('subcategories'); }}
         />
-        {activeSection === 'category' && (
+        {openSections.has('category') && (
           <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
             {availableCategories.map((cat) => (
               <label key={cat} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 px-1 py-0.5 rounded">
@@ -458,7 +470,7 @@ export default function PropertyFilters({
           count={filters.buildingClasses?.length ?? 0}
           onClear={() => handleClearArray('buildingClasses')}
         />
-        {activeSection === 'class' && (
+        {openSections.has('class') && (
           <div className="mt-2 flex flex-wrap gap-2">
             {availableBuildingClasses.map((cls) => (
               <button
@@ -487,7 +499,7 @@ export default function PropertyFilters({
             count={(filters.acTypes?.length ?? 0) + (filters.heatingTypes?.length ?? 0)}
             onClear={() => { handleClearArray('acTypes'); handleClearArray('heatingTypes'); }}
           />
-          {activeSection === 'hvac' && (
+          {openSections.has('hvac') && (
             <div className="mt-2 space-y-3">
               {availableAcTypes.length > 0 && (
                 <div>
@@ -587,14 +599,14 @@ export default function PropertyFilters({
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto">
-                <FilterContent />
+                {filterContent}
               </div>
             </div>
           </div>
 
           {/* Desktop: Dropdown */}
           <div className="hidden md:block absolute top-full left-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[70vh] overflow-y-auto">
-            <FilterContent />
+            {filterContent}
           </div>
         </>
       )}
