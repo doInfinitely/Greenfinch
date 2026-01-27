@@ -133,6 +133,15 @@ export default function OrganizationDetailPage() {
       const response = await fetch(`/api/organizations/${orgId}/enrich`, {
         method: 'POST',
       });
+      
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        if (response.redirected || response.status === 307) {
+          throw new Error('Session expired - please refresh the page');
+        }
+        throw new Error('Server returned an invalid response');
+      }
+      
       const data = await response.json();
       
       if (!response.ok) {
