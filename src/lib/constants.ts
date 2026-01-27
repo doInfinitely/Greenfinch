@@ -28,6 +28,17 @@ export const CONFIDENCE = {
   MANAGEMENT_THRESHOLD: 0.75
 };
 
+/**
+ * GEMINI MODEL CONFIGURATION
+ * 
+ * DO NOT CHANGE THIS MODEL without explicit user approval.
+ * gemini-3-flash-preview with search grounding is the only model that works reliably.
+ * 
+ * If you encounter empty responses, investigate the root cause rather than switching models.
+ * Other models have been tested and failed for this use case.
+ */
+export const GEMINI_MODEL = "gemini-3-flash-preview" as const;
+
 // Concurrency limits for parallel API calls
 // Gemini Flash can handle hundreds of requests per minute
 // SERP API, Hunter, NeverBounce have lower limits

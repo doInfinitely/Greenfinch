@@ -10,7 +10,7 @@ import { findContainingPlace } from "./google-places";
 import { getProfilePicture } from "./enrichlayer";
 import { enrichOrganizationByDomain } from "./organization-enrichment";
 import pLimit from "p-limit";
-import { CONCURRENCY } from "./constants";
+import { CONCURRENCY, GEMINI_MODEL } from "./constants";
 import { createRequire } from "module";
 
 const require = createRequire(import.meta.url);
@@ -2070,7 +2070,7 @@ export async function enrichServiceProvider(
     console.log(`[ServiceProvider Enrichment] Enriching: ${companyName} (${domain})`);
 
     const response = await genai.models.generateContent({
-      model: 'gemini-3-flash-preview',
+      model: GEMINI_MODEL,
       contents: prompt,
     });
 
