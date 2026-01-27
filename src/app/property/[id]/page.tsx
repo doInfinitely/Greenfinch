@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import Header from '@/components/Header';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
 import AddToListModal from '@/components/AddToListModal';
@@ -331,6 +332,7 @@ export default function PropertyDetailPage() {
   // Constituent properties state (for parent properties)
   const [constituentProperties, setConstituentProperties] = useState<ConstituentProperty[]>([]);
   const [parentProperty, setParentProperty] = useState<{ propertyKey: string; commonName: string | null } | null>(null);
+  const [expandedMapType, setExpandedMapType] = useState<'satellite' | 'street' | null>(null);
   
   // Service providers state
   interface PropertyServiceProvider {
@@ -1493,9 +1495,21 @@ export default function PropertyDetailPage() {
                   <p className="text-xs text-gray-500">
                     <span className="font-medium">Map</span> with parcel boundaries
                   </p>
-                  <p className="text-xs text-gray-400">
-                    {property.lat?.toFixed(5)}, {property.lon?.toFixed(5)}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-gray-400">
+                      {property.lat?.toFixed(5)}, {property.lon?.toFixed(5)}
+                    </p>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setExpandedMapType('satellite')}
+                      title="Expand map"
+                      data-testid="button-expand-satellite-map"
+                      className="h-6 w-6"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </Button>
+                  </div>
                 </div>
               </div>
 
@@ -1508,10 +1522,20 @@ export default function PropertyDetailPage() {
                       lon={property.lon}
                     />
                   </div>
-                  <div className="p-2 border-t border-gray-100">
+                  <div className="p-2 border-t border-gray-100 flex items-center justify-between">
                     <p className="text-xs text-gray-500">
                       <span className="font-medium">Street View</span> - drag to explore
                     </p>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => setExpandedMapType('street')}
+                      title="Expand street view"
+                      data-testid="button-expand-street-view"
+                      className="h-6 w-6"
+                    >
+                      <Maximize2 className="w-3.5 h-3.5" />
+                    </Button>
                   </div>
                 </div>
               )}
@@ -1533,6 +1557,66 @@ export default function PropertyDetailPage() {
         isOpen={isEnriching}
         propertyName={enrichedProperty?.commonName || property?.address}
       />
+
+      {expandedMapType && property?.lat && property?.lon && (
+        <div className="fixed inset-0 z-50 overflow-hidden">
+          <div 
+            className="fixed inset-0 bg-black bg-opacity-75 transition-opacity" 
+            onClick={() => setExpandedMapType(null)} 
+          />
+          <div className="fixed inset-4 sm:inset-8 lg:inset-16 flex flex-col bg-white rounded-lg shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-white">
+              <h3 className="text-lg font-semibold text-gray-900">
+                {expandedMapType === 'satellite' ? 'Satellite Map' : 'Street View'}
+              </h3>
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => setExpandedMapType(null)}
+                data-testid="button-close-expanded-map"
+              >
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            <div className="flex-1 relative">
+              {expandedMapType === 'satellite' && mapToken ? (
+                <MapCanvas
+                  accessToken={mapToken}
+                  regridToken={regridToken}
+                  initialCenter={{ lat: property.lat, lon: property.lon }}
+                  initialZoom={17}
+                  properties={[{
+                    type: 'Feature',
+                    geometry: {
+                      type: 'Point',
+                      coordinates: [property.lon, property.lat],
+                    },
+                    properties: {
+                      propertyKey: property.propertyKey,
+                      address: property.address,
+                      commonName: enrichedProperty?.commonName || null,
+                    },
+                  }]}
+                />
+              ) : expandedMapType === 'street' && googleMapsApiKey ? (
+                <StreetView
+                  apiKey={googleMapsApiKey}
+                  lat={property.lat}
+                  lon={property.lon}
+                />
+              ) : null}
+            </div>
+            <div className="p-2 border-t border-gray-100 bg-white">
+              <p className="text-xs text-gray-500 text-center">
+                {expandedMapType === 'satellite' 
+                  ? `${property.lat?.toFixed(5)}, ${property.lon?.toFixed(5)} - Click and drag to pan, scroll to zoom`
+                  : 'Drag to explore - Use controls to reposition view'
+                }
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showFlagDialog && (
         <div className="fixed inset-0 z-50 overflow-y-auto">

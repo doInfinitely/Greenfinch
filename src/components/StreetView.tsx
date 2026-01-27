@@ -77,10 +77,14 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 0 }:
                 position: panoLocation,
                 pov: { heading: computedHeading, pitch },
                 zoom: 1,
-                addressControl: false,
-                showRoadLabels: false,
+                addressControl: true,
+                showRoadLabels: true,
+                linksControl: true,
+                panControl: true,
+                enableCloseButton: false,
                 motionTracking: false,
                 motionTrackingControl: false,
+                fullscreenControl: true,
               });
 
               setStatus('ready');

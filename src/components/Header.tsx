@@ -103,7 +103,7 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
         hasScrolled ? 'shadow-md' : ''
       }`}
     >
-      <div className="max-w-7xl mx-auto flex items-center justify-between">
+      <div className="flex items-center justify-between w-full">
         <div className="flex items-center space-x-4">
           {showBackButton && onBack && (
             <button
