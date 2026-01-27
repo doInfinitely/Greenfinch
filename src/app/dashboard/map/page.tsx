@@ -191,7 +191,7 @@ export default function MapPage() {
                 className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors"
                 data-testid={`property-item-${f.properties.propertyKey}`}
               >
-                {f.properties.enriched && f.properties.commonName ? (
+                {f.properties.commonName ? (
                   <>
                     <p className="font-medium text-gray-900 truncate">{f.properties.commonName}</p>
                     <p className="text-sm text-gray-500 truncate">{f.properties.address}</p>

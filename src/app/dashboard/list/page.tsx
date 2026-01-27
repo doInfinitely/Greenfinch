@@ -71,8 +71,8 @@ export default function ListPage() {
         const lotAcres = (p.lotSqft || 0) / 43560;
         if (lotAcres < filters.minLotAcres) return false;
       }
-      if (filters.categories.length > 0) {
-        if (!p.category || !filters.categories.includes(p.category)) {
+      if ((filters.categories?.length ?? 0) > 0) {
+        if (!p.category || !filters.categories?.includes(p.category)) {
           return false;
         }
       }
@@ -92,7 +92,7 @@ export default function ListPage() {
             <h1 className="text-base md:text-lg font-semibold text-gray-900">
               All Properties <span className="text-green-600 font-normal">({filteredProperties.length})</span>
             </h1>
-            {(filters.minLotAcres || filters.categories.length > 0) && (
+            {(filters.minLotAcres || (filters.categories?.length ?? 0) > 0) && (
               <span className="text-sm text-gray-500">
                 of {properties.length} total
               </span>
@@ -153,7 +153,7 @@ export default function ListPage() {
                       data-testid={`row-property-${p.propertyKey}`}
                     >
                       <td className="px-6 py-4">
-                        {p.enriched && p.commonName ? (
+                        {p.commonName ? (
                           <>
                             <p className="font-medium text-gray-900">{p.commonName}</p>
                             <p className="text-sm text-gray-500">{p.address}</p>
@@ -209,7 +209,7 @@ export default function ListPage() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      {p.enriched && p.commonName ? (
+                      {p.commonName ? (
                         <>
                           <p className="font-medium text-gray-900 truncate">{p.commonName}</p>
                           <p className="text-sm text-gray-500 truncate">{p.address}</p>
