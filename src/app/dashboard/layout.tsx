@@ -1,8 +1,8 @@
 'use client';
 
-import { usePathname } from 'next/navigation';
-import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
 import Header from '@/components/Header';
+import { Map, List } from 'lucide-react';
 
 export default function DashboardLayout({
   children,
@@ -10,41 +10,57 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const isMapView = pathname === '/dashboard/map' || pathname === '/dashboard';
-  const isListView = pathname === '/dashboard/list';
+
+  const handleToggle = () => {
+    if (isMapView) {
+      router.push('/dashboard/list');
+    } else {
+      router.push('/dashboard/map');
+    }
+  };
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
       <Header />
       
-      <div className="bg-white border-b border-gray-200 px-4">
+      <div className="bg-white border-b border-gray-200 px-4 py-2">
         <div className="flex items-center">
-          <Link
-            href="/dashboard/map"
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${
-              isMapView
-                ? 'border-green-600 text-green-700 bg-green-50'
-                : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-            }`}
+          <div 
+            className="inline-flex items-center bg-gray-100 rounded-full p-0.5"
+            role="tablist"
+            data-testid="view-toggle"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-            </svg>
-            Map
-          </Link>
-          <Link
-            href="/dashboard/list"
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium transition-colors border-b-2 ${
-              isListView
-                ? 'border-green-600 text-green-700 bg-green-50'
-                : 'border-transparent text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-            }`}
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
-            </svg>
-            List
-          </Link>
+            <button
+              role="tab"
+              aria-selected={isMapView}
+              onClick={handleToggle}
+              data-testid="toggle-map"
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full transition-all ${
+                isMapView
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Map className="w-4 h-4" />
+              Map
+            </button>
+            <button
+              role="tab"
+              aria-selected={!isMapView}
+              onClick={handleToggle}
+              data-testid="toggle-list"
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full transition-all ${
+                !isMapView
+                  ? 'bg-white text-gray-900 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <List className="w-4 h-4" />
+              List
+            </button>
+          </div>
         </div>
       </div>
 

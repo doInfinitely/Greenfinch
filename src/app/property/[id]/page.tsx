@@ -118,6 +118,14 @@ interface Organization {
   orgType: string | null;
   role: string | null; // Single role for backward compatibility
   roles?: string[]; // Array of roles for multi-role organizations
+  description?: string | null;
+  industry?: string | null;
+  employees?: number | null;
+  employeesRange?: string | null;
+  linkedinHandle?: string | null; // LinkedIn company handle from database
+  city?: string | null;
+  state?: string | null;
+  pdlEnriched?: boolean;
 }
 
 type EnrichmentStatusType = 'not_enriched' | 'pending' | 'completed' | 'failed';
@@ -309,6 +317,7 @@ export default function PropertyDetailPage() {
   const propertyId = params?.id as string;
 
   const [property, setProperty] = useState<Property | null>(null);
+  const [propertyDbId, setPropertyDbId] = useState<string | null>(null);
   const [enrichedProperty, setEnrichedProperty] = useState<EnrichedPropertyData | null>(null);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [organizations, setOrganizations] = useState<Organization[]>([]);
@@ -471,6 +480,7 @@ export default function PropertyDetailPage() {
           // Use pre-aggregated values from properties table (source of truth)
           const lotAcres = prop.lotSqft ? prop.lotSqft / 43560 : 0;
           
+          setPropertyDbId(prop.id);
           setProperty({
             propertyKey: prop.propertyKey,
             address: prop.address || prop.validatedAddress || prop.regridAddress || '',
@@ -996,6 +1006,18 @@ export default function PropertyDetailPage() {
                                   {org.orgType}
                                 </span>
                               )}
+                              {org.industry && (
+                                <span className="inline-block px-2 py-0.5 text-xs rounded bg-emerald-100 text-emerald-700">
+                                  {org.industry}
+                                </span>
+                              )}
+                              {org.employeesRange && (
+                                <span className="inline-block px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700">
+                                  {org.employeesRange} employees
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-2 mt-1">
                               {org.domain && (
                                 <span
                                   onClick={(e) => {
@@ -1007,7 +1029,30 @@ export default function PropertyDetailPage() {
                                   {org.domain}
                                 </span>
                               )}
+                              {org.linkedinHandle && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    const linkedinUrl = org.linkedinHandle!.startsWith('http') 
+                                      ? org.linkedinHandle! 
+                                      : `https://linkedin.com/company/${org.linkedinHandle}`;
+                                    window.open(linkedinUrl, '_blank');
+                                  }}
+                                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                  data-testid={`link-org-linkedin-${org.id}`}
+                                >
+                                  LinkedIn
+                                </span>
+                              )}
+                              {(org.city || org.state) && (
+                                <span className="text-sm text-gray-500">
+                                  {[org.city, org.state].filter(Boolean).join(', ')}
+                                </span>
+                              )}
                             </div>
+                            {org.description && (
+                              <p className="text-sm text-gray-600 mt-2 line-clamp-2">{org.description}</p>
+                            )}
                           </div>
                           <button
                             onClick={(e) => {
@@ -1544,11 +1589,11 @@ export default function PropertyDetailPage() {
         </div>
       </main>
 
-      {property && (
+      {property && propertyDbId && (
         <AddToListModal
           isOpen={showAddToListModal}
           onClose={() => setShowAddToListModal(false)}
-          itemId={propertyId}
+          itemId={propertyDbId}
           itemType="properties"
         />
       )}

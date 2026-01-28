@@ -216,7 +216,7 @@ export class DashboardMap {
           source: 'regrid',
           'source-layer': 'parcels',
           paint: {
-            'fill-color': '#22c55e',
+            'fill-color': '#c5d92e',
             'fill-opacity': [
               'case',
               ['boolean', ['feature-state', 'hover'], false],
@@ -234,7 +234,7 @@ export class DashboardMap {
           source: 'regrid',
           'source-layer': 'parcels',
           paint: {
-            'line-color': '#22c55e',
+            'line-color': '#c5d92e',
             'line-width': 1.5,
           },
         });
@@ -250,7 +250,7 @@ export class DashboardMap {
           source: 'properties',
           filter: ['has', 'point_count'],
           paint: {
-            'circle-color': '#22c55e',
+            'circle-color': '#c5d92e',
             'circle-radius': ['step', ['get', 'point_count'], 24, 50, 32, 200, 42],
           },
         });
@@ -278,7 +278,7 @@ export class DashboardMap {
           source: 'properties',
           filter: ['!', ['has', 'point_count']],
           paint: {
-            'circle-color': '#22c55e',
+            'circle-color': '#c5d92e',
             'circle-radius': 8,
             'circle-stroke-width': 2,
             'circle-stroke-color': '#ffffff',

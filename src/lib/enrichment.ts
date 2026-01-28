@@ -2,13 +2,14 @@ import { GoogleGenAI } from "@google/genai";
 import { v5 as uuidv5 } from "uuid";
 import { db } from "./db";
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from "./schema";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import type { AggregatedProperty } from "./snowflake";
 import { findEmail } from "./hunter";
 import { validateEmail } from "./neverbounce";
 import { findContainingPlace } from "./google-places";
 import { getProfilePicture } from "./enrichlayer";
 import { enrichOrganizationByDomain } from "./organization-enrichment";
+import { enrichPersonPDL, enrichCompanyPDL } from "./pdl";
 import pLimit from "p-limit";
 import { CONCURRENCY, GEMINI_MODEL } from "./constants";
 import { createRequire } from "module";
@@ -355,6 +356,14 @@ export interface EnrichedOrganization {
   domain: string | null;
   orgType: string;
   roles: string[];
+  description?: string;
+  linkedinHandle?: string;
+  industry?: string;
+  employees?: number;
+  employeesRange?: string;
+  city?: string;
+  state?: string;
+  pdlEnriched?: boolean;
 }
 
 export interface EnrichmentSource {
@@ -1172,6 +1181,215 @@ export async function enrichContactsWithEmail(contacts: EnrichedContact[]): Prom
   return enrichedContacts;
 }
 
+// New PDL-based enrichment flow:
+// 1. Check if contact already exists (by email + name)
+// 2. Validate email with NeverBounce
+// 3. If valid → use SERP for LinkedIn → stop
+// 4. If invalid → use PDL for person enrichment with strict matching
+// 5. Compare employer domain from PDL vs AI and flag if mismatch
+export async function enrichContactWithPDL(
+  contact: EnrichedContact,
+  aiDomain: string | null,
+  propertyCity: string
+): Promise<{ contact: EnrichedContact; relationshipConfidence: string; relationshipNote: string | null }> {
+  console.log(`[PDL Enrichment] Processing contact: ${contact.fullName} (email: ${contact.email || 'none'})`);
+  
+  let relationshipConfidence = 'high';
+  let relationshipNote: string | null = null;
+  
+  // Step 1: Check if contact already exists in database
+  if (contact.email) {
+    const normalizedEmail = contact.email.toLowerCase().trim();
+    const [existingContact] = await db
+      .select()
+      .from(contacts)
+      .where(eq(contacts.normalizedEmail, normalizedEmail))
+      .limit(1);
+    
+    if (existingContact) {
+      console.log(`[PDL Enrichment] Contact already exists in database: ${existingContact.fullName}`);
+      return {
+        contact: {
+          ...contact,
+          id: existingContact.id,
+          linkedinUrl: existingContact.linkedinUrl || contact.linkedinUrl,
+          linkedinConfidence: existingContact.linkedinConfidence || contact.linkedinConfidence,
+          title: existingContact.title || contact.title,
+          employerName: existingContact.employerName || contact.employerName,
+          companyDomain: existingContact.companyDomain || contact.companyDomain,
+          emailValidated: true,
+        },
+        relationshipConfidence: 'high',
+        relationshipNote: null,
+      };
+    }
+  }
+  
+  // Step 2: Validate email with NeverBounce if present
+  if (contact.email && !contact.emailValidated) {
+    console.log(`[PDL Enrichment] Validating email: ${contact.email}`);
+    try {
+      const validationResult = await validateEmail(contact.email);
+      
+      if (validationResult.isValid) {
+        console.log(`[PDL Enrichment] Email valid (${validationResult.status}), using SERP for LinkedIn`);
+        
+        // Step 3: Email is valid - use SERP for LinkedIn and stop
+        // LinkedIn lookup will happen in enrichContactsWithLinkedIn
+        return {
+          contact: {
+            ...contact,
+            emailConfidence: validationResult.confidence,
+            emailValidated: true,
+          },
+          relationshipConfidence: 'high',
+          relationshipNote: null,
+        };
+      } else {
+        console.log(`[PDL Enrichment] Email invalid (${validationResult.status}), falling back to PDL`);
+        // Clear invalid email
+        contact = {
+          ...contact,
+          email: null,
+          normalizedEmail: null,
+          emailConfidence: null,
+          emailValidated: false,
+        };
+      }
+    } catch (error) {
+      console.error(`[PDL Enrichment] NeverBounce validation error:`, error);
+      // Continue to PDL fallback
+    }
+  }
+  
+  // Step 4: Email invalid or missing - use PDL for person enrichment
+  // Use companyDomain if available, fall back to aiDomain for strict matching
+  const domainForPDL = contact.companyDomain || aiDomain;
+  if (domainForPDL) {
+    const { firstName, lastName } = parseNameParts(contact.fullName);
+    
+    if (firstName && lastName) {
+      console.log(`[PDL Enrichment] Searching PDL for ${firstName} ${lastName} at ${domainForPDL}`);
+      
+      const pdlResult = await enrichPersonPDL(firstName, lastName, domainForPDL, {
+        location: propertyCity,
+      });
+      
+      if (pdlResult.found) {
+        console.log(`[PDL Enrichment] PDL found person: ${pdlResult.fullName} (confidence: ${pdlResult.confidence})`);
+        
+        // Step 5: Compare employer domain from PDL vs AI
+        const pdlDomain = pdlResult.companyDomain;
+        const expectedDomain = aiDomain || contact.companyDomain;
+        
+        let employerMismatch = false;
+        if (pdlDomain && expectedDomain) {
+          const normPdlDomain = pdlDomain.toLowerCase().replace(/^www\./, '');
+          const normExpectedDomain = expectedDomain.toLowerCase().replace(/^www\./, '');
+          employerMismatch = normPdlDomain !== normExpectedDomain;
+        }
+        
+        if (employerMismatch) {
+          console.log(`[PDL Enrichment] Employer mismatch: PDL says ${pdlDomain}, AI says ${expectedDomain}`);
+          relationshipConfidence = 'low';
+          relationshipNote = `PDL employer (${pdlResult.companyName || pdlDomain}) differs from AI-discovered employer (${contact.employerName || expectedDomain})`;
+        }
+        
+        // Only use PDL data if strict match (first name + last name + domain match)
+        if (pdlResult.domainMatch) {
+          return {
+            contact: {
+              ...contact,
+              email: pdlResult.email || contact.email,
+              normalizedEmail: pdlResult.email ? pdlResult.email.toLowerCase().trim() : contact.normalizedEmail,
+              emailConfidence: pdlResult.email ? 0.85 : contact.emailConfidence,
+              emailSource: pdlResult.email ? 'pdl' : contact.emailSource,
+              emailValidated: !!pdlResult.email,
+              linkedinUrl: pdlResult.linkedinUrl || contact.linkedinUrl,
+              linkedinConfidence: pdlResult.linkedinUrl ? 0.9 : contact.linkedinConfidence,
+              title: pdlResult.title || contact.title,
+              employerName: employerMismatch ? contact.employerName : (pdlResult.companyName || contact.employerName),
+              companyDomain: employerMismatch ? contact.companyDomain : (pdlResult.companyDomain || contact.companyDomain),
+              pdlEnriched: true,
+              pdlEmployerMismatch: employerMismatch,
+              pdlEmployerName: pdlResult.companyName,
+              pdlEmployerDomain: pdlResult.companyDomain,
+            } as EnrichedContact & { pdlEnriched?: boolean; pdlEmployerMismatch?: boolean; pdlEmployerName?: string; pdlEmployerDomain?: string },
+            relationshipConfidence,
+            relationshipNote,
+          };
+        } else {
+          console.log(`[PDL Enrichment] PDL result does not pass strict matching (name+domain), skipping`);
+        }
+      } else {
+        console.log(`[PDL Enrichment] PDL did not find person`);
+      }
+    }
+  }
+  
+  return { contact, relationshipConfidence, relationshipNote };
+}
+
+// Enrich organization with PDL company data
+export async function enrichOrganizationWithPDL(
+  domain: string
+): Promise<{
+  name: string | null;
+  displayName: string | null;
+  description: string | null;
+  website: string | null;
+  linkedinHandle: string | null;
+  industry: string | null;
+  employees: number | null;
+  employeesRange: string | null;
+  city: string | null;
+  state: string | null;
+  pdlEnriched: boolean;
+}> {
+  console.log(`[PDL Enrichment] Enriching company: ${domain}`);
+  
+  const pdlResult = await enrichCompanyPDL(domain);
+  
+  if (!pdlResult.found) {
+    console.log(`[PDL Enrichment] PDL did not find company: ${domain}`);
+    return {
+      name: null,
+      displayName: null,
+      description: null,
+      website: null,
+      linkedinHandle: null,
+      industry: null,
+      employees: null,
+      employeesRange: null,
+      city: null,
+      state: null,
+      pdlEnriched: false,
+    };
+  }
+  
+  console.log(`[PDL Enrichment] PDL found company: ${pdlResult.displayName || pdlResult.name}`);
+  
+  // Extract LinkedIn handle from URL if it's a full URL
+  let linkedinHandle = pdlResult.linkedinUrl;
+  if (linkedinHandle && linkedinHandle.includes('linkedin.com/company/')) {
+    linkedinHandle = linkedinHandle.split('linkedin.com/company/')[1]?.replace(/\/$/, '') || linkedinHandle;
+  }
+  
+  return {
+    name: pdlResult.name,
+    displayName: pdlResult.displayName,
+    description: pdlResult.description,
+    website: pdlResult.website,
+    linkedinHandle,
+    industry: pdlResult.industry,
+    employees: pdlResult.employeeCount,
+    employeesRange: pdlResult.employeeRange,
+    city: pdlResult.city,
+    state: pdlResult.state,
+    pdlEnriched: true,
+  };
+}
+
 // Promise timeout helper
 function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> {
   return Promise.race([
@@ -1602,19 +1820,56 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
       verificationSource: 1,
     }));
 
-    // Enrich contacts with email/LinkedIn
-    const contactsWithEmails = await enrichContactsWithEmail(enrichedContacts);
-    const contactsWithLinkedIn = await enrichContactsWithLinkedIn(contactsWithEmails);
+    // Enrich contacts with new PDL-based flow
+    // 1. Check if contact exists, 2. Validate with NeverBounce, 3. If valid use SERP, 4. If invalid use PDL
+    const propertyCity = aggregatedProperty.city || 'Dallas';
+    const aiDomain = ownership?.managementCompany?.domain || null;
+    
+    const contactsWithPDL: EnrichedContact[] = [];
+    const relationshipData: Map<string, { confidence: string; note: string | null }> = new Map();
+    
+    for (const contact of enrichedContacts) {
+      const result = await enrichContactWithPDL(contact, aiDomain, propertyCity);
+      contactsWithPDL.push(result.contact);
+      relationshipData.set(result.contact.id, { 
+        confidence: result.relationshipConfidence, 
+        note: result.relationshipNote 
+      });
+    }
+    
+    // Continue with LinkedIn enrichment for contacts that need it
+    const contactsWithLinkedIn = await enrichContactsWithLinkedIn(contactsWithPDL);
     const validatedContacts = await validateHighPriorityContacts(contactsWithLinkedIn);
+    
+    // Enrich organizations with PDL company data
+    const enrichedOrgsWithPDL: EnrichedOrganization[] = [];
+    for (const org of enrichedOrgs) {
+      if (org.domain) {
+        const pdlData = await enrichOrganizationWithPDL(org.domain);
+        enrichedOrgsWithPDL.push({
+          ...org,
+          description: pdlData.description || undefined,
+          linkedinHandle: pdlData.linkedinHandle || undefined,
+          industry: pdlData.industry || undefined,
+          employees: pdlData.employees || undefined,
+          employeesRange: pdlData.employeesRange || undefined,
+          city: pdlData.city || undefined,
+          state: pdlData.state || undefined,
+          pdlEnriched: pdlData.pdlEnriched,
+        } as EnrichedOrganization & { pdlEnriched?: boolean });
+      } else {
+        enrichedOrgsWithPDL.push(org);
+      }
+    }
 
-    console.log(`[Enrichment] Focused enrichment complete: ${validatedContacts.length} contacts, ${enrichedOrgs.length} orgs`);
+    console.log(`[Enrichment] Focused enrichment complete: ${validatedContacts.length} contacts, ${enrichedOrgsWithPDL.length} orgs`);
 
     return {
       success: true,
       propertyKey: aggregatedProperty.propertyKey,
       property,
       contacts: validatedContacts,
-      organizations: enrichedOrgs,
+      organizations: enrichedOrgsWithPDL,
       rawResponse: {
         verification: { property_verified: true },
         property: classification,
@@ -1802,6 +2057,24 @@ export async function storeEnrichmentResults(
     if (existingOrg) {
       orgId = existingOrg.id;
       needsEnrichment = existingOrg.enrichmentStatus !== 'complete' && !!existingOrg.domain;
+      
+      // Update with PDL data if available
+      if (org.pdlEnriched) {
+        await db.update(organizations)
+          .set({
+            description: org.description || existingOrg.description || undefined,
+            industry: org.industry || existingOrg.industry || undefined,
+            employees: org.employees || existingOrg.employees || undefined,
+            employeesRange: org.employeesRange || existingOrg.employeesRange || undefined,
+            linkedinHandle: org.linkedinHandle || existingOrg.linkedinHandle || undefined,
+            city: org.city || existingOrg.city || undefined,
+            state: org.state || existingOrg.state || undefined,
+            pdlEnriched: true,
+            pdlEnrichedAt: new Date(),
+          })
+          .where(eq(organizations.id, orgId));
+        needsEnrichment = false; // Already enriched with PDL
+      }
     } else {
       const [inserted] = await db.insert(organizations)
         .values({
@@ -1809,12 +2082,21 @@ export async function storeEnrichmentResults(
           name: org.name,
           domain: org.domain,
           orgType: org.orgType,
-          enrichmentStatus: org.domain ? 'pending' : undefined,
+          description: org.description || undefined,
+          industry: org.industry || undefined,
+          employees: org.employees || undefined,
+          employeesRange: org.employeesRange || undefined,
+          linkedinHandle: org.linkedinHandle || undefined,
+          city: org.city || undefined,
+          state: org.state || undefined,
+          pdlEnriched: org.pdlEnriched || false,
+          pdlEnrichedAt: org.pdlEnriched ? new Date() : undefined,
+          enrichmentStatus: org.pdlEnriched ? 'complete' : (org.domain ? 'pending' : undefined),
         })
         .onConflictDoNothing()
         .returning({ id: organizations.id });
       orgId = inserted?.id || org.id;
-      needsEnrichment = !!org.domain;
+      needsEnrichment = !org.pdlEnriched && !!org.domain;
     }
     orgIds.push(orgId);
     
@@ -1834,18 +2116,13 @@ export async function storeEnrichmentResults(
 
   console.log(`[Enrichment] Stored ${orgIds.length} organizations`);
   
-  // Enrich organizations with domain data from Hunter.io (runs in background)
+  // Note: Legacy Hunter.io/EnrichLayer org enrichment has been replaced by PDL enrichment
+  // which runs inline during the enrichProperty flow. orgsToEnrich will only contain
+  // orgs that weren't enriched by PDL (e.g., orgs without domains or PDL failures)
   if (orgsToEnrich.length > 0) {
-    console.log(`[Enrichment] Enriching ${orgsToEnrich.length} organizations with Hunter.io domain data...`);
-    Promise.all(
-      orgsToEnrich.map(domain => 
-        enrichOrganizationByDomain(domain).catch(err => {
-          console.error(`[Enrichment] Failed to enrich org domain ${domain}:`, err);
-        })
-      )
-    ).then(() => {
-      console.log(`[Enrichment] Organization domain enrichment complete for ${orgsToEnrich.length} orgs`);
-    });
+    console.log(`[Enrichment] ${orgsToEnrich.length} organizations need fallback enrichment (PDL skipped/failed)`);
+    // For now, skip legacy Hunter.io enrichment as PDL is the primary source
+    // If PDL fails, orgs will remain with enrichmentStatus='pending' for manual review
   }
 
   // Store contacts

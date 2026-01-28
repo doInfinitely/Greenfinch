@@ -251,6 +251,12 @@ export const contacts = pgTable('contacts', {
   needsReview: boolean('needs_review').default(false),
   reviewReason: text('review_reason'),
   
+  pdlEnriched: boolean('pdl_enriched').default(false),
+  pdlEnrichedAt: timestamp('pdl_enriched_at'),
+  pdlEmployerMismatch: boolean('pdl_employer_mismatch').default(false),
+  pdlEmployerName: text('pdl_employer_name'),
+  pdlEmployerDomain: text('pdl_employer_domain'),
+  
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
@@ -327,6 +333,9 @@ export const organizations = pgTable('organizations', {
   lastEnrichedAt: timestamp('last_enriched_at'),
   rawEnrichmentJson: json('raw_enrichment_json'),
   
+  pdlEnriched: boolean('pdl_enriched').default(false),
+  pdlEnrichedAt: timestamp('pdl_enriched_at'),
+  
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
@@ -341,6 +350,8 @@ export const propertyContacts = pgTable('property_contacts', {
   contactId: uuid('contact_id').references(() => contacts.id),
   role: text('role'),
   confidenceScore: real('confidence_score'),
+  relationshipConfidence: text('relationship_confidence').default('high'),
+  relationshipNote: text('relationship_note'),
   discoveredAt: timestamp('discovered_at').defaultNow(),
 }, (table) => ({
   propertyContactIdx: index('idx_property_contacts').on(table.propertyId, table.contactId),
