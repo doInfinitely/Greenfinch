@@ -30,10 +30,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ClerkProvider
-      signInFallbackRedirectUrl="/dashboard/map"
-      signUpFallbackRedirectUrl="/dashboard/map"
-    >
+    <ClerkProvider>
       <html lang="en">
         <body className={inter.className}>{children}</body>
       </html>
