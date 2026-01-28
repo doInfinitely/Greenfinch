@@ -171,13 +171,14 @@ export async function POST(request: NextRequest) {
                 results.enrichlayerWorkEmail = {
                   provider: 'EnrichLayer Work Email',
                   success: workEmailResult.success,
-                  data: workEmailResult.success ? {
+                  data: workEmailResult.email ? {
                     email: workEmailResult.email,
                     linkedinUrl: result.linkedinUrl,
                     status: workEmailResult.status,
                   } : null,
                   latency: Date.now() - workEmailStart,
                   error: workEmailResult.error,
+                  status: workEmailResult.status,
                 };
               } catch (workEmailError: any) {
                 results.enrichlayerWorkEmail = {
