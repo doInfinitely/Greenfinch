@@ -783,22 +783,33 @@ export default function ContactDetailPage() {
               ) : (
                 <div className="space-y-3">
                   {organizations.map((org) => (
-                    <div key={org.id} className="p-3 bg-gray-50 rounded-lg">
+                    <div 
+                      key={org.id} 
+                      className="p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 hover:shadow-sm transition-all"
+                      onClick={() => router.push(`/organization/${org.id}`)}
+                      data-testid={`org-card-${org.id}`}
+                    >
                       <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-medium text-gray-900">{org.name || 'Unknown'}</p>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-gray-900">{org.name || 'Unknown'}</p>
+                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                          </div>
                           {org.title && (
                             <p className="text-sm text-gray-600">{org.title}</p>
                           )}
                           {org.domain && (
-                            <a 
-                              href={`https://${org.domain}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-green-600 hover:underline"
+                            <span
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.open(`https://${org.domain}`, '_blank');
+                              }}
+                              className="text-sm text-green-600 hover:underline cursor-pointer"
                             >
                               {org.domain}
-                            </a>
+                            </span>
                           )}
                         </div>
                         <div className="flex flex-col items-end gap-1">
