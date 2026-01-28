@@ -30,6 +30,11 @@ export async function POST(request: NextRequest) {
 
     const promises: Promise<void>[] = [];
 
+    console.log('[Compare Person] Starting comparison for:', { firstName, lastName, domain });
+    console.log('[Compare Person] PDL API Key configured:', !!process.env.PEOPLEDATALABS_API_KEY);
+    console.log('[Compare Person] EnrichLayer API Key configured:', !!process.env.ENRICHLAYER_API_KEY);
+    console.log('[Compare Person] Hunter API Key configured:', !!process.env.HUNTER_API_KEY);
+
     if (process.env.PEOPLEDATALABS_API_KEY) {
       // PDL Enrich API (strict matching)
       promises.push(

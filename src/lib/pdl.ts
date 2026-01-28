@@ -142,7 +142,10 @@ export async function enrichPersonPDL(
               body: JSON.stringify(query),
             });
 
+            console.log('[PDL] Search response status:', response.status);
+
             if (response.status === 404) {
+              console.log('[PDL] Search returned 404 - no results');
               return { found: false };
             }
 
@@ -152,12 +155,12 @@ export async function enrichPersonPDL(
 
             if (!response.ok) {
               const text = await response.text();
-              console.error('[PDL] Person search error:', text);
-              throw new Error(`PDL API error: ${response.status}`);
+              console.error('[PDL] Person search error:', response.status, text);
+              throw new Error(`PDL API error: ${response.status} - ${text}`);
             }
 
             const data = await response.json();
-            console.log('[PDL] Search response total:', data.total);
+            console.log('[PDL] Search response total:', data.total, 'status:', data.status);
             
             if (data.total === 0 || !data.data?.[0]) {
               return { found: false };
@@ -177,6 +180,8 @@ export async function enrichPersonPDL(
             params.append('location', options.location);
           }
 
+          console.log('[PDL] Enrich request params:', Object.fromEntries(params));
+
           const response = await fetch(`${PDL_API_BASE}/person/enrich?${params}`, {
             method: 'GET',
             headers: {
@@ -185,7 +190,10 @@ export async function enrichPersonPDL(
             },
           });
 
+          console.log('[PDL] Enrich response status:', response.status);
+
           if (response.status === 404) {
+            console.log('[PDL] Enrich returned 404 - no exact match');
             return { found: false };
           }
 
@@ -195,11 +203,12 @@ export async function enrichPersonPDL(
 
           if (!response.ok) {
             const text = await response.text();
-            console.error('[PDL] Person enrichment error:', text);
-            throw new Error(`PDL API error: ${response.status}`);
+            console.error('[PDL] Person enrichment error:', response.status, text);
+            throw new Error(`PDL API error: ${response.status} - ${text}`);
           }
 
           const data = await response.json();
+          console.log('[PDL] Enrich found person:', data.data?.full_name || data.full_name);
           return { found: true, data };
         },
         {
