@@ -9,6 +9,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
+    console.log(`[API] Fetching organization: ${id}`);
 
     if (!id) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
@@ -17,6 +18,8 @@ export async function GET(
     const org = await db.query.organizations.findFirst({
       where: eq(organizations.id, id),
     });
+    
+    console.log(`[API] Organization found: ${org ? org.name : 'null'}`);
 
     if (!org) {
       return NextResponse.json({ error: 'Organization not found' }, { status: 404 });

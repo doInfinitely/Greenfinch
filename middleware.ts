@@ -12,6 +12,8 @@ const isPublicRoute = createRouteMatcher([
 const isProtectedRoute = createRouteMatcher([
   '/dashboard(.*)',
   '/property(.*)',
+  '/organization(.*)',
+  '/contact(.*)',
   '/admin(.*)',
   '/internal(.*)',
   '/lists(.*)',
