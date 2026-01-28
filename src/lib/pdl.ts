@@ -78,7 +78,7 @@ export async function enrichPersonPDL(
   firstName: string,
   lastName: string,
   domain: string,
-  options: { location?: string } = {}
+  options: { location?: string; useSearch?: boolean } = {}
 ): Promise<PDLPersonResult> {
   const apiKey = process.env.PEOPLEDATALABS_API_KEY;
   
@@ -105,6 +105,68 @@ export async function enrichPersonPDL(
     const result = await limit(() =>
       pRetry(
         async () => {
+          // Use Search API for relaxed matching, Enrich API for strict matching
+          if (options.useSearch) {
+            // PDL Search API - more flexible, returns multiple results
+            const query: any = {
+              query: {
+                bool: {
+                  must: [
+                    { term: { first_name: firstName.toLowerCase() } },
+                  ],
+                },
+              },
+              size: 1,
+            };
+            
+            if (lastName) {
+              query.query.bool.must.push({ term: { last_name: lastName.toLowerCase() } });
+            }
+            
+            if (domain) {
+              query.query.bool.must.push({ term: { job_company_website: domain.toLowerCase() } });
+            }
+            
+            if (options.location) {
+              query.query.bool.should = [{ match: { location_name: options.location } }];
+            }
+            
+            console.log('[PDL] Search query:', JSON.stringify(query, null, 2));
+            
+            const response = await fetch(`${PDL_API_BASE}/person/search`, {
+              method: 'POST',
+              headers: {
+                'X-Api-Key': apiKey,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(query),
+            });
+
+            if (response.status === 404) {
+              return { found: false };
+            }
+
+            if (response.status === 429) {
+              throw new Error('Rate limit hit');
+            }
+
+            if (!response.ok) {
+              const text = await response.text();
+              console.error('[PDL] Person search error:', text);
+              throw new Error(`PDL API error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            console.log('[PDL] Search response total:', data.total);
+            
+            if (data.total === 0 || !data.data?.[0]) {
+              return { found: false };
+            }
+            
+            return { found: true, data: { data: data.data[0], likelihood: data.data[0].match_score || 0.7 } };
+          }
+          
+          // Standard Enrich API - strict matching
           const params = new URLSearchParams({
             first_name: firstName,
             last_name: lastName,

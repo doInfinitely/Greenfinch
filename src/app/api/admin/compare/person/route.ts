@@ -31,6 +31,7 @@ export async function POST(request: NextRequest) {
     const promises: Promise<void>[] = [];
 
     if (process.env.PEOPLEDATALABS_API_KEY) {
+      // PDL Enrich API (strict matching)
       promises.push(
         (async () => {
           const pdlStart = Date.now();
@@ -39,10 +40,10 @@ export async function POST(request: NextRequest) {
               firstName,
               lastName || '',
               domain || '',
-              { location }
+              { location, useSearch: false }
             );
-            results.pdl = {
-              provider: 'People Data Labs',
+            results.pdlEnrich = {
+              provider: 'PDL Enrich (Strict)',
               success: result.found,
               data: result.found ? {
                 fullName: result.fullName,
@@ -58,12 +59,56 @@ export async function POST(request: NextRequest) {
                 confidence: result.confidence,
                 domainMatch: result.domainMatch,
               } : null,
+              error: result.found ? undefined : 'No exact match found (strict matching requires first+last+company)',
               latency: Date.now() - pdlStart,
               raw: result.raw,
             };
           } catch (error: any) {
-            results.pdl = {
-              provider: 'People Data Labs',
+            results.pdlEnrich = {
+              provider: 'PDL Enrich (Strict)',
+              success: false,
+              error: error.message,
+              latency: Date.now() - pdlStart,
+            };
+          }
+        })()
+      );
+      
+      // PDL Search API (relaxed matching)
+      promises.push(
+        (async () => {
+          const pdlStart = Date.now();
+          try {
+            const result = await enrichPersonPDL(
+              firstName,
+              lastName || '',
+              domain || '',
+              { location, useSearch: true }
+            );
+            results.pdlSearch = {
+              provider: 'PDL Search (Relaxed)',
+              success: result.found,
+              data: result.found ? {
+                fullName: result.fullName,
+                firstName: result.firstName,
+                lastName: result.lastName,
+                title: result.title,
+                email: result.email,
+                phone: null,
+                company: result.companyName,
+                companyDomain: result.companyDomain,
+                linkedinUrl: result.linkedinUrl,
+                location: result.location,
+                confidence: result.confidence,
+                domainMatch: result.domainMatch,
+              } : null,
+              error: result.found ? undefined : 'No results found in PDL database',
+              latency: Date.now() - pdlStart,
+              raw: result.raw,
+            };
+          } catch (error: any) {
+            results.pdlSearch = {
+              provider: 'PDL Search (Relaxed)',
               success: false,
               error: error.message,
               latency: Date.now() - pdlStart,
