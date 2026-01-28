@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminAccess } from '@/lib/auth';
 import { enrichPersonPDL } from '@/lib/pdl';
-import { lookupPerson as enrichLayerLookup } from '@/lib/enrichlayer';
+import { lookupPerson as enrichLayerLookup, lookupWorkEmail } from '@/lib/enrichlayer';
 import { findEmail as hunterFindEmail } from '@/lib/hunter';
 
 export async function POST(request: NextRequest) {
@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (process.env.ENRICHLAYER_API_KEY) {
+      // EnrichLayer Person Lookup (finds LinkedIn URL and basic info)
       promises.push(
         (async () => {
           const elStart = Date.now();
@@ -136,7 +137,7 @@ export async function POST(request: NextRequest) {
               location,
             });
             results.enrichlayer = {
-              provider: 'EnrichLayer',
+              provider: 'EnrichLayer Person Lookup',
               success: result.success,
               data: result.success ? {
                 fullName: result.fullName,
@@ -156,9 +157,38 @@ export async function POST(request: NextRequest) {
               raw: result.rawResponse,
               error: result.error,
             };
+            
+            // If we got a LinkedIn URL, also call the work email endpoint
+            if (result.success && result.linkedinUrl) {
+              const workEmailStart = Date.now();
+              try {
+                const workEmailResult = await lookupWorkEmail(result.linkedinUrl, {
+                  validate: true,
+                  expectedDomain: domain || undefined,
+                });
+                results.enrichlayerWorkEmail = {
+                  provider: 'EnrichLayer Work Email',
+                  success: workEmailResult.success,
+                  data: workEmailResult.success ? {
+                    email: workEmailResult.email,
+                    linkedinUrl: result.linkedinUrl,
+                    status: workEmailResult.status,
+                  } : null,
+                  latency: Date.now() - workEmailStart,
+                  error: workEmailResult.error,
+                };
+              } catch (workEmailError: any) {
+                results.enrichlayerWorkEmail = {
+                  provider: 'EnrichLayer Work Email',
+                  success: false,
+                  error: workEmailError.message,
+                  latency: Date.now() - workEmailStart,
+                };
+              }
+            }
           } catch (error: any) {
             results.enrichlayer = {
-              provider: 'EnrichLayer',
+              provider: 'EnrichLayer Person Lookup',
               success: false,
               error: error.message,
               latency: Date.now() - elStart,

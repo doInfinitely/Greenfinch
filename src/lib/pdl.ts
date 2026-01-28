@@ -78,7 +78,7 @@ export async function enrichPersonPDL(
   firstName: string,
   lastName: string,
   domain: string,
-  options: { location?: string; useSearch?: boolean } = {}
+  options: { location?: string; useSearch?: boolean; companyName?: string } = {}
 ): Promise<PDLPersonResult> {
   const apiKey = process.env.PEOPLEDATALABS_API_KEY;
   
@@ -105,33 +105,53 @@ export async function enrichPersonPDL(
     const result = await limit(() =>
       pRetry(
         async () => {
-          // Use Search API for relaxed matching, Enrich API for strict matching
           if (options.useSearch) {
-            // PDL Search API - more flexible, returns multiple results
-            const query: any = {
+            // PDL Person Search API - Elasticsearch query
+            // Build a flexible query that can match on name + company
+            const mustClauses: any[] = [];
+            
+            // Name matching - use match for flexibility
+            if (firstName) {
+              mustClauses.push({ match: { first_name: firstName.toLowerCase() } });
+            }
+            if (lastName) {
+              mustClauses.push({ match: { last_name: lastName.toLowerCase() } });
+            }
+            
+            // Company matching - try both domain and name
+            if (domain) {
+              // Use should clause for flexible company matching
+              mustClauses.push({
+                bool: {
+                  should: [
+                    { term: { job_company_website: normalizeDomain(domain) } },
+                    { match: { job_company_name: domain.replace(/\.(com|org|net|io|co)$/i, '') } },
+                  ],
+                  minimum_should_match: 1,
+                }
+              });
+            }
+            
+            // Location is optional boost
+            const shouldClauses: any[] = [];
+            if (options.location) {
+              shouldClauses.push({ match: { location_name: options.location } });
+            }
+            
+            const esQuery: any = {
               query: {
                 bool: {
-                  must: [
-                    { term: { first_name: firstName.toLowerCase() } },
-                  ],
-                },
+                  must: mustClauses,
+                }
               },
-              size: 1,
+              size: 5, // Get top 5 results to find best match
             };
             
-            if (lastName) {
-              query.query.bool.must.push({ term: { last_name: lastName.toLowerCase() } });
+            if (shouldClauses.length > 0) {
+              esQuery.query.bool.should = shouldClauses;
             }
             
-            if (domain) {
-              query.query.bool.must.push({ term: { job_company_website: domain.toLowerCase() } });
-            }
-            
-            if (options.location) {
-              query.query.bool.should = [{ match: { location_name: options.location } }];
-            }
-            
-            console.log('[PDL] Search query:', JSON.stringify(query, null, 2));
+            console.log('[PDL] Search API query:', JSON.stringify(esQuery, null, 2));
             
             const response = await fetch(`${PDL_API_BASE}/person/search`, {
               method: 'POST',
@@ -139,14 +159,20 @@ export async function enrichPersonPDL(
                 'X-Api-Key': apiKey,
                 'Content-Type': 'application/json',
               },
-              body: JSON.stringify(query),
+              body: JSON.stringify(esQuery),
             });
 
             console.log('[PDL] Search response status:', response.status);
+            const responseText = await response.text();
+            console.log('[PDL] Search response body:', responseText.slice(0, 1000));
 
             if (response.status === 404) {
-              console.log('[PDL] Search returned 404 - no results');
               return { found: false };
+            }
+
+            if (response.status === 402) {
+              console.error('[PDL] Insufficient credits or payment required');
+              throw new Error('PDL API: Insufficient credits');
             }
 
             if (response.status === 429) {
@@ -154,47 +180,84 @@ export async function enrichPersonPDL(
             }
 
             if (!response.ok) {
-              const text = await response.text();
-              console.error('[PDL] Person search error:', response.status, text);
-              throw new Error(`PDL API error: ${response.status} - ${text}`);
+              console.error('[PDL] Person search error:', response.status, responseText);
+              throw new Error(`PDL API error: ${response.status} - ${responseText}`);
             }
 
-            const data = await response.json();
-            console.log('[PDL] Search response total:', data.total, 'status:', data.status);
+            const data = JSON.parse(responseText);
+            console.log('[PDL] Search total results:', data.total);
             
             if (data.total === 0 || !data.data?.[0]) {
               return { found: false };
             }
             
-            return { found: true, data: { data: data.data[0], likelihood: data.data[0].match_score || 0.7 } };
+            // Find best match - prefer one with matching domain
+            let bestMatch = data.data[0];
+            const normalizedInputDomain = normalizeDomain(domain || '');
+            
+            for (const person of data.data) {
+              const personDomain = normalizeDomain(person.job_company_website || '');
+              if (personDomain === normalizedInputDomain) {
+                bestMatch = person;
+                break;
+              }
+            }
+            
+            console.log('[PDL] Search best match:', bestMatch.full_name, 'at', bestMatch.job_company_name);
+            return { found: true, data: { data: bestMatch, likelihood: 0.7 } };
           }
           
-          // Standard Enrich API - strict matching
-          const params = new URLSearchParams({
-            first_name: firstName,
-            last_name: lastName,
-            company: domain,
-          });
+          // PDL Person Enrich API - requires specific identifying info
+          // Build params based on available data
+          const params = new URLSearchParams();
+          
+          // Always add name
+          params.append('first_name', firstName);
+          if (lastName) {
+            params.append('last_name', lastName);
+          }
+          
+          // PDL Enrich API: 'company' should be company NAME, not domain
+          // If we have a company name, use it; otherwise try to derive from domain
+          if (options.companyName) {
+            params.append('company', options.companyName);
+          } else if (domain) {
+            // Try to extract company name from domain (e.g., google.com -> google)
+            const companyFromDomain = domain
+              .replace(/^www\./i, '')
+              .replace(/\.(com|org|net|io|co|ai|app|dev)$/i, '')
+              .replace(/[-_]/g, ' ');
+            params.append('company', companyFromDomain);
+          }
           
           if (options.location) {
             params.append('location', options.location);
           }
+          
+          // Set minimum likelihood threshold for quality
+          params.append('min_likelihood', '3');
 
-          console.log('[PDL] Enrich request params:', Object.fromEntries(params));
+          console.log('[PDL] Enrich API params:', Object.fromEntries(params));
 
           const response = await fetch(`${PDL_API_BASE}/person/enrich?${params}`, {
             method: 'GET',
             headers: {
               'X-Api-Key': apiKey,
-              'Content-Type': 'application/json',
             },
           });
 
           console.log('[PDL] Enrich response status:', response.status);
+          const responseText = await response.text();
+          console.log('[PDL] Enrich response body:', responseText.slice(0, 1000));
 
           if (response.status === 404) {
-            console.log('[PDL] Enrich returned 404 - no exact match');
+            console.log('[PDL] Enrich: No match found');
             return { found: false };
+          }
+
+          if (response.status === 402) {
+            console.error('[PDL] Insufficient credits');
+            throw new Error('PDL API: Insufficient credits');
           }
 
           if (response.status === 429) {
@@ -202,13 +265,12 @@ export async function enrichPersonPDL(
           }
 
           if (!response.ok) {
-            const text = await response.text();
-            console.error('[PDL] Person enrichment error:', response.status, text);
-            throw new Error(`PDL API error: ${response.status} - ${text}`);
+            console.error('[PDL] Person enrichment error:', response.status, responseText);
+            throw new Error(`PDL API error: ${response.status} - ${responseText}`);
           }
 
-          const data = await response.json();
-          console.log('[PDL] Enrich found person:', data.data?.full_name || data.full_name);
+          const data = JSON.parse(responseText);
+          console.log('[PDL] Enrich found person:', data.data?.full_name || data.full_name, 'likelihood:', data.likelihood);
           return { found: true, data };
         },
         {
@@ -246,17 +308,18 @@ export async function enrichPersonPDL(
       companyDomain: job.job_company_website || person.job_company_website || null,
     };
     
-    const isStrictMatch = strictMatch(
+    const isStrictMatch = domain ? strictMatch(
       { firstName, lastName, domain },
       resultData
-    );
+    ) : false;
 
+    // Get LinkedIn URL from profiles array or direct field
     const linkedinProfiles = person.profiles?.filter((p: any) => p.network === 'linkedin') || [];
     const linkedinUrl = linkedinProfiles[0]?.url || person.linkedin_url || null;
 
     return {
       found: true,
-      confidence: isStrictMatch ? (result.data.likelihood || 0.8) : 0.3,
+      confidence: isStrictMatch ? (result.data.likelihood / 10 || 0.8) : (result.data.likelihood / 10 || 0.5),
       firstName: person.first_name || null,
       lastName: person.last_name || null,
       fullName: person.full_name || null,
@@ -320,16 +383,24 @@ export async function enrichCompanyPDL(domain: string): Promise<PDLCompanyResult
             website: domain,
           });
 
+          console.log('[PDL] Company enrich request:', domain);
+
           const response = await fetch(`${PDL_API_BASE}/company/enrich?${params}`, {
             method: 'GET',
             headers: {
               'X-Api-Key': apiKey,
-              'Content-Type': 'application/json',
             },
           });
 
+          console.log('[PDL] Company enrich response status:', response.status);
+
           if (response.status === 404) {
             return { found: false };
+          }
+
+          if (response.status === 402) {
+            console.error('[PDL] Insufficient credits');
+            throw new Error('PDL API: Insufficient credits');
           }
 
           if (response.status === 429) {
@@ -343,6 +414,7 @@ export async function enrichCompanyPDL(domain: string): Promise<PDLCompanyResult
           }
 
           const data = await response.json();
+          console.log('[PDL] Company found:', data.name);
           return { found: true, data };
         },
         {
