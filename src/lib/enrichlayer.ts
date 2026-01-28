@@ -347,8 +347,8 @@ export async function lookupWorkEmail(linkedinUrl: string, options?: {
       params.append('use_cache', options.useCache);
     }
 
-    // Use the correct work email lookup endpoint
-    const url = `https://enrichlayer.com/api/contact-api/work-email-lookup?${params.toString()}`;
+    // Use the correct work email lookup endpoint: /api/v2/contact-api/work-email
+    const url = `${ENRICHLAYER_BASE_URL}/contact-api/work-email?${params.toString()}`;
     console.log('[EnrichLayer] Work email lookup:', { linkedinUrl, validate: options?.validate !== false });
 
     const response = await fetch(url, {
