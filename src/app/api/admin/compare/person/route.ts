@@ -159,7 +159,9 @@ export async function POST(request: NextRequest) {
             };
             
             // If we got a LinkedIn URL, also call the work email endpoint
+            // Add 500ms delay to avoid rate limits
             if (result.success && result.linkedinUrl) {
+              await new Promise(resolve => setTimeout(resolve, 500));
               const workEmailStart = Date.now();
               try {
                 const workEmailResult = await lookupWorkEmail(result.linkedinUrl, {

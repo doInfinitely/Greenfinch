@@ -107,7 +107,7 @@ export async function enrichPersonPDL(
         async () => {
           if (options.useSearch) {
             // PDL Person Search API - Elasticsearch query
-            // Build a flexible query that can match on name + company
+            // PDL has limited ES support - no minimum_should_match allowed
             const mustClauses: any[] = [];
             
             // Name matching - use match for flexibility
@@ -118,22 +118,22 @@ export async function enrichPersonPDL(
               mustClauses.push({ match: { last_name: lastName.toLowerCase() } });
             }
             
-            // Company matching - try both domain and name
+            // Company matching - use OR via bool should at top level
+            // Since PDL doesn't support minimum_should_match, we'll try domain first
+            // and fall back to a simpler query
+            const shouldClauses: any[] = [];
             if (domain) {
-              // Use should clause for flexible company matching
-              mustClauses.push({
-                bool: {
-                  should: [
-                    { term: { job_company_website: normalizeDomain(domain) } },
-                    { match: { job_company_name: domain.replace(/\.(com|org|net|io|co)$/i, '') } },
-                  ],
-                  minimum_should_match: 1,
-                }
-              });
+              // Try to match on company website (normalized domain)
+              shouldClauses.push({ term: { job_company_website: normalizeDomain(domain) } });
+              // Also try company name derived from domain
+              const companyFromDomain = domain
+                .replace(/^www\./i, '')
+                .replace(/\.(com|org|net|io|co|ai|app|dev)$/i, '')
+                .replace(/[-_]/g, ' ');
+              shouldClauses.push({ match: { job_company_name: companyFromDomain } });
             }
             
             // Location is optional boost
-            const shouldClauses: any[] = [];
             if (options.location) {
               shouldClauses.push({ match: { location_name: options.location } });
             }
@@ -142,14 +142,11 @@ export async function enrichPersonPDL(
               query: {
                 bool: {
                   must: mustClauses,
+                  should: shouldClauses, // Optional but boosts relevance
                 }
               },
               size: 5, // Get top 5 results to find best match
             };
-            
-            if (shouldClauses.length > 0) {
-              esQuery.query.bool.should = shouldClauses;
-            }
             
             console.log('[PDL] Search API query:', JSON.stringify(esQuery, null, 2));
             
@@ -315,7 +312,11 @@ export async function enrichPersonPDL(
 
     // Get LinkedIn URL from profiles array or direct field
     const linkedinProfiles = person.profiles?.filter((p: any) => p.network === 'linkedin') || [];
-    const linkedinUrl = linkedinProfiles[0]?.url || person.linkedin_url || null;
+    let linkedinUrl = linkedinProfiles[0]?.url || person.linkedin_url || null;
+    // Normalize LinkedIn URL to include https://
+    if (linkedinUrl && !linkedinUrl.startsWith('http')) {
+      linkedinUrl = `https://${linkedinUrl}`;
+    }
 
     return {
       found: true,
