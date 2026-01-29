@@ -99,6 +99,8 @@ The system uses a multi-provider cascade approach for enrichment with provider t
 - **Catch-all emails treated as invalid** - Only 'valid' status passes validation
 - **ZeroBounce preferred** with NeverBounce as fallback
 - **Status tracking**: valid, invalid, catch-all, unknown
+- **Personal email providers trigger further enrichment** - Valid emails from gmail, yahoo, outlook, hotmail, aol, icloud, protonmail, etc. continue to cascade enrichment to find business email/info
+- **All contacts enriched** - Enrichment runs on all contacts, not just high-priority roles (property_manager, facilities, asset_manager)
 
 ### Admin Controls
 - **Manual enrichment buttons** hidden from non-greenfinch admin users via `AdminOnly` component
