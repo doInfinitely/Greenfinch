@@ -1,5 +1,5 @@
 import { getCommercialPropertyByParcelId, getCommercialPropertiesByZip } from '../src/lib/snowflake';
-import { runFocusedEnrichment, classifyProperty, identifyOwnership, discoverContacts } from '../src/lib/focused-enrichment';
+import { runFocusedEnrichment, classifyAndVerifyProperty, identifyOwnership, discoverContacts } from '../src/lib/ai-enrichment';
 
 async function main() {
   const parcelId = process.argv[2] || '005453000K01A0000'; // NorthPark Mall default

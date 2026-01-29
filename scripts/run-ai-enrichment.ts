@@ -1,7 +1,7 @@
 import { db } from '../src/lib/db';
 import { properties, contacts, organizations, propertyOrganizations, propertyContacts } from '../src/lib/schema';
 import { eq, and, isNull, or, sql } from 'drizzle-orm';
-import { runFocusedEnrichment, FocusedEnrichmentResult } from '../src/lib/focused-enrichment';
+import { runFocusedEnrichment, FocusedEnrichmentResult } from '../src/lib/ai-enrichment';
 import type { CommercialProperty, DCADBuilding } from '../src/lib/snowflake';
 
 async function getPropertiesToEnrich(limit: number = 10) {
@@ -25,6 +25,8 @@ function dbPropertyToCommercialProperty(dbProp: any): CommercialProperty {
   
   return {
     parcelId: dbProp.propertyKey,
+    gisParcelId: dbProp.dcadGisParcelId || null,
+    sptdCode: dbProp.dcadSptdCode || null,
     address: dbProp.regridAddress || '',
     city: dbProp.city || '',
     zip: dbProp.zip || '',
@@ -67,6 +69,10 @@ function dbPropertyToCommercialProperty(dbProp: any): CommercialProperty {
     newestYearBuilt: dbProp.dcadNewestYearBuilt,
     totalGrossBldgArea: dbProp.dcadTotalGrossBldgArea,
     totalUnits: dbProp.dcadTotalUnits,
+    legal1: dbProp.dcadLegal1 || null,
+    legal2: dbProp.dcadLegal2 || null,
+    legal3: dbProp.dcadLegal3 || null,
+    legal4: dbProp.dcadLegal4 || null,
     buildings,
   };
 }
@@ -76,33 +82,36 @@ async function saveEnrichmentResults(
   propertyKey: string,
   result: FocusedEnrichmentResult
 ) {
-  const { classification, ownership, contacts: discoveredContacts } = result;
+  // Access .data from the StageResult wrapper types
+  const classificationData = result.classification.data;
+  const ownershipData = result.ownership.data;
+  const contactsData = result.contacts.data;
 
   await db
     .update(properties)
     .set({
-      commonName: classification.propertyName || null,
-      assetCategory: classification.category,
-      assetSubcategory: classification.subcategory,
-      categoryConfidence: classification.confidence,
-      categoryRationale: classification.rationale,
-      managementCompany: ownership.managementCompany?.name || null,
-      managementCompanyDomain: ownership.managementCompany?.domain || null,
-      managementConfidence: ownership.managementCompany?.confidence || null,
-      beneficialOwner: ownership.beneficialOwner?.name || null,
-      beneficialOwnerConfidence: ownership.beneficialOwner?.confidence || null,
-      beneficialOwnerType: ownership.beneficialOwner?.type || null,
+      commonName: classificationData.propertyName || null,
+      assetCategory: classificationData.category,
+      assetSubcategory: classificationData.subcategory,
+      categoryConfidence: classificationData.confidence,
+      categoryRationale: result.classification.summary,
+      managementCompany: ownershipData.managementCompany?.name || null,
+      managementCompanyDomain: ownershipData.managementCompany?.domain || null,
+      managementConfidence: ownershipData.managementCompany?.confidence || null,
+      beneficialOwner: ownershipData.beneficialOwner?.name || null,
+      beneficialOwnerConfidence: ownershipData.beneficialOwner?.confidence || null,
+      beneficialOwnerType: ownershipData.beneficialOwner?.type || null,
       enrichmentStatus: 'enriched',
-      lastEnrichmentUpdate: new Date(),
+      lastEnrichedAt: new Date(),
       updatedAt: new Date(),
     })
     .where(eq(properties.id, propertyId));
 
-  if (ownership.managementCompany?.name) {
+  if (ownershipData.managementCompany?.name) {
     const existingOrg = await db
       .select()
       .from(organizations)
-      .where(eq(organizations.name, ownership.managementCompany.name))
+      .where(eq(organizations.name, ownershipData.managementCompany.name))
       .limit(1);
 
     let orgId: string;
@@ -112,8 +121,8 @@ async function saveEnrichmentResults(
       const [newOrg] = await db
         .insert(organizations)
         .values({
-          name: ownership.managementCompany.name,
-          domain: ownership.managementCompany.domain,
+          name: ownershipData.managementCompany.name,
+          domain: ownershipData.managementCompany.domain,
           orgType: 'Management Company',
           createdAt: new Date(),
           updatedAt: new Date(),
@@ -142,7 +151,7 @@ async function saveEnrichmentResults(
     }
   }
 
-  for (const contact of discoveredContacts) {
+  for (const contact of contactsData.contacts) {
     if (!contact.name) continue;
 
     const existingContact = await db
@@ -155,10 +164,6 @@ async function saveEnrichmentResults(
     if (existingContact.length > 0) {
       contactId = existingContact[0].id;
     } else {
-      const linkedInUrl = contact.name
-        ? `https://linkedin.com/in/${contact.name.toLowerCase().replace(/\s+/g, '-')}`
-        : null;
-
       const [newContact] = await db
         .insert(contacts)
         .values({
@@ -169,10 +174,12 @@ async function saveEnrichmentResults(
           email: contact.email,
           emailStatus: contact.email ? 'unverified' : null,
           phone: contact.phone,
-          linkedinUrl,
-          linkedinStatus: 'placeholder',
-          source: contact.source || 'ai_enrichment',
-          nameConfidence: contact.confidence,
+          phoneLabel: contact.phoneLabel,
+          contactType: contact.contactType,
+          linkedinUrl: null, // Will be discovered later
+          linkedinStatus: 'pending',
+          source: 'ai_enrichment',
+          nameConfidence: contact.roleConfidence,
           createdAt: new Date(),
           updatedAt: new Date(),
         })
@@ -192,17 +199,20 @@ async function saveEnrichmentResults(
       .limit(1);
 
     if (existingPropContact.length === 0) {
-      let relType = 'Other';
-      if (contact.title?.toLowerCase().includes('property')) relType = 'Property Manager';
-      else if (contact.title?.toLowerCase().includes('facilities')) relType = 'Facilities Manager';
-      else if (contact.title?.toLowerCase().includes('owner')) relType = 'Owner';
-      else if (contact.title?.toLowerCase().includes('leasing')) relType = 'Leasing';
+      const roleMap: Record<string, string> = {
+        property_manager: 'Property Manager',
+        facilities_manager: 'Facilities Manager',
+        owner: 'Owner',
+        leasing: 'Leasing',
+        other: 'Other',
+      };
+      const relType = roleMap[contact.role] || 'Other';
 
       await db.insert(propertyContacts).values({
         propertyId,
         contactId,
         role: relType,
-        confidenceScore: contact.confidence,
+        confidenceScore: contact.roleConfidence,
         discoveredAt: new Date(),
       });
     }
@@ -233,9 +243,9 @@ async function main() {
       
       await saveEnrichmentResults(dbProp.id, dbProp.propertyKey, result);
       
-      console.log(`  Category: ${result.classification.category} - ${result.classification.subcategory}`);
-      console.log(`  Mgmt Co: ${result.ownership.managementCompany?.name || 'Not found'}`);
-      console.log(`  Contacts: ${result.contacts.length}`);
+      console.log(`  Category: ${result.classification.data.category} - ${result.classification.data.subcategory}`);
+      console.log(`  Mgmt Co: ${result.ownership.data.managementCompany?.name || 'Not found'}`);
+      console.log(`  Contacts: ${result.contacts.data.contacts.length}`);
       console.log(`  Time: ${result.timing.totalMs}ms\n`);
       
       success++;

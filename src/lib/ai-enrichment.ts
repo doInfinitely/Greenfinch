@@ -191,7 +191,7 @@ Return JSON:
   "category":"Category",
   "subcategory":"Subcategory",
   "confidence":0.0-1.0,
-  "property_class":"A/B/C/D",
+  "property_class":"A+/A/B/C/D",
   "property_class_confidence":0.0-1.0,
   "lot_acres":number|null,
   "lot_acres_confidence":0.0-1.0,
@@ -215,6 +215,7 @@ Return JSON:
       contents: prompt,
       config: { 
         temperature: 0.1,
+        // googleSearch: {} always grounds - no dynamic threshold supported in JS SDK
         tools: [{ googleSearch: {} }]
       }
     }));
@@ -388,6 +389,7 @@ Return JSON:
         contents: prompt,
         config: { 
           temperature: 0.1,
+          // googleSearch: {} always grounds - no dynamic threshold supported in JS SDK
           tools: [{ googleSearch: {} }]
         }
       }),
@@ -457,13 +459,12 @@ ADDRESS: ${classification.canonicalAddress}
 MANAGEMENT COMPANY: ${managementInfo}
 OWNER: ${ownerInfo}
 
-TASK: Search the web to find 3-8 contacts who make property decisions:
-- Property/Facilities managers at THIS specific location
-- Management company contacts responsible for this property
-- Owners/principals
-- Leasing agents
+TASK: Search the web to find 3-7 contacts who make property decisions:
+- Property managers responsible for THIS specific location
+- Facilities managers/directors, maintainence supervisors, and property operations staff for THIS specific location 
+- Include leasing or owner contacts or property management contacts not directly connected to the location ONLY if no other relevant contacts are found
 
-DO NOT include: condo unit owners, HOA board members, residential tenants
+DO NOT include: condo unit owners, HOA board members, residential tenants.
 
 CONTACT INFORMATION TO CAPTURE:
 - Email: Include ONLY if found from credible source (company website, LinkedIn, press release). Do NOT guess.
@@ -471,11 +472,10 @@ CONTACT INFORMATION TO CAPTURE:
   - "direct_work": Person's direct work phone number
   - "office": Property or company office line
   - "personal": Personal/cell phone (only if publicly listed for business purposes)
-  - "mobile": Mobile phone
 
 Return JSON:
 {
-  "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","email":"found@email.com or null","phone":"+1-555-123-4567 or null","phone_label":"direct_work|office|personal|mobile|null","phone_confidence":0.0-1.0,"role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8,"contact_type":"individual|general"}],
+  "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","email":"found@email.com or null","phone":"+1-555-123-4567 or null","phone_label":"direct_work|office|personal|null","phone_confidence":0.0-1.0,"role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8,"contact_type":"individual|general"}],
   "organizations":[{"name":"Org name","domain":"domain.com","org_type":"owner|management|tenant|developer","roles":["property_manager","owner"]}],
   "summary":"2-3 sentences citing evidence: 'Based on [source], the primary contact is [Name], listed on [website] as [role]. [Secondary contact] at [company] handles [responsibility].'"
 }
@@ -494,6 +494,7 @@ contact_type values:
         contents: prompt,
         config: { 
           temperature: 0.1,
+          // googleSearch: {} always grounds - no dynamic threshold supported in JS SDK
           tools: [{ googleSearch: {} }]
         }
       }),

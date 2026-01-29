@@ -184,6 +184,8 @@ function SummaryWithSources({
   summary: string; 
   sources: Array<{ id: number; title: string; url: string; type: string }> | null;
 }) {
+  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  
   if (!summary) return null;
   
   // Parse [1], [2], [9, 11], [12, 13, 15] etc. in the summary and make them clickable
@@ -242,27 +244,43 @@ function SummaryWithSources({
       
       {sources && sources.length > 0 && (
         <div className="pt-3 border-t border-gray-200">
-          <p className="text-xs font-medium text-gray-500 mb-2">Sources</p>
-          <div className="space-y-1">
-            {sources.map((source) => (
-              <div key={source.id} className="flex items-start gap-2 text-xs">
-                <span className="text-gray-400 font-medium">[{source.id}]</span>
-                {source.url ? (
-                  <a
-                    href={source.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 hover:underline truncate"
-                    title={source.url}
-                  >
-                    {source.title || source.url}
-                  </a>
-                ) : (
-                  <span className="text-gray-600">{source.title}</span>
-                )}
-              </div>
-            ))}
-          </div>
+          <button
+            onClick={() => setSourcesExpanded(!sourcesExpanded)}
+            className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
+            data-testid="button-toggle-sources"
+          >
+            <svg 
+              className={`w-3 h-3 transition-transform ${sourcesExpanded ? 'rotate-90' : ''}`} 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            Sources ({sources.length})
+          </button>
+          {sourcesExpanded && (
+            <div className="space-y-1 mt-2">
+              {sources.map((source) => (
+                <div key={source.id} className="flex items-start gap-2 text-xs">
+                  <span className="text-gray-400 font-medium">[{source.id}]</span>
+                  {source.url ? (
+                    <a
+                      href={source.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-600 hover:text-blue-800 hover:underline truncate"
+                      title={source.url}
+                    >
+                      {source.title || source.url}
+                    </a>
+                  ) : (
+                    <span className="text-gray-600">{source.title}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>

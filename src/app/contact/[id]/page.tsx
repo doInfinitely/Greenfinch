@@ -52,6 +52,7 @@ interface Contact {
   phone: string | null;
   normalizedPhone: string | null;
   phoneConfidence: number | null;
+  phoneLabel: 'direct_work' | 'office' | 'personal' | 'mobile' | null;
   title: string | null;
   titleConfidence: number | null;
   companyDomain: string | null;
@@ -69,6 +70,18 @@ interface Contact {
   createdAt: string;
   updatedAt: string;
 }
+
+const PHONE_LABEL_CONFIG: Record<string, { label: string; color: string }> = {
+  direct_work: { label: 'Direct', color: 'bg-green-100 text-green-700' },
+  office: { label: 'Office', color: 'bg-blue-100 text-blue-700' },
+  personal: { label: 'Personal', color: 'bg-purple-100 text-purple-700' },
+  mobile: { label: 'Mobile', color: 'bg-teal-100 text-teal-700' },
+};
+
+const CONTACT_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
+  individual: { label: 'Individual', color: 'bg-green-100 text-green-700' },
+  general: { label: 'Office Line', color: 'bg-blue-100 text-blue-700' },
+};
 
 const ROLE_LABELS: Record<string, string> = {
   owner: 'Owner',
@@ -452,9 +465,9 @@ export default function ContactDetailPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <h1 className="text-2xl font-bold text-gray-900">{contact.fullName || 'Unknown Contact'}</h1>
-                  {contact.contactType === 'general' && (
-                    <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-700">
-                      Office Line
+                  {contact.contactType && CONTACT_TYPE_CONFIG[contact.contactType] && (
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${CONTACT_TYPE_CONFIG[contact.contactType].color}`}>
+                      {CONTACT_TYPE_CONFIG[contact.contactType].label}
                     </span>
                   )}
                 </div>
@@ -540,10 +553,17 @@ export default function ContactDetailPage() {
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-500 mb-1">Phone</label>
-                  <p className="text-gray-900">
-                    {contact.phone || contact.normalizedPhone || '—'}
+                  <div className="flex items-center gap-2">
+                    <span className="text-gray-900">
+                      {contact.phone || contact.normalizedPhone || '—'}
+                    </span>
+                    {contact.phoneLabel && PHONE_LABEL_CONFIG[contact.phoneLabel] && (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PHONE_LABEL_CONFIG[contact.phoneLabel].color}`}>
+                        {PHONE_LABEL_CONFIG[contact.phoneLabel].label}
+                      </span>
+                    )}
                     <LowConfidenceMarker confidence={contact.phoneConfidence} />
-                  </p>
+                  </div>
                 </div>
                 
                 <div>

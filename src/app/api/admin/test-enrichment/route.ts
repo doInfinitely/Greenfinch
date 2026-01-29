@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCommercialPropertyByParcelId, getCommercialPropertiesByZip, type CommercialProperty } from '@/lib/snowflake';
-import { runFocusedEnrichment, classifyAndVerifyProperty, identifyOwnership, discoverContacts } from '@/lib/focused-enrichment';
+import { runFocusedEnrichment, classifyAndVerifyProperty, identifyOwnership, discoverContacts } from '@/lib/ai-enrichment';
 
 export async function GET(request: NextRequest) {
   const parcelId = request.nextUrl.searchParams.get('parcelId');

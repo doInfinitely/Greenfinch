@@ -1636,7 +1636,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
   
   try {
     // Import focused enrichment dynamically to avoid circular dependencies
-    const { runFocusedEnrichment } = await import('./focused-enrichment');
+    const { runFocusedEnrichment } = await import('./ai-enrichment');
     
     // Convert AggregatedProperty to CommercialProperty format for focused enrichment
     const commercialProperty = {

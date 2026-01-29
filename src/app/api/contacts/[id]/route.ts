@@ -74,6 +74,7 @@ export async function GET(
         phone: contact.phone,
         normalizedPhone: contact.normalizedPhone,
         phoneConfidence: contact.phoneConfidence,
+        phoneLabel: contact.phoneLabel,
         title: contact.title,
         titleConfidence: contact.titleConfidence,
         companyDomain: contact.companyDomain,
