@@ -105,6 +105,23 @@ The system uses a multi-provider cascade approach for enrichment with provider t
 - **Enrichment metadata display** (source, provider ID, enriched date) visible only to admins
 - **Permissions**: Uses `admin:enrich` permission from Clerk Organizations
 
+### Enrichment Queue System
+A non-blocking queue system allows users to continue browsing while enrichment runs in the background.
+
+**Implementation**:
+- **Context**: `src/contexts/EnrichmentQueueContext.tsx` - Queue state with localStorage persistence
+- **Hook**: `src/hooks/use-enrichment.ts` - Unified interface for starting enrichment operations
+- **UI**: `src/components/EnrichmentQueuePopover.tsx` - Header popover showing queue progress
+
+**Features**:
+- **Background Processing**: Enrichment runs asynchronously; users can navigate away
+- **Progress Messages**: Rotating status messages during enrichment (e.g., "Looking up company...")
+- **Click-through Links**: Completed items link directly to the enriched entity
+- **Toast Notifications**: Success/failure alerts with auto-dismiss (5 seconds)
+- **Persistence**: Queue survives page refreshes via localStorage
+- **Limits**: Maximum 20 items, 24-hour expiry for completed/failed items
+- **Request Body Support**: Property enrichment passes required propertyKey/storeResults payload
+
 ## Organization Domain Enrichment (Hunter.io + EnrichLayer)
 - **Implementation**: `src/lib/organization-enrichment.ts`, `src/lib/hunter.ts`, `src/lib/enrichlayer.ts`
 - **Schema**: Uses Clearbit-compatible schema for future provider flexibility
