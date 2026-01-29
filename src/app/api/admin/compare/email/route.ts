@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminAccess } from '@/lib/auth';
 import { validateEmail as neverBounceValidate } from '@/lib/neverbounce';
 import { verifyEmail as hunterVerify } from '@/lib/hunter';
+import { verifyEmail as findymailVerify } from '@/lib/findymail';
+import { validateEmail as zerobounceValidate } from '@/lib/zerobounce';
 
 export async function POST(request: NextRequest) {
   try {
@@ -103,6 +105,72 @@ export async function POST(request: NextRequest) {
               success: false,
               error: error.message,
               latency: Date.now() - hunterStart,
+            };
+          }
+        })()
+      );
+    }
+
+    if (process.env.FINDYMAIL_API_KEY) {
+      promises.push(
+        (async () => {
+          const findymailStart = Date.now();
+          try {
+            const result = await findymailVerify(email);
+            results.findymail = {
+              provider: 'Findymail',
+              success: result.success,
+              data: result.success ? {
+                status: result.status,
+                rawStatus: result.rawStatus,
+                isValid: result.status === 'valid',
+              } : null,
+              latency: Date.now() - findymailStart,
+              raw: result.raw,
+              error: result.error,
+            };
+          } catch (error: any) {
+            results.findymail = {
+              provider: 'Findymail',
+              success: false,
+              error: error.message,
+              latency: Date.now() - findymailStart,
+            };
+          }
+        })()
+      );
+    }
+
+    if (process.env.ZEROBOUNCE_API_KEY) {
+      promises.push(
+        (async () => {
+          const zbStart = Date.now();
+          try {
+            const result = await zerobounceValidate(email);
+            results.zerobounce = {
+              provider: 'ZeroBounce',
+              success: result.success,
+              data: result.success ? {
+                status: result.status,
+                rawStatus: result.rawStatus,
+                subStatus: result.subStatus,
+                isValid: result.status === 'valid',
+                freeEmail: result.freeEmail,
+                suggestedCorrection: result.suggestedCorrection,
+                mxFound: result.mxFound,
+                mxRecord: result.mxRecord,
+                smtpProvider: result.smtpProvider,
+              } : null,
+              latency: Date.now() - zbStart,
+              raw: result.raw,
+              error: result.error,
+            };
+          } catch (error: any) {
+            results.zerobounce = {
+              provider: 'ZeroBounce',
+              success: false,
+              error: error.message,
+              latency: Date.now() - zbStart,
             };
           }
         })()

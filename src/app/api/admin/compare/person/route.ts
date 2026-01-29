@@ -3,6 +3,8 @@ import { requireAdminAccess } from '@/lib/auth';
 import { enrichPersonPDL } from '@/lib/pdl';
 import { lookupPerson as enrichLayerLookup, lookupWorkEmail } from '@/lib/enrichlayer';
 import { findEmail as hunterFindEmail } from '@/lib/hunter';
+import { enrichPersonApollo } from '@/lib/apollo';
+import { findEmailByName as findymailSearch } from '@/lib/findymail';
 
 export async function POST(request: NextRequest) {
   try {
@@ -34,6 +36,8 @@ export async function POST(request: NextRequest) {
     console.log('[Compare Person] PDL API Key configured:', !!process.env.PEOPLEDATALABS_API_KEY);
     console.log('[Compare Person] EnrichLayer API Key configured:', !!process.env.ENRICHLAYER_API_KEY);
     console.log('[Compare Person] Hunter API Key configured:', !!process.env.HUNTER_API_KEY);
+    console.log('[Compare Person] Apollo API Key configured:', !!process.env.APOLLO_API_KEY);
+    console.log('[Compare Person] Findymail API Key configured:', !!process.env.FINDYMAIL_API_KEY);
 
     if (process.env.PEOPLEDATALABS_API_KEY) {
       // PDL Enrich API (strict matching)
@@ -233,6 +237,86 @@ export async function POST(request: NextRequest) {
               success: false,
               error: error.message,
               latency: Date.now() - hunterStart,
+            };
+          }
+        })()
+      );
+    }
+
+    if (process.env.APOLLO_API_KEY && lastName) {
+      promises.push(
+        (async () => {
+          const apolloStart = Date.now();
+          try {
+            const result = await enrichPersonApollo(firstName, lastName, domain || undefined);
+            results.apollo = {
+              provider: 'Apollo.io',
+              success: result.found,
+              data: result.found ? {
+                fullName: result.fullName,
+                firstName: result.firstName,
+                lastName: result.lastName,
+                title: result.title,
+                email: result.email,
+                phone: result.phone,
+                company: result.company,
+                companyDomain: result.companyDomain,
+                linkedinUrl: result.linkedinUrl,
+                location: result.location,
+                confidence: null,
+                domainMatch: domain ? result.companyDomain === domain : null,
+                seniority: result.seniority,
+                emailStatus: result.emailStatus,
+              } : null,
+              latency: Date.now() - apolloStart,
+              error: result.found ? undefined : result.error || 'No match found',
+              raw: result.raw,
+            };
+          } catch (error: any) {
+            results.apollo = {
+              provider: 'Apollo.io',
+              success: false,
+              error: error.message,
+              latency: Date.now() - apolloStart,
+            };
+          }
+        })()
+      );
+    }
+
+    if (process.env.FINDYMAIL_API_KEY && domain && lastName) {
+      promises.push(
+        (async () => {
+          const findymailStart = Date.now();
+          try {
+            const result = await findymailSearch(firstName, lastName, domain);
+            results.findymail = {
+              provider: 'Findymail',
+              success: result.found,
+              data: result.found ? {
+                fullName: result.fullName,
+                firstName: result.firstName,
+                lastName: result.lastName,
+                title: result.title,
+                email: result.email,
+                phone: result.phone,
+                company: null,
+                companyDomain: domain,
+                linkedinUrl: result.linkedinUrl,
+                location: null,
+                confidence: null,
+                domainMatch: true,
+              } : null,
+              latency: Date.now() - findymailStart,
+              error: result.found ? undefined : result.error || 'No email found',
+              raw: result.raw,
+            };
+          } catch (error: any) {
+            results.findymail = {
+              provider: 'Findymail',
+              success: false,
+              error: error.message,
+              latency: Date.now() - findymailStart,
             };
           }
         })()

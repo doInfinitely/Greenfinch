@@ -1,0 +1,150 @@
+/**
+ * Apollo.io API Integration
+ * 
+ * Uses the People Match endpoint for person enrichment.
+ * API Documentation: https://docs.apollo.io/reference/people-enrichment
+ */
+
+const APOLLO_API_URL = 'https://api.apollo.io/api/v1';
+
+interface ApolloPersonMatchResponse {
+  person: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    name: string;
+    linkedin_url: string | null;
+    title: string | null;
+    email_status: string | null;
+    email: string | null;
+    phone_numbers?: { raw_number: string; sanitized_number: string }[];
+    headline: string | null;
+    city: string | null;
+    state: string | null;
+    country: string | null;
+    organization_id: string | null;
+    organization?: {
+      id: string;
+      name: string;
+      website_url: string | null;
+      linkedin_url: string | null;
+      primary_domain: string | null;
+    };
+    seniority: string | null;
+    departments: string[] | null;
+  } | null;
+  status?: string;
+  error?: string;
+}
+
+interface ApolloEnrichResult {
+  found: boolean;
+  fullName?: string;
+  firstName?: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+  title?: string;
+  company?: string;
+  companyDomain?: string;
+  linkedinUrl?: string;
+  location?: string;
+  seniority?: string;
+  emailStatus?: string;
+  raw?: any;
+  error?: string;
+}
+
+/**
+ * Enrich a person using Apollo.io People Match API
+ * Requires first_name + last_name + organization_domain for best results
+ */
+export async function enrichPersonApollo(
+  firstName: string,
+  lastName: string,
+  domain?: string,
+  options?: { revealEmails?: boolean; revealPhone?: boolean }
+): Promise<ApolloEnrichResult> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey) {
+    throw new Error('APOLLO_API_KEY is not configured');
+  }
+
+  const params = new URLSearchParams();
+  params.append('first_name', firstName);
+  params.append('last_name', lastName);
+  
+  if (domain) {
+    params.append('organization_domain', domain);
+  }
+  
+  // By default, Apollo doesn't return personal emails/phones
+  params.append('reveal_personal_emails', options?.revealEmails ? 'true' : 'false');
+  params.append('reveal_phone_number', options?.revealPhone ? 'true' : 'false');
+
+  const url = `${APOLLO_API_URL}/people/match?${params.toString()}`;
+
+  console.log('[Apollo] People Match request:', { firstName, lastName, domain });
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'accept': 'application/json',
+        'x-api-key': apiKey,
+      },
+    });
+
+    const data: ApolloPersonMatchResponse = await response.json();
+    
+    console.log('[Apollo] Response status:', response.status);
+    console.log('[Apollo] Response body:', JSON.stringify(data).substring(0, 500));
+
+    if (!response.ok) {
+      const errorMsg = data.error || `Apollo API error: ${response.status}`;
+      console.log('[Apollo] API error:', errorMsg);
+      return { found: false, error: errorMsg, raw: data };
+    }
+
+    if (!data.person) {
+      console.log('[Apollo] No person found');
+      return { found: false, error: 'No match found', raw: data };
+    }
+
+    const person = data.person;
+    const location = [person.city, person.state, person.country]
+      .filter(Boolean)
+      .join(', ');
+
+    // Normalize LinkedIn URL to include https://
+    let linkedinUrl = person.linkedin_url;
+    if (linkedinUrl && !linkedinUrl.startsWith('http')) {
+      linkedinUrl = `https://${linkedinUrl}`;
+    }
+
+    const result: ApolloEnrichResult = {
+      found: true,
+      fullName: person.name,
+      firstName: person.first_name,
+      lastName: person.last_name,
+      email: person.email || undefined,
+      phone: person.phone_numbers?.[0]?.sanitized_number || undefined,
+      title: person.title || undefined,
+      company: person.organization?.name || undefined,
+      companyDomain: person.organization?.primary_domain || undefined,
+      linkedinUrl: linkedinUrl || undefined,
+      location: location || undefined,
+      seniority: person.seniority || undefined,
+      emailStatus: person.email_status || undefined,
+      raw: data,
+    };
+
+    console.log('[Apollo] Match found:', person.name, 'at', person.organization?.name);
+    return result;
+  } catch (error: any) {
+    console.error('[Apollo] Request failed:', error.message);
+    return { found: false, error: error.message };
+  }
+}
