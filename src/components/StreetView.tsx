@@ -61,38 +61,50 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 0 }:
         const sv = new google.maps.StreetViewService();
         const location = new google.maps.LatLng(lat, lon);
 
-        sv.getPanorama(
-          { location, radius: 50, source: google.maps.StreetViewSource.OUTDOOR },
-          (data, panoStatus) => {
-            if (!mounted || !containerRef.current) return;
-
-            if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
-              const panoLocation = data.location.latLng;
-              const computedHeading = google.maps.geometry?.spherical?.computeHeading(
-                panoLocation,
-                location
-              ) ?? heading;
-
-              panoramaRef.current = new google.maps.StreetViewPanorama(containerRef.current, {
-                position: panoLocation,
-                pov: { heading: computedHeading, pitch },
-                zoom: 1,
-                addressControl: true,
-                showRoadLabels: true,
-                linksControl: true,
-                panControl: true,
-                enableCloseButton: false,
-                motionTracking: false,
-                motionTrackingControl: false,
-                fullscreenControl: true,
-              });
-
-              setStatus('ready');
-            } else {
-              setStatus('unavailable');
-            }
+        const searchRadii = [50, 150, 300, 500];
+        
+        const tryPanorama = (radiusIndex: number) => {
+          if (!mounted || !containerRef.current) return;
+          if (radiusIndex >= searchRadii.length) {
+            setStatus('unavailable');
+            return;
           }
-        );
+          
+          sv.getPanorama(
+            { location, radius: searchRadii[radiusIndex], source: google.maps.StreetViewSource.OUTDOOR },
+            (data, panoStatus) => {
+              if (!mounted || !containerRef.current) return;
+
+              if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
+                const panoLocation = data.location.latLng;
+                const computedHeading = google.maps.geometry?.spherical?.computeHeading(
+                  panoLocation,
+                  location
+                ) ?? heading;
+
+                panoramaRef.current = new google.maps.StreetViewPanorama(containerRef.current, {
+                  position: panoLocation,
+                  pov: { heading: computedHeading, pitch },
+                  zoom: 1,
+                  addressControl: true,
+                  showRoadLabels: true,
+                  linksControl: true,
+                  panControl: true,
+                  enableCloseButton: false,
+                  motionTracking: false,
+                  motionTrackingControl: false,
+                  fullscreenControl: true,
+                });
+
+                setStatus('ready');
+              } else {
+                tryPanorama(radiusIndex + 1);
+              }
+            }
+          );
+        };
+        
+        tryPanorama(0);
       } catch (err) {
         if (mounted) {
           setError(err instanceof Error ? err.message : 'Failed to load Street View');
