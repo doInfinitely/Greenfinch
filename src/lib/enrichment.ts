@@ -68,6 +68,44 @@ export interface LinkedInSearchResponse {
   allResults: LinkedInSearchResult[];
 }
 
+// Common personal email providers - emails from these domains should trigger further enrichment
+const PERSONAL_EMAIL_PROVIDERS = new Set([
+  'gmail.com',
+  'googlemail.com',
+  'yahoo.com',
+  'yahoo.co.uk',
+  'yahoo.ca',
+  'outlook.com',
+  'hotmail.com',
+  'hotmail.co.uk',
+  'live.com',
+  'msn.com',
+  'aol.com',
+  'icloud.com',
+  'me.com',
+  'mac.com',
+  'mail.com',
+  'protonmail.com',
+  'proton.me',
+  'zoho.com',
+  'yandex.com',
+  'gmx.com',
+  'gmx.net',
+  'tutanota.com',
+  'fastmail.com',
+  'hey.com',
+]);
+
+/**
+ * Check if an email is from a personal email provider (gmail, yahoo, outlook, etc.)
+ * These emails are valid but don't tell us about the company, so we should still try to enrich
+ */
+export function isPersonalEmailProvider(email: string): boolean {
+  if (!email) return false;
+  const domain = email.toLowerCase().split('@')[1];
+  return domain ? PERSONAL_EMAIL_PROVIDERS.has(domain) : false;
+}
+
 // Email validation using ZeroBounce (preferred) or NeverBounce fallback
 // Treats catch-all as invalid per requirements
 async function validateEmail(email: string): Promise<{
@@ -1258,7 +1296,7 @@ export async function enrichContactWithPDL(
   aiDomain: string | null,
   propertyCity: string
 ): Promise<{ contact: EnrichedContact; relationshipConfidence: string; relationshipNote: string | null }> {
-  console.log(`[PDL Enrichment] Processing contact: ${contact.fullName} (email: ${contact.email || 'none'})`);
+  console.log(`[Contact Enrichment] Processing contact: ${contact.fullName} (email: ${contact.email || 'none'})`);
   
   let relationshipConfidence = 'high';
   let relationshipNote: string | null = null;
@@ -1273,7 +1311,7 @@ export async function enrichContactWithPDL(
       .limit(1);
     
     if (existingContact) {
-      console.log(`[PDL Enrichment] Contact already exists in database: ${existingContact.fullName}`);
+      console.log(`[Contact Enrichment] Contact already exists in database: ${existingContact.fullName}`);
       return {
         contact: {
           ...contact,
@@ -1291,28 +1329,43 @@ export async function enrichContactWithPDL(
     }
   }
   
-  // Step 2: Validate email with NeverBounce if present
+  // Step 2: Validate email with ZeroBounce/NeverBounce if present
+  let hasPersonalEmail = false;
   if (contact.email && !contact.emailValidated) {
-    console.log(`[PDL Enrichment] Validating email: ${contact.email}`);
+    console.log(`[Contact Enrichment] Validating email: ${contact.email}`);
+    hasPersonalEmail = isPersonalEmailProvider(contact.email);
+    
     try {
       const validationResult = await validateEmail(contact.email);
       
       if (validationResult.isValid) {
-        console.log(`[PDL Enrichment] Email valid (${validationResult.status}), using SERP for LinkedIn`);
-        
-        // Step 3: Email is valid - use SERP for LinkedIn and stop
-        // LinkedIn lookup will happen in enrichContactsWithLinkedIn
-        return {
-          contact: {
+        // Check if it's a personal email provider - if so, we still want to enrich
+        if (hasPersonalEmail) {
+          console.log(`[Contact Enrichment] Email valid but personal provider (${contact.email.split('@')[1]}), will continue enrichment for company data`);
+          // Keep the email but continue to cascade enrichment
+          contact = {
             ...contact,
             emailConfidence: validationResult.confidence,
             emailValidated: true,
-          },
-          relationshipConfidence: 'high',
-          relationshipNote: null,
-        };
+          };
+          // Don't return - continue to cascade enrichment to find company email/info
+        } else {
+          console.log(`[Contact Enrichment] Email valid (${validationResult.status}), using SERP for LinkedIn`);
+          
+          // Step 3: Email is valid business email - use SERP for LinkedIn and stop
+          // LinkedIn lookup will happen in enrichContactsWithLinkedIn
+          return {
+            contact: {
+              ...contact,
+              emailConfidence: validationResult.confidence,
+              emailValidated: true,
+            },
+            relationshipConfidence: 'high',
+            relationshipNote: null,
+          };
+        }
       } else {
-        console.log(`[PDL Enrichment] Email invalid (${validationResult.status}), falling back to PDL`);
+        console.log(`[Contact Enrichment] Email invalid (${validationResult.status}), falling back to cascade`);
         // Clear invalid email
         contact = {
           ...contact,
@@ -1323,8 +1376,8 @@ export async function enrichContactWithPDL(
         };
       }
     } catch (error) {
-      console.error(`[PDL Enrichment] NeverBounce validation error:`, error);
-      // Continue to PDL fallback
+      console.error(`[Contact Enrichment] Email validation error:`, error);
+      // Continue to cascade fallback
     }
   }
   
@@ -1701,16 +1754,11 @@ export async function enrichContactsWithLinkedIn(contacts: EnrichedContact[]): P
   return enrichedContacts;
 }
 
-// Auto-validation flow for high-priority contacts - now with parallel processing
-export async function validateHighPriorityContacts(contacts: EnrichedContact[]): Promise<EnrichedContact[]> {
-  const highPriorityRoles = ['property_manager', 'facilities', 'asset_manager'];
+// Auto-validation flow for ALL contacts - runs enrichment on all contacts in parallel
+export async function validateAllContacts(contacts: EnrichedContact[]): Promise<EnrichedContact[]> {
+  console.log(`[Enrichment] Validating all ${contacts.length} contacts in parallel...`);
   
-  console.log(`[Enrichment] Validating high-priority contacts in parallel...`);
-  
-  const nonHighPriority = contacts.filter(c => !highPriorityRoles.includes(c.role));
-  const highPriority = contacts.filter(c => highPriorityRoles.includes(c.role));
-  
-  if (highPriority.length === 0) {
+  if (contacts.length === 0) {
     return contacts;
   }
   
@@ -1718,12 +1766,13 @@ export async function validateHighPriorityContacts(contacts: EnrichedContact[]):
   const neverBounceLimit = pLimit(CONCURRENCY.NEVERBOUNCE);
   
   const validatedContacts = await Promise.all(
-    highPriority.map(contact =>
+    contacts.map(contact =>
       hunterLimit(async () => {
-        console.log(`[Enrichment] Validating high-priority contact: ${contact.fullName} (${contact.role})`);
+        console.log(`[Enrichment] Validating contact: ${contact.fullName} (${contact.role})`);
         let updatedContact = { ...contact };
         
         try {
+          // Try to find email via Hunter if missing and we have a domain
           if (!updatedContact.email && updatedContact.companyDomain) {
             const { firstName, lastName } = parseNameParts(updatedContact.fullName);
             
@@ -1731,7 +1780,7 @@ export async function validateHighPriorityContacts(contacts: EnrichedContact[]):
               const findResult = await findEmail(firstName, lastName, updatedContact.companyDomain);
               
               if (findResult.email && findResult.confidence > 80) {
-                console.log(`[Enrichment] Found email ${findResult.email} for high-priority contact`);
+                console.log(`[Enrichment] Found email ${findResult.email} for contact ${contact.fullName}`);
                 updatedContact.email = findResult.email.toLowerCase().trim();
                 updatedContact.normalizedEmail = findResult.email.toLowerCase().trim();
                 updatedContact.emailConfidence = findResult.confidence / 100;
@@ -1739,11 +1788,12 @@ export async function validateHighPriorityContacts(contacts: EnrichedContact[]):
             } else {
               if (!updatedContact.needsReview) {
                 updatedContact.needsReview = true;
-                updatedContact.reviewReason = 'High-priority contact with incomplete name - cannot search email';
+                updatedContact.reviewReason = 'Contact with incomplete name - cannot search email';
               }
             }
           }
           
+          // Validate email if present
           if (updatedContact.email) {
             const validationResult = await neverBounceLimit(() => validateEmail(updatedContact.email!));
             
@@ -1760,27 +1810,26 @@ export async function validateHighPriorityContacts(contacts: EnrichedContact[]):
           const hasValidContact = updatedContact.email || updatedContact.phone || updatedContact.linkedinUrl;
           if (!hasValidContact) {
             updatedContact.needsReview = true;
-            updatedContact.reviewReason = 'High-priority contact missing all contact information';
+            updatedContact.reviewReason = 'Contact missing all contact information';
           }
           
           return updatedContact;
         } catch (error) {
-          console.error(`[Enrichment] Error validating high-priority contact ${contact.fullName}:`, error);
+          console.error(`[Enrichment] Error validating contact ${contact.fullName}:`, error);
           return {
             ...contact,
             needsReview: true,
-            reviewReason: `High-priority contact validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            reviewReason: `Contact validation failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
           };
         }
       })
     )
   );
   
-  const enrichedContacts = [...validatedContacts, ...nonHighPriority];
   const withContact = validatedContacts.filter(c => c.email || c.phone || c.linkedinUrl).length;
-  console.log(`[Enrichment] High-priority validation complete: ${withContact}/${highPriority.length} have contact info`);
+  console.log(`[Enrichment] Contact validation complete: ${withContact}/${contacts.length} have contact info`);
   
-  return enrichedContacts;
+  return validatedContacts;
 }
 
 // Main enrichment function - uses focused multi-stage enrichment
@@ -1992,37 +2041,44 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
     
     // Continue with LinkedIn enrichment for contacts that need it
     const contactsWithLinkedIn = await enrichContactsWithLinkedIn(contactsWithPDL);
-    const validatedContacts = await validateHighPriorityContacts(contactsWithLinkedIn);
+    const validatedContacts = await validateAllContacts(contactsWithLinkedIn);
     
-    // Enrich organizations with PDL company data
-    const enrichedOrgsWithPDL: EnrichedOrganization[] = [];
+    // Enrich organizations with cascade: Apollo → EnrichLayer → PDL
+    const enrichedOrgsWithCascade: EnrichedOrganization[] = [];
     for (const org of enrichedOrgs) {
       if (org.domain) {
-        const pdlData = await enrichOrganizationWithPDL(org.domain);
-        enrichedOrgsWithPDL.push({
-          ...org,
-          description: pdlData.description || undefined,
-          linkedinHandle: pdlData.linkedinHandle || undefined,
-          industry: pdlData.industry || undefined,
-          employees: pdlData.employees || undefined,
-          employeesRange: pdlData.employeesRange || undefined,
-          city: pdlData.city || undefined,
-          state: pdlData.state || undefined,
-          pdlEnriched: pdlData.pdlEnriched,
-        } as EnrichedOrganization & { pdlEnriched?: boolean });
+        console.log(`[Enrichment] Enriching organization with cascade: ${org.name || org.domain}`);
+        const cascadeData = await enrichOrganizationByDomain(org.domain);
+        if (cascadeData.success && cascadeData.enrichedData) {
+          const enriched = cascadeData.enrichedData;
+          enrichedOrgsWithCascade.push({
+            ...org,
+            name: enriched.name || org.name,
+            description: enriched.description || org.description,
+            linkedinHandle: enriched.linkedinUrl?.replace('https://www.linkedin.com/company/', '').replace('/', '') || org.linkedinHandle,
+            industry: enriched.industry || org.industry,
+            employees: enriched.employeeCount || org.employees,
+            city: enriched.city || org.city,
+            state: enriched.state || org.state,
+            providerId: enriched.providerId || undefined,
+            enrichmentSource: enriched.enrichmentSource || undefined,
+          } as EnrichedOrganization);
+        } else {
+          enrichedOrgsWithCascade.push(org);
+        }
       } else {
-        enrichedOrgsWithPDL.push(org);
+        enrichedOrgsWithCascade.push(org);
       }
     }
 
-    console.log(`[Enrichment] Focused enrichment complete: ${validatedContacts.length} contacts, ${enrichedOrgsWithPDL.length} orgs`);
+    console.log(`[Enrichment] Focused enrichment complete: ${validatedContacts.length} contacts, ${enrichedOrgsWithCascade.length} orgs`);
 
     return {
       success: true,
       propertyKey: aggregatedProperty.propertyKey,
       property,
       contacts: validatedContacts,
-      organizations: enrichedOrgsWithPDL,
+      organizations: enrichedOrgsWithCascade,
       rawResponse: {
         verification: { property_verified: true },
         property: classification,
