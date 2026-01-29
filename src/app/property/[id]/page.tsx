@@ -8,6 +8,7 @@ import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2 } from '
 import { Button } from '@/components/ui/button';
 import Header from '@/components/Header';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
+import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
 import AddToListModal from '@/components/AddToListModal';
 import EnrichmentModal from '@/components/EnrichmentModal';
 import StreetView from '@/components/StreetView';
@@ -890,16 +891,21 @@ export default function PropertyDetailPage() {
                   
                   <div className="flex flex-wrap items-center gap-2 mt-3">
                     <EnrichmentStatusBadge status={enrichmentStatus} />
-                    {enrichedProperty?.assetCategory && (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
-                        {enrichedProperty.assetCategory}
-                      </span>
-                    )}
-                    {enrichedProperty?.assetSubcategory && (
-                      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-600">
-                        {enrichedProperty.assetSubcategory}
-                      </span>
-                    )}
+                    {enrichedProperty?.assetCategory && (() => {
+                      const colors = CATEGORY_COLORS[enrichedProperty.assetCategory] || DEFAULT_CATEGORY_COLORS;
+                      return (
+                        <span className="inline-flex items-center gap-1">
+                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}>
+                            {enrichedProperty.assetCategory}
+                          </span>
+                          {enrichedProperty?.assetSubcategory && (
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${colors.subBg} ${colors.subText}`}>
+                              {enrichedProperty.assetSubcategory}
+                            </span>
+                          )}
+                        </span>
+                      );
+                    })()}
                     <LowConfidenceMarker confidence={enrichedProperty?.categoryConfidence} />
                   </div>
                 </div>
@@ -1262,7 +1268,7 @@ export default function PropertyDetailPage() {
 
             {enrichmentStatus === 'completed' && enrichedProperty && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Enrichment Details</h2>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">About This Property</h2>
                 
                 <div className="space-y-4">
                   {enrichedProperty.lastEnrichedAt && (
@@ -1270,8 +1276,8 @@ export default function PropertyDetailPage() {
                       <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <span className="text-gray-500">Last Researched:</span>
-                      <span className="text-gray-900">{new Date(enrichedProperty.lastEnrichedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                      <span className="text-gray-500">Data last refreshed:</span>
+                      <span className="text-gray-900">{new Date(enrichedProperty.lastEnrichedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                     </div>
                   )}
 

@@ -111,6 +111,24 @@ function formatCategorySchema(): string {
     .join('\n');
 }
 
+// AI-generated source domains to filter out from grounding results
+const AI_SOURCE_DOMAINS = [
+  'vertexaisearch.cloud.google.com',
+  'vertexaisearch.googleapis.com',
+  'generativelanguage.googleapis.com',
+  'ai.google.dev',
+  'bard.google.com',
+];
+
+function isAIGeneratedSource(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase();
+    return AI_SOURCE_DOMAINS.some(domain => hostname.includes(domain));
+  } catch {
+    return false;
+  }
+}
+
 function extractGroundedSources(response: any): GroundedSource[] {
   try {
     const candidates = response.candidates || response.response?.candidates || [];
@@ -123,7 +141,7 @@ function extractGroundedSources(response: any): GroundedSource[] {
     const groundingChunks = groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || [];
     
     return groundingChunks
-      .filter((chunk: any) => chunk.web?.uri)
+      .filter((chunk: any) => chunk.web?.uri && !isAIGeneratedSource(chunk.web.uri))
       .map((chunk: any) => ({
         url: chunk.web.uri,
         title: chunk.web.title || 'Source',
