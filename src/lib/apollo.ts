@@ -149,3 +149,134 @@ export async function enrichPersonApollo(
     return { found: false, error: error.message };
   }
 }
+
+interface ApolloOrganizationResponse {
+  organization: {
+    id: string;
+    name: string;
+    website_url: string | null;
+    linkedin_url: string | null;
+    twitter_url: string | null;
+    facebook_url: string | null;
+    phone: string | null;
+    founded_year: number | null;
+    logo_url: string | null;
+    primary_domain: string | null;
+    industry: string | null;
+    estimated_num_employees: number | null;
+    keywords: string[] | null;
+    sic_codes: string[] | null;
+    naics_codes: string[] | null;
+    street_address: string | null;
+    city: string | null;
+    state: string | null;
+    country: string | null;
+    postal_code: string | null;
+    raw_address: string | null;
+    short_description: string | null;
+    publicly_traded_symbol: string | null;
+    publicly_traded_exchange: string | null;
+    alexa_ranking: number | null;
+  } | null;
+  error?: string;
+}
+
+interface ApolloCompanyEnrichResult {
+  found: boolean;
+  name?: string;
+  description?: string;
+  industry?: string;
+  employeeCount?: number;
+  foundedYear?: number;
+  city?: string;
+  state?: string;
+  country?: string;
+  website?: string;
+  linkedinUrl?: string;
+  twitterUrl?: string;
+  facebookUrl?: string;
+  logoUrl?: string;
+  phone?: string;
+  sicCodes?: string[];
+  naicsCodes?: string[];
+  keywords?: string[];
+  raw?: any;
+  error?: string;
+}
+
+/**
+ * Enrich a company/organization using Apollo.io Organization Enrichment API
+ */
+export async function enrichCompanyApollo(domain: string): Promise<ApolloCompanyEnrichResult> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey) {
+    throw new Error('APOLLO_API_KEY is not configured');
+  }
+
+  const url = `${APOLLO_API_URL}/organizations/enrich?domain=${encodeURIComponent(domain)}`;
+
+  console.log('[Apollo] Organization Enrich request:', { domain });
+
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        'accept': 'application/json',
+        'X-Api-Key': apiKey,
+      },
+    });
+
+    const data: ApolloOrganizationResponse = await response.json();
+    
+    console.log('[Apollo] Org response status:', response.status);
+    console.log('[Apollo] Org response body:', JSON.stringify(data).substring(0, 500));
+
+    if (!response.ok) {
+      const errorMsg = data.error || `Apollo API error: ${response.status}`;
+      console.log('[Apollo] Org API error:', errorMsg);
+      return { found: false, error: errorMsg, raw: data };
+    }
+
+    if (!data.organization) {
+      console.log('[Apollo] No organization found');
+      return { found: false, error: 'No organization found', raw: data };
+    }
+
+    const org = data.organization;
+
+    // Normalize LinkedIn URL to include https://
+    let linkedinUrl = org.linkedin_url;
+    if (linkedinUrl && !linkedinUrl.startsWith('http')) {
+      linkedinUrl = `https://${linkedinUrl}`;
+    }
+
+    const result: ApolloCompanyEnrichResult = {
+      found: true,
+      name: org.name,
+      description: org.short_description || undefined,
+      industry: org.industry || undefined,
+      employeeCount: org.estimated_num_employees || undefined,
+      foundedYear: org.founded_year || undefined,
+      city: org.city || undefined,
+      state: org.state || undefined,
+      country: org.country || undefined,
+      website: org.website_url || undefined,
+      linkedinUrl: linkedinUrl || undefined,
+      twitterUrl: org.twitter_url || undefined,
+      facebookUrl: org.facebook_url || undefined,
+      logoUrl: org.logo_url || undefined,
+      phone: org.phone || undefined,
+      sicCodes: org.sic_codes || undefined,
+      naicsCodes: org.naics_codes || undefined,
+      keywords: org.keywords || undefined,
+      raw: data,
+    };
+
+    console.log('[Apollo] Organization found:', org.name, 'with', org.estimated_num_employees, 'employees');
+    return result;
+  } catch (error: any) {
+    console.error('[Apollo] Org request failed:', error.message);
+    return { found: false, error: error.message };
+  }
+}

@@ -3,6 +3,7 @@ import { requireAdminAccess } from '@/lib/auth';
 import { enrichCompanyPDL } from '@/lib/pdl';
 import { resolveCompanyByDomain, getCompanyProfile } from '@/lib/enrichlayer';
 import { enrichCompanyByDomain as hunterEnrichCompany } from '@/lib/hunter';
+import { enrichCompanyApollo } from '@/lib/apollo';
 
 export async function POST(request: NextRequest) {
   try {
@@ -175,6 +176,52 @@ export async function POST(request: NextRequest) {
               success: false,
               error: error.message,
               latency: Date.now() - hunterStart,
+            };
+          }
+        })()
+      );
+    }
+
+    if (process.env.APOLLO_API_KEY) {
+      promises.push(
+        (async () => {
+          const apolloStart = Date.now();
+          try {
+            const result = await enrichCompanyApollo(normalizedDomain);
+            results.apollo = {
+              provider: 'Apollo.io',
+              success: result.found,
+              data: result.found ? {
+                name: result.name,
+                description: result.description,
+                industry: result.industry,
+                category: result.keywords?.slice(0, 5).join(', ') || null,
+                employeeCount: result.employeeCount,
+                employeeRange: null,
+                foundedYear: result.foundedYear,
+                city: result.city,
+                state: result.state,
+                country: result.country,
+                location: [result.city, result.state, result.country].filter(Boolean).join(', '),
+                website: result.website,
+                linkedinUrl: result.linkedinUrl,
+                twitterUrl: result.twitterUrl,
+                facebookUrl: result.facebookUrl,
+                logoUrl: result.logoUrl,
+                phone: result.phone,
+                sicCodes: result.sicCodes,
+                naicsCodes: result.naicsCodes,
+              } : null,
+              latency: Date.now() - apolloStart,
+              error: result.found ? undefined : result.error,
+              raw: result.raw,
+            };
+          } catch (error: any) {
+            results.apollo = {
+              provider: 'Apollo.io',
+              success: false,
+              error: error.message,
+              latency: Date.now() - apolloStart,
             };
           }
         })()
