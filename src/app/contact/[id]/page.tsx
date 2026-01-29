@@ -8,6 +8,7 @@ import Header from '@/components/Header';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { AdminOnly } from '@/components/PermissionGate';
+import { useEnrichment } from '@/hooks/use-enrichment';
 
 interface LinkedInSearchResult {
   name: string;
@@ -156,9 +157,9 @@ export default function ContactDetailPage() {
   const [linkedInMessage, setLinkedInMessage] = useState<string | null>(null);
   const [showLinkedInAlternatives, setShowLinkedInAlternatives] = useState(false);
   const [selectingAlternative, setSelectingAlternative] = useState(false);
-  const [isEnriching, setIsEnriching] = useState(false);
   const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
+  const { startEnrichment } = useEnrichment();
   const [isLoadingPhoto, setIsLoadingPhoto] = useState(false);
 
   useEffect(() => {
@@ -345,47 +346,52 @@ export default function ContactDetailPage() {
   const handleEnrichContact = async () => {
     if (!contact) return;
 
-    setIsEnriching(true);
-    setEnrichMessage(null);
+    setEnrichMessage('Enrichment started - check the queue for progress');
 
-    try {
-      const response = await fetch(`/api/contacts/${contactId}/enrich`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setContact(prev => prev ? {
-          ...prev,
-          linkedinUrl: data.contact.linkedinUrl || prev.linkedinUrl,
-          linkedinConfidence: data.contact.linkedinConfidence || prev.linkedinConfidence,
-          linkedinStatus: data.contact.linkedinStatus || prev.linkedinStatus,
-          email: data.contact.email || prev.email,
-          emailConfidence: data.contact.emailConfidence || prev.emailConfidence,
-          phone: data.contact.phone || prev.phone,
-          phoneConfidence: data.contact.phoneConfidence || prev.phoneConfidence,
-          title: data.contact.title || prev.title,
-          employerName: data.contact.employerName || prev.employerName,
-        } : null);
-        
-        const updates = [];
-        if (data.enrichmentResult.linkedinUrl) updates.push('LinkedIn');
-        if (data.enrichmentResult.email) updates.push('Email');
-        if (data.enrichmentResult.phone) updates.push('Phone');
-        
-        setEnrichMessage(updates.length > 0 
-          ? `Found: ${updates.join(', ')}` 
-          : 'No additional information found');
-      } else {
-        setEnrichMessage(data.error || 'Enrichment failed');
-      }
-    } catch (err) {
-      setEnrichMessage('Failed to enrich contact');
-    } finally {
-      setIsEnriching(false);
-    }
+    startEnrichment({
+      type: 'contact',
+      entityId: contactId as string,
+      entityName: contact.fullName || 'Unknown Contact',
+      apiEndpoint: `/api/contacts/${contactId}/enrich`,
+      onSuccess: (data: unknown) => {
+        const result = data as { 
+          success: boolean; 
+          contact: Partial<Contact>; 
+          enrichmentResult?: { linkedinUrl?: string; email?: string; phone?: string } 
+        };
+        if (result.success && result.contact) {
+          setContact(prev => prev ? {
+            ...prev,
+            linkedinUrl: result.contact.linkedinUrl || prev.linkedinUrl,
+            linkedinConfidence: result.contact.linkedinConfidence ?? prev.linkedinConfidence,
+            linkedinStatus: result.contact.linkedinStatus || prev.linkedinStatus,
+            email: result.contact.email || prev.email,
+            emailConfidence: result.contact.emailConfidence ?? prev.emailConfidence,
+            phone: result.contact.phone || prev.phone,
+            phoneConfidence: result.contact.phoneConfidence ?? prev.phoneConfidence,
+            title: result.contact.title || prev.title,
+            employerName: result.contact.employerName || prev.employerName,
+          } : null);
+          
+          const updates: string[] = [];
+          if (result.enrichmentResult?.linkedinUrl) updates.push('LinkedIn');
+          if (result.enrichmentResult?.email) updates.push('Email');
+          if (result.enrichmentResult?.phone) updates.push('Phone');
+          
+          if (updates.length > 0) {
+            setEnrichMessage(`Found: ${updates.join(', ')}`);
+            setTimeout(() => setEnrichMessage(null), 5000);
+          } else {
+            setEnrichMessage(null);
+          }
+        } else {
+          setEnrichMessage(null);
+        }
+      },
+      onError: () => {
+        setEnrichMessage(null);
+      },
+    });
   };
 
   if (isLoading) {
@@ -487,27 +493,17 @@ export default function ContactDetailPage() {
               <AdminOnly>
                 <button
                   onClick={handleEnrichContact}
-                  disabled={isEnriching}
-                  className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700"
                   data-testid="button-enrich-contact"
                 >
-                  {isEnriching ? (
-                    <>
-                      <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      Enriching...
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      Enrich Contact
-                    </>
-                  )}
+                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  Enrich Contact
                 </button>
               </AdminOnly>
               {enrichMessage && (
-                <span className={`text-sm ${enrichMessage.includes('Found') ? 'text-green-600' : 'text-amber-600'}`}>
+                <span className="text-sm text-green-600">
                   {enrichMessage}
                 </span>
               )}

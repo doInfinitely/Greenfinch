@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SignInButton, UserButton, useUser, OrganizationSwitcher, useAuth } from '@clerk/nextjs';
 import { Settings } from 'lucide-react';
+import EnrichmentQueuePopover from '@/components/EnrichmentQueuePopover';
 
 interface HeaderProps {
   showBackButton?: boolean;
@@ -164,6 +165,7 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
                   {orgRole?.replace('org:', '').toUpperCase()}
                 </span>
               )}
+              <EnrichmentQueuePopover />
               <Link
                 href="/settings"
                 className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"

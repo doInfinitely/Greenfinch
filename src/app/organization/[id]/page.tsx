@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
 import { AdminOnly } from '@/components/PermissionGate';
+import { useEnrichment } from '@/hooks/use-enrichment';
 
 interface PropertyRelation {
   id: string;
@@ -122,41 +123,33 @@ export default function OrganizationDetailPage() {
   const [contacts, setContacts] = useState<ContactRelation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isEnriching, setIsEnriching] = useState(false);
   const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
+  const { startEnrichment } = useEnrichment();
 
   const handleEnrichOrganization = async () => {
     if (!organization) return;
     
-    setIsEnriching(true);
-    setEnrichMessage(null);
+    setEnrichMessage('Enrichment started - check the queue for progress');
     
-    try {
-      const response = await fetch(`/api/organizations/${orgId}/enrich`, {
-        method: 'POST',
-      });
-      
-      const contentType = response.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        if (response.redirected || response.status === 307) {
-          throw new Error('Session expired - please refresh the page');
+    startEnrichment({
+      type: 'organization',
+      entityId: orgId as string,
+      entityName: organization.name || organization.domain || 'Unknown Organization',
+      apiEndpoint: `/api/organizations/${orgId}/enrich`,
+      onSuccess: (data: unknown) => {
+        const result = data as { organization: Organization };
+        if (result.organization) {
+          setOrganization(result.organization);
+          setEnrichMessage('Enriched successfully');
+          setTimeout(() => setEnrichMessage(null), 5000);
+        } else {
+          setEnrichMessage(null);
         }
-        throw new Error('Server returned an invalid response');
-      }
-      
-      const data = await response.json();
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Enrichment failed');
-      }
-      
-      setOrganization(data.organization);
-      setEnrichMessage('Organization enriched successfully');
-    } catch (err) {
-      setEnrichMessage(err instanceof Error ? err.message : 'Failed to enrich');
-    } finally {
-      setIsEnriching(false);
-    }
+      },
+      onError: () => {
+        setEnrichMessage(null);
+      },
+    });
   };
 
   useEffect(() => {
@@ -320,26 +313,15 @@ export default function OrganizationDetailPage() {
                   <AdminOnly>
                     <button
                       onClick={handleEnrichOrganization}
-                      disabled={isEnriching}
-                      className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded bg-green-50 text-green-700 hover:bg-green-100"
                       data-testid="button-enrich-org"
                     >
-                      {isEnriching ? (
-                        <>
-                          <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
-                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                          </svg>
-                          Enriching...
-                        </>
-                      ) : (
-                        'Enrich Company'
-                      )}
+                      Enrich Company
                     </button>
                   </AdminOnly>
                 )}
                 {enrichMessage && (
-                  <span className={`text-xs ${enrichMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className="text-xs text-green-600">
                     {enrichMessage}
                   </span>
                 )}

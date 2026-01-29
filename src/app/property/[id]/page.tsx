@@ -10,9 +10,9 @@ import Header from '@/components/Header';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
 import AddToListModal from '@/components/AddToListModal';
-import EnrichmentModal from '@/components/EnrichmentModal';
 import StreetView from '@/components/StreetView';
 import { AdminOnly } from '@/components/PermissionGate';
+import { useEnrichment } from '@/hooks/use-enrichment';
 
 function toTitleCase(str: string): string {
   return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
@@ -343,10 +343,10 @@ export default function PropertyDetailPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isEnriching, setIsEnriching] = useState(false);
   const [enrichmentStatus, setEnrichmentStatus] = useState<EnrichmentStatusType>('not_enriched');
   const [enrichmentMessage, setEnrichmentMessage] = useState<string>('');
   const [showAddToListModal, setShowAddToListModal] = useState(false);
+  const { startEnrichment } = useEnrichment();
   
   // Property flagging state
   const [showFlagDialog, setShowFlagDialog] = useState(false);
@@ -615,42 +615,36 @@ export default function PropertyDetailPage() {
   const handleEnrichment = async () => {
     if (!property) return;
 
-    setIsEnriching(true);
     setEnrichmentStatus('pending');
-    setEnrichmentMessage('');
+    setEnrichmentMessage('Enrichment started - check the queue for progress');
 
-    try {
-      const response = await fetch('/api/enrich', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          propertyKey: property.propertyKey,
-          storeResults: true,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Enrichment failed');
-      }
-
-      if (data.enrichment) {
-        setEnrichedProperty(data.enrichment.property || null);
-        setContacts((data.enrichment.contacts || []).map((c: Contact) => ({
-          ...c,
-          emailValidationStatus: 'not_validated' as const,
-        })));
-        setOrganizations(data.enrichment.organizations || []);
-        setEnrichmentStatus('completed');
-        setEnrichmentMessage(`Found ${data.enrichment.contacts?.length || 0} contacts and ${data.enrichment.organizations?.length || 0} organizations`);
-      }
-    } catch (err) {
-      setEnrichmentStatus('failed');
-      setEnrichmentMessage(err instanceof Error ? err.message : 'Enrichment failed');
-    } finally {
-      setIsEnriching(false);
-    }
+    startEnrichment({
+      type: 'property',
+      entityId: property.propertyKey,
+      entityName: enrichedProperty?.commonName || property.address || 'Unknown Property',
+      apiEndpoint: '/api/enrich',
+      requestBody: {
+        propertyKey: property.propertyKey,
+        storeResults: true,
+      },
+      onSuccess: (data: unknown) => {
+        const result = data as { enrichment?: { property?: EnrichedPropertyData; contacts?: Contact[]; organizations?: Organization[] } };
+        if (result.enrichment) {
+          setEnrichedProperty(result.enrichment.property || null);
+          setContacts((result.enrichment.contacts || []).map((c: Contact) => ({
+            ...c,
+            emailValidationStatus: 'not_validated' as const,
+          })));
+          setOrganizations(result.enrichment.organizations || []);
+          setEnrichmentStatus('completed');
+          setEnrichmentMessage(`Found ${result.enrichment.contacts?.length || 0} contacts and ${result.enrichment.organizations?.length || 0} organizations`);
+        }
+      },
+      onError: (error: string) => {
+        setEnrichmentStatus('failed');
+        setEnrichmentMessage(error);
+      },
+    });
   };
 
   // Search organizations for flagging
@@ -915,23 +909,13 @@ export default function PropertyDetailPage() {
                     <AdminOnly>
                       <button
                         onClick={handleEnrichment}
-                        disabled={isEnriching}
-                        className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+                        className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors flex items-center"
                         data-testid="button-find-decision-makers"
                       >
-                        {isEnriching ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                            Finding...
-                          </>
-                        ) : (
-                          <>
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                            </svg>
-                            Find Decision Makers
-                          </>
-                        )}
+                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        Find Decision Makers
                       </button>
                     </AdminOnly>
                   )}
@@ -1467,7 +1451,6 @@ export default function PropertyDetailPage() {
                   <AdminOnly>
                     <button
                       onClick={handleEnrichment}
-                      disabled={isEnriching}
                       className="text-sm text-green-600 hover:text-green-700"
                     >
                       Click "Find Decision Makers" to discover contacts
@@ -1630,11 +1613,6 @@ export default function PropertyDetailPage() {
           itemType="properties"
         />
       )}
-
-      <EnrichmentModal
-        isOpen={isEnriching}
-        propertyName={enrichedProperty?.commonName || property?.address}
-      />
 
       {expandedMapType && property?.lat && property?.lon && (
         <div className="fixed inset-0 z-50 overflow-hidden">
