@@ -24,7 +24,9 @@ interface FindymailEmailResult {
 
 interface FindymailVerifyResult {
   email: string;
-  status: 'valid' | 'invalid' | 'risky' | 'unknown';
+  verified?: boolean;
+  status?: 'valid' | 'invalid' | 'risky' | 'unknown';
+  provider?: string;
   credits_left?: number;
 }
 
@@ -212,16 +214,24 @@ export async function verifyEmail(email: string): Promise<VerifyEmailResult> {
     }
 
     // Normalize status to our standard values
+    // Findymail returns { verified: true/false } format
     let normalizedStatus: 'valid' | 'invalid' | 'catch-all' | 'unknown' = 'unknown';
-    const rawStatus = data.status;
+    let rawStatus = 'unknown';
     
-    if (rawStatus === 'valid') {
-      normalizedStatus = 'valid';
-    } else if (rawStatus === 'invalid') {
-      normalizedStatus = 'invalid';
-    } else if (rawStatus === 'risky') {
-      // Risky emails might be catch-all or have other issues
-      normalizedStatus = 'catch-all';
+    if (data.verified !== undefined) {
+      // New format: { verified: boolean }
+      normalizedStatus = data.verified ? 'valid' : 'invalid';
+      rawStatus = data.verified ? 'verified' : 'not_verified';
+    } else if (data.status) {
+      // Legacy format: { status: string }
+      rawStatus = data.status;
+      if (data.status === 'valid') {
+        normalizedStatus = 'valid';
+      } else if (data.status === 'invalid') {
+        normalizedStatus = 'invalid';
+      } else if (data.status === 'risky') {
+        normalizedStatus = 'catch-all';
+      }
     }
 
     return {

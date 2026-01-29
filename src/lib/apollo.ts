@@ -70,19 +70,19 @@ export async function enrichPersonApollo(
     throw new Error('APOLLO_API_KEY is not configured');
   }
 
-  const params = new URLSearchParams();
-  params.append('first_name', firstName);
-  params.append('last_name', lastName);
+  // Build request body for Apollo People Match API
+  const requestBody: Record<string, any> = {
+    first_name: firstName,
+    last_name: lastName,
+    reveal_personal_emails: options?.revealEmails ?? false,
+    reveal_phone_number: options?.revealPhone ?? false,
+  };
   
   if (domain) {
-    params.append('organization_domain', domain);
+    requestBody.domain = domain;
   }
-  
-  // By default, Apollo doesn't return personal emails/phones
-  params.append('reveal_personal_emails', options?.revealEmails ? 'true' : 'false');
-  params.append('reveal_phone_number', options?.revealPhone ? 'true' : 'false');
 
-  const url = `${APOLLO_API_URL}/people/match?${params.toString()}`;
+  const url = `${APOLLO_API_URL}/people/match`;
 
   console.log('[Apollo] People Match request:', { firstName, lastName, domain });
 
@@ -93,8 +93,9 @@ export async function enrichPersonApollo(
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache',
         'accept': 'application/json',
-        'x-api-key': apiKey,
+        'X-Api-Key': apiKey,
       },
+      body: JSON.stringify(requestBody),
     });
 
     const data: ApolloPersonMatchResponse = await response.json();
