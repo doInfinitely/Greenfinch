@@ -7,6 +7,7 @@ import { AlertTriangle, Flag, Check, X, ExternalLink } from 'lucide-react';
 import Header from '@/components/Header';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
+import { AdminOnly } from '@/components/PermissionGate';
 
 interface LinkedInSearchResult {
   name: string;
@@ -67,6 +68,9 @@ interface Contact {
   needsReview: boolean | null;
   reviewReason: string | null;
   photoUrl: string | null;
+  providerId: string | null;
+  enrichmentSource: string | null;
+  enrichedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -480,26 +484,28 @@ export default function ContactDetailPage() {
               </div>
             </div>
             <div className="flex items-center gap-3">
-              <button
-                onClick={handleEnrichContact}
-                disabled={isEnriching}
-                className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                data-testid="button-enrich-contact"
-              >
-                {isEnriching ? (
-                  <>
-                    <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                    Enriching...
-                  </>
-                ) : (
-                  <>
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                    </svg>
-                    Enrich Contact
-                  </>
-                )}
-              </button>
+              <AdminOnly>
+                <button
+                  onClick={handleEnrichContact}
+                  disabled={isEnriching}
+                  className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  data-testid="button-enrich-contact"
+                >
+                  {isEnriching ? (
+                    <>
+                      <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                      Enriching...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                      </svg>
+                      Enrich Contact
+                    </>
+                  )}
+                </button>
+              </AdminOnly>
               {enrichMessage && (
                 <span className={`text-sm ${enrichMessage.includes('Found') ? 'text-green-600' : 'text-amber-600'}`}>
                   {enrichMessage}
@@ -862,6 +868,45 @@ export default function ContactDetailPage() {
                 </span>
               </div>
             </div>
+
+            <AdminOnly>
+              {(contact.enrichmentSource || contact.providerId || contact.enrichedAt) && (
+                <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span className="text-sm font-medium text-blue-700">Enrichment Metadata</span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                    {contact.enrichmentSource && (
+                      <div>
+                        <span className="text-blue-600">Source:</span>
+                        <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium uppercase" data-testid="text-contact-enrichment-source">
+                          {contact.enrichmentSource}
+                        </span>
+                      </div>
+                    )}
+                    {contact.providerId && (
+                      <div>
+                        <span className="text-blue-600">Provider ID:</span>
+                        <span className="ml-2 font-mono text-xs text-gray-600" data-testid="text-contact-provider-id">
+                          {contact.providerId.length > 20 ? `${contact.providerId.substring(0, 20)}...` : contact.providerId}
+                        </span>
+                      </div>
+                    )}
+                    {contact.enrichedAt && (
+                      <div>
+                        <span className="text-blue-600">Enriched:</span>
+                        <span className="ml-2 text-gray-700" data-testid="text-contact-enriched-at">
+                          {new Date(contact.enrichedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </AdminOnly>
           </div>
         </div>
       </main>

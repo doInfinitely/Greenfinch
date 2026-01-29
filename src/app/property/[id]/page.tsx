@@ -12,6 +12,7 @@ import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
 import AddToListModal from '@/components/AddToListModal';
 import EnrichmentModal from '@/components/EnrichmentModal';
 import StreetView from '@/components/StreetView';
+import { AdminOnly } from '@/components/PermissionGate';
 
 function toTitleCase(str: string): string {
   return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
@@ -911,26 +912,28 @@ export default function PropertyDetailPage() {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {enrichmentStatus !== 'completed' && (
-                    <button
-                      onClick={handleEnrichment}
-                      disabled={isEnriching}
-                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
-                      data-testid="button-find-decision-makers"
-                    >
-                      {isEnriching ? (
-                        <>
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                          Finding...
-                        </>
-                      ) : (
-                        <>
-                          <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                          </svg>
-                          Find Decision Makers
-                        </>
-                      )}
-                    </button>
+                    <AdminOnly>
+                      <button
+                        onClick={handleEnrichment}
+                        disabled={isEnriching}
+                        className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
+                        data-testid="button-find-decision-makers"
+                      >
+                        {isEnriching ? (
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            Finding...
+                          </>
+                        ) : (
+                          <>
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                            Find Decision Makers
+                          </>
+                        )}
+                      </button>
+                    </AdminOnly>
                   )}
                   <button
                     onClick={handleAddToList}
@@ -1461,13 +1464,15 @@ export default function PropertyDetailPage() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
                   </svg>
                   <p className="text-gray-500 mb-3">No contacts discovered yet</p>
-                  <button
-                    onClick={handleEnrichment}
-                    disabled={isEnriching}
-                    className="text-sm text-green-600 hover:text-green-700"
-                  >
-                    Click "Find Decision Makers" to discover contacts
-                  </button>
+                  <AdminOnly>
+                    <button
+                      onClick={handleEnrichment}
+                      disabled={isEnriching}
+                      className="text-sm text-green-600 hover:text-green-700"
+                    >
+                      Click "Find Decision Makers" to discover contacts
+                    </button>
+                  </AdminOnly>
                 </div>
               )}
             </div>

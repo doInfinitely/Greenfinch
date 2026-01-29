@@ -1,12 +1,12 @@
 import { db } from './db';
 import { organizations } from './schema';
 import { eq } from 'drizzle-orm';
-import { enrichCompanyPDL, PDLCompanyResult } from './pdl';
+import { enrichOrganizationCascade, OrganizationEnrichmentResult as CascadeResult } from './cascade-enrichment';
 
 export interface OrganizationEnrichmentResult {
   success: boolean;
   orgId: string;
-  enrichedData: PDLCompanyResult | null;
+  enrichedData: CascadeResult | null;
   error?: string;
 }
 
@@ -38,9 +38,10 @@ async function findOrCreateOrgByDomain(domain: string): Promise<{ id: string; is
 }
 
 export async function enrichOrganizationByDomain(
-  domain: string
+  domain: string,
+  options?: { forceRefresh?: boolean }
 ): Promise<OrganizationEnrichmentResult> {
-  console.log(`[OrgEnrichment] Enriching organization with PDL: ${domain}`);
+  console.log(`[OrgEnrichment] Enriching organization with cascade (Apollo → EnrichLayer → PDL): ${domain}`);
   
   if (!domain) {
     return { success: false, orgId: '', enrichedData: null, error: 'no_domain' };
@@ -48,8 +49,8 @@ export async function enrichOrganizationByDomain(
   
   const orgRecord = await findOrCreateOrgByDomain(domain);
   
-  if (!orgRecord.needsEnrichment) {
-    console.log(`[OrgEnrichment] Organization ${domain} already enriched with PDL, skipping`);
+  if (!orgRecord.needsEnrichment && !options?.forceRefresh) {
+    console.log(`[OrgEnrichment] Organization ${domain} already enriched, skipping`);
     return { 
       success: true, 
       orgId: orgRecord.id,
@@ -57,11 +58,11 @@ export async function enrichOrganizationByDomain(
     };
   }
   
-  // Use PDL for company enrichment
-  const pdlResult = await enrichCompanyPDL(domain);
+  // Use cascade enrichment: Apollo → EnrichLayer → PDL
+  const cascadeResult = await enrichOrganizationCascade(domain);
   
-  if (!pdlResult.found) {
-    console.log(`[OrgEnrichment] PDL did not find company: ${domain}`);
+  if (!cascadeResult.found) {
+    console.log(`[OrgEnrichment] No provider found company: ${domain}`);
     await db.update(organizations)
       .set({
         enrichmentStatus: 'failed',
@@ -70,53 +71,71 @@ export async function enrichOrganizationByDomain(
       })
       .where(eq(organizations.id, orgRecord.id));
     
-    return { success: false, orgId: orgRecord.id, enrichedData: null, error: 'pdl_not_found' };
+    return { success: false, orgId: orgRecord.id, enrichedData: null, error: 'not_found' };
   }
   
   // Extract LinkedIn handle from URL if it's a full URL
-  let linkedinHandle = pdlResult.linkedinUrl;
+  let linkedinHandle = cascadeResult.linkedinUrl;
   if (linkedinHandle && linkedinHandle.includes('linkedin.com/company/')) {
     linkedinHandle = linkedinHandle.split('linkedin.com/company/')[1]?.replace(/\/$/, '') || linkedinHandle;
   }
   
+  // Build update object
+  const updateData: Record<string, any> = {
+    name: cascadeResult.name || undefined,
+    legalName: cascadeResult.name || undefined,
+    description: cascadeResult.description || undefined,
+    foundedYear: cascadeResult.foundedYear || undefined,
+    
+    industry: cascadeResult.industry || undefined,
+    
+    employees: cascadeResult.employeeCount || undefined,
+    employeesRange: cascadeResult.employeesRange || undefined,
+    
+    location: cascadeResult.city && cascadeResult.state 
+      ? `${cascadeResult.city}, ${cascadeResult.state}` 
+      : (cascadeResult.city || cascadeResult.state || undefined),
+    city: cascadeResult.city || undefined,
+    state: cascadeResult.state || undefined,
+    country: cascadeResult.country || undefined,
+    
+    linkedinHandle: linkedinHandle || undefined,
+    
+    // Apollo logo takes priority - it's set first in the cascade
+    logoUrl: cascadeResult.logoUrl || undefined,
+    
+    phoneNumbers: cascadeResult.phone ? [cascadeResult.phone] : undefined,
+    tags: cascadeResult.tags || undefined,
+    
+    // Provider tracking
+    providerId: cascadeResult.providerId || undefined,
+    enrichmentSource: cascadeResult.enrichmentSource || undefined,
+    enrichmentStatus: 'complete',
+    lastEnrichedAt: cascadeResult.enrichedAt || new Date(),
+    rawEnrichmentJson: cascadeResult.raw ? { [cascadeResult.enrichmentSource || 'unknown']: cascadeResult.raw } : undefined,
+    
+    // Legacy PDL fields - set based on source
+    pdlEnriched: cascadeResult.enrichmentSource === 'pdl',
+    pdlEnrichedAt: cascadeResult.enrichmentSource === 'pdl' ? new Date() : undefined,
+    
+    updatedAt: new Date(),
+  };
+  
+  // Filter out undefined values
+  const cleanUpdate = Object.fromEntries(
+    Object.entries(updateData).filter(([_, v]) => v !== undefined)
+  );
+  
   await db.update(organizations)
-    .set({
-      name: pdlResult.name || undefined,
-      legalName: pdlResult.name || undefined,
-      description: pdlResult.description || undefined,
-      foundedYear: pdlResult.foundedYear || undefined,
-      
-      industry: pdlResult.industry || undefined,
-      
-      employees: pdlResult.employeeCount || undefined,
-      employeesRange: pdlResult.employeeRange || undefined,
-      
-      location: pdlResult.city && pdlResult.state 
-        ? `${pdlResult.city}, ${pdlResult.state}` 
-        : (pdlResult.city || pdlResult.state || undefined),
-      city: pdlResult.city || undefined,
-      state: pdlResult.state || undefined,
-      
-      linkedinHandle: linkedinHandle || undefined,
-      
-      logoUrl: pdlResult.logoUrl || undefined,
-      
-      enrichmentSource: 'pdl',
-      enrichmentStatus: 'complete',
-      lastEnrichedAt: new Date(),
-      pdlEnriched: true,
-      pdlEnrichedAt: new Date(),
-      rawEnrichmentJson: { pdl: pdlResult },
-      updatedAt: new Date(),
-    })
+    .set(cleanUpdate)
     .where(eq(organizations.id, orgRecord.id));
   
-  console.log(`[OrgEnrichment] Successfully enriched ${domain} (${pdlResult.displayName || pdlResult.name}) with PDL - Industry: ${pdlResult.industry}, Employees: ${pdlResult.employeeRange}`);
+  console.log(`[OrgEnrichment] Successfully enriched ${domain} (${cascadeResult.name}) via ${cascadeResult.enrichmentSource} - Industry: ${cascadeResult.industry}, Employees: ${cascadeResult.employeesRange}`);
   
   return {
     success: true,
     orgId: orgRecord.id,
-    enrichedData: pdlResult,
+    enrichedData: cascadeResult,
   };
 }
 

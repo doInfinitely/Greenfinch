@@ -257,6 +257,12 @@ export const contacts = pgTable('contacts', {
   pdlEmployerName: text('pdl_employer_name'),
   pdlEmployerDomain: text('pdl_employer_domain'),
   
+  // Provider tracking for enrichment cascade (Apollo → EnrichLayer → PDL)
+  providerId: text('provider_id'), // ID from the enrichment provider (e.g., Apollo person ID)
+  enrichmentSource: text('enrichment_source'), // 'apollo', 'enrichlayer', 'pdl', 'ai'
+  enrichedAt: timestamp('enriched_at'),
+  rawEnrichmentJson: json('raw_enrichment_json'),
+  
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
@@ -327,8 +333,9 @@ export const organizations = pgTable('organizations', {
   phoneNumbers: json('phone_numbers').$type<string[]>(),
   emailAddresses: json('email_addresses').$type<string[]>(),
   
-  // Enrichment metadata
-  enrichmentSource: text('enrichment_source'),
+  // Enrichment metadata - provider tracking for cascade (Apollo → EnrichLayer → PDL)
+  providerId: text('provider_id'), // ID from the enrichment provider (e.g., Apollo org ID)
+  enrichmentSource: text('enrichment_source'), // 'apollo', 'enrichlayer', 'pdl'
   enrichmentStatus: text('enrichment_status').default('pending'),
   lastEnrichedAt: timestamp('last_enriched_at'),
   rawEnrichmentJson: json('raw_enrichment_json'),

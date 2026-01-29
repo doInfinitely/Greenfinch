@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Header from '@/components/Header';
+import { AdminOnly } from '@/components/PermissionGate';
 
 interface PropertyRelation {
   id: string;
@@ -75,6 +76,7 @@ interface Organization {
   enrichmentStatus: string | null;
   enrichmentSource: string | null;
   lastEnrichedAt: string | null;
+  providerId: string | null;
   
   createdAt: string;
   updatedAt: string;
@@ -315,24 +317,26 @@ export default function OrganizationDetailPage() {
                   </a>
                 )}
                 {organization.domain && organization.enrichmentStatus !== 'complete' && (
-                  <button
-                    onClick={handleEnrichOrganization}
-                    disabled={isEnriching}
-                    className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    data-testid="button-enrich-org"
-                  >
-                    {isEnriching ? (
-                      <>
-                        <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                        </svg>
-                        Enriching...
-                      </>
-                    ) : (
-                      'Enrich Company'
-                    )}
-                  </button>
+                  <AdminOnly>
+                    <button
+                      onClick={handleEnrichOrganization}
+                      disabled={isEnriching}
+                      className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      data-testid="button-enrich-org"
+                    >
+                      {isEnriching ? (
+                        <>
+                          <svg className="animate-spin -ml-0.5 mr-1.5 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                          </svg>
+                          Enriching...
+                        </>
+                      ) : (
+                        'Enrich Company'
+                      )}
+                    </button>
+                  </AdminOnly>
                 )}
                 {enrichMessage && (
                   <span className={`text-xs ${enrichMessage.includes('success') ? 'text-green-600' : 'text-red-600'}`}>
@@ -557,6 +561,45 @@ export default function OrganizationDetailPage() {
             </div>
           </div>
         </div>
+
+        <AdminOnly>
+          {(organization.enrichmentSource || organization.providerId || organization.lastEnrichedAt) && (
+            <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 mt-6">
+              <div className="flex items-center gap-2 mb-3">
+                <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span className="text-sm font-medium text-blue-700">Enrichment Metadata</span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                {organization.enrichmentSource && (
+                  <div>
+                    <span className="text-blue-600">Source:</span>
+                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium uppercase" data-testid="text-org-enrichment-source">
+                      {organization.enrichmentSource}
+                    </span>
+                  </div>
+                )}
+                {organization.providerId && (
+                  <div>
+                    <span className="text-blue-600">Provider ID:</span>
+                    <span className="ml-2 font-mono text-xs text-gray-600" data-testid="text-org-provider-id">
+                      {organization.providerId.length > 20 ? `${organization.providerId.substring(0, 20)}...` : organization.providerId}
+                    </span>
+                  </div>
+                )}
+                {organization.lastEnrichedAt && (
+                  <div>
+                    <span className="text-blue-600">Enriched:</span>
+                    <span className="ml-2 text-gray-700" data-testid="text-org-enriched-at">
+                      {new Date(organization.lastEnrichedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                    </span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </AdminOnly>
       </main>
     </div>
   );

@@ -5,11 +5,15 @@ import { properties, contacts, organizations, propertyContacts, propertyOrganiza
 import { eq, and } from "drizzle-orm";
 import type { AggregatedProperty } from "./snowflake";
 import { findEmail } from "./hunter";
-import { validateEmail } from "./neverbounce";
+import { validateEmail as validateEmailNeverbounce } from "./neverbounce";
+import { validateEmail as validateEmailZeroBounce } from "./zerobounce";
 import { findContainingPlace } from "./google-places";
 import { getProfilePicture } from "./enrichlayer";
 import { enrichOrganizationByDomain } from "./organization-enrichment";
 import { enrichPersonPDL, enrichCompanyPDL } from "./pdl";
+import { enrichPersonApollo } from "./apollo";
+import { lookupPerson as lookupPersonEnrichLayer } from "./enrichlayer";
+import { enrichContactCascade, ContactEnrichmentInput } from "./cascade-enrichment";
 import pLimit from "p-limit";
 import { CONCURRENCY, GEMINI_MODEL } from "./constants";
 import { createRequire } from "module";
@@ -62,6 +66,68 @@ export interface LinkedInSearchResponse {
   linkedinUrl: string | null;
   confidence: number;
   allResults: LinkedInSearchResult[];
+}
+
+// Email validation using ZeroBounce (preferred) or NeverBounce fallback
+// Treats catch-all as invalid per requirements
+async function validateEmail(email: string): Promise<{
+  isValid: boolean;
+  confidence: number;
+  status: 'valid' | 'invalid' | 'disposable' | 'catchall' | 'unknown';
+  details?: any;
+}> {
+  // Try ZeroBounce first if configured
+  if (process.env.ZEROBOUNCE_API_KEY) {
+    try {
+      const result = await validateEmailZeroBounce(email);
+      // Treat catch-all as INVALID per requirements
+      const isValid = result.status === 'valid';
+      const statusMap: Record<string, 'valid' | 'invalid' | 'catchall' | 'unknown'> = {
+        'valid': 'valid',
+        'invalid': 'invalid',
+        'catch-all': 'catchall', // Treat as invalid
+        'unknown': 'unknown',
+      };
+      const normalizedStatus = statusMap[result.status] || 'unknown';
+      
+      console.log(`[EmailValidation] ZeroBounce: ${email} -> ${result.status} (valid=${isValid})`);
+      return {
+        isValid,
+        confidence: isValid ? 0.95 : 0,
+        status: normalizedStatus,
+        details: result.raw,
+      };
+    } catch (error) {
+      console.warn('[EmailValidation] ZeroBounce failed, trying NeverBounce fallback:', error);
+    }
+  }
+  
+  // Fallback to NeverBounce
+  if (process.env.NEVERBOUNCE_API_KEY) {
+    try {
+      const result = await validateEmailNeverbounce(email);
+      // Also treat catch-all as invalid for NeverBounce
+      const isValid = result.status === 'valid';
+      
+      console.log(`[EmailValidation] NeverBounce: ${email} -> ${result.status} (valid=${isValid})`);
+      return {
+        isValid,
+        confidence: result.confidence,
+        status: result.status,
+        details: result.details,
+      };
+    } catch (error) {
+      console.warn('[EmailValidation] NeverBounce failed:', error);
+    }
+  }
+  
+  // No validation service available
+  console.warn('[EmailValidation] No validation service configured');
+  return {
+    isValid: false,
+    confidence: 0,
+    status: 'unknown',
+  };
 }
 
 async function serpApiSearch(query: string): Promise<GoogleSearchResult | null> {
@@ -1262,68 +1328,155 @@ export async function enrichContactWithPDL(
     }
   }
   
-  // Step 4: Email invalid or missing - use PDL for person enrichment
-  // Use companyDomain if available, fall back to aiDomain for strict matching
-  const domainForPDL = contact.companyDomain || aiDomain;
-  if (domainForPDL) {
-    const { firstName, lastName } = parseNameParts(contact.fullName);
+  // Step 4: Email invalid or missing - use cascade: Apollo → EnrichLayer → PDL
+  const domainForEnrichment = contact.companyDomain || aiDomain;
+  const { firstName, lastName } = parseNameParts(contact.fullName);
+  
+  if (firstName && lastName && domainForEnrichment) {
+    console.log(`[Cascade Enrichment] Searching for ${firstName} ${lastName} at ${domainForEnrichment}`);
     
-    if (firstName && lastName) {
-      console.log(`[PDL Enrichment] Searching PDL for ${firstName} ${lastName} at ${domainForPDL}`);
-      
-      const pdlResult = await enrichPersonPDL(firstName, lastName, domainForPDL, {
-        location: propertyCity,
+    // Try Apollo first
+    try {
+      console.log(`[Cascade Enrichment] Trying Apollo.io...`);
+      const apolloResult = await enrichPersonApollo(firstName, lastName, domainForEnrichment, {
+        revealEmails: true,
+        revealPhone: true,
       });
       
-      if (pdlResult.found) {
-        console.log(`[PDL Enrichment] PDL found person: ${pdlResult.fullName} (confidence: ${pdlResult.confidence})`);
+      if (apolloResult.found && (apolloResult.linkedinUrl || apolloResult.email || apolloResult.title)) {
+        console.log(`[Cascade Enrichment] Apollo found: ${apolloResult.fullName}`);
         
-        // Step 5: Compare employer domain from PDL vs AI
-        const pdlDomain = pdlResult.companyDomain;
-        const expectedDomain = aiDomain || contact.companyDomain;
-        
-        let employerMismatch = false;
-        if (pdlDomain && expectedDomain) {
-          const normPdlDomain = pdlDomain.toLowerCase().replace(/^www\./, '');
-          const normExpectedDomain = expectedDomain.toLowerCase().replace(/^www\./, '');
-          employerMismatch = normPdlDomain !== normExpectedDomain;
+        // Validate Apollo email
+        let apolloEmailValid = false;
+        if (apolloResult.email) {
+          const validation = await validateEmail(apolloResult.email);
+          apolloEmailValid = validation.isValid;
         }
         
-        if (employerMismatch) {
-          console.log(`[PDL Enrichment] Employer mismatch: PDL says ${pdlDomain}, AI says ${expectedDomain}`);
-          relationshipConfidence = 'low';
-          relationshipNote = `PDL employer (${pdlResult.companyName || pdlDomain}) differs from AI-discovered employer (${contact.employerName || expectedDomain})`;
-        }
-        
-        // Only use PDL data if strict match (first name + last name + domain match)
-        if (pdlResult.domainMatch) {
-          return {
-            contact: {
-              ...contact,
-              email: pdlResult.email || contact.email,
-              normalizedEmail: pdlResult.email ? pdlResult.email.toLowerCase().trim() : contact.normalizedEmail,
-              emailConfidence: pdlResult.email ? 0.85 : contact.emailConfidence,
-              emailSource: pdlResult.email ? 'pdl' : contact.emailSource,
-              emailValidated: !!pdlResult.email,
-              linkedinUrl: pdlResult.linkedinUrl || contact.linkedinUrl,
-              linkedinConfidence: pdlResult.linkedinUrl ? 0.9 : contact.linkedinConfidence,
-              title: pdlResult.title || contact.title,
-              employerName: employerMismatch ? contact.employerName : (pdlResult.companyName || contact.employerName),
-              companyDomain: employerMismatch ? contact.companyDomain : (pdlResult.companyDomain || contact.companyDomain),
-              pdlEnriched: true,
-              pdlEmployerMismatch: employerMismatch,
-              pdlEmployerName: pdlResult.companyName,
-              pdlEmployerDomain: pdlResult.companyDomain,
-            } as EnrichedContact & { pdlEnriched?: boolean; pdlEmployerMismatch?: boolean; pdlEmployerName?: string; pdlEmployerDomain?: string },
-            relationshipConfidence,
-            relationshipNote,
-          };
-        } else {
-          console.log(`[PDL Enrichment] PDL result does not pass strict matching (name+domain), skipping`);
-        }
-      } else {
-        console.log(`[PDL Enrichment] PDL did not find person`);
+        return {
+          contact: {
+            ...contact,
+            email: apolloEmailValid ? apolloResult.email : contact.email,
+            normalizedEmail: apolloEmailValid && apolloResult.email ? apolloResult.email.toLowerCase().trim() : contact.normalizedEmail,
+            emailConfidence: apolloEmailValid ? 0.9 : contact.emailConfidence,
+            emailSource: apolloEmailValid ? 'apollo' : contact.emailSource,
+            emailValidated: apolloEmailValid,
+            linkedinUrl: apolloResult.linkedinUrl || contact.linkedinUrl,
+            linkedinConfidence: apolloResult.linkedinUrl ? 0.95 : contact.linkedinConfidence,
+            title: apolloResult.title || contact.title,
+            employerName: apolloResult.company || contact.employerName,
+            companyDomain: apolloResult.companyDomain || contact.companyDomain,
+            enrichmentSource: 'apollo',
+            providerId: apolloResult.raw?.person?.id || null,
+          } as EnrichedContact & { enrichmentSource?: string; providerId?: string },
+          relationshipConfidence: 'high',
+          relationshipNote: null,
+        };
       }
+    } catch (error) {
+      console.warn(`[Cascade Enrichment] Apollo failed:`, error);
+    }
+    
+    // Try EnrichLayer second
+    try {
+      console.log(`[Cascade Enrichment] Trying EnrichLayer...`);
+      const elResult = await lookupPersonEnrichLayer({
+        firstName,
+        lastName,
+        companyDomain: domainForEnrichment,
+        title: contact.title || undefined,
+        location: propertyCity || undefined,
+      });
+      
+      if (elResult.success && (elResult.linkedinUrl || elResult.email)) {
+        console.log(`[Cascade Enrichment] EnrichLayer found: ${elResult.fullName || contact.fullName}`);
+        
+        // Validate EnrichLayer email
+        let elEmailValid = false;
+        if (elResult.email) {
+          const validation = await validateEmail(elResult.email);
+          elEmailValid = validation.isValid;
+        }
+        
+        return {
+          contact: {
+            ...contact,
+            email: elEmailValid ? elResult.email : contact.email,
+            normalizedEmail: elEmailValid && elResult.email ? elResult.email.toLowerCase().trim() : contact.normalizedEmail,
+            emailConfidence: elEmailValid ? 0.85 : contact.emailConfidence,
+            emailSource: elEmailValid ? 'enrichlayer' : contact.emailSource,
+            emailValidated: elEmailValid,
+            linkedinUrl: elResult.linkedinUrl || contact.linkedinUrl,
+            linkedinConfidence: elResult.linkedinUrl ? 0.9 : contact.linkedinConfidence,
+            title: elResult.title || contact.title,
+            employerName: elResult.company || contact.employerName,
+            enrichmentSource: 'enrichlayer',
+            providerId: elResult.linkedinUrl || null,
+          } as EnrichedContact & { enrichmentSource?: string; providerId?: string },
+          relationshipConfidence: 'high',
+          relationshipNote: null,
+        };
+      }
+    } catch (error) {
+      console.warn(`[Cascade Enrichment] EnrichLayer failed:`, error);
+    }
+    
+    // Try PDL last
+    console.log(`[Cascade Enrichment] Trying PDL...`);
+    const pdlResult = await enrichPersonPDL(firstName, lastName, domainForEnrichment, {
+      location: propertyCity,
+    });
+    
+    if (pdlResult.found) {
+      console.log(`[Cascade Enrichment] PDL found person: ${pdlResult.fullName} (confidence: ${pdlResult.confidence})`);
+      
+      // Compare employer domain from PDL vs AI
+      const pdlDomain = pdlResult.companyDomain;
+      const expectedDomain = aiDomain || contact.companyDomain;
+      
+      let employerMismatch = false;
+      if (pdlDomain && expectedDomain) {
+        const normPdlDomain = pdlDomain.toLowerCase().replace(/^www\./, '');
+        const normExpectedDomain = expectedDomain.toLowerCase().replace(/^www\./, '');
+        employerMismatch = normPdlDomain !== normExpectedDomain;
+      }
+      
+      if (employerMismatch) {
+        console.log(`[Cascade Enrichment] Employer mismatch: PDL says ${pdlDomain}, AI says ${expectedDomain}`);
+        relationshipConfidence = 'low';
+        relationshipNote = `PDL employer (${pdlResult.companyName || pdlDomain}) differs from AI-discovered employer (${contact.employerName || expectedDomain})`;
+      }
+      
+      // Only use PDL data if strict match (first name + last name + domain match)
+      if (pdlResult.domainMatch) {
+        return {
+          contact: {
+            ...contact,
+            email: pdlResult.email || contact.email,
+            normalizedEmail: pdlResult.email ? pdlResult.email.toLowerCase().trim() : contact.normalizedEmail,
+            emailConfidence: pdlResult.email ? 0.85 : contact.emailConfidence,
+            emailSource: pdlResult.email ? 'pdl' : contact.emailSource,
+            emailValidated: !!pdlResult.email,
+            linkedinUrl: pdlResult.linkedinUrl || contact.linkedinUrl,
+            linkedinConfidence: pdlResult.linkedinUrl ? 0.9 : contact.linkedinConfidence,
+            title: pdlResult.title || contact.title,
+            employerName: employerMismatch ? contact.employerName : (pdlResult.companyName || contact.employerName),
+            companyDomain: employerMismatch ? contact.companyDomain : (pdlResult.companyDomain || contact.companyDomain),
+            pdlEnriched: true,
+            pdlEmployerMismatch: employerMismatch,
+            pdlEmployerName: pdlResult.companyName,
+            pdlEmployerDomain: pdlResult.companyDomain,
+            enrichmentSource: 'pdl',
+            providerId: pdlResult.raw?.id || null,
+          } as EnrichedContact & { pdlEnriched?: boolean; pdlEmployerMismatch?: boolean; pdlEmployerName?: string; pdlEmployerDomain?: string; enrichmentSource?: string; providerId?: string },
+          relationshipConfidence,
+          relationshipNote,
+        };
+      } else {
+        console.log(`[Cascade Enrichment] PDL result does not pass strict matching (name+domain), skipping`);
+      }
+    } else {
+      console.log(`[Cascade Enrichment] PDL did not find person`);
     }
   }
   

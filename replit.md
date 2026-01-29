@@ -74,6 +74,37 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Clerk Auth**: Handles user authentication with automatic legacy user migration.
 - **Google Gemini**: Utilized for AI-based property enrichment, including contact discovery, beneficial owner identification, and management company detection.
 
+## Cascade Enrichment Architecture
+The system uses a multi-provider cascade approach for enrichment with provider tracking and early-exit optimization.
+
+### Implementation
+- **Core Service**: `src/lib/cascade-enrichment.ts`
+- **Provider Tracking Fields**: `providerId`, `enrichmentSource`, `enrichedAt`, `rawEnrichmentJson`
+- **Schema Changes**: Added tracking fields to both `contacts` and `organizations` tables
+
+### Organization Cascade (Apollo → EnrichLayer → PDL)
+1. **Apollo.io** (primary) - Company data, industry, employee count
+2. **EnrichLayer** (fallback) - LinkedIn-sourced company profiles
+3. **PDL** (final fallback) - People Data Labs company data
+- **Logo Priority**: Apollo logo URL takes precedence over other providers
+
+### Contact Cascade
+1. **ZeroBounce** - Email validation (preferred)
+2. **NeverBounce** - Email validation fallback
+3. **SERP API** - LinkedIn profile discovery
+4. **Early Exit**: Stops cascade when valid email + LinkedIn URL found
+5. **Provider Cascade**: Apollo → EnrichLayer → PDL (when email invalid or LinkedIn missing)
+
+### Email Validation Rules
+- **Catch-all emails treated as invalid** - Only 'valid' status passes validation
+- **ZeroBounce preferred** with NeverBounce as fallback
+- **Status tracking**: valid, invalid, catch-all, unknown
+
+### Admin Controls
+- **Manual enrichment buttons** hidden from non-greenfinch admin users via `AdminOnly` component
+- **Enrichment metadata display** (source, provider ID, enriched date) visible only to admins
+- **Permissions**: Uses `admin:enrich` permission from Clerk Organizations
+
 ## Organization Domain Enrichment (Hunter.io + EnrichLayer)
 - **Implementation**: `src/lib/organization-enrichment.ts`, `src/lib/hunter.ts`, `src/lib/enrichlayer.ts`
 - **Schema**: Uses Clearbit-compatible schema for future provider flexibility
