@@ -851,27 +851,15 @@ export default function ContactDetailPage() {
               )}
             </div>
 
-            <div className="bg-white rounded-lg border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Metadata</h2>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Created</span>
-                  <span className="text-gray-900">
-                    {new Date(contact.createdAt).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Updated</span>
-                  <span className="text-gray-900">
-                    {new Date(contact.updatedAt).toLocaleDateString()}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Contact ID</span>
-                  <span className="text-gray-500 text-xs font-mono truncate max-w-[150px]" title={contact.id}>
-                    {contact.id}
-                  </span>
-                </div>
+            <div className="bg-gray-50 rounded-lg border border-gray-200 p-4">
+              <div className="flex items-center gap-2 text-sm text-gray-500">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>Contact data last refreshed:</span>
+                <span className="text-gray-700 font-medium">
+                  {new Date(contact.updatedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                </span>
               </div>
             </div>
           </div>

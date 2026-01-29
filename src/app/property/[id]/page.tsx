@@ -401,6 +401,10 @@ export default function PropertyDetailPage() {
   };
 
   const formatBuildingSqft = (sqft: number) => {
+    if (sqft >= 1000000) {
+      const m = sqft / 1000000;
+      return `${m.toFixed(1)}M`;
+    }
     if (sqft >= 1000) {
       const k = sqft / 1000;
       return sqft < 19000 ? `${k.toFixed(1)}k` : `${Math.round(k)}k`;
