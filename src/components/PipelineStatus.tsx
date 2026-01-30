@@ -145,11 +145,11 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     setShowQualifyDialog(false);
     setUpdating(true);
     
-    // Auto-assign to current user if moving from no status/new to a real status
-    const shouldAutoClaim = autoAssignOnFirstStatus && 
-      (!pipeline?.ownerId) && 
+    // Always auto-assign to current user when qualifying from 'new' status
+    const isQualifyingFromNew = (!pipeline?.ownerId) && 
       (pipeline?.status === 'new' || !pipeline?.status) && 
       newStatus !== 'new';
+    const shouldAutoClaim = isQualifyingFromNew;
     
     try {
       const res = await fetch(`/api/properties/${propertyId}/pipeline`, {
@@ -317,6 +317,35 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
 
   const currentStatus = pipeline?.status || 'new';
   const dealValue = pipeline?.dealValue;
+  const isNewProperty = currentStatus === 'new';
+
+  // Initial action buttons for new properties (Qualify / Disqualify)
+  const initialActionButtons = (
+    <div className="flex items-center gap-2">
+      <Button
+        variant="default"
+        size="sm"
+        onClick={() => updateStatus('qualified')}
+        disabled={updating}
+        className="bg-green-600 text-white"
+        data-testid="button-qualify"
+      >
+        <Check className="w-4 h-4 mr-1" />
+        Qualify
+      </Button>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => updateStatus('disqualified')}
+        disabled={updating}
+        className="text-orange-600 border-orange-300"
+        data-testid="button-disqualify"
+      >
+        <X className="w-4 h-4 mr-1" />
+        Disqualify
+      </Button>
+    </div>
+  );
 
   const dropdownContent = (
     <DropdownMenu>
@@ -487,9 +516,9 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     return (
       <>
         <div className="flex items-center gap-3 flex-wrap">
-          {dropdownContent}
-          {dealValueDisplay}
-          {ownerDisplay}
+          {isNewProperty ? initialActionButtons : dropdownContent}
+          {!isNewProperty && dealValueDisplay}
+          {!isNewProperty && ownerDisplay}
         </div>
         {assignDialog}
         <Dialog open={showQualifyDialog} onOpenChange={setShowQualifyDialog}>
@@ -557,8 +586,12 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
-            {dropdownContent}
-            {dealValueDisplay}
+            {isNewProperty ? initialActionButtons : (
+              <>
+                {dropdownContent}
+                {dealValueDisplay}
+              </>
+            )}
           </div>
 
           {currentStatus === 'disqualified' && (
