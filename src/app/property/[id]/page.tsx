@@ -6,7 +6,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import Header from '@/components/Header';
+import { ArrowLeft } from 'lucide-react';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
 import AddToListModal from '@/components/AddToListModal';
@@ -14,6 +14,9 @@ import StreetView from '@/components/StreetView';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
+import PipelineStatus from '@/components/PipelineStatus';
+import PropertyNotes from '@/components/PropertyNotes';
+import PropertyActivity from '@/components/PropertyActivity';
 
 function toTitleCase(str: string): string {
   return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
@@ -892,7 +895,16 @@ export default function PropertyDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header showBackButton onBack={() => router.back()} />
+      <div className="bg-white border-b border-gray-200 px-4 py-3">
+        <button
+          onClick={() => router.back()}
+          className="flex items-center text-gray-600 hover:text-gray-900 transition-colors"
+          data-testid="button-back"
+        >
+          <ArrowLeft className="w-5 h-5 mr-2" />
+          Back
+        </button>
+      </div>
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -982,6 +994,17 @@ export default function PropertyDetailPage() {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                     </svg>
                     Add to List
+                  </button>
+                  <button
+                    disabled
+                    className="px-4 py-2 text-sm font-medium text-gray-400 bg-gray-100 rounded-lg cursor-not-allowed transition-colors flex items-center opacity-50"
+                    title="Coming soon: Export to your CRM"
+                    data-testid="button-export-crm"
+                  >
+                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                    </svg>
+                    Export to CRM
                   </button>
                 </div>
               </div>
@@ -1538,6 +1561,12 @@ export default function PropertyDetailPage() {
 
           <div className="lg:col-span-1">
             <div className="sticky top-20 space-y-4">
+              <PipelineStatus propertyId={property.propertyKey} />
+              
+              <PropertyNotes propertyId={property.propertyKey} />
+              
+              <PropertyActivity propertyId={property.propertyKey} />
+              
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
                 <div className="h-48 lg:h-56">
                   {property.lat && property.lon && mapToken ? (

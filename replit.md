@@ -46,9 +46,15 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
   - **Components**: `PermissionGate`, `AdminOnly`, `InternalOnly`, `AdminBadge` for UI-level access control
 
 ### UI/UX Decisions
+- **Navigation**: AppSidebar component with grouped navigation sections and Greenfinch logo:
+  - **Prospecting**: Properties (map/list), Organizations, Contacts
+  - **Pipeline**: Dashboard (analytics), Pipeline Board (kanban view)
+  - **Admin** (org admins only): Team Management, Org Analytics
+  - **Internal** (greenfinch org only): Data Admin
+  - **Help**: Documentation, Support
 - **Interactive Maps**: Utilizes Mapbox for displaying property data, clusters, and interactive elements.
 - **Dashboard**: Features a tab-based interface for map and list views, with synchronized property lists and a search bar.
-- **Property Details**: Dedicated pages for detailed property information, contacts, and organizations. Account Owner section is hidden when beneficial owner has been enriched.
+- **Property Details**: Dedicated pages for detailed property information, contacts, and organizations. Account Owner section is hidden when beneficial owner has been enriched. Export to CRM placeholder button (disabled) for future integration.
 - **Clickable Records**: Contact and organization cards/rows are fully clickable (no "View Details" links) for better mobile UX. Chevron indicators show navigable items. Links (email, domain, LinkedIn) work independently via stopPropagation.
 - **Property Filters**: Collapsible filter panel with sections for:
   - Size filters (lot sqft range, net building sqft range)

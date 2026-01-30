@@ -586,6 +586,93 @@ export const propertyFlags = pgTable('property_flags', {
   statusIdx: index('idx_property_flags_status').on(table.status),
 }));
 
+// Pipeline statuses enum
+export const PIPELINE_STATUSES = [
+  'new',               // Fresh, not yet worked
+  'qualified',         // Meets criteria, deal value set
+  'attempted_contact', // Outreach started (call, email, LinkedIn)
+  'active_opportunity',// In contact, sales process ongoing
+  'won',               // Deal closed won
+  'lost',              // Deal closed lost
+  'disqualified',      // Doesn't meet criteria (reversible)
+] as const;
+
+export type PipelineStatus = typeof PIPELINE_STATUSES[number];
+
+export const PIPELINE_STATUS_LABELS: Record<PipelineStatus, string> = {
+  new: 'New',
+  qualified: 'Qualified',
+  attempted_contact: 'Attempted Contact',
+  active_opportunity: 'Active Opportunity',
+  won: 'Won',
+  lost: 'Lost',
+  disqualified: 'Disqualified',
+};
+
+// Property pipeline - tracks status at org level (org_id + property_id = unique)
+export const propertyPipeline = pgTable('property_pipeline', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  propertyId: uuid('property_id').references(() => properties.id).notNull(),
+  clerkOrgId: text('clerk_org_id').notNull(), // Clerk organization ID
+  
+  // Pipeline status
+  status: text('status').default('new').notNull(), // One of PIPELINE_STATUSES
+  
+  // Deal value (required when qualifying, must be > 1)
+  dealValue: integer('deal_value'),
+  
+  // Last status change
+  statusChangedAt: timestamp('status_changed_at').defaultNow(),
+  statusChangedByUserId: uuid('status_changed_by_user_id').references(() => users.id),
+  
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  orgPropertyIdx: uniqueIndex('idx_property_pipeline_org_property').on(table.clerkOrgId, table.propertyId),
+  statusIdx: index('idx_property_pipeline_status').on(table.status),
+  orgIdx: index('idx_property_pipeline_org').on(table.clerkOrgId),
+}));
+
+// Property notes - notes with user attribution at org level
+export const propertyNotes = pgTable('property_notes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  propertyId: uuid('property_id').references(() => properties.id).notNull(),
+  clerkOrgId: text('clerk_org_id').notNull(),
+  userId: uuid('user_id').references(() => users.id).notNull(),
+  
+  content: text('content').notNull(),
+  
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  orgPropertyIdx: index('idx_property_notes_org_property').on(table.clerkOrgId, table.propertyId),
+  userIdx: index('idx_property_notes_user').on(table.userId),
+}));
+
+// Property activity - tracks who did what for audit trail
+export const propertyActivity = pgTable('property_activity', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  propertyId: uuid('property_id').references(() => properties.id).notNull(),
+  clerkOrgId: text('clerk_org_id').notNull(),
+  userId: uuid('user_id').references(() => users.id).notNull(),
+  
+  // Activity type
+  activityType: text('activity_type').notNull(), // 'status_change', 'note_added', 'deal_value_updated', 'qualified', 'disqualified', 'requalified'
+  
+  // Previous and new values for tracking changes
+  previousValue: text('previous_value'),
+  newValue: text('new_value'),
+  
+  // Additional context
+  metadata: json('metadata'),
+  
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  orgPropertyIdx: index('idx_property_activity_org_property').on(table.clerkOrgId, table.propertyId),
+  userIdx: index('idx_property_activity_user').on(table.userId),
+  createdAtIdx: index('idx_property_activity_created').on(table.createdAt),
+}));
+
 // Contact LinkedIn flags - for flagging incorrect LinkedIn profiles
 export const contactLinkedinFlags = pgTable('contact_linkedin_flags', {
   id: uuid('id').primaryKey().defaultRandom(),
@@ -625,3 +712,9 @@ export type InsertServiceProvider = typeof serviceProviders.$inferInsert;
 export type PropertyServiceProvider = typeof propertyServiceProviders.$inferSelect;
 export type PropertyFlag = typeof propertyFlags.$inferSelect;
 export type ContactLinkedinFlag = typeof contactLinkedinFlags.$inferSelect;
+export type PropertyPipeline = typeof propertyPipeline.$inferSelect;
+export type InsertPropertyPipeline = typeof propertyPipeline.$inferInsert;
+export type PropertyNote = typeof propertyNotes.$inferSelect;
+export type InsertPropertyNote = typeof propertyNotes.$inferInsert;
+export type PropertyActivity = typeof propertyActivity.$inferSelect;
+export type InsertPropertyActivity = typeof propertyActivity.$inferInsert;
