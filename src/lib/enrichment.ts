@@ -2112,7 +2112,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
     });
     
     // Map organizations with required properties
-    const enrichedOrgs: EnrichedOrganization[] = (contactsData?.organizations || []).map((o, i) => ({
+    const rawEnrichedOrgs: EnrichedOrganization[] = (contactsData?.organizations || []).map((o, i) => ({
       id: uuidv5(`${aggregatedProperty.propertyKey}-org-${o.name}-${i}`, '6ba7b810-9dad-11d1-80b4-00c04fd430c8'),
       name: o.name,
       domain: o.domain,
@@ -2121,6 +2121,39 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
       relationshipVerified: true,
       verificationSource: 1,
     }));
+
+    // Filter out un-enriched DCAD legal entity owners when we have a better beneficial owner
+    // DCAD owner names like "DBG Dallas LLC" should be excluded if:
+    // 1. We found a beneficial owner with research (has domain or different name)
+    // 2. The org only has "owner" role with no domain (un-researched legal entity)
+    const dcadOwnerNames = [
+      (aggregatedProperty as any).dcad?.ownerName1,
+      (aggregatedProperty as any).dcad?.ownerName2,
+      (aggregatedProperty as any).dcad?.bizName,
+      aggregatedProperty.primaryOwner,
+    ].filter(Boolean).map(n => n.toLowerCase().trim());
+    
+    const hasBeneficialOwner = ownership?.beneficialOwner?.name && ownership.beneficialOwner.confidence > 0.5;
+    
+    const enrichedOrgs = rawEnrichedOrgs.filter(org => {
+      const orgNameLower = org.name.toLowerCase().trim();
+      const isDcadOwner = dcadOwnerNames.some(dcadName => 
+        orgNameLower === dcadName || 
+        orgNameLower.includes(dcadName) || 
+        dcadName.includes(orgNameLower)
+      );
+      
+      // If this is a DCAD owner org with no domain and only owner role, filter it out
+      // when we have a beneficial owner with actual research
+      if (isDcadOwner && !org.domain && hasBeneficialOwner) {
+        const onlyOwnerRole = org.roles.length === 1 && org.roles[0] === 'owner';
+        if (onlyOwnerRole || org.roles.length === 0) {
+          console.log(`[Enrichment] Filtering out un-researched DCAD owner org: ${org.name} (beneficial owner found: ${ownership?.beneficialOwner?.name})`);
+          return false;
+        }
+      }
+      return true;
+    });
 
     // Enrich contacts with new PDL-based flow
     // 1. Check if contact exists, 2. Validate with NeverBounce, 3. If valid use SERP, 4. If invalid use PDL
