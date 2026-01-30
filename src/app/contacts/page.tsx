@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import Header from '@/components/Header';
 
 interface PropertyRelation {
   propertyId: string;
@@ -243,8 +242,6 @@ export default function ContactsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
-
       <main className="w-full px-4 md:px-6 py-6 md:py-8">
         <div className="flex flex-col gap-3 mb-6">
           <div className="relative flex-1">

@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react';
 import { Building2, Save, Check } from 'lucide-react';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
-import Header from '@/components/Header';
 
 interface UserSettings {
   companyName: string | null;
@@ -84,7 +83,6 @@ export default function SettingsPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <Header />
         <div className="flex items-center justify-center py-16">
           <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
         </div>
@@ -94,8 +92,7 @@ export default function SettingsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
-      <main className="max-w-3xl mx-auto px-4 py-8">
+      <main className="w-full px-4 py-8">
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
           <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
             <h1 className="text-xl font-semibold text-gray-900">Account Settings</h1>

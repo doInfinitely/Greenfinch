@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import Header from '@/components/Header';
 import { SignInButton } from '@clerk/nextjs';
 
 interface List {
@@ -132,8 +131,7 @@ export default function ListsPage() {
   if (isAuthenticated === false) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <Header />
-        <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <main className="w-full px-4 sm:px-6 py-6 sm:py-8">
           <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
             <svg
               className="w-16 h-16 mx-auto mb-4 text-gray-300"
@@ -160,9 +158,7 @@ export default function ListsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
-
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+      <main className="w-full px-4 sm:px-6 py-6 sm:py-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-semibold text-gray-900">My Lists</h1>
           <button

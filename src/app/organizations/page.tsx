@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import Header from '@/components/Header';
 
 interface Organization {
   id: string;
@@ -115,9 +114,7 @@ export default function OrganizationsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <Header />
-
-      <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 md:py-8">
+      <main className="w-full px-4 md:px-6 py-6 md:py-8">
         <div className="flex flex-col gap-3 mb-6">
           <div className="relative flex-1">
             <input
