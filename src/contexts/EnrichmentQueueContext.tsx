@@ -331,47 +331,57 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
 
   const startPolling = useCallback((id: string, config: Omit<PollConfig, 'currentAttempt'>) => {
     const pollConfig: PollConfig = { ...config, currentAttempt: 0 };
+    const { checkEndpoint, checkField, maxAttempts, originalValue, compareMode, intervalMs } = config;
     
-    // Update item to polling status
-    setItems(prev => prev.map(item => 
-      item.id === id 
-        ? { ...item, status: 'polling' as const, pollConfig, message: 'Waiting for results...', progress: 50 }
-        : item
-    ));
+    console.log(`[EnrichmentQueue] Starting polling for item ${id}:`, { 
+      checkEndpoint, 
+      checkField,
+      originalValue,
+      compareMode
+    });
+    
+    // Store entity info for use in interval (avoid relying on state inside interval)
+    let storedEntityName = '';
+    let storedEntityId = '';
+    let storedType: EnrichmentItemType = 'contact';
+    
+    // Update item to polling status and capture entity info
+    setItems(prev => {
+      const item = prev.find(i => i.id === id);
+      if (item) {
+        storedEntityName = item.entityName;
+        storedEntityId = item.entityId;
+        storedType = item.type;
+      }
+      return prev.map(i => 
+        i.id === id 
+          ? { ...i, status: 'polling' as const, pollConfig, message: 'Waiting for results...', progress: 50 }
+          : i
+      );
+    });
+
+    let attemptCount = 0;
 
     // Start polling interval
     const interval = setInterval(async () => {
-      // Get current item state
-      let currentItem: EnrichmentQueueItem | undefined;
-      setItems(prev => {
-        currentItem = prev.find(i => i.id === id);
-        return prev;
-      });
+      attemptCount++;
 
-      if (!currentItem || !currentItem.pollConfig) {
+      if (attemptCount > maxAttempts) {
+        console.log(`[EnrichmentQueue] Max attempts (${maxAttempts}) reached for ${storedEntityName}`);
         clearInterval(interval);
         pollingIntervals.current.delete(id);
-        return;
-      }
-
-      const { checkEndpoint, checkField, maxAttempts, originalValue, compareMode, currentAttempt } = currentItem.pollConfig;
-      const newAttempt = currentAttempt + 1;
-
-      if (newAttempt > maxAttempts) {
-        clearInterval(interval);
-        pollingIntervals.current.delete(id);
-        markFailedInternal(id, 'Lookup timed out - results may still arrive. Please refresh the page later.', currentItem.entityName);
+        markFailedInternal(id, 'Lookup timed out - results may still arrive. Please refresh the page later.', storedEntityName);
         return;
       }
 
       try {
-        console.log(`[EnrichmentQueue] Polling ${currentItem.entityName}: attempt ${newAttempt}, checking ${checkEndpoint}`);
+        console.log(`[EnrichmentQueue] Polling ${storedEntityName}: attempt ${attemptCount}/${maxAttempts}, checking ${checkEndpoint}`);
         const response = await fetch(checkEndpoint);
         if (response.ok) {
           const data = await response.json();
           const fieldValue = checkField.split('.').reduce((obj: unknown, key: string) => (obj as Record<string, unknown>)?.[key], data);
           
-          console.log(`[EnrichmentQueue] Polling ${currentItem.entityName}: field=${checkField}, current=${fieldValue}, original=${originalValue}, mode=${compareMode}`);
+          console.log(`[EnrichmentQueue] Polling ${storedEntityName}: field=${checkField}, current=${fieldValue}, original=${originalValue}, mode=${compareMode}`);
           
           let conditionMet = false;
           if (compareMode === 'truthy') {
@@ -387,38 +397,70 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
           }
 
           if (conditionMet) {
-            console.log(`[EnrichmentQueue] Polling complete for ${currentItem.entityName}!`);
+            console.log(`[EnrichmentQueue] Polling complete for ${storedEntityName}!`);
             clearInterval(interval);
             pollingIntervals.current.delete(id);
-            const resultUrl = currentItem.type === 'property' 
-              ? `/property/${currentItem.entityId}` 
-              : (currentItem.type === 'contact' || currentItem.type === 'contact_phone' || currentItem.type === 'contact_email')
-                ? `/contact/${currentItem.entityId}`
-                : `/organization/${currentItem.entityId}`;
-            markCompletedInternal(id, resultUrl, currentItem.entityName);
+            const resultUrl = storedType === 'property' 
+              ? `/property/${storedEntityId}` 
+              : (storedType === 'contact' || storedType === 'contact_phone' || storedType === 'contact_email')
+                ? `/contact/${storedEntityId}`
+                : `/organization/${storedEntityId}`;
+            markCompletedInternal(id, resultUrl, storedEntityName);
             return;
           }
         }
       } catch (error) {
-        console.warn(`[EnrichmentQueue] Polling error for ${currentItem.entityName}:`, error);
+        console.warn(`[EnrichmentQueue] Polling error for ${storedEntityName}:`, error);
         // Continue polling on error
       }
 
-      // Update progress
-      const pollProgress = 50 + (newAttempt / maxAttempts) * 30;
+      // Update progress in state
+      const pollProgress = 50 + (attemptCount / maxAttempts) * 30;
       setItems(prev => prev.map(item => 
         item.id === id && item.pollConfig
           ? { 
               ...item, 
-              pollConfig: { ...item.pollConfig, currentAttempt: newAttempt },
-              message: `Waiting for results... (${newAttempt}/${maxAttempts})`,
+              pollConfig: { ...item.pollConfig, currentAttempt: attemptCount },
+              message: `Waiting for results... (${attemptCount}/${maxAttempts})`,
               progress: Math.min(pollProgress, 80)
             }
           : item
       ));
-    }, config.intervalMs);
+    }, intervalMs);
 
     pollingIntervals.current.set(id, interval);
+    
+    // Do an immediate first poll after a short delay (in case webhook arrived before polling started)
+    setTimeout(async () => {
+      try {
+        console.log(`[EnrichmentQueue] Immediate first poll for ${storedEntityName}`);
+        const response = await fetch(checkEndpoint);
+        if (response.ok) {
+          const data = await response.json();
+          const fieldValue = checkField.split('.').reduce((obj: unknown, key: string) => (obj as Record<string, unknown>)?.[key], data);
+          
+          let conditionMet = false;
+          if (compareMode === 'changed') {
+            const currentStr = fieldValue instanceof Date ? fieldValue.toISOString() : String(fieldValue ?? '');
+            const originalStr = originalValue instanceof Date ? (originalValue as Date).toISOString() : String(originalValue ?? '');
+            conditionMet = currentStr !== originalStr && !!fieldValue;
+            if (conditionMet) {
+              console.log(`[EnrichmentQueue] Immediate poll detected completion for ${storedEntityName}!`);
+              clearInterval(interval);
+              pollingIntervals.current.delete(id);
+              const resultUrl = storedType === 'property' 
+                ? `/property/${storedEntityId}` 
+                : (storedType === 'contact' || storedType === 'contact_phone' || storedType === 'contact_email')
+                  ? `/contact/${storedEntityId}`
+                  : `/organization/${storedEntityId}`;
+              markCompletedInternal(id, resultUrl, storedEntityName);
+            }
+          }
+        }
+      } catch (error) {
+        console.warn('[EnrichmentQueue] Immediate poll error:', error);
+      }
+    }, 500);
   }, [markCompletedInternal, markFailedInternal]);
 
   const activeCount = items.filter(item => item.status === 'pending' || item.status === 'processing' || item.status === 'polling').length;
