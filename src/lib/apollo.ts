@@ -136,7 +136,8 @@ export async function enrichPersonApollo(
   }
 
   // Set up waterfall phone enrichment if requested
-  const useWaterfallPhone = options?.useWaterfallPhone ?? true;  // Default to true
+  // Default to false - waterfall is triggered separately via on-demand API calls
+  const useWaterfallPhone = options?.useWaterfallPhone ?? false;
   let webhookUrl = '';
   
   if (useWaterfallPhone) {
@@ -316,6 +317,204 @@ interface ApolloCompanyEnrichResult {
 /**
  * Enrich a company/organization using Apollo.io Organization Enrichment API
  */
+export interface WaterfallEnrichResult {
+  success: boolean;
+  requestId?: string;
+  waterfallStatus: 'accepted' | 'failed' | 'not_requested';
+  waterfallMessage?: string;
+  apolloId?: string;
+  error?: string;
+}
+
+/**
+ * Trigger waterfall phone enrichment for a contact
+ * Requires either Apollo ID, LinkedIn URL, or name+domain
+ * Phone numbers are delivered asynchronously to our webhook
+ */
+export async function triggerWaterfallPhone(params: {
+  apolloId?: string;
+  linkedinUrl?: string;
+  firstName?: string;
+  lastName?: string;
+  domain?: string;
+  email?: string;
+}): Promise<WaterfallEnrichResult> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey) {
+    throw new Error('APOLLO_API_KEY is not configured');
+  }
+
+  const webhookUrl = getApolloWebhookUrl();
+  if (!webhookUrl) {
+    return { success: false, waterfallStatus: 'failed', error: 'No webhook URL available' };
+  }
+
+  // Build request body - Apollo requires first_name + last_name + identifier
+  const requestBody: Record<string, any> = {
+    run_waterfall_phone: true,
+    webhook_url: webhookUrl,
+  };
+
+  // Use Apollo ID if available (most reliable)
+  if (params.apolloId) {
+    requestBody.person_id = params.apolloId;
+  }
+
+  // Add LinkedIn URL if available (improves match rate)
+  if (params.linkedinUrl) {
+    requestBody.linkedin_url = params.linkedinUrl;
+  }
+
+  // Add name and domain for matching
+  if (params.firstName) requestBody.first_name = params.firstName;
+  if (params.lastName) requestBody.last_name = params.lastName;
+  if (params.domain) requestBody.domain = params.domain;
+  if (params.email) requestBody.email = params.email;
+
+  console.log('[Apollo] Waterfall phone request:', {
+    hasApolloId: !!params.apolloId,
+    hasLinkedIn: !!params.linkedinUrl,
+    firstName: params.firstName,
+    lastName: params.lastName,
+    domain: params.domain,
+    webhookUrl,
+  });
+
+  try {
+    const response = await fetch(`${APOLLO_API_URL}/people/match`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'accept': 'application/json',
+        'X-Api-Key': apiKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const data = await response.json();
+    
+    console.log('[Apollo] Waterfall phone response status:', response.status);
+    
+    if (!response.ok) {
+      const errorMsg = data.error || `Apollo API error: ${response.status}`;
+      console.log('[Apollo] Waterfall phone error:', errorMsg);
+      return { success: false, waterfallStatus: 'failed', error: errorMsg };
+    }
+
+    const waterfallStatus = data.waterfall?.status === 'partially_accepted' 
+      ? 'accepted' 
+      : (data.waterfall?.status || 'not_requested');
+    
+    console.log('[Apollo] Waterfall phone status:', waterfallStatus, data.waterfall?.message);
+
+    return {
+      success: waterfallStatus === 'accepted',
+      requestId: data.request_id?.toString(),
+      waterfallStatus,
+      waterfallMessage: data.waterfall?.message,
+      apolloId: data.person?.id,
+    };
+  } catch (error: any) {
+    console.error('[Apollo] Waterfall phone request failed:', error.message);
+    return { success: false, waterfallStatus: 'failed', error: error.message };
+  }
+}
+
+/**
+ * Trigger waterfall email enrichment for a contact
+ * Requires either Apollo ID, LinkedIn URL, or name+domain
+ * Emails are delivered asynchronously to our webhook
+ */
+export async function triggerWaterfallEmail(params: {
+  apolloId?: string;
+  linkedinUrl?: string;
+  firstName?: string;
+  lastName?: string;
+  domain?: string;
+}): Promise<WaterfallEnrichResult> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey) {
+    throw new Error('APOLLO_API_KEY is not configured');
+  }
+
+  const webhookUrl = getApolloWebhookUrl();
+  if (!webhookUrl) {
+    return { success: false, waterfallStatus: 'failed', error: 'No webhook URL available' };
+  }
+
+  // Build request body
+  const requestBody: Record<string, any> = {
+    run_waterfall_email: true,
+    reveal_personal_emails: true,
+    webhook_url: webhookUrl,
+  };
+
+  // Use Apollo ID if available (most reliable)
+  if (params.apolloId) {
+    requestBody.person_id = params.apolloId;
+  }
+
+  // Add LinkedIn URL if available (improves match rate)
+  if (params.linkedinUrl) {
+    requestBody.linkedin_url = params.linkedinUrl;
+  }
+
+  // Add name and domain for matching
+  if (params.firstName) requestBody.first_name = params.firstName;
+  if (params.lastName) requestBody.last_name = params.lastName;
+  if (params.domain) requestBody.domain = params.domain;
+
+  console.log('[Apollo] Waterfall email request:', {
+    hasApolloId: !!params.apolloId,
+    hasLinkedIn: !!params.linkedinUrl,
+    firstName: params.firstName,
+    lastName: params.lastName,
+    domain: params.domain,
+    webhookUrl,
+  });
+
+  try {
+    const response = await fetch(`${APOLLO_API_URL}/people/match`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'accept': 'application/json',
+        'X-Api-Key': apiKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const data = await response.json();
+    
+    console.log('[Apollo] Waterfall email response status:', response.status);
+    
+    if (!response.ok) {
+      const errorMsg = data.error || `Apollo API error: ${response.status}`;
+      console.log('[Apollo] Waterfall email error:', errorMsg);
+      return { success: false, waterfallStatus: 'failed', error: errorMsg };
+    }
+
+    const waterfallStatus = data.waterfall?.status === 'partially_accepted' 
+      ? 'accepted' 
+      : (data.waterfall?.status || 'not_requested');
+    
+    console.log('[Apollo] Waterfall email status:', waterfallStatus, data.waterfall?.message);
+
+    return {
+      success: waterfallStatus === 'accepted',
+      requestId: data.request_id?.toString(),
+      waterfallStatus,
+      waterfallMessage: data.waterfall?.message,
+      apolloId: data.person?.id,
+    };
+  } catch (error: any) {
+    console.error('[Apollo] Waterfall email request failed:', error.message);
+    return { success: false, waterfallStatus: 'failed', error: error.message };
+  }
+}
+
 export async function enrichCompanyApollo(domain: string): Promise<ApolloCompanyEnrichResult> {
   const apiKey = process.env.APOLLO_API_KEY;
   if (!apiKey) {

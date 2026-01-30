@@ -68,6 +68,49 @@ export interface LinkedInSearchResponse {
   allResults: LinkedInSearchResult[];
 }
 
+// Generic role-based names that shouldn't be enriched as individuals
+// These are department/role placeholders, not real person names
+const GENERIC_ROLE_BASED_NAMES = new Set([
+  'leasing office',
+  'leasing department',
+  'leasing',
+  'front desk',
+  'reception',
+  'main office',
+  'management office',
+  'property management',
+  'management',
+  'maintenance',
+  'maintenance department',
+  'hoa',
+  'hoa board',
+  'homeowners association',
+  'condo association',
+  'association',
+  'security',
+  'concierge',
+  'admin',
+  'administration',
+  'billing',
+  'accounts payable',
+  'accounts receivable',
+  'general inquiries',
+  'info',
+  'contact',
+  'support',
+  'customer service',
+]);
+
+/**
+ * Check if a name is a generic role-based name (not a real person)
+ * These should be skipped for cascade enrichment but may still have valid contact info
+ */
+export function isGenericRoleBasedName(name: string | null): boolean {
+  if (!name) return false;
+  const normalized = name.toLowerCase().trim();
+  return GENERIC_ROLE_BASED_NAMES.has(normalized);
+}
+
 // Common personal email providers - emails from these domains should trigger further enrichment
 const PERSONAL_EMAIL_PROVIDERS = new Set([
   'gmail.com',
@@ -1390,19 +1433,33 @@ export async function enrichContactWithPDL(
   }
   
   // Step 4: Email invalid or missing - use cascade: Apollo → EnrichLayer → PDL
+  // Skip cascade enrichment for generic role-based names (not real people)
+  if (isGenericRoleBasedName(contact.fullName)) {
+    console.log(`[Cascade Enrichment] Skipping cascade for non-person contact: ${contact.fullName}`);
+    return {
+      contact: {
+        ...contact,
+        needsReview: false,
+        reviewReason: null,
+      },
+      relationshipConfidence,
+      relationshipNote,
+    };
+  }
+  
   const domainForEnrichment = contact.companyDomain || aiDomain;
   const { firstName, lastName } = parseNameParts(contact.fullName);
   
   if (firstName && lastName && domainForEnrichment) {
     console.log(`[Cascade Enrichment] Searching for ${firstName} ${lastName} at ${domainForEnrichment}`);
     
-    // Try Apollo first
+    // Try Apollo first (no waterfall - phone/email waterfalls are triggered on-demand from contact page)
     try {
       console.log(`[Cascade Enrichment] Trying Apollo.io...`);
       const apolloResult = await enrichPersonApollo(firstName, lastName, domainForEnrichment, {
         revealEmails: true,
         revealPhone: true,
-        useWaterfallPhone: true,  // Phone numbers delivered via webhook
+        useWaterfallPhone: false,  // Phone waterfalls triggered on-demand from contact page
         linkedinUrl: contact.linkedinUrl || undefined,  // Improves match rate
       });
       
@@ -1707,12 +1764,14 @@ export async function findLinkedInUrl(
   }
 }
 
-// Enrich contacts with LinkedIn URLs (limited to top 2 high-priority contacts, run sequentially to avoid rate limits)
+// Enrich contacts with LinkedIn URLs (all contacts without LinkedIn, prioritizing high-priority roles)
 export async function enrichContactsWithLinkedIn(contacts: EnrichedContact[]): Promise<EnrichedContact[]> {
-  const MAX_LINKEDIN_LOOKUPS = 2;
+  // Filter out non-person contacts that shouldn't get LinkedIn searches
+  const personContacts = contacts.filter(c => !isGenericRoleBasedName(c.fullName));
+  
   const highPriorityRoles = ['property_manager', 'facilities_manager', 'owner'];
   
-  const sortedContacts = [...contacts].sort((a, b) => {
+  const sortedContacts = [...personContacts].sort((a, b) => {
     const aHighPriority = highPriorityRoles.includes(a.role);
     const bHighPriority = highPriorityRoles.includes(b.role);
     if (aHighPriority && !bHighPriority) return -1;
@@ -1720,10 +1779,12 @@ export async function enrichContactsWithLinkedIn(contacts: EnrichedContact[]): P
     return 0;
   });
 
-  const contactsNeedingLinkedIn = sortedContacts.filter(c => !c.linkedinUrl).slice(0, MAX_LINKEDIN_LOOKUPS);
-  const contactsToSkip = sortedContacts.filter(c => c.linkedinUrl || !contactsNeedingLinkedIn.includes(c));
+  // Search for all contacts that need LinkedIn (no limit)
+  const contactsNeedingLinkedIn = sortedContacts.filter(c => !c.linkedinUrl);
+  const contactsWithLinkedIn = sortedContacts.filter(c => c.linkedinUrl);
+  const skippedNonPerson = contacts.filter(c => isGenericRoleBasedName(c.fullName));
   
-  console.log(`[Enrichment] LinkedIn discovery for ${contactsNeedingLinkedIn.length} contacts (max ${MAX_LINKEDIN_LOOKUPS})...`);
+  console.log(`[Enrichment] LinkedIn discovery for ${contactsNeedingLinkedIn.length} contacts (skipping ${skippedNonPerson.length} non-person names)...`);
   
   const limit = pLimit(CONCURRENCY.SERP);
   
@@ -1765,7 +1826,8 @@ export async function enrichContactsWithLinkedIn(contacts: EnrichedContact[]): P
     )
   );
   
-  const enrichedContacts = [...linkedInResults, ...contactsToSkip];
+  // Combine all results: newly enriched, already have LinkedIn, and skipped non-person contacts
+  const enrichedContacts = [...linkedInResults, ...contactsWithLinkedIn, ...skippedNonPerson];
   const linkedinFound = enrichedContacts.filter(c => c.linkedinUrl).length;
   console.log(`[Enrichment] LinkedIn enrichment complete: ${linkedinFound}/${contacts.length} contacts have LinkedIn`);
   

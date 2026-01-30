@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertTriangle, Flag, Check, X, ExternalLink, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle } from 'lucide-react';
+import { AlertTriangle, Flag, Check, X, ExternalLink, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Search, Loader2 } from 'lucide-react';
 import Header from '@/components/Header';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -276,6 +276,10 @@ export default function ContactDetailPage() {
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const { startEnrichment } = useEnrichment();
   const [isLoadingPhoto, setIsLoadingPhoto] = useState(false);
+  const [isFindingPhone, setIsFindingPhone] = useState(false);
+  const [isFindingEmail, setIsFindingEmail] = useState(false);
+  const [phoneMessage, setPhoneMessage] = useState<string | null>(null);
+  const [emailMessage, setEmailMessage] = useState<string | null>(null);
 
   useEffect(() => {
     if (!contactId) return;
@@ -509,6 +513,86 @@ export default function ContactDetailPage() {
     });
   };
 
+  const handleFindPhone = async () => {
+    if (!contact) return;
+
+    setIsFindingPhone(true);
+    setPhoneMessage(null);
+
+    try {
+      const response = await fetch(`/api/contacts/${contactId}/waterfall-phone`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setPhoneMessage('Phone lookup initiated. Results will arrive shortly.');
+        // Poll for updates after a few seconds
+        setTimeout(async () => {
+          try {
+            const refreshResponse = await fetch(`/api/contacts/${contactId}`);
+            const refreshData = await refreshResponse.json();
+            if (refreshData.contact?.phone) {
+              setContact(prev => prev ? { ...prev, ...refreshData.contact } : null);
+              setPhoneMessage('Phone number found!');
+            }
+          } catch {}
+          setTimeout(() => setPhoneMessage(null), 5000);
+        }, 5000);
+      } else {
+        setPhoneMessage(data.error || 'Could not initiate phone lookup');
+        setTimeout(() => setPhoneMessage(null), 5000);
+      }
+    } catch (err) {
+      setPhoneMessage('Failed to initiate phone lookup');
+      setTimeout(() => setPhoneMessage(null), 5000);
+    } finally {
+      setIsFindingPhone(false);
+    }
+  };
+
+  const handleFindEmail = async () => {
+    if (!contact) return;
+
+    setIsFindingEmail(true);
+    setEmailMessage(null);
+
+    try {
+      const response = await fetch(`/api/contacts/${contactId}/waterfall-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        setEmailMessage('Email lookup initiated. Results will arrive shortly.');
+        // Poll for updates after a few seconds
+        setTimeout(async () => {
+          try {
+            const refreshResponse = await fetch(`/api/contacts/${contactId}`);
+            const refreshData = await refreshResponse.json();
+            if (refreshData.contact?.email) {
+              setContact(prev => prev ? { ...prev, ...refreshData.contact } : null);
+              setEmailMessage('Email found!');
+            }
+          } catch {}
+          setTimeout(() => setEmailMessage(null), 5000);
+        }, 5000);
+      } else {
+        setEmailMessage(data.error || 'Could not initiate email lookup');
+        setTimeout(() => setEmailMessage(null), 5000);
+      }
+    } catch (err) {
+      setEmailMessage('Failed to initiate email lookup');
+      setTimeout(() => setEmailMessage(null), 5000);
+    } finally {
+      setIsFindingEmail(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -608,7 +692,7 @@ export default function ContactDetailPage() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <AdminOnly>
                 <button
                   onClick={handleEnrichContact}
@@ -621,9 +705,58 @@ export default function ContactDetailPage() {
                   Enrich Contact
                 </button>
               </AdminOnly>
+              
+              {/* Find Phone button - show if no phone number */}
+              {!contact.phone && !contact.normalizedPhone && (
+                <AdminOnly>
+                  <button
+                    onClick={handleFindPhone}
+                    disabled={isFindingPhone}
+                    className="inline-flex items-center px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid="button-find-phone"
+                  >
+                    {isFindingPhone ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Phone className="w-4 h-4 mr-2" />
+                    )}
+                    Find Phone
+                  </button>
+                </AdminOnly>
+              )}
+              
+              {/* Find Email button - show if no email or email not validated (including null/undefined status) */}
+              {(!contact.email || contact.emailValidationStatus !== 'valid') && (
+                <AdminOnly>
+                  <button
+                    onClick={handleFindEmail}
+                    disabled={isFindingEmail}
+                    className="inline-flex items-center px-3 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid="button-find-email"
+                  >
+                    {isFindingEmail ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <Mail className="w-4 h-4 mr-2" />
+                    )}
+                    Find Email
+                  </button>
+                </AdminOnly>
+              )}
+              
               {enrichMessage && (
                 <span className="text-sm text-green-600">
                   {enrichMessage}
+                </span>
+              )}
+              {phoneMessage && (
+                <span className="text-sm text-blue-600">
+                  {phoneMessage}
+                </span>
+              )}
+              {emailMessage && (
+                <span className="text-sm text-purple-600">
+                  {emailMessage}
                 </span>
               )}
               {contact.needsReview && (
