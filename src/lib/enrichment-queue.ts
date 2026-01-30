@@ -121,6 +121,7 @@ let currentBatch: BatchStatus | null = null;
 let queue: QueueItem[] = [];
 let isProcessing = false;
 let lastIndividualRequestTime = 0;
+let batchStartLock = false; // Simple mutex for atomic batch starting
 const INDIVIDUAL_RATE_LIMIT_MS = 2000; // 2 seconds between individual requests
 
 export function getQueueStatus(): BatchStatus | null {
@@ -203,6 +204,11 @@ export async function processQueue(): Promise<void> {
   }
 
   isProcessing = true;
+  return processQueueInternal();
+}
+
+async function processQueueInternal(): Promise<void> {
+  // Note: isProcessing should already be set by caller (either processQueue or startBatch)
   const startTime = Date.now();
   const concurrencyLimit = currentBatch?.concurrency || CONCURRENCY.PROPERTIES;
   const limit = pLimit(concurrencyLimit);
@@ -276,9 +282,16 @@ export interface StartBatchOptions {
 }
 
 export async function startBatch(options: StartBatchOptions): Promise<BatchStatus> {
-  if (isBatchRunning()) {
-    throw new Error('A batch is already running. Please wait for it to complete.');
+  // Atomic check-and-lock to prevent race conditions when multiple batch requests arrive simultaneously
+  if (batchStartLock) {
+    throw new Error('Another batch start is in progress. Please wait.');
   }
+  batchStartLock = true;
+  
+  try {
+    if (isBatchRunning()) {
+      throw new Error('A batch is already running. Please wait for it to complete.');
+    }
 
   const batchId = uuidv4();
   const limit = Math.min(options.limit || ENRICHMENT_MAX_BATCH_SIZE, ENRICHMENT_MAX_BATCH_SIZE);
@@ -331,11 +344,24 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
 
   addToQueue(propertyKeysToEnrich.map(key => ({ propertyKey: key })));
 
-  processQueue().catch(error => {
+  // Set isProcessing synchronously to prevent race window between lock release and processQueue setting the flag
+  isProcessing = true;
+  
+  // Start background processing (processQueue will skip its isProcessing check since we already set it)
+  processQueueInternal().catch(error => {
     console.error('[EnrichmentQueue] Background processing error:', error);
+    isProcessing = false;
+    if (currentBatch) {
+      currentBatch.status = 'failed';
+      currentBatch.completedAt = new Date();
+    }
   });
 
   return currentBatch;
+  } finally {
+    // Release the lock after batch state is established (isProcessing and currentBatch are set)
+    batchStartLock = false;
+  }
 }
 
 export function getMaxBatchSize(): number {

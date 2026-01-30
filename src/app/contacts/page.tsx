@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { normalizeOwnerName } from '@/lib/normalization';
 
 interface PropertyRelation {
   propertyId: string;
@@ -490,7 +491,7 @@ export default function ContactsPage() {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             {contact.employerName ? (
-                              <span className="text-sm text-gray-900">{contact.employerName}</span>
+                              <span className="text-sm text-gray-900">{normalizeOwnerName(contact.employerName)}</span>
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
                             )}
@@ -594,7 +595,7 @@ export default function ContactsPage() {
                                           className="p-2 bg-white rounded border border-gray-200"
                                         >
                                           <div className="text-sm font-medium text-gray-900">
-                                            {org.orgName || 'Unknown'}
+                                            {normalizeOwnerName(org.orgName) || 'Unknown'}
                                           </div>
                                           <div className="text-xs text-gray-500">
                                             {org.orgDomain && (
@@ -642,7 +643,7 @@ export default function ContactsPage() {
                         <p className="text-sm text-gray-600 truncate">{contact.title}</p>
                       )}
                       {contact.employerName && (
-                        <p className="text-xs text-gray-500 truncate">{contact.employerName}</p>
+                        <p className="text-xs text-gray-500 truncate">{normalizeOwnerName(contact.employerName)}</p>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
