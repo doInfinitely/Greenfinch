@@ -133,7 +133,7 @@ export default function ListsPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
-        <main className="max-w-6xl mx-auto px-6 py-8">
+        <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
             <svg
               className="w-16 h-16 mx-auto mb-4 text-gray-300"
@@ -162,17 +162,17 @@ export default function ListsPage() {
     <div className="min-h-screen bg-gray-50">
       <Header />
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between mb-6">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
           <h1 className="text-2xl font-semibold text-gray-900">My Lists</h1>
           <button
             onClick={() => setShowCreateModal(true)}
-            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+            className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors w-full sm:w-auto"
           >
             + New List
           </button>
         </div>
-        <div className="flex items-center space-x-4 mb-6">
+        <div className="flex flex-wrap items-center gap-2 sm:space-x-4 mb-6">
           <button
             onClick={() => setActiveTab('all')}
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${

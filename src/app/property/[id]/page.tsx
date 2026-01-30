@@ -1053,7 +1053,7 @@ export default function PropertyDetailPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                 <div className="bg-green-50 rounded-lg p-4">
                   <p className="text-sm text-gray-600 mb-1">Lot Size</p>
                   <p className="text-xl font-semibold text-green-700">

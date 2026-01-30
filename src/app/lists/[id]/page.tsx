@@ -159,7 +159,7 @@ export default function ListDetailPage() {
   if (error || !list) {
     return (
       <div className="min-h-screen bg-gray-50">
-        <header className="bg-white border-b border-gray-200 px-6 py-4">
+        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4">
           <div className="max-w-6xl mx-auto">
             <Link href="/lists" className="flex items-center space-x-2 text-gray-600 hover:text-gray-900">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -169,7 +169,7 @@ export default function ListDetailPage() {
             </Link>
           </div>
         </header>
-        <main className="max-w-6xl mx-auto px-6 py-16 text-center">
+        <main className="max-w-6xl mx-auto px-4 sm:px-6 py-16 text-center">
           <h2 className="text-xl font-semibold text-gray-900 mb-2">{error || 'List not found'}</h2>
           <p className="text-gray-500 mb-4">The list you're looking for doesn't exist or has been deleted.</p>
           <Link
@@ -185,25 +185,25 @@ export default function ListDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between max-w-6xl mx-auto">
-          <div className="flex items-center space-x-4">
-            <Link href="/lists" className="flex items-center space-x-2 text-gray-600 hover:text-gray-900">
+      <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 max-w-6xl mx-auto">
+          <div className="flex items-center space-x-2 sm:space-x-4 overflow-x-auto">
+            <Link href="/lists" className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 flex-shrink-0">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
               <span>My Lists</span>
             </Link>
-            <span className="text-gray-300">/</span>
-            <span className="font-medium text-gray-900">{list.listName}</span>
+            <span className="text-gray-300 hidden sm:inline">/</span>
+            <span className="font-medium text-gray-900 truncate">{list.listName}</span>
           </div>
-          <span className="px-3 py-1 text-sm bg-gray-100 text-gray-600 rounded-full">
+          <span className="px-3 py-1 text-sm bg-gray-100 text-gray-600 rounded-full w-fit">
             {list.listType}
           </span>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <div className="bg-white rounded-lg border border-gray-200 mb-6 p-4">
           <div className="flex items-center justify-between">
             <div>
@@ -244,7 +244,7 @@ export default function ListDetailPage() {
             </Link>
           </div>
         ) : (
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div className="bg-white rounded-lg border border-gray-200 overflow-x-auto">
             <table className="min-w-full divide-y divide-gray-200">
               <thead className="bg-gray-50">
                 <tr>
@@ -253,10 +253,10 @@ export default function ListDetailPage() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Address
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
                         City
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                         Category
                       </th>
                     </>
@@ -265,15 +265,15 @@ export default function ListDetailPage() {
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Name
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
                         Email
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden md:table-cell">
                         Company
                       </th>
                     </>
                   )}
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
                     Added
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -302,10 +302,10 @@ export default function ListDetailPage() {
                               <span className="text-gray-400">Loading...</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 text-gray-600">
+                          <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
                             {propDetail ? `${propDetail.city || ''}, ${propDetail.state || ''}` : '-'}
                           </td>
-                          <td className="px-4 py-3 text-gray-600">
+                          <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
                             {propDetail?.assetCategory || '-'}
                           </td>
                         </>
@@ -314,15 +314,15 @@ export default function ListDetailPage() {
                           <td className="px-4 py-3 font-medium text-gray-900">
                             {contactDetail?.fullName || item.itemId}
                           </td>
-                          <td className="px-4 py-3 text-gray-600">
+                          <td className="px-4 py-3 text-gray-600 hidden sm:table-cell">
                             {contactDetail?.email || '-'}
                           </td>
-                          <td className="px-4 py-3 text-gray-600">
+                          <td className="px-4 py-3 text-gray-600 hidden md:table-cell">
                             {contactDetail?.employerName || '-'}
                           </td>
                         </>
                       )}
-                      <td className="px-4 py-3 text-gray-500 text-sm">
+                      <td className="px-4 py-3 text-gray-500 text-sm hidden sm:table-cell">
                         {formatDate(item.addedAt)}
                       </td>
                       <td className="px-4 py-3 text-right">

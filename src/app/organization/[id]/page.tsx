@@ -187,7 +187,7 @@ export default function OrganizationDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
-        <main className="max-w-7xl mx-auto px-6 py-8">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           <div className="flex items-center justify-center py-16">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600"></div>
           </div>
@@ -200,7 +200,7 @@ export default function OrganizationDetailPage() {
     return (
       <div className="min-h-screen bg-gray-50">
         <Header />
-        <main className="max-w-7xl mx-auto px-6 py-8">
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
           <div className="text-center py-16">
             <h2 className="text-xl font-semibold text-gray-900 mb-2">
               {error || 'Organization not found'}
@@ -236,7 +236,7 @@ export default function OrganizationDetailPage() {
     <div className="min-h-screen bg-gray-50">
       <Header />
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         <div className="mb-6">
           <button
             onClick={() => router.back()}
