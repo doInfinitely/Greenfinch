@@ -198,8 +198,8 @@ function EmailValidationIcon({ hasEmail, status }: { hasEmail: boolean; status: 
   );
 }
 
-// Validation status icon for phone
-function PhoneValidationIcon({ hasPhone }: { hasPhone: boolean }) {
+// Validation status icon for phone - shows quality indicator
+function PhoneValidationIcon({ hasPhone, isOfficeOnly = false }: { hasPhone: boolean; isOfficeOnly?: boolean }) {
   if (!hasPhone) {
     return (
       <span title="No phone" className="inline-flex items-center text-gray-400">
@@ -211,9 +211,21 @@ function PhoneValidationIcon({ hasPhone }: { hasPhone: boolean }) {
     );
   }
   
-  // Has phone - show checkmark (phones from enrichment are considered validated)
+  // Office line only - show yellow/amber warning (not high quality)
+  if (isOfficeOnly) {
+    return (
+      <span title="Office line only - no direct or mobile number" className="inline-flex items-center text-amber-500">
+        <span className="relative">
+          <Phone className="w-4 h-4" />
+          <HelpCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-amber-500 bg-white rounded-full" />
+        </span>
+      </span>
+    );
+  }
+  
+  // Has direct/mobile phone - show checkmark (high quality)
   return (
-    <span title="Phone available" className="inline-flex items-center text-green-600">
+    <span title="Direct or mobile phone available" className="inline-flex items-center text-green-600">
       <span className="relative">
         <Phone className="w-4 h-4" />
         <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
@@ -260,8 +272,33 @@ function LinkedInValidationIcon({ hasLinkedIn, confidence }: { hasLinkedIn: bool
   );
 }
 
+// Helper to check if contact has a high-quality phone (mobile or direct)
+function hasHighQualityPhone(contact: Contact): boolean {
+  // Check if any phone is mobile or direct (not just office)
+  if (contact.enrichmentPhonePersonal) return true; // Mobile from enrichment
+  if (contact.enrichmentPhoneWork) return true; // Work direct line from enrichment
+  if (contact.phoneLabel === 'mobile' || contact.phoneLabel === 'direct_work' || contact.phoneLabel === 'personal') return true;
+  // Check AI-discovered phone with quality labels
+  if (contact.aiPhone && contact.aiPhoneLabel) {
+    const aiLabel = contact.aiPhoneLabel.toLowerCase();
+    if (aiLabel === 'mobile' || aiLabel === 'direct_work' || aiLabel === 'personal' || aiLabel === 'direct') return true;
+  }
+  return false;
+}
+
+// Helper to check if contact only has office line
+function hasOnlyOfficeLine(contact: Contact): boolean {
+  const hasAnyPhone = !!(contact.phone || contact.normalizedPhone || contact.aiPhone || contact.enrichmentPhoneWork || contact.enrichmentPhonePersonal);
+  if (!hasAnyPhone) return false;
+  // Has phone but not high quality = office only
+  return !hasHighQualityPhone(contact);
+}
+
 // Contact info summary row with validation icons
 function ContactInfoSummary({ contact }: { contact: Contact }) {
+  const hasPhone = !!(contact.phone || contact.normalizedPhone || contact.enrichmentPhoneWork || contact.enrichmentPhonePersonal || contact.aiPhone);
+  const isOfficeOnly = hasOnlyOfficeLine(contact);
+  
   return (
     <div className="flex items-center gap-3" data-testid="contact-info-summary">
       <EmailValidationIcon 
@@ -269,7 +306,8 @@ function ContactInfoSummary({ contact }: { contact: Contact }) {
         status={contact.emailValidationStatus} 
       />
       <PhoneValidationIcon 
-        hasPhone={!!(contact.phone || contact.normalizedPhone)} 
+        hasPhone={hasPhone}
+        isOfficeOnly={isOfficeOnly}
       />
       <LinkedInValidationIcon 
         hasLinkedIn={!!contact.linkedinUrl} 
@@ -622,8 +660,26 @@ export default function ContactDetailPage() {
                 {contact.title && (
                   <p className="text-lg text-gray-600 mt-1">{contact.title}</p>
                 )}
-                {contact.employerName && (
-                  <p className="text-gray-500">{contact.employerName}</p>
+                {/* Employer and domain in header area */}
+                {(contact.employerName || contact.companyDomain) && (
+                  <div className="flex items-center gap-2 mt-1">
+                    {contact.employerName && (
+                      <span className="text-gray-600">{contact.employerName}</span>
+                    )}
+                    {contact.employerName && contact.companyDomain && (
+                      <span className="text-gray-400">•</span>
+                    )}
+                    {contact.companyDomain && (
+                      <a 
+                        href={`https://${contact.companyDomain}`} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-green-600 hover:text-green-700 hover:underline"
+                      >
+                        {contact.companyDomain}
+                      </a>
+                    )}
+                  </div>
                 )}
                 {/* Contact info validation summary icons */}
                 <div className="mt-2">
@@ -632,10 +688,11 @@ export default function ContactDetailPage() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              {/* Find Phone button - show if no phone or only office phone */}
+              {/* Find Phone button - hide once mobile or direct line has been identified */}
               {(() => {
                 const phoneStatus = getEnrichmentStatus(contactId as string, 'contact_phone');
-                const needsPhone = (!contact.phone && !contact.normalizedPhone) || contact.phoneLabel === 'office';
+                // Show button only if we don't have a high-quality phone (mobile/direct)
+                const needsPhone = !hasHighQualityPhone(contact);
                 const isPhoneActive = phoneStatus.isActive || isFindingPhone;
                 const phoneHasFailed = phoneStatus.status === 'failed';
                 
@@ -729,18 +786,12 @@ export default function ContactDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-500 mb-1">Full Name</label>
-                  <p className="text-gray-900">
-                    {contact.fullName || '—'}
-                    <LowConfidenceMarker confidence={contact.nameConfidence} />
-                  </p>
+                  <p className="text-gray-900">{contact.fullName || '—'}</p>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-500 mb-1">Title</label>
-                  <p className="text-gray-900">
-                    {contact.title || '—'}
-                    <LowConfidenceMarker confidence={contact.titleConfidence} />
-                  </p>
+                  <p className="text-gray-900">{contact.title || '—'}</p>
                 </div>
                 
                 <div>
@@ -754,7 +805,6 @@ export default function ContactDetailPage() {
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
-                    <LowConfidenceMarker confidence={contact.emailConfidence} />
                   </div>
                 </div>
                 
@@ -764,7 +814,7 @@ export default function ContactDetailPage() {
                     {/* Primary phone */}
                     {(contact.phone || contact.normalizedPhone) && (
                       <div className="flex items-center gap-2">
-                        <PhoneValidationIcon hasPhone={true} />
+                        <PhoneValidationIcon hasPhone={true} isOfficeOnly={contact.phoneLabel === 'office'} />
                         <a href={`tel:${contact.normalizedPhone || contact.phone}`} className="text-gray-900 hover:text-green-600">
                           {formatPhoneNumber(contact.phone || contact.normalizedPhone)}
                         </a>
@@ -773,7 +823,6 @@ export default function ContactDetailPage() {
                             {PHONE_LABEL_CONFIG[contact.phoneLabel].label}
                           </span>
                         )}
-                        <LowConfidenceMarker confidence={contact.phoneConfidence} />
                       </div>
                     )}
                     {/* Work phone from enrichment */}
@@ -826,27 +875,6 @@ export default function ContactDetailPage() {
                       </div>
                     )}
                   </div>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">Employer</label>
-                  <p className="text-gray-900">{contact.employerName || '—'}</p>
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">Company Domain</label>
-                  {contact.companyDomain ? (
-                    <a 
-                      href={`https://${contact.companyDomain}`} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="text-green-600 hover:text-green-700 hover:underline"
-                    >
-                      {contact.companyDomain}
-                    </a>
-                  ) : (
-                    <span className="text-gray-400">—</span>
-                  )}
                 </div>
                 
                 {contact.reviewReason && (
@@ -979,44 +1007,6 @@ export default function ContactDetailPage() {
               </div>
             </div>
 
-            <AdminOnly>
-              {(contact.enrichmentSource || contact.providerId || contact.enrichedAt) && (
-                <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <svg className="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
-                    <span className="text-sm font-medium text-blue-700">Enrichment Metadata</span>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
-                    {contact.enrichmentSource && (
-                      <div>
-                        <span className="text-blue-600">Source:</span>
-                        <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-800 rounded text-xs font-medium uppercase" data-testid="text-contact-enrichment-source">
-                          {contact.enrichmentSource}
-                        </span>
-                      </div>
-                    )}
-                    {contact.providerId && (
-                      <div>
-                        <span className="text-blue-600">Provider ID:</span>
-                        <span className="ml-2 font-mono text-xs text-gray-600" data-testid="text-contact-provider-id">
-                          {contact.providerId.length > 20 ? `${contact.providerId.substring(0, 20)}...` : contact.providerId}
-                        </span>
-                      </div>
-                    )}
-                    {contact.enrichedAt && (
-                      <div>
-                        <span className="text-blue-600">Enriched:</span>
-                        <span className="ml-2 text-gray-700" data-testid="text-contact-enriched-at">
-                          {new Date(contact.enrichedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-            </AdminOnly>
           </div>
         </div>
       </main>
