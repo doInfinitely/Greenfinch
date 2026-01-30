@@ -1,3 +1,5 @@
+import { titleCase } from 'title-case';
+
 const UPPERCASE_PRESERVATIONS = new Set([
   'LLC', 'LP', 'LLP', 'INC', 'CORP', 'CO', 'LTD', 'USA', 'US', 'TX', 'OK', 'LA', 'AR', 'NM',
   'NE', 'NW', 'SE', 'SW', 'N', 'S', 'E', 'W', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X',
@@ -96,7 +98,17 @@ export function normalizeOwnerName(name: string | null | undefined): string {
 
 export function normalizeCommonName(name: string | null | undefined): string {
   if (!name) return '';
-  return normalizeOwnerName(name);
+  
+  const lowered = name.toLowerCase();
+  const result = titleCase(lowered);
+  
+  return result.split(/\s+/).map(word => {
+    const upper = word.toUpperCase();
+    if (UPPERCASE_PRESERVATIONS.has(upper)) {
+      return upper;
+    }
+    return word;
+  }).join(' ');
 }
 
 export function normalizeCity(city: string | null | undefined): string {
