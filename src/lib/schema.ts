@@ -169,6 +169,7 @@ export const properties = pgTable('properties', {
   
   // Enrichment metadata
   propertyWebsite: text('property_website'),
+  propertyPhone: text('property_phone'),
   propertyManagerWebsite: text('property_manager_website'),
   aiRationale: text('ai_rationale'),
   enrichmentSources: json('enrichment_sources'),

@@ -33,6 +33,10 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
   const mapRef = useRef<DashboardMap | null>(null);
   const callbacksRef = useRef({ onBoundsChange, onPropertyClick });
   const [mapError, setMapError] = useState<string | null>(null);
+  
+  // Store initial values in refs to prevent re-initialization when parent re-renders
+  const initialCenterRef = useRef(initialCenter);
+  const initialZoomRef = useRef(initialZoom);
 
   callbacksRef.current = { onBoundsChange, onPropertyClick };
 
@@ -42,6 +46,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
     },
   }));
 
+  // Initialize map only once - don't reinitialize when props change
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
 
@@ -50,8 +55,8 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
       accessToken,
       regridToken,
       regridTileUrl,
-      initialCenter,
-      initialZoom,
+      initialCenter: initialCenterRef.current,
+      initialZoom: initialZoomRef.current,
       onBoundsChange: (bounds, zoom) => {
         callbacksRef.current.onBoundsChange?.(bounds, zoom);
       },
@@ -74,7 +79,8 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
         mapRef.current = null;
       }
     };
-  }, [accessToken, regridToken, regridTileUrl, initialCenter, initialZoom]);
+    // Only depend on tokens - don't reinit for center/zoom changes
+  }, [accessToken, regridToken, regridTileUrl]);
 
   useEffect(() => {
     if (!mapRef.current) return;

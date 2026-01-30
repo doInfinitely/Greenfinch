@@ -547,6 +547,7 @@ export interface EnrichedProperty {
   managementCompanyDomain: string | null;
   managementConfidence: number | null;
   propertyWebsite: string | null;
+  propertyPhone: string | null;
   propertyManagerWebsite: string | null;
   aiRationale: string | null;
   enrichmentSources: EnrichmentSource[] | null;
@@ -862,7 +863,8 @@ Return ONLY valid JSON matching this structure:
     "management_company_domain": "domain.com if known",
     "management_confidence": 0.0-1.0,
     
-    "property_website": "URL if known",
+    "property_website": "URL for property-specific website if known (e.g., building website, not management company)",
+    "property_phone": "+1-XXX-XXX-XXXX - Phone number found on property website or listing, best contact for property",
     "property_manager_website": "URL if known",
     
     "building_sqft": null,
@@ -1127,6 +1129,7 @@ function processEnrichmentResponse(
     managementCompanyDomain: prop.management_company_domain || null,
     managementConfidence: prop.management_confidence || null,
     propertyWebsite: prop.property_website || null,
+    propertyPhone: prop.property_phone || null,
     propertyManagerWebsite: prop.property_manager_website || null,
     aiRationale: aiRationale || null,
     enrichmentSources,
@@ -2031,6 +2034,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
       managementCompanyDomain: ownership?.managementCompany?.domain || null,
       managementConfidence: ownership?.managementCompany?.confidence || null,
       propertyWebsite: null,
+      propertyPhone: null,
       propertyManagerWebsite: ownership?.managementCompany?.domain ? `https://${ownership.managementCompany.domain}` : null,
       aiRationale: combinedSummary,
       enrichmentSources: allSources.map((s, i) => ({ id: i + 1, title: s.title, url: s.url, type: 'grounded' })),
@@ -2197,6 +2201,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
         managementCompanyDomain: null,
         managementConfidence: null,
         propertyWebsite: null,
+        propertyPhone: null,
         propertyManagerWebsite: null,
         aiRationale: null,
         enrichmentSources: null,
@@ -2300,6 +2305,7 @@ export async function storeEnrichmentResults(
     managementCompanyDomain: result.property.managementCompanyDomain,
     managementConfidence: result.property.managementConfidence,
     propertyWebsite: result.property.propertyWebsite,
+    propertyPhone: result.property.propertyPhone,
     propertyManagerWebsite: result.property.propertyManagerWebsite,
     aiRationale: result.property.aiRationale,
     enrichmentSources: result.property.enrichmentSources,
