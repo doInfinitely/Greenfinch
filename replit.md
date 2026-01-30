@@ -104,6 +104,11 @@ Apollo waterfall phone/email enrichment is triggered on-demand from the contact 
   - Find Phone: shown when contact has no phone number
   - Find Email: shown when contact has no email OR email validation status is not 'valid'
 - **Webhook Processing**: Results arrive via Apollo webhook at `/api/webhooks/apollo` and update contacts by providerId
+- **Queue Integration**: Phone/email lookups use the same enrichment queue as property enrichment
+  - Lookups appear in the header queue popover with progress messages
+  - Polling monitors `enrichedAt` timestamp to detect webhook completion (up to 60 seconds)
+  - Toast notifications on completion/failure
+  - Users can navigate away while lookups process in background
 
 ### Email Validation Rules
 - **Catch-all emails treated as invalid** - Only 'valid' status passes validation
