@@ -370,6 +370,8 @@ export async function enrichContactCascade(
     const apolloResult = await enrichPersonApollo(firstName, lastName, companyDomain || undefined, {
       revealEmails: true,
       revealPhone: true,
+      useWaterfallPhone: true,  // Phone numbers delivered via webhook
+      linkedinUrl: foundLinkedin || undefined,  // Improves match rate
     });
     
     if (apolloResult.found && (apolloResult.linkedinUrl || apolloResult.email || apolloResult.title)) {

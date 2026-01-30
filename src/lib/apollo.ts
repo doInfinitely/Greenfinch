@@ -3,9 +3,43 @@
  * 
  * Uses the People Match endpoint for person enrichment.
  * API Documentation: https://docs.apollo.io/reference/people-enrichment
+ * 
+ * Waterfall Enrichment for Phone Numbers:
+ * When run_waterfall_phone=true, Apollo returns immediate sync response with
+ * demographic data, then sends phone numbers asynchronously to our webhook.
+ * See: https://docs.apollo.io/docs/enrich-phone-and-email-using-data-waterfall
  */
 
 const APOLLO_API_URL = 'https://api.apollo.io/api/v1';
+
+/**
+ * Get the webhook URL for Apollo waterfall callbacks
+ * Uses production domain in production, dev domain in development
+ */
+function getApolloWebhookUrl(): string {
+  // In production, use REPLIT_DOMAINS (comma-separated list of domains)
+  const domains = process.env.REPLIT_DOMAINS;
+  if (domains) {
+    const primaryDomain = domains.split(',')[0];
+    return `https://${primaryDomain}/api/webhooks/apollo`;
+  }
+  
+  // In development, use REPLIT_DEV_DOMAIN
+  const devDomain = process.env.REPLIT_DEV_DOMAIN;
+  if (devDomain) {
+    return `https://${devDomain}/api/webhooks/apollo`;
+  }
+  
+  // Fallback - won't work but log the issue
+  console.warn('[Apollo] No REPLIT_DOMAINS or REPLIT_DEV_DOMAIN available for webhook URL');
+  return '';
+}
+
+interface ApolloWaterfallStatus {
+  status: 'accepted' | 'failed' | 'partially_accepted';
+  message: string;
+  unprocessed_attributes?: any[];
+}
 
 interface ApolloPersonMatchResponse {
   person: {
@@ -33,12 +67,15 @@ interface ApolloPersonMatchResponse {
     seniority: string | null;
     departments: string[] | null;
   } | null;
+  waterfall?: ApolloWaterfallStatus;
+  request_id?: number;
   status?: string;
   error?: string;
 }
 
 interface ApolloEnrichResult {
   found: boolean;
+  apolloId?: string;
   fullName?: string;
   firstName?: string;
   lastName?: string;
@@ -51,6 +88,8 @@ interface ApolloEnrichResult {
   location?: string;
   seniority?: string;
   emailStatus?: string;
+  waterfallStatus?: 'accepted' | 'failed' | 'not_requested';
+  waterfallMessage?: string;
   raw?: any;
   error?: string;
 }
@@ -58,12 +97,20 @@ interface ApolloEnrichResult {
 /**
  * Enrich a person using Apollo.io People Match API
  * Requires first_name + last_name + organization_domain for best results
+ * 
+ * When useWaterfallPhone is true, phone numbers are delivered asynchronously
+ * to our webhook endpoint. The sync response will only contain demographic data.
  */
 export async function enrichPersonApollo(
   firstName: string,
   lastName: string,
   domain?: string,
-  options?: { revealEmails?: boolean; revealPhone?: boolean }
+  options?: { 
+    revealEmails?: boolean; 
+    revealPhone?: boolean;
+    useWaterfallPhone?: boolean;  // Use waterfall enrichment for phone numbers
+    linkedinUrl?: string;  // Improves match rate for waterfall
+  }
 ): Promise<ApolloEnrichResult> {
   const apiKey = process.env.APOLLO_API_KEY;
   if (!apiKey) {
@@ -71,8 +118,6 @@ export async function enrichPersonApollo(
   }
 
   // Build request body for Apollo People Match API
-  // Note: reveal_phone_number requires a webhook_url which we don't have
-  // So we only use reveal_personal_emails for now
   const requestBody: Record<string, any> = {
     first_name: firstName,
     last_name: lastName,
@@ -83,9 +128,35 @@ export async function enrichPersonApollo(
     requestBody.domain = domain;
   }
 
+  // Add LinkedIn URL if provided (improves match rate for waterfall)
+  if (options?.linkedinUrl) {
+    requestBody.linkedin_url = options.linkedinUrl;
+  }
+
+  // Set up waterfall phone enrichment if requested
+  const useWaterfallPhone = options?.useWaterfallPhone ?? true;  // Default to true
+  let webhookUrl = '';
+  
+  if (useWaterfallPhone) {
+    webhookUrl = getApolloWebhookUrl();
+    if (webhookUrl) {
+      requestBody.run_waterfall_phone = true;
+      requestBody.webhook_url = webhookUrl;
+      console.log('[Apollo] Waterfall phone enabled, webhook URL:', webhookUrl);
+    } else {
+      console.warn('[Apollo] Waterfall phone requested but no webhook URL available');
+    }
+  }
+
   const url = `${APOLLO_API_URL}/people/match`;
 
-  console.log('[Apollo] People Match request:', { firstName, lastName, domain });
+  console.log('[Apollo] People Match request:', { 
+    firstName, 
+    lastName, 
+    domain,
+    useWaterfallPhone,
+    hasWebhookUrl: !!webhookUrl 
+  });
 
   try {
     const response = await fetch(url, {
@@ -126,8 +197,21 @@ export async function enrichPersonApollo(
       linkedinUrl = `https://${linkedinUrl}`;
     }
 
+    // Determine waterfall status
+    let waterfallStatus: 'accepted' | 'failed' | 'not_requested' = 'not_requested';
+    let waterfallMessage = '';
+    
+    if (data.waterfall) {
+      waterfallStatus = data.waterfall.status === 'partially_accepted' 
+        ? 'accepted' 
+        : data.waterfall.status;
+      waterfallMessage = data.waterfall.message || '';
+      console.log('[Apollo] Waterfall status:', waterfallStatus, '-', waterfallMessage);
+    }
+
     const result: ApolloEnrichResult = {
       found: true,
+      apolloId: person.id,
       fullName: person.name,
       firstName: person.first_name,
       lastName: person.last_name,
@@ -140,10 +224,16 @@ export async function enrichPersonApollo(
       location: location || undefined,
       seniority: person.seniority || undefined,
       emailStatus: person.email_status || undefined,
+      waterfallStatus,
+      waterfallMessage,
       raw: data,
     };
 
     console.log('[Apollo] Match found:', person.name, 'at', person.organization?.name);
+    if (waterfallStatus === 'accepted') {
+      console.log('[Apollo] Phone numbers will be delivered via webhook');
+    }
+    
     return result;
   } catch (error: any) {
     console.error('[Apollo] Request failed:', error.message);
