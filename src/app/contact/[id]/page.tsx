@@ -268,11 +268,8 @@ export default function ContactDetailPage() {
   const [organizations, setOrganizations] = useState<OrgRelation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isFindingLinkedIn, setIsFindingLinkedIn] = useState(false);
-  const [linkedInMessage, setLinkedInMessage] = useState<string | null>(null);
   const [showLinkedInAlternatives, setShowLinkedInAlternatives] = useState(false);
   const [selectingAlternative, setSelectingAlternative] = useState(false);
-  const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const { startEnrichment } = useEnrichment();
   const [isLoadingPhoto, setIsLoadingPhoto] = useState(false);
@@ -358,36 +355,8 @@ export default function ContactDetailPage() {
     };
   }, [contact?.id, contact?.photoUrl, contact?.linkedinUrl]);
 
-  const handleFindLinkedIn = async () => {
-    if (!contact) return;
-
-    setIsFindingLinkedIn(true);
-    setLinkedInMessage(null);
-
-    try {
-      const response = await fetch(`/api/contacts/${contactId}/linkedin`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
-
-      const data = await response.json();
-
-      if (data.success) {
-        setContact(prev => prev ? { ...prev, linkedinUrl: data.linkedinUrl } : null);
-        setLinkedInMessage(data.alreadyExists ? 'LinkedIn profile already on file' : 'LinkedIn profile found!');
-      } else {
-        setLinkedInMessage(data.message || 'Could not find LinkedIn profile');
-      }
-    } catch (err) {
-      setLinkedInMessage('Failed to search for LinkedIn profile');
-    } finally {
-      setIsFindingLinkedIn(false);
-    }
-  };
-
   const handleFlagLinkedIn = () => {
     setShowLinkedInAlternatives(true);
-    setLinkedInMessage(null);
   };
 
   const handleMarkLinkedInIncorrect = async () => {
@@ -460,57 +429,6 @@ export default function ContactDetailPage() {
   const getAlternativeProfiles = () => {
     if (!contact?.linkedinSearchResults) return [];
     return contact.linkedinSearchResults.filter(r => r.url !== contact.linkedinUrl).slice(0, 3);
-  };
-
-  const handleEnrichContact = async () => {
-    if (!contact) return;
-
-    setEnrichMessage('Enrichment started - check the queue for progress');
-
-    startEnrichment({
-      type: 'contact',
-      entityId: contactId as string,
-      entityName: contact.fullName || 'Unknown Contact',
-      apiEndpoint: `/api/contacts/${contactId}/enrich`,
-      onSuccess: (data: unknown) => {
-        const result = data as { 
-          success: boolean; 
-          contact: Partial<Contact>; 
-          enrichmentResult?: { linkedinUrl?: string; email?: string; phone?: string } 
-        };
-        if (result.success && result.contact) {
-          setContact(prev => prev ? {
-            ...prev,
-            linkedinUrl: result.contact.linkedinUrl || prev.linkedinUrl,
-            linkedinConfidence: result.contact.linkedinConfidence ?? prev.linkedinConfidence,
-            linkedinStatus: result.contact.linkedinStatus || prev.linkedinStatus,
-            email: result.contact.email || prev.email,
-            emailConfidence: result.contact.emailConfidence ?? prev.emailConfidence,
-            phone: result.contact.phone || prev.phone,
-            phoneConfidence: result.contact.phoneConfidence ?? prev.phoneConfidence,
-            title: result.contact.title || prev.title,
-            employerName: result.contact.employerName || prev.employerName,
-          } : null);
-          
-          const updates: string[] = [];
-          if (result.enrichmentResult?.linkedinUrl) updates.push('LinkedIn');
-          if (result.enrichmentResult?.email) updates.push('Email');
-          if (result.enrichmentResult?.phone) updates.push('Phone');
-          
-          if (updates.length > 0) {
-            setEnrichMessage(`Found: ${updates.join(', ')}`);
-            setTimeout(() => setEnrichMessage(null), 5000);
-          } else {
-            setEnrichMessage(null);
-          }
-        } else {
-          setEnrichMessage(null);
-        }
-      },
-      onError: () => {
-        setEnrichMessage(null);
-      },
-    });
   };
 
   const handleFindPhone = async () => {
@@ -693,21 +611,8 @@ export default function ContactDetailPage() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3">
-              <AdminOnly>
-                <button
-                  onClick={handleEnrichContact}
-                  className="inline-flex items-center px-4 py-2 bg-green-600 text-white text-sm font-medium rounded-lg hover:bg-green-700"
-                  data-testid="button-enrich-contact"
-                >
-                  <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Enrich Contact
-                </button>
-              </AdminOnly>
-              
-              {/* Find Phone button - show if no phone number */}
-              {!contact.phone && !contact.normalizedPhone && (
+              {/* Find Phone button - show if no phone or only office phone */}
+              {(!contact.phone && !contact.normalizedPhone) || contact.phoneLabel === 'office' ? (
                 <AdminOnly>
                   <button
                     onClick={handleFindPhone}
@@ -723,7 +628,7 @@ export default function ContactDetailPage() {
                     Find Phone
                   </button>
                 </AdminOnly>
-              )}
+              ) : null}
               
               {/* Find Email button - show if no email or email not validated (including null/undefined status) */}
               {(!contact.email || contact.emailValidationStatus !== 'valid') && (
@@ -744,11 +649,6 @@ export default function ContactDetailPage() {
                 </AdminOnly>
               )}
               
-              {enrichMessage && (
-                <span className="text-sm text-green-600">
-                  {enrichMessage}
-                </span>
-              )}
               {phoneMessage && (
                 <span className="text-sm text-blue-600">
                   {phoneMessage}
@@ -874,31 +774,7 @@ export default function ContactDetailPage() {
                           )}
                         </>
                       ) : (
-                        <button
-                          onClick={handleFindLinkedIn}
-                          disabled={isFindingLinkedIn}
-                          className="inline-flex items-center px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                          data-testid="button-find-linkedin"
-                        >
-                          {isFindingLinkedIn ? (
-                            <>
-                              <div className="w-4 h-4 mr-2 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                              Searching...
-                            </>
-                          ) : (
-                            <>
-                              <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
-                                <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
-                              </svg>
-                              Find LinkedIn
-                            </>
-                          )}
-                        </button>
-                      )}
-                      {linkedInMessage && (
-                        <span className={`text-sm ${linkedInMessage.includes('success') || linkedInMessage.includes('found') ? 'text-green-600' : 'text-gray-500'}`}>
-                          {linkedInMessage}
-                        </span>
+                        <span className="text-gray-400">—</span>
                       )}
                     </div>
 

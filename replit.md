@@ -101,8 +101,8 @@ Apollo waterfall phone/email enrichment is triggered on-demand from the contact 
 - **API Endpoints**: `POST /api/contacts/[id]/waterfall-phone` and `POST /api/contacts/[id]/waterfall-email`
 - **UI**: "Find Phone" and "Find Email" buttons on contact detail page (admin-only)
 - **Button Visibility**: 
-  - Find Phone: shown when contact has no phone number
-  - Find Email: shown when contact has no email OR email validation status is not 'valid'
+  - Find Phone: shown when contact has no phone OR only has an office phone
+  - Find Email: shown when contact has no valid email address
 - **Webhook Processing**: Results arrive via Apollo webhook at `/api/webhooks/apollo` and update contacts by providerId
 - **Queue Integration**: Phone/email lookups use the same enrichment queue as property enrichment
   - Lookups appear in the header queue popover with progress messages
