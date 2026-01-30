@@ -231,6 +231,7 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
           ));
 
           try {
+            console.log(`[EnrichmentQueue] Resume polling ${currentItem?.entityName}: attempt ${newAttempt}, checking ${checkEndpoint}`);
             const response = await fetch(checkEndpoint);
             if (!response.ok) {
               console.warn('[EnrichmentQueue] Poll check failed:', response.status);
@@ -243,19 +244,26 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
               fieldValue = fieldValue?.[key];
             }
 
+            console.log(`[EnrichmentQueue] Resume polling ${currentItem?.entityName}: field=${checkField}, current=${fieldValue}, original=${originalValue}, mode=${compareMode}`);
+
             let isComplete = false;
             if (compareMode === 'truthy') {
               isComplete = !!fieldValue;
             } else if (compareMode === 'changed') {
-              isComplete = fieldValue !== originalValue && !!fieldValue;
+              // Convert to strings for consistent comparison (dates can be Date objects or ISO strings)
+              const currentStr = fieldValue instanceof Date ? fieldValue.toISOString() : String(fieldValue ?? '');
+              const originalStr = originalValue instanceof Date ? (originalValue as Date).toISOString() : String(originalValue ?? '');
+              isComplete = currentStr !== originalStr && !!fieldValue;
+              console.log(`[EnrichmentQueue] Resume changed comparison: "${currentStr}" !== "${originalStr}" = ${isComplete}`);
             } else if (compareMode === 'valid_status') {
               isComplete = fieldValue === 'valid';
             }
 
             if (isComplete) {
+              console.log(`[EnrichmentQueue] Resume polling complete for ${currentItem?.entityName}!`);
               clearInterval(interval);
               pollingIntervals.current.delete(item.id);
-              markCompletedInternal(item.id, currentItem.resultUrl, currentItem.entityName);
+              markCompletedInternal(item.id, currentItem?.resultUrl, currentItem?.entityName);
             }
           } catch (error) {
             console.warn('[EnrichmentQueue] Poll error:', error);
@@ -350,21 +358,29 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       }
 
       try {
+        console.log(`[EnrichmentQueue] Polling ${currentItem.entityName}: attempt ${newAttempt}, checking ${checkEndpoint}`);
         const response = await fetch(checkEndpoint);
         if (response.ok) {
           const data = await response.json();
           const fieldValue = checkField.split('.').reduce((obj: unknown, key: string) => (obj as Record<string, unknown>)?.[key], data);
           
+          console.log(`[EnrichmentQueue] Polling ${currentItem.entityName}: field=${checkField}, current=${fieldValue}, original=${originalValue}, mode=${compareMode}`);
+          
           let conditionMet = false;
           if (compareMode === 'truthy') {
             conditionMet = Boolean(fieldValue);
           } else if (compareMode === 'changed') {
-            conditionMet = fieldValue !== originalValue;
+            // Convert to strings for consistent comparison (dates can be Date objects or ISO strings)
+            const currentStr = fieldValue instanceof Date ? fieldValue.toISOString() : String(fieldValue ?? '');
+            const originalStr = originalValue instanceof Date ? (originalValue as Date).toISOString() : String(originalValue ?? '');
+            conditionMet = currentStr !== originalStr && !!fieldValue;
+            console.log(`[EnrichmentQueue] Changed comparison: "${currentStr}" !== "${originalStr}" = ${conditionMet}`);
           } else if (compareMode === 'valid_status') {
             conditionMet = fieldValue === 'valid' && fieldValue !== originalValue;
           }
 
           if (conditionMet) {
+            console.log(`[EnrichmentQueue] Polling complete for ${currentItem.entityName}!`);
             clearInterval(interval);
             pollingIntervals.current.delete(id);
             const resultUrl = currentItem.type === 'property' 
@@ -376,7 +392,8 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
             return;
           }
         }
-      } catch {
+      } catch (error) {
+        console.warn(`[EnrichmentQueue] Polling error for ${currentItem.entityName}:`, error);
         // Continue polling on error
       }
 
