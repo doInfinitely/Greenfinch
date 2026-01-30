@@ -88,18 +88,23 @@ export default function PipelineStatus({ propertyId, inline = false }: PipelineS
   }
 
   async function updateStatus(newStatus: PipelineStatusType, dealValue?: number) {
-    if (newStatus === 'qualified' && !dealValue) {
+    // Check if we need to prompt for deal value
+    const existingDealValue = pipeline?.dealValue;
+    if (newStatus === 'qualified' && !dealValue && !existingDealValue) {
       setPendingStatus(newStatus);
       setShowQualifyDialog(true);
       return;
     }
 
+    // Close dialog first for better UX
+    setShowQualifyDialog(false);
     setUpdating(true);
+    
     try {
       const res = await fetch(`/api/properties/${propertyId}/pipeline`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, dealValue }),
+        body: JSON.stringify({ status: newStatus, dealValue: dealValue || existingDealValue }),
       });
 
       if (!res.ok) {
@@ -120,10 +125,12 @@ export default function PipelineStatus({ propertyId, inline = false }: PipelineS
         variant: 'destructive',
       });
     } finally {
-      setUpdating(false);
-      setShowQualifyDialog(false);
-      setDealValueInput('');
-      setPendingStatus(null);
+      // Use setTimeout to ensure state updates don't conflict with dialog animations
+      setTimeout(() => {
+        setUpdating(false);
+        setDealValueInput('');
+        setPendingStatus(null);
+      }, 100);
     }
   }
 
