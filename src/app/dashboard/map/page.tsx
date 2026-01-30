@@ -64,7 +64,6 @@ function getZoomForType(type: string, hasPropertyKey: boolean): number {
 }
 
 export default function MapPage() {
-  const router = useRouter();
   const mapRef = useRef<MapCanvasHandle>(null);
   const [config, setConfig] = useState<{ mapboxToken: string; regridToken: string; regridTileUrl: string } | null>(null);
   const [allProperties, setAllProperties] = useState<PropertyFeature[]>([]);
