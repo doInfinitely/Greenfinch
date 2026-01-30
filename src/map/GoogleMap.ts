@@ -2,6 +2,7 @@ import { setOptions, importLibrary } from '@googlemaps/js-api-loader';
 import { GoogleMapsOverlay } from '@deck.gl/google-maps';
 import { MVTLayer } from '@deck.gl/geo-layers';
 import { MarkerClusterer } from '@googlemaps/markerclusterer';
+import { normalizeCommonName } from '@/lib/normalization';
 
 let googleMapsOptionsSet = false;
 
@@ -314,10 +315,11 @@ export class GoogleMapController {
         cursor: pointer;
       `;
 
+      const normalizedName = props.commonName ? normalizeCommonName(props.commonName) : null;
       const marker = new AdvancedMarkerElement({
         position: { lat, lng },
         content: markerContent,
-        title: props.commonName || props.address,
+        title: normalizedName || props.address,
       });
 
       marker.addListener('click', () => {
@@ -328,8 +330,8 @@ export class GoogleMapController {
 
       marker.addListener('mouseover', () => {
         if (this.infoWindow && this.map) {
-          const content = props.enriched && props.commonName 
-            ? `<div style="padding: 4px;"><strong>${props.commonName}</strong><br/>${props.address}</div>`
+          const content = props.enriched && normalizedName 
+            ? `<div style="padding: 4px;"><strong>${normalizedName}</strong><br/>${props.address}</div>`
             : `<div style="padding: 4px;">${props.address}</div>`;
           this.infoWindow.setContent(content);
           this.infoWindow.open(this.map, marker);

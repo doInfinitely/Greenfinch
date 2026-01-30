@@ -1,4 +1,5 @@
 import mapboxgl from 'mapbox-gl';
+import { normalizeCommonName } from '@/lib/normalization';
 
 const LIGHT_STYLE = 'mapbox://styles/mapbox/light-v11';
 const SATELLITE_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
@@ -412,7 +413,7 @@ export class DashboardMap {
         return;
       }
 
-      const commonName = propertyInfo.commonName;
+      const commonName = propertyInfo.commonName ? normalizeCommonName(propertyInfo.commonName) : null;
       const address = propertyInfo.address || 'Unknown Address';
 
       let popupContent = `<div style="font-size: 12px; max-width: 220px;">`;

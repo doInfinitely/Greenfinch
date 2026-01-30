@@ -651,7 +651,7 @@ export default function PropertyDetailPage() {
 
     // Build display name: prefer common name with address, or just address
     const displayName = enrichedProperty?.commonName 
-      ? `${enrichedProperty.commonName} (${property.address || ''})`.trim()
+      ? `${normalizeCommonName(enrichedProperty.commonName)} (${property.address || ''})`.trim()
       : property.address || 'Unknown Property';
 
     startEnrichment({
@@ -913,7 +913,7 @@ export default function PropertyDetailPage() {
                   {enrichedProperty?.commonName && (
                     <div className="mb-1">
                       <h1 className="text-2xl font-bold text-gray-900">
-                        {enrichedProperty.commonName}
+                        {normalizeCommonName(enrichedProperty.commonName)}
                       </h1>
                     </div>
                   )}
@@ -1273,7 +1273,7 @@ export default function PropertyDetailPage() {
                   href={`/property/${parentProperty.propertyKey}`}
                   className="block hover:bg-blue-100 rounded p-2 -m-2 transition-colors"
                 >
-                  <p className="text-blue-900 font-semibold">{parentProperty.commonName || 'Parent Property'}</p>
+                  <p className="text-blue-900 font-semibold">{parentProperty.commonName ? normalizeCommonName(parentProperty.commonName) : 'Parent Property'}</p>
                   <p className="text-xs text-blue-600 mt-0.5">View parent property details</p>
                 </a>
               </div>
@@ -1304,7 +1304,7 @@ export default function PropertyDetailPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="font-medium text-gray-900">
-                            {constituent.commonName || normalizeCommonName(constituent.dcadBizName) || 'Unnamed Property'}
+                            {normalizeCommonName(constituent.commonName) || normalizeCommonName(constituent.dcadBizName) || 'Unnamed Property'}
                           </p>
                           {constituent.buildingSqft && (
                             <p className="text-sm text-gray-500">
