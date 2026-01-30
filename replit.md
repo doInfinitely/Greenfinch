@@ -39,6 +39,7 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Property Details**: Dedicated pages for detailed property information, contacts, and organizations, with hidden sections when beneficial owner data is enriched.
 - **Clickable Records**: Contact and organization cards/rows are fully clickable with chevron indicators for mobile UX.
 - **Property Filters**: Collapsible filter panel with sections for size, category/subcategory, building class, HVAC types, and linked records.
+- **Mobile Responsiveness**: Pipeline board uses CSS snap scrolling with swipe hints on mobile. Filter selects use shadcn Select components for consistent styling. Property page action buttons use flex-wrap for mobile stacking.
 
 ### Technical Implementations
 - **Property Classification**: Uses Texas PTAD state property type codes for classification of commercial and multifamily properties, excluding single-family, vacant land, and others.
