@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
 import { eq, isNotNull, and, or, sql } from 'drizzle-orm';
+import { normalizeCommonName } from '@/lib/normalization';
 
 export async function GET(request: NextRequest) {
   try {
@@ -61,7 +62,7 @@ export async function GET(request: NextRequest) {
       .map(p => {
         const address = p.regridAddress || p.validatedAddress || 'No Address';
         const isEnriched = !!p.lastEnrichedAt;
-        const displayName = p.commonName || p.dcadBizName || '';
+        const displayName = normalizeCommonName(p.commonName || p.dcadBizName || '');
 
         return {
           type: 'Feature' as const,

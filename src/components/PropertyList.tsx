@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
+import { normalizeCommonName } from '@/lib/normalization';
 
 interface PropertyFeature {
   type: 'Feature';
@@ -129,7 +130,7 @@ export default function PropertyList({
                       {p.address}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                      {p.commonName || '-'}
+                      {normalizeCommonName(p.commonName) || '-'}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                       {p.category || '-'}
@@ -184,7 +185,7 @@ export default function PropertyList({
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-gray-900 truncate">
-                    {p.commonName || p.address}
+                    {normalizeCommonName(p.commonName) || p.address}
                   </p>
                   {p.commonName && (
                     <p className="text-xs text-gray-500 truncate">{p.address}</p>
