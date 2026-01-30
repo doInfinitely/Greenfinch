@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PIPELINE_STATUS_LABELS, type PipelineStatus } from '@/lib/schema';
 import { Loader2, MapPin, Building2, GripVertical, Users } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { normalizeCommonName } from '@/lib/normalization';
 
 interface OrgMember {
   id: string;
@@ -305,7 +306,7 @@ export default function PipelineBoard() {
                                       className="font-medium text-sm text-gray-900 truncate block hover:text-primary"
                                       onClick={(e) => e.stopPropagation()}
                                     >
-                                      {item.commonName}
+                                      {normalizeCommonName(item.commonName)}
                                     </Link>
                                   )}
                                   <Link 

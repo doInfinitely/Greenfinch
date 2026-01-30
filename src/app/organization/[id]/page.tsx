@@ -8,7 +8,6 @@ import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import { Loader2, XCircle } from 'lucide-react';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
-import { normalizeOwnerName } from '@/lib/normalization';
 
 interface PropertyRelation {
   id: string;
@@ -260,10 +259,10 @@ export default function OrganizationDetailPage() {
             )}
             <div className="flex-1">
               <h1 className="text-2xl font-bold text-gray-900" data-testid="text-org-name">
-                {normalizeOwnerName(organization.name) || 'Unnamed Organization'}
+                {organization.name || 'Unnamed Organization'}
               </h1>
               {organization.legalName && organization.legalName !== organization.name && (
-                <p className="text-sm text-gray-500">{normalizeOwnerName(organization.legalName)}</p>
+                <p className="text-sm text-gray-500">{organization.legalName}</p>
               )}
               <div className="flex items-center gap-3 mt-2 flex-wrap">
                 {organization.orgType && (

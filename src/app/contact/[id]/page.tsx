@@ -10,7 +10,6 @@ import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import { formatPhoneNumber } from '@/lib/phone-format';
-import { normalizeOwnerName } from '@/lib/normalization';
 
 interface LinkedInSearchResult {
   name: string;
@@ -952,7 +951,7 @@ export default function ContactDetailPage() {
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <p className="font-medium text-gray-900">{normalizeOwnerName(org.name) || 'Unknown'}</p>
+                            <p className="font-medium text-gray-900">{org.name || 'Unknown'}</p>
                             <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>

@@ -18,7 +18,7 @@ import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import PipelineStatus from '@/components/PipelineStatus';
 import PropertyNotes from '@/components/PropertyNotes';
 import PropertyActivity from '@/components/PropertyActivity';
-import { normalizeCommonName, normalizeOwnerName, toTitleCase } from '@/lib/normalization';
+import { normalizeCommonName, toTitleCase } from '@/lib/normalization';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
   ssr: false,
@@ -1082,7 +1082,7 @@ export default function PropertyDetailPage() {
                               ))}
                             </div>
                             <div className="flex items-center gap-2">
-                              <p className="font-medium text-gray-900">{normalizeOwnerName(org.name)}</p>
+                              <p className="font-medium text-gray-900">{org.name}</p>
                               {org.id && (
                                 <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
@@ -1767,7 +1767,7 @@ export default function PropertyDetailPage() {
                             className="w-full px-4 py-2 text-left hover:bg-gray-50 flex items-center justify-between"
                             data-testid={`button-select-org-${org.id}`}
                           >
-                            <span className="font-medium text-gray-900">{normalizeOwnerName(org.name)}</span>
+                            <span className="font-medium text-gray-900">{org.name}</span>
                             {org.domain && (
                               <span className="text-xs text-gray-500">{org.domain}</span>
                             )}

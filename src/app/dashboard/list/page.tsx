@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import PropertyFilters, { FilterState, emptyFilters } from '@/components/PropertyFilters';
+import { normalizeCommonName } from '@/lib/normalization';
 
 interface Property {
   propertyKey: string;
@@ -155,7 +156,7 @@ export default function ListPage() {
                       <td className="px-6 py-4">
                         {p.commonName ? (
                           <>
-                            <p className="font-medium text-gray-900">{p.commonName}</p>
+                            <p className="font-medium text-gray-900">{normalizeCommonName(p.commonName)}</p>
                             <p className="text-sm text-gray-500">{p.address}</p>
                           </>
                         ) : (
@@ -211,7 +212,7 @@ export default function ListPage() {
                     <div className="flex-1 min-w-0">
                       {p.commonName ? (
                         <>
-                          <p className="font-medium text-gray-900 truncate">{p.commonName}</p>
+                          <p className="font-medium text-gray-900 truncate">{normalizeCommonName(p.commonName)}</p>
                           <p className="text-sm text-gray-500 truncate">{p.address}</p>
                         </>
                       ) : (
