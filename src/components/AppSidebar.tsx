@@ -116,7 +116,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
             />
           </div>
           {!collapsed && (
-            <span className="font-semibold text-lg text-foreground">Greenfinch</span>
+            <span className="font-semibold text-lg text-foreground">greenfinch.ai</span>
           )}
         </Link>
       </div>

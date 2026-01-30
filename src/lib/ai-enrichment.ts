@@ -671,7 +671,7 @@ export async function cleanupAISummary(rawSummary: string): Promise<string> {
   
   const client = getGeminiClient();
   
-  const prompt = `You are an editor polishing a research summary for a commercial real estate prospecting tool.
+  const prompt = `You are an editor polishing a research summary for greenfinch.ai, a commercial real estate prospecting tool.
 
 Edit the following research summary into a flowing, natural paragraph:
 1. Combine information into 2-4 sentences that read naturally as a cohesive paragraph

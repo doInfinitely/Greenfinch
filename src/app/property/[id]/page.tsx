@@ -650,7 +650,7 @@ export default function PropertyDetailPage() {
     if (!property) return;
 
     setEnrichmentStatus('pending');
-    setEnrichmentMessage('Greenfinch is researching - check the queue for progress');
+    setEnrichmentMessage('greenfinch.ai is researching - check the queue for progress');
 
     // Build display name: prefer common name with address, or just address
     const displayName = enrichedProperty?.commonName 
@@ -980,7 +980,7 @@ export default function PropertyDetailPage() {
                           ) : (
                             <GreenfinchAgentIcon className="w-4 h-4 mr-2" />
                           )}
-                          {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Research Failed' : 'Research with Greenfinch Agent'}
+                          {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Research Failed' : 'Research with greenfinch.ai'}
                         </button>
                       </AdminOnly>
                     );

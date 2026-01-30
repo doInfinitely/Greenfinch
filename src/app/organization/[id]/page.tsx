@@ -133,7 +133,7 @@ export default function OrganizationDetailPage() {
   const handleEnrichOrganization = async () => {
     if (!organization) return;
     
-    setEnrichMessage('Greenfinch is researching - check the queue for progress');
+    setEnrichMessage('greenfinch.ai is researching - check the queue for progress');
     
     startEnrichment({
       type: 'organization',
