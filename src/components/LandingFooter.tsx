@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { SignInButton } from '@clerk/nextjs';
 
 export default function LandingFooter() {
@@ -10,8 +11,14 @@ export default function LandingFooter() {
         <div className="grid md:grid-cols-4 gap-8 mb-8">
           <div className="md:col-span-2">
             <div className="flex items-center space-x-2 mb-4">
-              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">G</span>
+              <div className="w-10 h-10 relative flex-shrink-0">
+                <Image
+                  src="/greenfinch-logo.jpg"
+                  alt="greenfinch.ai"
+                  fill
+                  className="object-contain rounded"
+                  priority
+                />
               </div>
               <span className="text-xl font-semibold">greenfinch.ai</span>
             </div>

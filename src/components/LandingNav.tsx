@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { SignInButton, useUser } from '@clerk/nextjs';
 
@@ -23,8 +24,14 @@ export default function LandingNav() {
         <div className="flex justify-between items-center h-16">
           <div className="flex items-center gap-8">
             <Link href="/" className="flex items-center space-x-2" data-testid="link-home-logo">
-              <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
-                <span className="text-white font-bold text-lg">G</span>
+              <div className="w-10 h-10 relative flex-shrink-0">
+                <Image
+                  src="/greenfinch-logo.jpg"
+                  alt="greenfinch.ai"
+                  fill
+                  className="object-contain rounded"
+                  priority
+                />
               </div>
               <span className="text-xl font-semibold text-gray-900">greenfinch.ai</span>
             </Link>
