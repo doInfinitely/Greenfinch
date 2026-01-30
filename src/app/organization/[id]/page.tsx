@@ -6,6 +6,8 @@ import Link from 'next/link';
 import Header from '@/components/Header';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
+import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
+import { Loader2, XCircle } from 'lucide-react';
 
 interface PropertyRelation {
   id: string;
@@ -125,6 +127,7 @@ export default function OrganizationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
   const { startEnrichment } = useEnrichment();
+  const { getEnrichmentStatus } = useEnrichmentQueue();
 
   const handleEnrichOrganization = async () => {
     if (!organization) return;
@@ -309,17 +312,37 @@ export default function OrganizationDetailPage() {
                     </svg>
                   </a>
                 )}
-                {organization.domain && organization.enrichmentStatus !== 'complete' && (
-                  <AdminOnly>
-                    <button
-                      onClick={handleEnrichOrganization}
-                      className="inline-flex items-center px-2.5 py-1 text-xs font-medium rounded bg-green-50 text-green-700 hover:bg-green-100"
-                      data-testid="button-enrich-org"
-                    >
-                      Enrich Company
-                    </button>
-                  </AdminOnly>
-                )}
+                {(() => {
+                  const queueStatus = getEnrichmentStatus(orgId as string, 'organization');
+                  const isEnrichmentActive = queueStatus.isActive;
+                  const enrichmentHasFailed = queueStatus.status === 'failed';
+                  
+                  // Hide button if enrichment already completed successfully
+                  if (!organization.domain || organization.enrichmentStatus === 'complete') return null;
+                  
+                  return (
+                    <AdminOnly>
+                      <button
+                        onClick={handleEnrichOrganization}
+                        disabled={isEnrichmentActive || enrichmentHasFailed}
+                        className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded disabled:cursor-not-allowed ${
+                          enrichmentHasFailed 
+                            ? 'bg-gray-100 text-gray-500' 
+                            : 'bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50'
+                        }`}
+                        title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'}` : undefined}
+                        data-testid="button-enrich-org"
+                      >
+                        {isEnrichmentActive ? (
+                          <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
+                        ) : enrichmentHasFailed ? (
+                          <XCircle className="w-3 h-3 mr-1.5" />
+                        ) : null}
+                        {isEnrichmentActive ? 'Enriching...' : enrichmentHasFailed ? 'Failed' : 'Enrich Company'}
+                      </button>
+                    </AdminOnly>
+                  );
+                })()}
                 {enrichMessage && (
                   <span className="text-xs text-green-600">
                     {enrichMessage}

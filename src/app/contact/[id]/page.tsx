@@ -281,7 +281,7 @@ export default function ContactDetailPage() {
   const [selectingAlternative, setSelectingAlternative] = useState(false);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const { startEnrichment } = useEnrichment();
-  const { items: enrichmentItems } = useEnrichmentQueue();
+  const { items: enrichmentItems, getEnrichmentStatus } = useEnrichmentQueue();
   const [isLoadingPhoto, setIsLoadingPhoto] = useState(false);
   const [isFindingPhone, setIsFindingPhone] = useState(false);
   const [isFindingEmail, setIsFindingEmail] = useState(false);
@@ -621,42 +621,74 @@ export default function ContactDetailPage() {
             </div>
             <div className="flex flex-wrap items-center gap-3">
               {/* Find Phone button - show if no phone or only office phone */}
-              {(!contact.phone && !contact.normalizedPhone) || contact.phoneLabel === 'office' ? (
-                <AdminOnly>
-                  <button
-                    onClick={handleFindPhone}
-                    disabled={isFindingPhone}
-                    className="inline-flex items-center px-3 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    data-testid="button-find-phone"
-                  >
-                    {isFindingPhone ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Phone className="w-4 h-4 mr-2" />
-                    )}
-                    Find Phone
-                  </button>
-                </AdminOnly>
-              ) : null}
+              {(() => {
+                const phoneStatus = getEnrichmentStatus(contactId as string, 'contact_phone');
+                const needsPhone = (!contact.phone && !contact.normalizedPhone) || contact.phoneLabel === 'office';
+                const isPhoneActive = phoneStatus.isActive || isFindingPhone;
+                const phoneHasFailed = phoneStatus.status === 'failed';
+                
+                if (!needsPhone) return null;
+                
+                return (
+                  <AdminOnly>
+                    <button
+                      onClick={handleFindPhone}
+                      disabled={isPhoneActive || phoneHasFailed}
+                      className={`inline-flex items-center px-3 py-2 text-white text-sm font-medium rounded-lg disabled:cursor-not-allowed ${
+                        phoneHasFailed 
+                          ? 'bg-gray-400 hover:bg-gray-400' 
+                          : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'
+                      }`}
+                      title={phoneHasFailed ? `Failed: ${phoneStatus.error || 'Unknown error'}` : undefined}
+                      data-testid="button-find-phone"
+                    >
+                      {isPhoneActive ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : phoneHasFailed ? (
+                        <XCircle className="w-4 h-4 mr-2" />
+                      ) : (
+                        <Phone className="w-4 h-4 mr-2" />
+                      )}
+                      {isPhoneActive ? 'Looking up...' : phoneHasFailed ? 'Lookup Failed' : 'Find Phone'}
+                    </button>
+                  </AdminOnly>
+                );
+              })()}
               
               {/* Find Email button - show if no email or email not validated (including null/undefined status) */}
-              {(!contact.email || contact.emailValidationStatus !== 'valid') && (
-                <AdminOnly>
-                  <button
-                    onClick={handleFindEmail}
-                    disabled={isFindingEmail}
-                    className="inline-flex items-center px-3 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                    data-testid="button-find-email"
-                  >
-                    {isFindingEmail ? (
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    ) : (
-                      <Mail className="w-4 h-4 mr-2" />
-                    )}
-                    Find Email
-                  </button>
-                </AdminOnly>
-              )}
+              {(() => {
+                const emailStatus = getEnrichmentStatus(contactId as string, 'contact_email');
+                const needsEmail = !contact.email || contact.emailValidationStatus !== 'valid';
+                const isEmailActive = emailStatus.isActive || isFindingEmail;
+                const emailHasFailed = emailStatus.status === 'failed';
+                
+                if (!needsEmail) return null;
+                
+                return (
+                  <AdminOnly>
+                    <button
+                      onClick={handleFindEmail}
+                      disabled={isEmailActive || emailHasFailed}
+                      className={`inline-flex items-center px-3 py-2 text-white text-sm font-medium rounded-lg disabled:cursor-not-allowed ${
+                        emailHasFailed 
+                          ? 'bg-gray-400 hover:bg-gray-400' 
+                          : 'bg-purple-600 hover:bg-purple-700 disabled:opacity-50'
+                      }`}
+                      title={emailHasFailed ? `Failed: ${emailStatus.error || 'Unknown error'}` : undefined}
+                      data-testid="button-find-email"
+                    >
+                      {isEmailActive ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : emailHasFailed ? (
+                        <XCircle className="w-4 h-4 mr-2" />
+                      ) : (
+                        <Mail className="w-4 h-4 mr-2" />
+                      )}
+                      {isEmailActive ? 'Looking up...' : emailHasFailed ? 'Lookup Failed' : 'Find Email'}
+                    </button>
+                  </AdminOnly>
+                );
+              })()}
               
               {phoneMessage && (
                 <span className="text-sm text-blue-600">

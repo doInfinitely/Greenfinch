@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Header from '@/components/Header';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
@@ -13,6 +13,7 @@ import AddToListModal from '@/components/AddToListModal';
 import StreetView from '@/components/StreetView';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
+import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 
 function toTitleCase(str: string): string {
   return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
@@ -433,6 +434,7 @@ export default function PropertyDetailPage() {
   const [enrichmentMessage, setEnrichmentMessage] = useState<string>('');
   const [showAddToListModal, setShowAddToListModal] = useState(false);
   const { startEnrichment } = useEnrichment();
+  const { getEnrichmentStatus } = useEnrichmentQueue();
   
   // Property flagging state
   const [showFlagDialog, setShowFlagDialog] = useState(false);
@@ -997,20 +999,41 @@ export default function PropertyDetailPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {enrichmentStatus !== 'completed' && (
-                    <AdminOnly>
-                      <button
-                        onClick={handleEnrichment}
-                        className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors flex items-center"
-                        data-testid="button-find-decision-makers"
-                      >
-                        <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                        </svg>
-                        Find Decision Makers
-                      </button>
-                    </AdminOnly>
-                  )}
+                  {(() => {
+                    const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
+                    const isEnrichmentActive = queueStatus.isActive;
+                    const enrichmentHasFailed = queueStatus.status === 'failed';
+                    
+                    // Hide button if enrichment already completed successfully
+                    if (enrichmentStatus === 'completed') return null;
+                    
+                    return (
+                      <AdminOnly>
+                        <button
+                          onClick={handleEnrichment}
+                          disabled={isEnrichmentActive || enrichmentHasFailed}
+                          className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors flex items-center disabled:cursor-not-allowed ${
+                            enrichmentHasFailed 
+                              ? 'bg-gray-400 hover:bg-gray-400' 
+                              : 'bg-green-600 hover:bg-green-700 disabled:opacity-50'
+                          }`}
+                          title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'}` : undefined}
+                          data-testid="button-find-decision-makers"
+                        >
+                          {isEnrichmentActive ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : enrichmentHasFailed ? (
+                            <XCircle className="w-4 h-4 mr-2" />
+                          ) : (
+                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                          )}
+                          {isEnrichmentActive ? 'Enriching...' : enrichmentHasFailed ? 'Enrichment Failed' : 'Find Decision Makers'}
+                        </button>
+                      </AdminOnly>
+                    );
+                  })()}
                   <button
                     onClick={handleAddToList}
                     disabled={!userId}
