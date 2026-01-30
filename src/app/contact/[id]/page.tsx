@@ -440,6 +440,7 @@ export default function ContactDetailPage() {
     // Track the original enrichedAt timestamp to detect when webhook updates the contact
     const originalEnrichedAt = contact.enrichedAt;
 
+    // Start enrichment - polling runs in background via context even if user navigates away
     startEnrichment({
       type: 'contact_phone',
       entityId: contactId,
@@ -447,26 +448,11 @@ export default function ContactDetailPage() {
       apiEndpoint: `/api/contacts/${contactId}/waterfall-phone`,
       pollForCompletion: {
         checkEndpoint: `/api/contacts/${contactId}`,
-        // Check if enrichedAt timestamp changed (indicating webhook updated the contact)
         checkField: 'contact.enrichedAt',
         originalValue: originalEnrichedAt,
         compareMode: 'changed',
         maxAttempts: 20,
         intervalMs: 3000,
-      },
-      onSuccess: async () => {
-        // Refresh contact data after successful enrichment
-        try {
-          const refreshResponse = await fetch(`/api/contacts/${contactId}`);
-          const refreshData = await refreshResponse.json();
-          if (refreshData.contact) {
-            setContact(prev => prev ? { ...prev, ...refreshData.contact } : null);
-          }
-        } catch {}
-        setIsFindingPhone(false);
-      },
-      onError: () => {
-        setIsFindingPhone(false);
       },
     });
   };
@@ -480,6 +466,7 @@ export default function ContactDetailPage() {
     // Track the original enrichedAt timestamp to detect when webhook updates the contact
     const originalEnrichedAt = contact.enrichedAt;
 
+    // Start enrichment - polling runs in background via context even if user navigates away
     startEnrichment({
       type: 'contact_email',
       entityId: contactId,
@@ -487,26 +474,11 @@ export default function ContactDetailPage() {
       apiEndpoint: `/api/contacts/${contactId}/waterfall-email`,
       pollForCompletion: {
         checkEndpoint: `/api/contacts/${contactId}`,
-        // Check if enrichedAt timestamp changed (indicating webhook updated the contact)
         checkField: 'contact.enrichedAt',
         originalValue: originalEnrichedAt,
         compareMode: 'changed',
         maxAttempts: 20,
         intervalMs: 3000,
-      },
-      onSuccess: async () => {
-        // Refresh contact data after successful enrichment
-        try {
-          const refreshResponse = await fetch(`/api/contacts/${contactId}`);
-          const refreshData = await refreshResponse.json();
-          if (refreshData.contact) {
-            setContact(prev => prev ? { ...prev, ...refreshData.contact } : null);
-          }
-        } catch {}
-        setIsFindingEmail(false);
-      },
-      onError: () => {
-        setIsFindingEmail(false);
       },
     });
   };

@@ -108,7 +108,9 @@ Apollo waterfall phone/email enrichment is triggered on-demand from the contact 
   - Lookups appear in the header queue popover with progress messages
   - Polling monitors `enrichedAt` timestamp to detect webhook completion (up to 60 seconds)
   - Toast notifications on completion/failure
-  - Users can navigate away while lookups process in background
+  - Background processing: Polling runs at the app context level, not component level
+  - Users can navigate away while lookups process - enrichment continues in background
+  - Confetti animation on completion for visual feedback
 
 ### Email Validation Rules
 - **Catch-all emails treated as invalid** - Only 'valid' status passes validation

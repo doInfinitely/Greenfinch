@@ -1,10 +1,20 @@
 'use client';
 
-import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
 export type EnrichmentItemType = 'property' | 'contact' | 'organization' | 'contact_phone' | 'contact_email';
-export type EnrichmentStatus = 'pending' | 'processing' | 'completed' | 'failed';
+export type EnrichmentStatus = 'pending' | 'processing' | 'polling' | 'completed' | 'failed';
+
+export interface PollConfig {
+  checkEndpoint: string;
+  checkField: string;
+  maxAttempts: number;
+  intervalMs: number;
+  originalValue?: unknown;
+  compareMode: 'truthy' | 'changed' | 'valid_status';
+  currentAttempt: number;
+}
 
 export interface EnrichmentQueueItem {
   id: string;
@@ -18,6 +28,7 @@ export interface EnrichmentQueueItem {
   completedAt?: number;
   error?: string;
   resultUrl?: string;
+  pollConfig?: PollConfig;
 }
 
 interface EnrichmentQueueContextType {
@@ -29,6 +40,7 @@ interface EnrichmentQueueContextType {
   markFailed: (id: string, error: string) => void;
   removeItem: (id: string) => void;
   clearCompleted: () => void;
+  startPolling: (id: string, config: Omit<PollConfig, 'currentAttempt'>) => void;
 }
 
 const EnrichmentQueueContext = createContext<EnrichmentQueueContextType | undefined>(undefined);
@@ -54,6 +66,7 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<EnrichmentQueueItem[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const { toast } = useToast();
+  const pollingIntervals = useRef<Map<string, NodeJS.Timeout>>(new Map());
 
   useEffect(() => {
     try {
@@ -61,8 +74,11 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       if (stored) {
         const parsed = JSON.parse(stored) as EnrichmentQueueItem[];
         const cleaned = cleanExpiredItems(parsed);
+        // Reset polling items to failed on reload (they'll need to be retried)
         const processingReset = cleaned.map(item => 
-          item.status === 'processing' ? { ...item, status: 'failed' as const, error: 'Interrupted' } : item
+          (item.status === 'processing' || item.status === 'polling') 
+            ? { ...item, status: 'failed' as const, error: 'Interrupted - page was refreshed', pollConfig: undefined } 
+            : item
         );
         setItems(limitItems(processingReset));
       }
@@ -75,12 +91,68 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isHydrated) {
       try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+        // Don't persist pollConfig to storage (it's runtime-only)
+        const itemsToStore = items.map(({ pollConfig, ...rest }) => rest);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(itemsToStore));
       } catch (e) {
         console.error('Failed to save enrichment queue to storage:', e);
       }
     }
   }, [items, isHydrated]);
+
+  // Cleanup intervals on unmount
+  useEffect(() => {
+    return () => {
+      pollingIntervals.current.forEach(interval => clearInterval(interval));
+    };
+  }, []);
+
+  const markCompletedInternal = useCallback((id: string, resultUrl?: string, entityName?: string) => {
+    // Clear any polling interval
+    const interval = pollingIntervals.current.get(id);
+    if (interval) {
+      clearInterval(interval);
+      pollingIntervals.current.delete(id);
+    }
+    
+    setItems(prev => {
+      const item = prev.find(i => i.id === id);
+      const name = entityName || item?.entityName || 'Item';
+      toast({
+        title: 'Enrichment Complete',
+        description: `${name} has been enriched successfully.`,
+      });
+      return prev.map(i => 
+        i.id === id 
+          ? { ...i, status: 'completed' as const, progress: 100, message: 'Enrichment complete', completedAt: Date.now(), resultUrl, pollConfig: undefined }
+          : i
+      );
+    });
+  }, [toast]);
+
+  const markFailedInternal = useCallback((id: string, error: string, entityName?: string) => {
+    // Clear any polling interval
+    const interval = pollingIntervals.current.get(id);
+    if (interval) {
+      clearInterval(interval);
+      pollingIntervals.current.delete(id);
+    }
+    
+    setItems(prev => {
+      const item = prev.find(i => i.id === id);
+      const name = entityName || item?.entityName || 'Item';
+      toast({
+        title: 'Enrichment Failed',
+        description: `Failed to enrich ${name}: ${error}`,
+        variant: 'destructive',
+      });
+      return prev.map(i => 
+        i.id === id 
+          ? { ...i, status: 'failed' as const, error, message: 'Enrichment failed', completedAt: Date.now(), pollConfig: undefined }
+          : i
+      );
+    });
+  }, [toast]);
 
   const addToQueue = useCallback((item: Omit<EnrichmentQueueItem, 'id' | 'createdAt' | 'status' | 'progress' | 'message'>): string => {
     const id = generateId();
@@ -108,41 +180,20 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const markCompleted = useCallback((id: string, resultUrl?: string) => {
-    setItems(prev => {
-      const item = prev.find(i => i.id === id);
-      if (item) {
-        toast({
-          title: 'Enrichment Complete',
-          description: `${item.entityName} has been enriched successfully.`,
-        });
-      }
-      return prev.map(i => 
-        i.id === id 
-          ? { ...i, status: 'completed' as const, progress: 100, message: 'Enrichment complete', completedAt: Date.now(), resultUrl }
-          : i
-      );
-    });
-  }, [toast]);
+    markCompletedInternal(id, resultUrl);
+  }, [markCompletedInternal]);
 
   const markFailed = useCallback((id: string, error: string) => {
-    setItems(prev => {
-      const item = prev.find(i => i.id === id);
-      if (item) {
-        toast({
-          title: 'Enrichment Failed',
-          description: `Failed to enrich ${item.entityName}: ${error}`,
-          variant: 'destructive',
-        });
-      }
-      return prev.map(i => 
-        i.id === id 
-          ? { ...i, status: 'failed' as const, error, message: 'Enrichment failed', completedAt: Date.now() }
-          : i
-      );
-    });
-  }, [toast]);
+    markFailedInternal(id, error);
+  }, [markFailedInternal]);
 
   const removeItem = useCallback((id: string) => {
+    // Clear any polling interval
+    const interval = pollingIntervals.current.get(id);
+    if (interval) {
+      clearInterval(interval);
+      pollingIntervals.current.delete(id);
+    }
     setItems(prev => prev.filter(item => item.id !== id));
   }, []);
 
@@ -150,7 +201,90 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
     setItems(prev => prev.filter(item => item.status !== 'completed' && item.status !== 'failed'));
   }, []);
 
-  const activeCount = items.filter(item => item.status === 'pending' || item.status === 'processing').length;
+  const startPolling = useCallback((id: string, config: Omit<PollConfig, 'currentAttempt'>) => {
+    const pollConfig: PollConfig = { ...config, currentAttempt: 0 };
+    
+    // Update item to polling status
+    setItems(prev => prev.map(item => 
+      item.id === id 
+        ? { ...item, status: 'polling' as const, pollConfig, message: 'Waiting for results...', progress: 50 }
+        : item
+    ));
+
+    // Start polling interval
+    const interval = setInterval(async () => {
+      // Get current item state
+      let currentItem: EnrichmentQueueItem | undefined;
+      setItems(prev => {
+        currentItem = prev.find(i => i.id === id);
+        return prev;
+      });
+
+      if (!currentItem || !currentItem.pollConfig) {
+        clearInterval(interval);
+        pollingIntervals.current.delete(id);
+        return;
+      }
+
+      const { checkEndpoint, checkField, maxAttempts, originalValue, compareMode, currentAttempt } = currentItem.pollConfig;
+      const newAttempt = currentAttempt + 1;
+
+      if (newAttempt > maxAttempts) {
+        clearInterval(interval);
+        pollingIntervals.current.delete(id);
+        markFailedInternal(id, 'Lookup timed out - results may still arrive. Please refresh the page later.', currentItem.entityName);
+        return;
+      }
+
+      try {
+        const response = await fetch(checkEndpoint);
+        if (response.ok) {
+          const data = await response.json();
+          const fieldValue = checkField.split('.').reduce((obj: unknown, key: string) => (obj as Record<string, unknown>)?.[key], data);
+          
+          let conditionMet = false;
+          if (compareMode === 'truthy') {
+            conditionMet = Boolean(fieldValue);
+          } else if (compareMode === 'changed') {
+            conditionMet = fieldValue !== originalValue;
+          } else if (compareMode === 'valid_status') {
+            conditionMet = fieldValue === 'valid' && fieldValue !== originalValue;
+          }
+
+          if (conditionMet) {
+            clearInterval(interval);
+            pollingIntervals.current.delete(id);
+            const resultUrl = currentItem.type === 'property' 
+              ? `/property/${currentItem.entityId}` 
+              : (currentItem.type === 'contact' || currentItem.type === 'contact_phone' || currentItem.type === 'contact_email')
+                ? `/contact/${currentItem.entityId}`
+                : `/organization/${currentItem.entityId}`;
+            markCompletedInternal(id, resultUrl, currentItem.entityName);
+            return;
+          }
+        }
+      } catch {
+        // Continue polling on error
+      }
+
+      // Update progress
+      const pollProgress = 50 + (newAttempt / maxAttempts) * 30;
+      setItems(prev => prev.map(item => 
+        item.id === id && item.pollConfig
+          ? { 
+              ...item, 
+              pollConfig: { ...item.pollConfig, currentAttempt: newAttempt },
+              message: `Waiting for results... (${newAttempt}/${maxAttempts})`,
+              progress: Math.min(pollProgress, 80)
+            }
+          : item
+      ));
+    }, config.intervalMs);
+
+    pollingIntervals.current.set(id, interval);
+  }, [markCompletedInternal, markFailedInternal]);
+
+  const activeCount = items.filter(item => item.status === 'pending' || item.status === 'processing' || item.status === 'polling').length;
 
   return (
     <EnrichmentQueueContext.Provider value={{
@@ -162,6 +296,7 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       markFailed,
       removeItem,
       clearCompleted,
+      startPolling,
     }}>
       {children}
     </EnrichmentQueueContext.Provider>

@@ -60,7 +60,7 @@ const PROGRESS_MESSAGES: Record<EnrichmentItemType, string[]> = {
 };
 
 export function useEnrichment() {
-  const { addToQueue, updateItem, markCompleted, markFailed } = useEnrichmentQueue();
+  const { addToQueue, updateItem, markCompleted, markFailed, startPolling } = useEnrichmentQueue();
 
   const startEnrichment = useCallback(async (options: EnrichmentOptions) => {
     const { type, entityId, entityName, apiEndpoint, requestBody, onSuccess, onError, pollForCompletion } = options;
@@ -109,7 +109,9 @@ export function useEnrichment() {
         throw new Error(data.error || 'Enrichment failed');
       }
 
-      // If polling for webhook-based completion, wait for the field to be populated
+      clearInterval(progressInterval);
+
+      // If polling is needed, start background polling via context
       if (pollForCompletion) {
         const { 
           checkEndpoint, 
@@ -120,65 +122,30 @@ export function useEnrichment() {
           compareMode = 'truthy'
         } = pollForCompletion;
         
-        updateItem(queueId, { message: 'Waiting for results...', progress: 50 });
+        // Start polling in the context (runs in background even if component unmounts)
+        startPolling(queueId, {
+          checkEndpoint,
+          checkField,
+          maxAttempts,
+          intervalMs,
+          originalValue,
+          compareMode,
+        });
         
-        let attempts = 0;
-        let completed = false;
-        
-        while (attempts < maxAttempts && !completed) {
-          await new Promise(resolve => setTimeout(resolve, intervalMs));
-          attempts++;
-          
-          try {
-            const checkResponse = await fetch(checkEndpoint);
-            if (checkResponse.ok) {
-              const checkData = await checkResponse.json();
-              const fieldValue = checkField.split('.').reduce((obj: any, key) => obj?.[key], checkData);
-              
-              // Determine if the condition is met based on compare mode
-              let conditionMet = false;
-              if (compareMode === 'truthy') {
-                conditionMet = Boolean(fieldValue);
-              } else if (compareMode === 'changed') {
-                conditionMet = fieldValue !== originalValue;
-              } else if (compareMode === 'valid_status') {
-                // For email validation - check if status is 'valid' and different from original
-                conditionMet = fieldValue === 'valid' && fieldValue !== originalValue;
-              }
-              
-              if (conditionMet) {
-                completed = true;
-                updateItem(queueId, { message: 'Results received!', progress: 90 });
-              } else {
-                const pollProgress = 50 + (attempts / maxAttempts) * 30;
-                updateItem(queueId, { 
-                  message: `Waiting for results... (${attempts}/${maxAttempts})`,
-                  progress: Math.min(pollProgress, 80)
-                });
-              }
-            }
-          } catch {
-            // Continue polling on error
-          }
-        }
-        
-        clearInterval(progressInterval);
-        
-        if (!completed) {
-          throw new Error('Lookup timed out - results may still arrive. Please refresh the page later.');
-        }
+        // Call onSuccess immediately since the API call succeeded
+        // The polling will handle the final completion
+        onSuccess?.(data);
       } else {
-        clearInterval(progressInterval);
+        // No polling needed, complete immediately
+        const resultUrl = type === 'property' 
+          ? `/property/${entityId}` 
+          : (type === 'contact' || type === 'contact_phone' || type === 'contact_email')
+            ? `/contact/${entityId}`
+            : `/organization/${entityId}`;
+        
+        markCompleted(queueId, resultUrl);
+        onSuccess?.(data);
       }
-      
-      const resultUrl = type === 'property' 
-        ? `/property/${entityId}` 
-        : (type === 'contact' || type === 'contact_phone' || type === 'contact_email')
-          ? `/contact/${entityId}`
-          : `/organization/${entityId}`;
-      
-      markCompleted(queueId, resultUrl);
-      onSuccess?.(data);
       
       return { success: true, data };
     } catch (err) {
@@ -188,7 +155,7 @@ export function useEnrichment() {
       onError?.(errorMessage);
       return { success: false, error: errorMessage };
     }
-  }, [addToQueue, updateItem, markCompleted, markFailed]);
+  }, [addToQueue, updateItem, markCompleted, markFailed, startPolling]);
 
   return { startEnrichment };
 }
