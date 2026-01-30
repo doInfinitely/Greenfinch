@@ -271,6 +271,23 @@ export async function POST(request: NextRequest) {
           }
         }
       }
+      
+      // CRITICAL: Always update enrichedAt even if no data was found
+      // This signals to polling that the webhook has processed this request
+      if (phoneNumbers.length === 0 && emails.length === 0) {
+        console.log('[Apollo Webhook] No data found, updating enrichedAt to signal completion');
+        const existingContacts = await db.select()
+          .from(contacts)
+          .where(eq(contacts.providerId, person.id))
+          .limit(1);
+          
+        if (existingContacts.length > 0) {
+          await db.update(contacts)
+            .set({ enrichedAt: new Date() })
+            .where(eq(contacts.id, existingContacts[0].id));
+          console.log('[Apollo Webhook] Updated enrichedAt for', existingContacts[0].fullName, '(no data found)');
+        }
+      }
     }
 
     console.log('[Apollo Webhook] Processing complete. Updated', updatedContacts, 'contacts');

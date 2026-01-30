@@ -77,6 +77,8 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
   const [isHydrated, setIsHydrated] = useState(false);
   const { toast } = useToast();
   const pollingIntervals = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  // Track which items have already fired completion to prevent duplicate toasts (race condition guard)
+  const completedItemsRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     try {
@@ -135,6 +137,13 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const markCompletedInternal = useCallback((id: string, resultUrl?: string, entityName?: string) => {
+    // Synchronous guard using ref to prevent race condition between multiple polling callbacks
+    if (completedItemsRef.current.has(id)) {
+      console.log(`[EnrichmentQueue] Item ${id} already completed (ref guard), skipping duplicate`);
+      return;
+    }
+    completedItemsRef.current.add(id);
+    
     // Clear any polling interval
     const interval = pollingIntervals.current.get(id);
     if (interval) {
@@ -145,9 +154,9 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
     setItems(prev => {
       const item = prev.find(i => i.id === id);
       
-      // Guard against duplicate completion - if already completed, don't show toast again
+      // Secondary guard - if already completed, don't show toast again
       if (item?.status === 'completed') {
-        console.log(`[EnrichmentQueue] Item ${id} already completed, skipping duplicate toast`);
+        console.log(`[EnrichmentQueue] Item ${id} already completed (state guard), skipping duplicate toast`);
         return prev;
       }
       
