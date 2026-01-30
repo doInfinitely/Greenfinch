@@ -151,29 +151,47 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       pollingIntervals.current.delete(id);
     }
     
+    // Get current item info for toast BEFORE updating state
+    let shouldShowToast = false;
+    let toastName = entityName || 'Item';
+    
     setItems(prev => {
       const item = prev.find(i => i.id === id);
       
-      // Secondary guard - if already completed, don't show toast again
+      // Secondary guard - if already completed, don't show toast
       if (item?.status === 'completed') {
         console.log(`[EnrichmentQueue] Item ${id} already completed (state guard), skipping duplicate toast`);
         return prev;
       }
       
-      const name = entityName || item?.entityName || 'Item';
-      toast({
-        title: 'Enrichment Complete',
-        description: `${name} has been enriched successfully.`,
-      });
+      // Mark that we should show toast (will be shown after state update)
+      shouldShowToast = true;
+      toastName = entityName || item?.entityName || 'Item';
+      
       return prev.map(i => 
         i.id === id 
           ? { ...i, status: 'completed' as const, progress: 100, message: 'Enrichment complete', completedAt: Date.now(), resultUrl, pollConfig: undefined }
           : i
       );
     });
+    
+    // Show toast OUTSIDE of setItems to avoid React batching issues
+    if (shouldShowToast) {
+      toast({
+        title: 'Enrichment Complete',
+        description: `${toastName} has been enriched successfully.`,
+      });
+    }
   }, [toast]);
 
   const markFailedInternal = useCallback((id: string, error: string, entityName?: string) => {
+    // Synchronous guard using ref to prevent race condition (reuse completedItemsRef for terminal states)
+    if (completedItemsRef.current.has(id)) {
+      console.log(`[EnrichmentQueue] Item ${id} already terminated (ref guard), skipping duplicate failure`);
+      return;
+    }
+    completedItemsRef.current.add(id);
+    
     // Clear any polling interval
     const interval = pollingIntervals.current.get(id);
     if (interval) {
@@ -181,20 +199,36 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       pollingIntervals.current.delete(id);
     }
     
+    let shouldShowToast = false;
+    let toastName = entityName || 'Item';
+    
     setItems(prev => {
       const item = prev.find(i => i.id === id);
-      const name = entityName || item?.entityName || 'Item';
-      toast({
-        title: 'Enrichment Failed',
-        description: `Failed to enrich ${name}: ${error}`,
-        variant: 'destructive',
-      });
+      
+      // Secondary guard - if already failed/completed, don't show toast
+      if (item?.status === 'failed' || item?.status === 'completed') {
+        console.log(`[EnrichmentQueue] Item ${id} already terminated (state guard), skipping duplicate toast`);
+        return prev;
+      }
+      
+      shouldShowToast = true;
+      toastName = entityName || item?.entityName || 'Item';
+      
       return prev.map(i => 
         i.id === id 
           ? { ...i, status: 'failed' as const, error, message: 'Enrichment failed', completedAt: Date.now(), pollConfig: undefined }
           : i
       );
     });
+    
+    // Show toast OUTSIDE of setItems to avoid React batching issues
+    if (shouldShowToast) {
+      toast({
+        title: 'Enrichment Failed',
+        description: `Failed to enrich ${toastName}: ${error}`,
+        variant: 'destructive',
+      });
+    }
   }, [toast]);
 
   // Resume polling for items that have pollConfig (after navigation within same session)

@@ -1936,7 +1936,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
   
   try {
     // Import focused enrichment dynamically to avoid circular dependencies
-    const { runFocusedEnrichment } = await import('./ai-enrichment');
+    const { runFocusedEnrichment, cleanupAISummary } = await import('./ai-enrichment');
     
     // Convert AggregatedProperty to CommercialProperty format for focused enrichment
     const commercialProperty = {
@@ -2021,10 +2021,13 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
     };
     
     // Build combined summary with renumbered citations
-    const combinedSummary = stageSummaries
+    const rawCombinedSummary = stageSummaries
       .map((summary, idx) => renumberCitations(summary, stageLocalToGlobal[idx]))
       .filter(Boolean)
       .join('\n\n');
+    
+    // Clean up the AI summary - remove internal system references, citations, and polish for clarity
+    const combinedSummary = await cleanupAISummary(rawCombinedSummary);
     
     const property = {
       validatedAddress: classification?.canonicalAddress || null,

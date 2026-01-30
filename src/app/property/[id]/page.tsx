@@ -113,6 +113,7 @@ interface Contact {
   needsReview?: boolean;
   reviewReason?: string | null;
   emailValidationStatus?: 'valid' | 'invalid' | 'pending' | 'not_validated';
+  photoUrl?: string | null;
 }
 
 interface Organization {
@@ -180,7 +181,7 @@ function LowConfidenceMarker({ confidence }: { confidence: number | null | undef
   );
 }
 
-// Render summary with clickable source links
+// Render AI research summary as plain text (sources hidden but stored for future use)
 function SummaryWithSources({ 
   summary, 
   sources 
@@ -188,105 +189,45 @@ function SummaryWithSources({
   summary: string; 
   sources: Array<{ id: number; title: string; url: string; type: string }> | null;
 }) {
-  const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  // Sources are still stored in the database but not displayed in the UI
+  // They can be re-enabled later when grounding source links work properly
+  void sources;
   
   if (!summary) return null;
   
-  // Parse [1], [2], [9, 11], [12, 13, 15] etc. in the summary and make them clickable
-  const sourceMap = new Map(sources?.map(s => [s.id, s]) || []);
-  
-  // Split text by source references - handles [1], [9, 11], [12, 13, 15] patterns
-  const parts = summary.split(/(\[\d+(?:,\s*\d+)*\])/g);
+  // Strip any remaining citation numbers like [1], [2], [3, 4] as a UI safety guard
+  const cleanSummary = summary.replace(/\[[\d,\s]+\]/g, '').replace(/\s{2,}/g, ' ').trim();
   
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-600 leading-relaxed">
-        {parts.map((part, i) => {
-          // Match patterns like [1], [9, 11], [12, 13, 15]
-          const match = part.match(/\[([\d,\s]+)\]/);
-          if (match) {
-            // Extract all numbers from the citation
-            const sourceIds = match[1].split(/,\s*/).map(n => parseInt(n.trim())).filter(n => !isNaN(n));
-            
-            // Render each source ID as a separate clickable link
-            return (
-              <span key={i}>
-                [
-                {sourceIds.map((sourceId, j) => {
-                  const source = sourceMap.get(sourceId);
-                  const isLast = j === sourceIds.length - 1;
-                  
-                  if (source?.url) {
-                    return (
-                      <span key={sourceId}>
-                        <a
-                          href={source.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                          title={source.title}
-                        >
-                          {sourceId}
-                        </a>
-                        {!isLast && ', '}
-                      </span>
-                    );
-                  }
-                  return (
-                    <span key={sourceId} className="text-gray-400 text-xs">
-                      {sourceId}{!isLast && ', '}
-                    </span>
-                  );
-                })}
-                ]
-              </span>
-            );
-          }
-          return <span key={i}>{part}</span>;
-        })}
+      <p className="text-sm text-gray-600 leading-relaxed whitespace-pre-line">
+        {cleanSummary}
       </p>
-      
-      {sources && sources.length > 0 && (
-        <div className="pt-3 border-t border-gray-200">
-          <button
-            onClick={() => setSourcesExpanded(!sourcesExpanded)}
-            className="flex items-center gap-1 text-xs font-medium text-gray-500 hover:text-gray-700 transition-colors"
-            data-testid="button-toggle-sources"
-          >
-            <svg 
-              className={`w-3 h-3 transition-transform ${sourcesExpanded ? 'rotate-90' : ''}`} 
-              fill="none" 
-              stroke="currentColor" 
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-            </svg>
-            Sources ({sources.length})
-          </button>
-          {sourcesExpanded && (
-            <div className="space-y-1 mt-2">
-              {sources.map((source) => (
-                <div key={source.id} className="flex items-start gap-2 text-xs">
-                  <span className="text-gray-400 font-medium">[{source.id}]</span>
-                  {source.url ? (
-                    <a
-                      href={source.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 hover:text-blue-800 hover:underline truncate"
-                      title={source.url}
-                    >
-                      {source.title || source.url}
-                    </a>
-                  ) : (
-                    <span className="text-gray-600">{source.title}</span>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
+    </div>
+  );
+}
+
+// Contact avatar with proper state-based fallback
+function ContactAvatar({ photoUrl, name }: { photoUrl?: string | null; name: string }) {
+  const [imageError, setImageError] = useState(false);
+  const showImage = photoUrl && !imageError;
+  
+  if (showImage) {
+    return (
+      <img 
+        src={photoUrl} 
+        alt={name || 'Contact'} 
+        className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+        onError={() => setImageError(true)}
+      />
+    );
+  }
+  
+  return (
+    <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
+      <span className="text-green-700 font-medium text-sm">
+        {name?.charAt(0) || '?'}
+      </span>
     </div>
   );
 }
@@ -1439,11 +1380,7 @@ export default function PropertyDetailPage() {
                       data-testid={`contact-row-${contact.id}`}
                     >
                       <div className="flex items-start space-x-3">
-                        <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
-                          <span className="text-green-700 font-medium text-sm">
-                            {contact.fullName?.charAt(0) || '?'}
-                          </span>
-                        </div>
+                        <ContactAvatar photoUrl={contact.photoUrl} name={contact.fullName || ''} />
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center flex-wrap gap-2 mb-1">
                             <p className="font-medium text-gray-900">{contact.fullName}</p>
@@ -1492,9 +1429,11 @@ export default function PropertyDetailPage() {
                                 href={contact.linkedinUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700"
+                                className="inline-flex items-center text-blue-600 hover:text-blue-700"
+                                title="View LinkedIn Profile"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                View LinkedIn
+                                <Linkedin className="w-4 h-4" />
                               </a>
                             )}
                             

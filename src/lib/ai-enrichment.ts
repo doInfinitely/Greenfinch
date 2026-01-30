@@ -655,3 +655,60 @@ export async function runFocusedEnrichment(property: CommercialProperty): Promis
     }
   };
 }
+
+/**
+ * Clean up AI research summary by:
+ * 1. Removing internal system references (e.g., "gemini timed out after 90000ms")
+ * 2. Editing for style and clarity
+ * 3. Removing citation numbers like [1], [2], etc.
+ * 4. Producing a polished, user-facing summary
+ */
+export async function cleanupAISummary(rawSummary: string): Promise<string> {
+  if (!rawSummary || rawSummary.trim().length === 0) {
+    return '';
+  }
+  
+  const client = getGeminiClient();
+  
+  const prompt = `You are an editor cleaning up an AI research summary for a commercial real estate prospecting tool. 
+
+Edit the following research summary to:
+1. Remove any internal system references (error messages, timeout notices, API names like "Gemini", technical debug info)
+2. Remove citation numbers like [1], [2], [3, 4], etc. - just integrate the information naturally
+3. Fix grammar, improve readability, and ensure professional tone
+4. Keep it concise - aim for 2-3 clear sentences maximum
+5. Focus on the key facts: property ownership, management, and any notable details
+6. If the summary is mostly errors or unhelpful, return a brief statement like "Research in progress." or summarize whatever useful info exists
+
+IMPORTANT: Return ONLY the cleaned summary text. No explanations, no markdown, no quotes.
+
+Raw summary to clean:
+${rawSummary}`;
+
+  try {
+    const response = await geminiLimit(() => 
+      callGeminiWithTimeout(
+        () => client.models.generateContent({
+          model: GEMINI_MODEL,
+          contents: prompt,
+          config: { temperature: 0.3 }
+        }),
+        30000,
+        1
+      )
+    );
+    
+    const cleaned = response.text?.trim() || rawSummary;
+    console.log(`[FocusedEnrichment] Summary cleaned: ${rawSummary.length} chars -> ${cleaned.length} chars`);
+    return cleaned;
+  } catch (error) {
+    console.warn('[FocusedEnrichment] Summary cleanup failed, using raw summary:', error);
+    // Fall back to basic cleanup - remove obvious system messages and citations
+    return rawSummary
+      .replace(/\[[\d,\s]+\]/g, '') // Remove citation numbers
+      .replace(/gemini.*?timed out.*?ms/gi, '') // Remove timeout messages
+      .replace(/error:.*?$/gim, '') // Remove error lines
+      .replace(/\n{3,}/g, '\n\n') // Normalize whitespace
+      .trim();
+  }
+}
