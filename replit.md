@@ -91,9 +91,19 @@ The system uses a multi-provider cascade approach for enrichment with provider t
 ### Contact Cascade
 1. **ZeroBounce** - Email validation (preferred)
 2. **NeverBounce** - Email validation fallback
-3. **SERP API** - LinkedIn profile discovery
+3. **SERP API** - LinkedIn profile discovery (no limit on lookups)
 4. **Early Exit**: Stops cascade when valid email + LinkedIn URL found
 5. **Provider Cascade**: Apollo → EnrichLayer → PDL (when email invalid or LinkedIn missing)
+6. **Role-Based Filtering**: Generic names like "Leasing Office", "Front Desk", "Property Management" are skipped during cascade enrichment
+
+### On-Demand Waterfall Enrichment
+Apollo waterfall phone/email enrichment is triggered on-demand from the contact detail page, not automatically during cascade enrichment. This prevents race conditions where webhooks arrive before contacts are stored.
+- **API Endpoints**: `POST /api/contacts/[id]/waterfall-phone` and `POST /api/contacts/[id]/waterfall-email`
+- **UI**: "Find Phone" and "Find Email" buttons on contact detail page (admin-only)
+- **Button Visibility**: 
+  - Find Phone: shown when contact has no phone number
+  - Find Email: shown when contact has no email OR email validation status is not 'valid'
+- **Webhook Processing**: Results arrive via Apollo webhook at `/api/webhooks/apollo` and update contacts by providerId
 
 ### Email Validation Rules
 - **Catch-all emails treated as invalid** - Only 'valid' status passes validation
