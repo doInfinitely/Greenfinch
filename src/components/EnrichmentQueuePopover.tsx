@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useEnrichmentQueue, EnrichmentQueueItem } from '@/contexts/EnrichmentQueueContext';
+import { useCelebration } from '@/contexts/CelebrationContext';
 import { Loader2, CheckCircle, XCircle, ChevronRight, X } from 'lucide-react';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { Button } from '@/components/ui/button';
@@ -11,7 +12,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import confetti from 'canvas-confetti';
 
 const TYPE_LABELS: Record<string, string> = {
   property: 'Property',
@@ -133,6 +133,7 @@ function QueueItem({ item, onRemove }: { item: EnrichmentQueueItem; onRemove: ()
 export default function EnrichmentQueuePopover() {
   const [isOpen, setIsOpen] = useState(false);
   const { items, activeCount, removeItem, clearCompleted } = useEnrichmentQueue();
+  const { celebrate, setOriginRef } = useCelebration();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const prevCompletedCountRef = useRef(0);
   
@@ -142,35 +143,27 @@ export default function EnrichmentQueuePopover() {
   
   const isInitialMount = useRef(true);
   
-  // Trigger confetti when a new item completes (not on mount)
+  // Set the origin ref for the celebration animation
   useEffect(() => {
-    // Skip confetti on initial mount - only fire when new items complete during session
+    if (buttonRef.current) {
+      setOriginRef(buttonRef as React.RefObject<HTMLElement>);
+    }
+  }, [setOriginRef]);
+  
+  // Trigger celebration animation when a new item completes (not on mount)
+  useEffect(() => {
+    // Skip on initial mount - only fire when new items complete during session
     if (isInitialMount.current) {
       isInitialMount.current = false;
       prevCompletedCountRef.current = completedCount;
       return;
     }
     
-    if (completedCount > prevCompletedCountRef.current && buttonRef.current) {
-      const rect = buttonRef.current.getBoundingClientRect();
-      const x = (rect.left + rect.width / 2) / window.innerWidth;
-      const y = (rect.top + rect.height / 2) / window.innerHeight;
-      
-      // Subtle confetti burst near the queue icon
-      confetti({
-        particleCount: 30,
-        spread: 50,
-        origin: { x, y },
-        colors: ['#10b981', '#34d399', '#6ee7b7', '#fbbf24', '#f59e0b'],
-        ticks: 100,
-        gravity: 1.2,
-        scalar: 0.8,
-        shapes: ['circle', 'square'],
-        disableForReducedMotion: true,
-      });
+    if (completedCount > prevCompletedCountRef.current) {
+      celebrate();
     }
     prevCompletedCountRef.current = completedCount;
-  }, [completedCount]);
+  }, [completedCount, celebrate]);
   
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
