@@ -139,15 +139,12 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
                     onClick={() => setMobileOpen(false)}
                     className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors relative ${
                       isActive(item.href)
-                        ? 'bg-primary/10 text-primary'
+                        ? 'bg-green-50 text-green-600 border-l-4 border-green-600 rounded-l-none'
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                     }`}
                     title={collapsed ? item.label : undefined}
                     data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
                   >
-                    {isActive(item.href) && (
-                      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-r-full" />
-                    )}
                     {item.icon}
                     {!collapsed && <span>{item.label}</span>}
                   </Link>
