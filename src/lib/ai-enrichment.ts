@@ -65,6 +65,8 @@ export interface OwnershipInfo {
     domain: string | null;
     confidence: number;
   };
+  propertyWebsite: string | null;
+  propertyPhone: string | null;
 }
 
 export interface DiscoveredContact {
@@ -387,6 +389,8 @@ ${legalDescription ? `LEGAL DESCRIPTION: ${legalDescription}` : ''}
 TASK: Search the web to find:
 1. The beneficial owner (true owner behind any LLC/trust) and when they acquired the property
 2. The property management company (if third-party managed) and their specialty
+3. The property-specific website (NOT the management company website) - e.g., building website, apartment community site, shopping center site
+4. The property's main phone number (leasing office, main line)
 
 Use the owner information above as a starting point for your research. The bizName and ownerName fields may contain LLCs, trusts, or holding companies - search to find the actual beneficial owner behind them.
 
@@ -394,6 +398,8 @@ Return JSON:
 {
   "beneficialOwner":{"name":"Entity name or null","type":"REIT|Private Equity|Family Office|Individual|Corporation|null","confidence":0.0-1.0},
   "managementCompany":{"name":"Company or null","domain":"website.com or null","confidence":0.0-1.0},
+  "propertyWebsite":"https://propertyname.com or null - property-specific website, NOT management company site",
+  "propertyPhone":"+1-XXX-XXX-XXXX or null - main leasing/property phone",
   "summary":"One sentence: 'The property was [acquired/developed] by [Owner] in [year] and is [self-managed / managed by Company], [a firm specializing in X].'"
 }`;
 
@@ -424,6 +430,8 @@ Return JSON:
         data: {
           beneficialOwner: { name: null, type: null, confidence: 0 },
           managementCompany: { name: null, domain: null, confidence: 0 },
+          propertyWebsite: null,
+          propertyPhone: null,
         },
         summary: '',
         sources: [],
@@ -439,6 +447,8 @@ Return JSON:
       data: {
         beneficialOwner: parsed.beneficialOwner || { name: null, type: null, confidence: 0 },
         managementCompany: parsed.managementCompany || { name: null, domain: null, confidence: 0 },
+        propertyWebsite: parsed.propertyWebsite || null,
+        propertyPhone: parsed.propertyPhone || null,
       },
       summary: parsed.summary || '',
       sources,
@@ -449,6 +459,8 @@ Return JSON:
       data: {
         beneficialOwner: { name: null, type: null, confidence: 0 },
         managementCompany: { name: null, domain: null, confidence: 0 },
+        propertyWebsite: null,
+        propertyPhone: null,
       },
       summary: `Failed to identify ownership: ${error instanceof Error ? error.message : 'Unknown error'}`,
       sources: [],

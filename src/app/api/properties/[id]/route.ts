@@ -93,6 +93,7 @@ export async function GET(
         managementCompanyDomain: dbProperty.managementCompanyDomain,
         managementConfidence: dbProperty.managementConfidence,
         propertyWebsite: dbProperty.propertyWebsite,
+        propertyPhone: dbProperty.propertyPhone,
         propertyManagerWebsite: dbProperty.propertyManagerWebsite,
         aiRationale: dbProperty.aiRationale,
         enrichmentSources: dbProperty.enrichmentSources,
