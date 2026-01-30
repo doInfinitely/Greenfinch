@@ -34,9 +34,22 @@ export async function GET(
       return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     }
 
-    const [pipeline] = await db
-      .select()
+    const [pipelineResult] = await db
+      .select({
+        id: propertyPipeline.id,
+        propertyId: propertyPipeline.propertyId,
+        clerkOrgId: propertyPipeline.clerkOrgId,
+        status: propertyPipeline.status,
+        dealValue: propertyPipeline.dealValue,
+        ownerId: propertyPipeline.ownerId,
+        statusChangedAt: propertyPipeline.statusChangedAt,
+        ownerFirstName: users.firstName,
+        ownerLastName: users.lastName,
+        ownerEmail: users.email,
+        ownerProfileImage: users.profileImageUrl,
+      })
       .from(propertyPipeline)
+      .leftJoin(users, eq(propertyPipeline.ownerId, users.id))
       .where(
         and(
           eq(propertyPipeline.propertyId, property.id),
@@ -45,12 +58,26 @@ export async function GET(
       )
       .limit(1);
 
+    const pipeline = pipelineResult ? {
+      ...pipelineResult,
+      owner: pipelineResult.ownerId ? {
+        id: pipelineResult.ownerId,
+        firstName: pipelineResult.ownerFirstName,
+        lastName: pipelineResult.ownerLastName,
+        email: pipelineResult.ownerEmail,
+        profileImageUrl: pipelineResult.ownerProfileImage,
+        displayName: [pipelineResult.ownerFirstName, pipelineResult.ownerLastName].filter(Boolean).join(' ') || pipelineResult.ownerEmail || 'Unknown',
+      } : null,
+    } : null;
+
     return NextResponse.json({
       pipeline: pipeline || {
         status: 'new' as PipelineStatus,
         dealValue: null,
         propertyId: property.id,
         clerkOrgId: authData.orgId,
+        ownerId: null,
+        owner: null,
       },
     });
   } catch (error) {

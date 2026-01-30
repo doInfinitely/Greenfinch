@@ -1,11 +1,13 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ChevronDown, DollarSign, Check, X, TrendingUp, TrendingDown, AlertCircle } from 'lucide-react';
+import { ChevronDown, DollarSign, Check, X, TrendingUp, TrendingDown, AlertCircle, User, UserPlus } from 'lucide-react';
+import { useAuth } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,6 +23,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { PIPELINE_STATUS_LABELS, type PipelineStatus as PipelineStatusType } from '@/lib/schema';
 
@@ -57,16 +66,42 @@ const PIPELINE_PROGRESSION: PipelineStatusType[] = [
   'won',
 ];
 
+interface Owner {
+  id: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string | null;
+  profileImageUrl: string | null;
+  displayName: string;
+}
+
+interface OrgMember {
+  id: string;
+  displayName: string;
+  email: string;
+  profileImageUrl: string;
+}
+
 export default function PipelineStatus({ propertyId, inline = false }: PipelineStatusProps) {
+  const { orgRole } = useAuth();
+  const isAdmin = orgRole === 'org:admin';
+  
   const [pipeline, setPipeline] = useState<{
+    id?: string;
     status: PipelineStatusType;
     dealValue: number | null;
+    ownerId: string | null;
+    owner: Owner | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState(false);
   const [showQualifyDialog, setShowQualifyDialog] = useState(false);
+  const [showAssignDialog, setShowAssignDialog] = useState(false);
   const [dealValueInput, setDealValueInput] = useState('');
   const [pendingStatus, setPendingStatus] = useState<PipelineStatusType | null>(null);
+  const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
+  const [selectedOwnerId, setSelectedOwnerId] = useState<string>('');
+  const [claiming, setClaiming] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -145,6 +180,88 @@ export default function PipelineStatus({ propertyId, inline = false }: PipelineS
       return;
     }
     updateStatus(pendingStatus || 'qualified', value);
+  }
+
+  async function fetchOrgMembers() {
+    try {
+      const res = await fetch('/api/org/members');
+      if (res.ok) {
+        const data = await res.json();
+        setOrgMembers(data.members || []);
+      }
+    } catch (error) {
+      console.error('Error fetching org members:', error);
+    }
+  }
+
+  async function handleClaim() {
+    if (!pipeline?.id) return;
+    
+    setClaiming(true);
+    try {
+      const res = await fetch(`/api/pipeline/${pipeline.id}/claim`, {
+        method: 'POST',
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Failed to claim property');
+      }
+
+      await fetchPipeline();
+      toast({
+        title: 'Property claimed',
+        description: 'You are now the owner of this opportunity',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to claim property',
+        variant: 'destructive',
+      });
+    } finally {
+      setClaiming(false);
+    }
+  }
+
+  async function handleAssignOwner() {
+    if (!pipeline?.id || !selectedOwnerId) return;
+    
+    setUpdating(true);
+    try {
+      const res = await fetch(`/api/pipeline/${pipeline.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ownerId: selectedOwnerId === 'unassigned' ? null : selectedOwnerId }),
+      });
+
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || 'Failed to assign owner');
+      }
+
+      await fetchPipeline();
+      setShowAssignDialog(false);
+      toast({
+        title: 'Owner assigned',
+        description: selectedOwnerId === 'unassigned' ? 'Owner removed from this opportunity' : 'Owner successfully assigned',
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to assign owner',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdating(false);
+      setSelectedOwnerId('');
+    }
+  }
+
+  function openAssignDialog() {
+    fetchOrgMembers();
+    setSelectedOwnerId(pipeline?.ownerId || '');
+    setShowAssignDialog(true);
   }
 
   function formatCurrency(value: number): string {
@@ -239,13 +356,122 @@ export default function PipelineStatus({ propertyId, inline = false }: PipelineS
     </div>
   ) : null;
 
+  const ownerDisplay = pipeline?.owner ? (
+    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+      <Avatar className="w-6 h-6">
+        <AvatarImage src={pipeline.owner.profileImageUrl || ''} />
+        <AvatarFallback className="text-xs">
+          {pipeline.owner.displayName?.charAt(0) || '?'}
+        </AvatarFallback>
+      </Avatar>
+      <span className="truncate max-w-[120px]">{pipeline.owner.displayName}</span>
+      {isAdmin && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="h-6 px-2"
+          onClick={openAssignDialog}
+          data-testid="button-reassign-owner"
+        >
+          Change
+        </Button>
+      )}
+    </div>
+  ) : (
+    <div className="flex items-center gap-2">
+      {pipeline?.id && currentStatus === 'new' && !pipeline.ownerId && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleClaim}
+          disabled={claiming}
+          className="h-8"
+          data-testid="button-claim-property"
+        >
+          <UserPlus className="w-4 h-4 mr-1" />
+          {claiming ? 'Claiming...' : 'Claim'}
+        </Button>
+      )}
+      {isAdmin && pipeline?.id && (
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={openAssignDialog}
+          className="h-8"
+          data-testid="button-assign-owner"
+        >
+          <User className="w-4 h-4 mr-1" />
+          Assign
+        </Button>
+      )}
+    </div>
+  );
+
+  const assignDialog = (
+    <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Assign Owner</DialogTitle>
+          <DialogDescription>
+            Select a team member to be responsible for this opportunity.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="py-4">
+          <Label htmlFor="owner">Owner</Label>
+          <Select value={selectedOwnerId} onValueChange={setSelectedOwnerId}>
+            <SelectTrigger className="mt-2" data-testid="select-owner">
+              <SelectValue placeholder="Select a team member" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unassigned">Unassigned</SelectItem>
+              {orgMembers.map((member) => (
+                <SelectItem key={member.id} value={member.id}>
+                  <div className="flex items-center gap-2">
+                    <Avatar className="w-5 h-5">
+                      <AvatarImage src={member.profileImageUrl} />
+                      <AvatarFallback className="text-xs">
+                        {member.displayName?.charAt(0) || '?'}
+                      </AvatarFallback>
+                    </Avatar>
+                    {member.displayName}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => {
+              setShowAssignDialog(false);
+              setSelectedOwnerId('');
+            }}
+            data-testid="button-cancel-assign"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleAssignOwner}
+            disabled={!selectedOwnerId || updating}
+            data-testid="button-confirm-assign"
+          >
+            {updating ? 'Assigning...' : 'Assign'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (inline) {
     return (
       <>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {dropdownContent}
           {dealValueDisplay}
+          {ownerDisplay}
         </div>
+        {assignDialog}
         <Dialog open={showQualifyDialog} onOpenChange={setShowQualifyDialog}>
           <DialogContent>
             <DialogHeader>
