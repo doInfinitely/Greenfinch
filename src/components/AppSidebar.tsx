@@ -185,15 +185,14 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex h-screen bg-gray-50">
       <aside
-        className={`hidden lg:flex flex-col border-r border-gray-200 bg-white transition-all duration-300 ${
+        className={`hidden lg:flex flex-col border-r border-gray-200 bg-white transition-all duration-300 relative ${
           collapsed ? 'w-16' : 'w-64'
         }`}
       >
         <SidebarContent />
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute bottom-20 -right-3 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center hover:bg-gray-100"
-          style={{ left: collapsed ? '52px' : '248px' }}
+          className="absolute top-1/2 -right-3 transform -translate-y-1/2 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center hover:bg-gray-100 shadow-sm z-10"
           data-testid="button-toggle-sidebar"
         >
           {collapsed ? (
