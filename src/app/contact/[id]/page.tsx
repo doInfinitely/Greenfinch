@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AlertTriangle, Flag, Check, X, ExternalLink, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Search, Loader2 } from 'lucide-react';
@@ -9,6 +9,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
+import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
+import { formatPhoneNumber } from '@/lib/phone-format';
 
 interface LinkedInSearchResult {
   name: string;
@@ -55,6 +57,11 @@ interface Contact {
   normalizedPhone: string | null;
   phoneConfidence: number | null;
   phoneLabel: 'direct_work' | 'office' | 'personal' | 'mobile' | null;
+  phoneSource: string | null;
+  aiPhone: string | null;
+  aiPhoneLabel: string | null;
+  enrichmentPhoneWork: string | null;
+  enrichmentPhonePersonal: string | null;
   title: string | null;
   titleConfidence: number | null;
   companyDomain: string | null;
@@ -272,39 +279,55 @@ export default function ContactDetailPage() {
   const [selectingAlternative, setSelectingAlternative] = useState(false);
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const { startEnrichment } = useEnrichment();
+  const { items: enrichmentItems } = useEnrichmentQueue();
   const [isLoadingPhoto, setIsLoadingPhoto] = useState(false);
   const [isFindingPhone, setIsFindingPhone] = useState(false);
   const [isFindingEmail, setIsFindingEmail] = useState(false);
   const [phoneMessage, setPhoneMessage] = useState<string | null>(null);
   const [emailMessage, setEmailMessage] = useState<string | null>(null);
 
+  const fetchContact = useCallback(async () => {
+    if (!contactId) return;
+    
+    try {
+      const response = await fetch(`/api/contacts/${contactId}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch contact');
+      }
+
+      setContact(data.contact);
+      setProperties(data.properties || []);
+      setOrganizations(data.organizations || []);
+      setIsFindingPhone(false);
+      setIsFindingEmail(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    }
+  }, [contactId]);
+
   useEffect(() => {
     if (!contactId) return;
 
-    const fetchContact = async () => {
-      setIsLoading(true);
-      setError(null);
+    setIsLoading(true);
+    setError(null);
+    fetchContact().finally(() => setIsLoading(false));
+  }, [contactId, fetchContact]);
 
-      try {
-        const response = await fetch(`/api/contacts/${contactId}`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to fetch contact');
-        }
-
-        setContact(data.contact);
-        setProperties(data.properties || []);
-        setOrganizations(data.organizations || []);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchContact();
-  }, [contactId]);
+  // Refetch contact when enrichment completes for this contact
+  useEffect(() => {
+    const completedItem = enrichmentItems.find(
+      item => 
+        item.entityId === contactId && 
+        item.status === 'completed' &&
+        (item.type === 'contact_phone' || item.type === 'contact_email' || item.type === 'contact')
+    );
+    
+    if (completedItem) {
+      fetchContact();
+    }
+  }, [enrichmentItems, contactId, fetchContact]);
 
   // Auto-fetch profile photo if contact has LinkedIn URL but no photo
   useEffect(() => {
@@ -564,6 +587,18 @@ export default function ContactDetailPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <h1 className="text-2xl font-bold text-gray-900">{contact.fullName || 'Unknown Contact'}</h1>
+                  {contact.linkedinUrl && (
+                    <a
+                      href={contact.linkedinUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[#0A66C2] hover:text-[#004182] transition-colors"
+                      title="View LinkedIn Profile"
+                      data-testid="link-linkedin-header"
+                    >
+                      <Linkedin className="w-5 h-5" />
+                    </a>
+                  )}
                   {contact.contactType && CONTACT_TYPE_CONFIG[contact.contactType] && (
                     <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${CONTACT_TYPE_CONFIG[contact.contactType].color}`}>
                       {CONTACT_TYPE_CONFIG[contact.contactType].label}
@@ -677,19 +712,73 @@ export default function ContactDetailPage() {
                   </div>
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">Phone</label>
-                  <div className="flex items-center gap-2">
-                    <PhoneValidationIcon hasPhone={!!(contact.phone || contact.normalizedPhone)} />
-                    <span className="text-gray-900">
-                      {contact.phone || contact.normalizedPhone || '—'}
-                    </span>
-                    {contact.phoneLabel && PHONE_LABEL_CONFIG[contact.phoneLabel] && (
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PHONE_LABEL_CONFIG[contact.phoneLabel].color}`}>
-                        {PHONE_LABEL_CONFIG[contact.phoneLabel].label}
-                      </span>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-500 mb-1">Phone Numbers</label>
+                  <div className="space-y-2">
+                    {/* Primary phone */}
+                    {(contact.phone || contact.normalizedPhone) && (
+                      <div className="flex items-center gap-2">
+                        <PhoneValidationIcon hasPhone={true} />
+                        <a href={`tel:${contact.normalizedPhone || contact.phone}`} className="text-gray-900 hover:text-green-600">
+                          {formatPhoneNumber(contact.phone || contact.normalizedPhone)}
+                        </a>
+                        {contact.phoneLabel && PHONE_LABEL_CONFIG[contact.phoneLabel] && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PHONE_LABEL_CONFIG[contact.phoneLabel].color}`}>
+                            {PHONE_LABEL_CONFIG[contact.phoneLabel].label}
+                          </span>
+                        )}
+                        <LowConfidenceMarker confidence={contact.phoneConfidence} />
+                      </div>
                     )}
-                    <LowConfidenceMarker confidence={contact.phoneConfidence} />
+                    {/* Work phone from enrichment */}
+                    {contact.enrichmentPhoneWork && contact.enrichmentPhoneWork !== contact.phone && (
+                      <div className="flex items-center gap-2">
+                        <PhoneValidationIcon hasPhone={true} />
+                        <a href={`tel:${contact.enrichmentPhoneWork}`} className="text-gray-900 hover:text-green-600">
+                          {formatPhoneNumber(contact.enrichmentPhoneWork)}
+                        </a>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
+                          Work
+                        </span>
+                      </div>
+                    )}
+                    {/* Personal/mobile phone from enrichment */}
+                    {contact.enrichmentPhonePersonal && contact.enrichmentPhonePersonal !== contact.phone && (
+                      <div className="flex items-center gap-2">
+                        <PhoneValidationIcon hasPhone={true} />
+                        <a href={`tel:${contact.enrichmentPhonePersonal}`} className="text-gray-900 hover:text-green-600">
+                          {formatPhoneNumber(contact.enrichmentPhonePersonal)}
+                        </a>
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-teal-100 text-teal-700">
+                          Mobile
+                        </span>
+                      </div>
+                    )}
+                    {/* AI-discovered phone */}
+                    {contact.aiPhone && contact.aiPhone !== contact.phone && contact.aiPhone !== contact.enrichmentPhoneWork && contact.aiPhone !== contact.enrichmentPhonePersonal && (
+                      <div className="flex items-center gap-2">
+                        <PhoneValidationIcon hasPhone={true} />
+                        <a href={`tel:${contact.aiPhone}`} className="text-gray-900 hover:text-green-600">
+                          {formatPhoneNumber(contact.aiPhone)}
+                        </a>
+                        {contact.aiPhoneLabel && PHONE_LABEL_CONFIG[contact.aiPhoneLabel] ? (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PHONE_LABEL_CONFIG[contact.aiPhoneLabel].color}`}>
+                            {PHONE_LABEL_CONFIG[contact.aiPhoneLabel].label}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-700">
+                            {contact.aiPhoneLabel || 'Other'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {/* No phones */}
+                    {!contact.phone && !contact.normalizedPhone && !contact.enrichmentPhoneWork && !contact.enrichmentPhonePersonal && !contact.aiPhone && (
+                      <div className="flex items-center gap-2">
+                        <PhoneValidationIcon hasPhone={false} />
+                        <span className="text-gray-400">—</span>
+                      </div>
+                    )}
                   </div>
                 </div>
                 
@@ -712,119 +801,6 @@ export default function ContactDetailPage() {
                   ) : (
                     <span className="text-gray-400">—</span>
                   )}
-                </div>
-                
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-500 mb-1">LinkedIn</label>
-                  <div className="space-y-3">
-                    <div className="flex items-center gap-3 flex-wrap">
-                      <LinkedInValidationIcon hasLinkedIn={!!contact.linkedinUrl} confidence={contact.linkedinConfidence} />
-                      {contact.linkedinUrl ? (
-                        <>
-                          <a 
-                            href={contact.linkedinUrl} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
-                            className="text-green-600 hover:text-green-700 hover:underline flex items-center gap-1"
-                            data-testid="link-linkedin-profile"
-                          >
-                            View Profile
-                            <LowConfidenceMarker confidence={contact.linkedinConfidence} />
-                          </a>
-                          {!showLinkedInAlternatives && (
-                            <button
-                              onClick={handleFlagLinkedIn}
-                              className="p-1.5 text-gray-400 hover:text-amber-600 hover:bg-amber-50 rounded-full transition-colors"
-                              title="Something doesn't look right? Flag for review"
-                              data-testid="button-flag-linkedin"
-                            >
-                              <Flag className="w-4 h-4" />
-                            </button>
-                          )}
-                          {contact.linkedinFlagged && (
-                            <span className="text-xs text-gray-500">(Updated by user)</span>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-gray-400">—</span>
-                      )}
-                    </div>
-
-                    {showLinkedInAlternatives && (
-                      <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className="text-sm font-medium text-amber-800">Select the correct profile:</h4>
-                          <button
-                            onClick={() => setShowLinkedInAlternatives(false)}
-                            className="text-amber-600 hover:text-amber-800"
-                            data-testid="button-close-alternatives"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
-                        
-                        {getAlternativeProfiles().length > 0 ? (
-                          <div className="space-y-2">
-                            {getAlternativeProfiles().map((alt, index) => (
-                              <div 
-                                key={alt.url}
-                                className="flex items-center justify-between p-3 bg-white border border-gray-200 rounded-lg hover:border-green-300"
-                              >
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-medium text-gray-900 truncate">{alt.name}</p>
-                                  {alt.title && (
-                                    <p className="text-sm text-gray-600 truncate">{alt.title}</p>
-                                  )}
-                                  {alt.company && (
-                                    <p className="text-xs text-gray-500 truncate">{alt.company}</p>
-                                  )}
-                                  <span className="text-xs text-gray-400">
-                                    {Math.round(alt.confidence * 100)}% match
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-2 ml-3">
-                                  <a
-                                    href={alt.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="p-1.5 text-gray-400 hover:text-blue-600"
-                                    title="View profile"
-                                    data-testid={`link-alternative-${index}`}
-                                  >
-                                    <ExternalLink className="w-4 h-4" />
-                                  </a>
-                                  <button
-                                    onClick={() => handleSelectAlternative(alt, index)}
-                                    disabled={selectingAlternative}
-                                    className="inline-flex items-center px-3 py-1.5 bg-green-600 text-white text-xs font-medium rounded hover:bg-green-700 disabled:opacity-50"
-                                    data-testid={`button-select-alternative-${index}`}
-                                  >
-                                    <Check className="w-3 h-3 mr-1" />
-                                    Select
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="space-y-3">
-                            <p className="text-sm text-amber-700">
-                              No alternative profiles available.
-                            </p>
-                            <button
-                              onClick={handleMarkLinkedInIncorrect}
-                              disabled={selectingAlternative}
-                              className="inline-flex items-center px-3 py-2 bg-amber-600 text-white text-sm font-medium rounded-lg hover:bg-amber-700 disabled:opacity-50"
-                              data-testid="button-mark-incorrect"
-                            >
-                              <Flag className="w-4 h-4 mr-2" />
-                              {selectingAlternative ? 'Updating...' : 'Mark as Incorrect'}
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
                 </div>
                 
                 {contact.reviewReason && (

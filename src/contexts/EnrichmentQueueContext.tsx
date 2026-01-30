@@ -46,11 +46,16 @@ interface EnrichmentQueueContextType {
 const EnrichmentQueueContext = createContext<EnrichmentQueueContextType | undefined>(undefined);
 
 const STORAGE_KEY = 'greenfinch_enrichment_queue';
+const SESSION_KEY = 'greenfinch_enrichment_session';
 const MAX_ITEMS = 20;
 const EXPIRY_HOURS = 24;
 
 function generateId(): string {
   return `eq_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function generateSessionId(): string {
+  return `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 }
 
 function cleanExpiredItems(items: EnrichmentQueueItem[]): EnrichmentQueueItem[] {
@@ -74,13 +79,31 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       if (stored) {
         const parsed = JSON.parse(stored) as EnrichmentQueueItem[];
         const cleaned = cleanExpiredItems(parsed);
-        // Reset polling items to failed on reload (they'll need to be retried)
-        const processingReset = cleaned.map(item => 
-          (item.status === 'processing' || item.status === 'polling') 
-            ? { ...item, status: 'failed' as const, error: 'Interrupted - page was refreshed', pollConfig: undefined } 
-            : item
-        );
-        setItems(limitItems(processingReset));
+        
+        // Check if we're in the same browser session
+        // sessionStorage persists during navigation but clears on tab close/refresh
+        const currentSessionId = sessionStorage.getItem(SESSION_KEY);
+        const isNewSession = !currentSessionId;
+        
+        if (isNewSession) {
+          // New session (page refresh or new tab) - mark processing items as failed
+          const processingReset = cleaned.map(item => 
+            (item.status === 'processing' || item.status === 'polling') 
+              ? { ...item, status: 'failed' as const, error: 'Interrupted - page was refreshed', pollConfig: undefined } 
+              : item
+          );
+          setItems(limitItems(processingReset));
+          // Set session ID for this session
+          sessionStorage.setItem(SESSION_KEY, generateSessionId());
+        } else {
+          // Same session (navigation within app) - keep items as-is
+          // Note: pollConfig is not persisted, so polling won't auto-resume
+          // but we don't mark them as failed since they may still be processing on the server
+          setItems(limitItems(cleaned));
+        }
+      } else {
+        // No stored items - ensure session ID is set
+        sessionStorage.setItem(SESSION_KEY, generateSessionId());
       }
     } catch (e) {
       console.error('Failed to load enrichment queue from storage:', e);
@@ -91,9 +114,8 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isHydrated) {
       try {
-        // Don't persist pollConfig to storage (it's runtime-only)
-        const itemsToStore = items.map(({ pollConfig, ...rest }) => rest);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(itemsToStore));
+        // Persist items including pollConfig for session continuity
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
       } catch (e) {
         console.error('Failed to save enrichment queue to storage:', e);
       }
@@ -153,6 +175,92 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       );
     });
   }, [toast]);
+
+  // Resume polling for items that have pollConfig (after navigation within same session)
+  useEffect(() => {
+    if (!isHydrated) return;
+    
+    // Find items that need polling resumed
+    items.forEach(item => {
+      if (
+        (item.status === 'polling' || item.status === 'processing') && 
+        item.pollConfig && 
+        !pollingIntervals.current.has(item.id)
+      ) {
+        console.log('[EnrichmentQueue] Resuming polling for:', item.entityName, item.id);
+        
+        // Resume the polling interval
+        const { checkEndpoint, checkField, intervalMs, maxAttempts, originalValue, compareMode } = item.pollConfig;
+        
+        const interval = setInterval(async () => {
+          let currentItem: EnrichmentQueueItem | undefined;
+          setItems(prev => {
+            currentItem = prev.find(i => i.id === item.id);
+            return prev;
+          });
+
+          if (!currentItem || !currentItem.pollConfig) {
+            clearInterval(interval);
+            pollingIntervals.current.delete(item.id);
+            return;
+          }
+
+          const newAttempt = currentItem.pollConfig.currentAttempt + 1;
+
+          if (newAttempt > maxAttempts) {
+            clearInterval(interval);
+            pollingIntervals.current.delete(item.id);
+            markFailedInternal(item.id, 'Lookup timed out - results may still arrive. Please refresh the page later.', currentItem.entityName);
+            return;
+          }
+
+          // Update attempt count and message
+          setItems(prev => prev.map(i => 
+            i.id === item.id && i.pollConfig
+              ? { 
+                  ...i, 
+                  pollConfig: { ...i.pollConfig!, currentAttempt: newAttempt },
+                  message: `Checking for results... (${newAttempt}/${maxAttempts})`
+                }
+              : i
+          ));
+
+          try {
+            const response = await fetch(checkEndpoint);
+            if (!response.ok) {
+              console.warn('[EnrichmentQueue] Poll check failed:', response.status);
+              return;
+            }
+
+            const data = await response.json();
+            let fieldValue = data;
+            for (const key of checkField.split('.')) {
+              fieldValue = fieldValue?.[key];
+            }
+
+            let isComplete = false;
+            if (compareMode === 'truthy') {
+              isComplete = !!fieldValue;
+            } else if (compareMode === 'changed') {
+              isComplete = fieldValue !== originalValue && !!fieldValue;
+            } else if (compareMode === 'valid_status') {
+              isComplete = fieldValue === 'valid';
+            }
+
+            if (isComplete) {
+              clearInterval(interval);
+              pollingIntervals.current.delete(item.id);
+              markCompletedInternal(item.id, currentItem.resultUrl, currentItem.entityName);
+            }
+          } catch (error) {
+            console.warn('[EnrichmentQueue] Poll error:', error);
+          }
+        }, intervalMs);
+
+        pollingIntervals.current.set(item.id, interval);
+      }
+    });
+  }, [isHydrated, items, markFailedInternal, markCompletedInternal]);
 
   const addToQueue = useCallback((item: Omit<EnrichmentQueueItem, 'id' | 'createdAt' | 'status' | 'progress' | 'message'>): string => {
     const id = generateId();

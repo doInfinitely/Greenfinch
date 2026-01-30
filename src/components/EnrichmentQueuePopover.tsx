@@ -135,8 +135,17 @@ export default function EnrichmentQueuePopover() {
   const hasCompletedItems = items.some(item => item.status === 'completed' || item.status === 'failed');
   const completedCount = items.filter(item => item.status === 'completed').length;
   
-  // Trigger confetti when a new item completes
+  const isInitialMount = useRef(true);
+  
+  // Trigger confetti when a new item completes (not on mount)
   useEffect(() => {
+    // Skip confetti on initial mount - only fire when new items complete during session
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      prevCompletedCountRef.current = completedCount;
+      return;
+    }
+    
     if (completedCount > prevCompletedCountRef.current && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       const x = (rect.left + rect.width / 2) / window.innerWidth;
