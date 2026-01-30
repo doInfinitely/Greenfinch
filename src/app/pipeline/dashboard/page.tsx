@@ -1,9 +1,12 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
+import { useOrganization } from '@clerk/nextjs';
 import AppSidebar from '@/components/AppSidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart3, DollarSign, TrendingUp, Target, Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { BarChart3, DollarSign, TrendingUp, Target, Loader2, Users } from 'lucide-react';
 
 interface DashboardData {
   totalPipelineValue: number;
@@ -11,6 +14,13 @@ interface DashboardData {
   wonThisMonth: number;
   wonValue: number;
   conversionRate: number;
+}
+
+interface OrgMember {
+  id: string;
+  displayName: string;
+  email: string;
+  profileImageUrl: string;
 }
 
 function formatCurrency(value: number): string {
@@ -27,30 +37,87 @@ export default function PipelineDashboard() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [ownerFilter, setOwnerFilter] = useState<string>('mine');
+  const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
+  const { membership } = useOrganization();
+  
+  const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:super_admin';
 
   useEffect(() => {
-    async function fetchData() {
-      try {
-        const response = await fetch('/api/pipeline/dashboard');
-        if (!response.ok) {
-          throw new Error('Failed to fetch dashboard data');
-        }
-        const result = await response.json();
-        setData(result);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setLoading(false);
-      }
+    if (isAdmin) {
+      fetch('/api/org/members')
+        .then(res => res.json())
+        .then(data => setOrgMembers(data.members || []))
+        .catch(console.error);
     }
-    fetchData();
-  }, []);
+  }, [isAdmin]);
+
+  const fetchDashboardData = useCallback(async () => {
+    try {
+      setLoading(true);
+      const params = new URLSearchParams();
+      if (isAdmin) {
+        if (ownerFilter === 'all') {
+          params.set('owner', 'all');
+        } else if (ownerFilter === 'unassigned') {
+          params.set('owner', 'unassigned');
+        } else if (ownerFilter !== 'mine') {
+          params.set('owner', ownerFilter);
+        }
+      }
+      const response = await fetch(`/api/pipeline/dashboard?${params}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch dashboard data');
+      }
+      const result = await response.json();
+      setData(result);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  }, [ownerFilter, isAdmin]);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   return (
     <AppSidebar>
       <div className="h-full bg-gray-50 p-6">
         <div className="max-w-7xl mx-auto">
-          <h1 className="text-2xl font-bold text-gray-900 mb-6">Pipeline Dashboard</h1>
+          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
+            <h1 className="text-2xl font-bold text-gray-900">Pipeline Dashboard</h1>
+            
+            {isAdmin && (
+              <div className="flex items-center gap-2">
+                <Users className="w-4 h-4 text-muted-foreground" />
+                <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+                  <SelectTrigger className="w-48" data-testid="select-owner-filter">
+                    <SelectValue placeholder="Filter by owner" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mine">My Pipeline</SelectItem>
+                    <SelectItem value="all">All Team Members</SelectItem>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {orgMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="w-5 h-5">
+                            <AvatarImage src={member.profileImageUrl} />
+                            <AvatarFallback className="text-xs">
+                              {member.displayName?.charAt(0) || '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                          {member.displayName}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+          </div>
           
           {loading ? (
             <div className="flex items-center justify-center py-12">

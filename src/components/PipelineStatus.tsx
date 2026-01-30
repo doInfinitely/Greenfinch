@@ -84,7 +84,7 @@ interface OrgMember {
 
 export default function PipelineStatus({ propertyId, inline = false }: PipelineStatusProps) {
   const { orgRole } = useAuth();
-  const isAdmin = orgRole === 'org:admin';
+  const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
   
   const [pipeline, setPipeline] = useState<{
     id?: string;

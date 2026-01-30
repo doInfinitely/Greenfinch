@@ -45,7 +45,7 @@ export async function PATCH(
     }
 
     if (ownerId !== undefined) {
-      const isAdmin = orgRole === 'org:admin';
+      const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
       
       if (!isAdmin) {
         return NextResponse.json({ error: 'Only admins can assign owners' }, { status: 403 });
@@ -54,15 +54,30 @@ export async function PATCH(
       if (ownerId === null) {
         updateData.ownerId = null;
       } else {
-        const ownerExists = await db
-          .select({ id: users.id })
+        const client = await (await import('@clerk/nextjs/server')).clerkClient();
+        const memberships = await client.organizations.getOrganizationMembershipList({
+          organizationId: orgId,
+          limit: 100,
+        });
+        
+        const memberClerkIds = memberships.data
+          .map(m => m.publicUserData?.userId)
+          .filter(Boolean) as string[];
+        
+        const ownerRecord = await db
+          .select({ id: users.id, clerkId: users.clerkId })
           .from(users)
           .where(eq(users.id, ownerId))
           .limit(1);
         
-        if (ownerExists.length === 0) {
+        if (ownerRecord.length === 0) {
           return NextResponse.json({ error: 'Owner not found' }, { status: 404 });
         }
+        
+        if (!ownerRecord[0].clerkId || !memberClerkIds.includes(ownerRecord[0].clerkId)) {
+          return NextResponse.json({ error: 'Owner must be a member of the organization' }, { status: 400 });
+        }
+        
         updateData.ownerId = ownerId;
       }
     }

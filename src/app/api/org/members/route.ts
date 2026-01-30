@@ -12,6 +12,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
+    if (!isAdmin) {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
     const client = await clerkClient();
     const memberships = await client.organizations.getOrganizationMembershipList({
       organizationId: orgId,
