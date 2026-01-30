@@ -247,7 +247,7 @@ export class DashboardMap {
           source: 'regrid',
           'source-layer': 'parcels',
           paint: {
-            'fill-color': '#9ca3af', // Light grey
+            'fill-color': '#16a34a', // Green-600 for hover effect
             'fill-opacity': [
               'case',
               ['boolean', ['feature-state', 'hover'], false],
@@ -265,7 +265,7 @@ export class DashboardMap {
           source: 'regrid',
           'source-layer': 'parcels',
           paint: {
-            'line-color': '#9ca3af', // Light grey
+            'line-color': '#22c55e', // Bright green (green-500)
             'line-width': 1.5,
           },
         });
