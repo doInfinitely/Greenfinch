@@ -398,11 +398,22 @@ export class DashboardMap {
       const llUuid = props.ll_uuid || featureId?.toString();
       const center = e.lngLat;
 
-      const propertyInfo = llUuid 
-        ? this.findPropertyByLlUuid(llUuid) 
-        : this.findPropertyByLocation(center.lng, center.lat);
-      const commonName = propertyInfo?.commonName;
-      const address = propertyInfo ? (this.getPropertyAddress(propertyInfo.propertyKey) || props.address || 'Unknown Address') : (props.address || 'Unknown Address');
+      // First try ll_uuid match, then fall back to spatial matching
+      // Always prefer our database data over Regrid tile data
+      let propertyInfo = llUuid ? this.findPropertyByLlUuid(llUuid) : null;
+      if (!propertyInfo) {
+        propertyInfo = this.findPropertyByLocation(center.lng, center.lat);
+      }
+
+      // Only show tooltip if we have property data from our database
+      // This prevents showing sub-parcel addresses like "APT 925"
+      if (!propertyInfo) {
+        if (this.hoverPopup) this.hoverPopup.remove();
+        return;
+      }
+
+      const commonName = propertyInfo.commonName;
+      const address = propertyInfo.address || 'Unknown Address';
 
       let popupContent = `<div style="font-size: 12px; max-width: 220px;">`;
       if (commonName) {
@@ -476,22 +487,24 @@ export class DashboardMap {
     }
   };
 
-  private findPropertyByLlUuid(llUuid: string): { propertyKey: string; commonName: string | null } | null {
+  private findPropertyByLlUuid(llUuid: string): { propertyKey: string; commonName: string | null; address: string | null } | null {
     for (const feature of this.currentData.features) {
       const props = feature.properties as any;
       if (props?.llUuid === llUuid) {
         return {
           propertyKey: props?.propertyKey || null,
           commonName: props?.commonName || null,
+          address: props?.address || null,
         };
       }
     }
     return null;
   }
 
-  private findPropertyByLocation(lng: number, lat: number): { propertyKey: string; commonName: string | null } | null {
-    // Use larger tolerance to match clicks within parcels (about 100m)
-    const tolerance = 0.001;
+  private findPropertyByLocation(lng: number, lat: number): { propertyKey: string; commonName: string | null; address: string | null } | null {
+    // Use larger tolerance to match clicks within parcels (about 200m)
+    // This helps match sub-parcels (like apartment units) to their parent property
+    const tolerance = 0.002;
     for (const feature of this.currentData.features) {
       if (feature.geometry.type === 'Point') {
         const [fLng, fLat] = feature.geometry.coordinates;
@@ -500,6 +513,7 @@ export class DashboardMap {
           return {
             propertyKey: props?.propertyKey || null,
             commonName: props?.commonName || null,
+            address: props?.address || null,
           };
         }
       }

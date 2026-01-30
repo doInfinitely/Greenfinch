@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import type { MapBounds } from '@/map/DashboardMap';
 import type { MapCanvasHandle } from '@/map/MapCanvas';
@@ -94,8 +93,8 @@ export default function MapPage() {
   }, []);
 
   const handlePropertyClick = useCallback((propertyKey: string) => {
-    router.push(`/property/${propertyKey}`);
-  }, [router]);
+    window.open(`/property/${propertyKey}`, '_blank');
+  }, []);
 
   const handleSearchSelect = useCallback((suggestion: SearchSuggestion) => {
     const zoom = getZoomForType(suggestion.type, !!suggestion.propertyKey);
@@ -103,10 +102,10 @@ export default function MapPage() {
     
     if (suggestion.propertyKey) {
       setTimeout(() => {
-        router.push(`/property/${suggestion.propertyKey}`);
+        window.open(`/property/${suggestion.propertyKey}`, '_blank');
       }, 1600);
     }
-  }, [router]);
+  }, []);
 
   const filteredProperties = useMemo(() => {
     return allProperties.filter((f) => {
