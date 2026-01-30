@@ -4,7 +4,13 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2 } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreHorizontal, List, Upload } from 'lucide-react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { ArrowLeft } from 'lucide-react';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
@@ -948,7 +954,7 @@ export default function PropertyDetailPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <PipelineStatus propertyId={property.propertyKey} inline />
+                  <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus />
                   {(() => {
                     const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
                     const isEnrichmentActive = queueStatus.isActive;
@@ -977,32 +983,36 @@ export default function PropertyDetailPage() {
                           ) : (
                             <GreenfinchAgentIcon className="w-4 h-4 mr-2" />
                           )}
-                          {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Research Failed' : 'Research with greenfinch.ai'}
+                          {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : 'Research Property'}
                         </button>
                       </AdminOnly>
                     );
                   })()}
-                  <button
-                    onClick={handleAddToList}
-                    disabled={!userId}
-                    className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center"
-                  >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                    Add to List
-                  </button>
-                  <button
-                    disabled
-                    className="px-4 py-2 text-sm font-medium text-gray-400 bg-gray-100 rounded-lg cursor-not-allowed transition-colors flex items-center opacity-50"
-                    title="Coming soon: Export to your CRM"
-                    data-testid="button-export-crm"
-                  >
-                    <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                    </svg>
-                    Export to CRM
-                  </button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline" size="icon" data-testid="button-more-actions">
+                        <MoreHorizontal className="w-4 h-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem 
+                        onClick={handleAddToList}
+                        disabled={!userId}
+                        data-testid="menu-item-add-to-list"
+                      >
+                        <List className="w-4 h-4 mr-2" />
+                        Add to List
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        disabled
+                        className="opacity-50"
+                        data-testid="menu-item-export-crm"
+                      >
+                        <Upload className="w-4 h-4 mr-2" />
+                        Export to CRM
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </div>
               </div>
 

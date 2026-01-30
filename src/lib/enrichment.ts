@@ -729,7 +729,7 @@ ${categoryList}
 5. Leasing agents and brokers
 6. Other stakeholders
 
-**Target**: 5-10 contacts maximum. Quality over quantity.
+**Target**: 5 high-value contacts maximum. Quality over quantity. Focus on the most relevant decision-makers.
 
 ### Contact Detail Rules
 

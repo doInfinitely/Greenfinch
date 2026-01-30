@@ -107,7 +107,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { status, dealValue } = body;
+    const { status, dealValue, autoClaim } = body;
 
     if (!status || !PIPELINE_STATUSES.includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
@@ -147,6 +147,13 @@ export async function POST(
 
     let pipeline;
     if (existingPipeline) {
+      // Determine if we should auto-assign ownership
+      // Server-side guard: only auto-assign when transitioning from 'new' status with no owner
+      const shouldAutoAssign = autoClaim && 
+        !existingPipeline.ownerId && 
+        existingPipeline.status === 'new' && 
+        status !== 'new';
+      
       [pipeline] = await db
         .update(propertyPipeline)
         .set({
@@ -155,10 +162,25 @@ export async function POST(
           statusChangedAt: new Date(),
           statusChangedByUserId: session.user.id,
           updatedAt: new Date(),
+          ...(shouldAutoAssign && { ownerId: session.user.id }),
         })
         .where(eq(propertyPipeline.id, existingPipeline.id))
         .returning();
+      
+      // Log ownership assignment activity if auto-claimed
+      if (shouldAutoAssign) {
+        await db.insert(propertyActivity).values({
+          propertyId: property.id,
+          clerkOrgId: authData.orgId,
+          userId: session.user.id,
+          activityType: 'owner_assigned',
+          previousValue: null,
+          newValue: session.user.id,
+          metadata: { autoAssigned: true },
+        });
+      }
     } else {
+      // For new pipeline entries, auto-assign if autoClaim is true
       [pipeline] = await db
         .insert(propertyPipeline)
         .values({
@@ -167,8 +189,22 @@ export async function POST(
           status,
           dealValue: dealValue || null,
           statusChangedByUserId: session.user.id,
+          ...(autoClaim && { ownerId: session.user.id }),
         })
         .returning();
+      
+      // Log ownership assignment activity if auto-claimed
+      if (autoClaim) {
+        await db.insert(propertyActivity).values({
+          propertyId: property.id,
+          clerkOrgId: authData.orgId,
+          userId: session.user.id,
+          activityType: 'owner_assigned',
+          previousValue: null,
+          newValue: session.user.id,
+          metadata: { autoAssigned: true },
+        });
+      }
     }
 
     if (previousStatus !== status) {

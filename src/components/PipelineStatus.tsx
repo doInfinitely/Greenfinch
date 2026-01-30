@@ -36,6 +36,7 @@ import { PIPELINE_STATUS_LABELS, type PipelineStatus as PipelineStatusType } fro
 interface PipelineStatusProps {
   propertyId: string;
   inline?: boolean;
+  autoAssignOnFirstStatus?: boolean;
 }
 
 const STATUS_COLORS: Record<PipelineStatusType, string> = {
@@ -82,7 +83,7 @@ interface OrgMember {
   profileImageUrl: string;
 }
 
-export default function PipelineStatus({ propertyId, inline = false }: PipelineStatusProps) {
+export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false }: PipelineStatusProps) {
   const { orgRole } = useAuth();
   const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
   
@@ -135,11 +136,21 @@ export default function PipelineStatus({ propertyId, inline = false }: PipelineS
     setShowQualifyDialog(false);
     setUpdating(true);
     
+    // Auto-assign to current user if moving from no status/new to a real status
+    const shouldAutoClaim = autoAssignOnFirstStatus && 
+      (!pipeline?.ownerId) && 
+      (pipeline?.status === 'new' || !pipeline?.status) && 
+      newStatus !== 'new';
+    
     try {
       const res = await fetch(`/api/properties/${propertyId}/pipeline`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus, dealValue: dealValue || existingDealValue }),
+        body: JSON.stringify({ 
+          status: newStatus, 
+          dealValue: dealValue || existingDealValue,
+          autoClaim: shouldAutoClaim 
+        }),
       });
 
       if (!res.ok) {
