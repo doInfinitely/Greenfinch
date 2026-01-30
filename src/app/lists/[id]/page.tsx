@@ -26,6 +26,7 @@ interface PropertyInfo {
   city?: string;
   state?: string;
   assetCategory?: string;
+  commonName?: string;
 }
 
 interface ContactInfo {
@@ -251,7 +252,7 @@ export default function ListDetailPage() {
                   {list.listType === 'properties' ? (
                     <>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Address
+                        Property
                       </th>
                       <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">
                         City
@@ -292,12 +293,19 @@ export default function ListDetailPage() {
                         <>
                           <td className="px-4 py-3">
                             {propDetail ? (
-                              <Link
-                                href={`/property/${item.itemId}`}
-                                className="text-green-600 hover:underline font-medium"
-                              >
-                                {propDetail.validatedAddress || propDetail.regridAddress || 'Unknown Address'}
-                              </Link>
+                              <div className="flex flex-col">
+                                {propDetail.commonName && (
+                                  <span className="text-gray-900 font-bold text-sm mb-0.5">
+                                    {propDetail.commonName}
+                                  </span>
+                                )}
+                                <Link
+                                  href={`/property/${item.itemId}`}
+                                  className="text-green-600 hover:underline font-medium"
+                                >
+                                  {propDetail.validatedAddress || propDetail.regridAddress || 'Unknown Address'}
+                                </Link>
+                              </div>
                             ) : (
                               <span className="text-gray-400">Loading...</span>
                             )}
