@@ -6,6 +6,8 @@ import { useToast } from '@/hooks/use-toast';
 export type EnrichmentItemType = 'property' | 'contact' | 'organization' | 'contact_phone' | 'contact_email';
 export type EnrichmentStatus = 'pending' | 'processing' | 'polling' | 'completed' | 'failed';
 
+const BROADCAST_CHANNEL_NAME = 'greenfinch_enrichment_queue';
+
 export interface PollConfig {
   checkEndpoint: string;
   checkField: string;
@@ -79,6 +81,10 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
   const pollingIntervals = useRef<Map<string, NodeJS.Timeout>>(new Map());
   // Track which items have already fired completion to prevent duplicate toasts (race condition guard)
   const completedItemsRef = useRef<Set<string>>(new Set());
+  // BroadcastChannel for cross-tab sync
+  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  // Track if current update is from local actions (should broadcast) vs received from another tab
+  const isLocalUpdate = useRef(true);
 
   useEffect(() => {
     try {
@@ -118,11 +124,50 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
     setIsHydrated(true);
   }, []);
 
+  // Initialize BroadcastChannel for cross-tab sync
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('BroadcastChannel' in window)) {
+      return;
+    }
+    
+    try {
+      broadcastChannelRef.current = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      
+      broadcastChannelRef.current.onmessage = (event) => {
+        if (event.data?.type === 'QUEUE_UPDATE') {
+          console.log('[EnrichmentQueue] Received cross-tab update');
+          isLocalUpdate.current = false;
+          const newItems = event.data.items as EnrichmentQueueItem[];
+          setItems(newItems);
+        }
+      };
+      
+      console.log('[EnrichmentQueue] BroadcastChannel initialized for cross-tab sync');
+    } catch (e) {
+      console.warn('[EnrichmentQueue] Failed to create BroadcastChannel:', e);
+    }
+    
+    return () => {
+      broadcastChannelRef.current?.close();
+      broadcastChannelRef.current = null;
+    };
+  }, []);
+
   useEffect(() => {
     if (isHydrated) {
       try {
         // Persist items including pollConfig for session continuity
         localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+        
+        // Broadcast to other tabs (only if this was a local update, not a received message)
+        if (isLocalUpdate.current && broadcastChannelRef.current) {
+          broadcastChannelRef.current.postMessage({
+            type: 'QUEUE_UPDATE',
+            items: items,
+          });
+        }
+        // Reset flag for next update
+        isLocalUpdate.current = true;
       } catch (e) {
         console.error('Failed to save enrichment queue to storage:', e);
       }

@@ -666,10 +666,8 @@ export default function PropertyDetailPage() {
         const result = data as { enrichment?: { property?: EnrichedPropertyData; contacts?: Contact[]; organizations?: Organization[] } };
         if (result.enrichment) {
           setEnrichedProperty(result.enrichment.property || null);
-          setContacts((result.enrichment.contacts || []).map((c: Contact) => ({
-            ...c,
-            emailValidationStatus: 'not_validated' as const,
-          })));
+          // Preserve emailValidationStatus from the server - don't overwrite with 'not_validated'
+          setContacts(result.enrichment.contacts || []);
           setOrganizations(result.enrichment.organizations || []);
           setEnrichmentStatus('completed');
           setEnrichmentMessage(`Found ${result.enrichment.contacts?.length || 0} contacts and ${result.enrichment.organizations?.length || 0} organizations`);
@@ -1080,11 +1078,6 @@ export default function PropertyDetailPage() {
                               {org.industry && (
                                 <span className="inline-block px-2 py-0.5 text-xs rounded bg-emerald-100 text-emerald-700">
                                   {org.industry}
-                                </span>
-                              )}
-                              {org.employeesRange && (
-                                <span className="inline-block px-2 py-0.5 text-xs rounded bg-amber-100 text-amber-700">
-                                  {org.employeesRange} employees
                                 </span>
                               )}
                             </div>
