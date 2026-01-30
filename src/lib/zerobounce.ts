@@ -7,6 +7,10 @@
 
 const ZEROBOUNCE_API_URL = 'https://api.zerobounce.net/v2';
 
+// In-memory cache for email validation results to avoid duplicate API calls
+const validationCache = new Map<string, { result: ValidateEmailResult; timestamp: number }>();
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour cache TTL
+
 interface ZeroBounceValidateResponse {
   address: string;
   status: 'valid' | 'invalid' | 'catch-all' | 'unknown' | 'spamtrap' | 'abuse' | 'do_not_mail';
@@ -46,11 +50,20 @@ interface ValidateEmailResult {
 
 /**
  * Validate an email address using ZeroBounce
+ * Uses in-memory cache to avoid duplicate API calls within the same enrichment run
  */
 export async function validateEmail(email: string): Promise<ValidateEmailResult> {
   const apiKey = process.env.ZEROBOUNCE_API_KEY;
   if (!apiKey) {
     throw new Error('ZEROBOUNCE_API_KEY is not configured');
+  }
+
+  // Check cache first
+  const normalizedEmail = email.toLowerCase().trim();
+  const cached = validationCache.get(normalizedEmail);
+  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
+    console.log('[ZeroBounce] Cache hit for:', normalizedEmail, '->', cached.result.status);
+    return cached.result;
   }
 
   console.log('[ZeroBounce] Validating email:', email);
@@ -101,7 +114,7 @@ export async function validateEmail(email: string): Promise<ValidateEmailResult>
         break;
     }
 
-    return {
+    const result: ValidateEmailResult = {
       success: true,
       status: normalizedStatus,
       rawStatus: rawStatus,
@@ -113,6 +126,12 @@ export async function validateEmail(email: string): Promise<ValidateEmailResult>
       smtpProvider: data.smtp_provider,
       raw: data,
     };
+
+    // Store in cache
+    validationCache.set(normalizedEmail, { result, timestamp: Date.now() });
+    console.log('[EmailValidation] ZeroBounce:', email, '->', normalizedStatus, `(valid=${normalizedStatus === 'valid'})`);
+
+    return result;
   } catch (error: any) {
     console.error('[ZeroBounce] Validation failed:', error.message);
     return { success: false, status: 'unknown', rawStatus: 'error', error: error.message };

@@ -51,6 +51,7 @@ interface ApolloPersonMatchResponse {
     title: string | null;
     email_status: string | null;
     email: string | null;
+    photo_url: string | null;  // LinkedIn profile photo URL
     phone_numbers?: { raw_number: string; sanitized_number: string }[];
     headline: string | null;
     city: string | null;
@@ -88,6 +89,7 @@ interface ApolloEnrichResult {
   location?: string;
   seniority?: string;
   emailStatus?: string;
+  photoUrl?: string;  // LinkedIn profile photo URL from Apollo
   waterfallStatus?: 'accepted' | 'failed' | 'not_requested';
   waterfallMessage?: string;
   raw?: any;
@@ -173,7 +175,22 @@ export async function enrichPersonApollo(
     const data: ApolloPersonMatchResponse = await response.json();
     
     console.log('[Apollo] Response status:', response.status);
-    console.log('[Apollo] Response body:', JSON.stringify(data).substring(0, 500));
+    // Log full person data (excluding large raw fields) for better debugging
+    if (data.person) {
+      console.log('[Apollo] Person found:', {
+        id: data.person.id,
+        name: data.person.name,
+        email: data.person.email,
+        emailStatus: data.person.email_status,
+        photoUrl: data.person.photo_url ? 'present' : 'none',
+        linkedinUrl: data.person.linkedin_url,
+        title: data.person.title,
+        company: data.person.organization?.name,
+        phoneCount: data.person.phone_numbers?.length || 0,
+      });
+    } else {
+      console.log('[Apollo] Response body:', JSON.stringify(data).substring(0, 500));
+    }
 
     if (!response.ok) {
       const errorMsg = data.error || `Apollo API error: ${response.status}`;
@@ -224,6 +241,7 @@ export async function enrichPersonApollo(
       location: location || undefined,
       seniority: person.seniority || undefined,
       emailStatus: person.email_status || undefined,
+      photoUrl: person.photo_url || undefined,
       waterfallStatus,
       waterfallMessage,
       raw: data,

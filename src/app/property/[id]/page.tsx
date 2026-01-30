@@ -703,10 +703,15 @@ export default function PropertyDetailPage() {
     setEnrichmentStatus('pending');
     setEnrichmentMessage('Enrichment started - check the queue for progress');
 
+    // Build display name: prefer common name with address, or just address
+    const displayName = enrichedProperty?.commonName 
+      ? `${enrichedProperty.commonName} (${property.address || ''})`.trim()
+      : property.address || 'Unknown Property';
+
     startEnrichment({
       type: 'property',
       entityId: property.propertyKey,
-      entityName: enrichedProperty?.commonName || property.address || 'Unknown Property',
+      entityName: displayName,
       apiEndpoint: '/api/enrich',
       requestBody: {
         propertyKey: property.propertyKey,

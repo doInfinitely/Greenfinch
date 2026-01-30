@@ -400,7 +400,7 @@ export async function enrichContactCascade(
         companyDomain: apolloResult.companyDomain || companyDomain || null,
         linkedinUrl: apolloResult.linkedinUrl || foundLinkedin,
         location: apolloResult.location || location || null,
-        photoUrl: null,
+        photoUrl: apolloResult.photoUrl || null,  // Use Apollo's photo_url directly
         seniority: apolloResult.seniority || null,
         raw: apolloResult.raw,
       };

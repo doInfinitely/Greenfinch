@@ -428,6 +428,7 @@ export interface EnrichedContact {
   emailConfidence: number | null;
   emailSource: 'ai_discovered' | 'hunter' | null;
   emailValidated: boolean;
+  emailValidationStatus: 'valid' | 'invalid' | 'catch-all' | 'unknown' | 'not_validated' | null;
   phone: string | null;
   normalizedPhone: string | null;
   phoneConfidence: number | null;
@@ -452,6 +453,9 @@ export interface EnrichedContact {
   source: string;
   needsReview: boolean;
   reviewReason: string | null;
+  providerId?: string;  // Apollo person ID for webhook matching
+  enrichmentSource?: 'apollo' | 'enrichlayer' | 'pdl' | null;
+  photoUrl?: string | null;  // Profile photo URL from Apollo
 }
 
 export interface EnrichedOrganization {
@@ -1116,6 +1120,7 @@ function processEnrichmentResponse(
         emailConfidence: c.email_confidence || null,
         emailSource: c.email ? 'ai_discovered' : null,
         emailValidated: false,
+        emailValidationStatus: 'not_validated',
         phone: aiPhone,
         normalizedPhone: aiPhone ? normalizePhone(aiPhone) : null,
         phoneConfidence: aiPhoneConfidence,
@@ -1347,6 +1352,7 @@ export async function enrichContactWithPDL(
             ...contact,
             emailConfidence: validationResult.confidence,
             emailValidated: true,
+            emailValidationStatus: 'valid' as const,
           };
           // Don't return - continue to cascade enrichment to find company email/info
         } else {
@@ -1359,6 +1365,7 @@ export async function enrichContactWithPDL(
               ...contact,
               emailConfidence: validationResult.confidence,
               emailValidated: true,
+              emailValidationStatus: 'valid' as const,
             },
             relationshipConfidence: 'high',
             relationshipNote: null,
@@ -1373,6 +1380,7 @@ export async function enrichContactWithPDL(
           normalizedEmail: null,
           emailConfidence: null,
           emailValidated: false,
+          emailValidationStatus: (validationResult.status as any) || 'invalid',
         };
       }
     } catch (error) {
@@ -1403,9 +1411,11 @@ export async function enrichContactWithPDL(
         
         // Validate Apollo email
         let apolloEmailValid = false;
+        let apolloEmailStatus: 'valid' | 'invalid' | 'catch-all' | 'unknown' | 'not_validated' = 'not_validated';
         if (apolloResult.email) {
           const validation = await validateEmail(apolloResult.email);
           apolloEmailValid = validation.isValid;
+          apolloEmailStatus = validation.isValid ? 'valid' : (validation.status as any) || 'invalid';
         }
         
         return {
@@ -1416,6 +1426,7 @@ export async function enrichContactWithPDL(
             emailConfidence: apolloEmailValid ? 0.9 : contact.emailConfidence,
             emailSource: apolloEmailValid ? 'apollo' : contact.emailSource,
             emailValidated: apolloEmailValid,
+            emailValidationStatus: apolloEmailValid ? 'valid' : (contact.emailValidationStatus || apolloEmailStatus),
             linkedinUrl: apolloResult.linkedinUrl || contact.linkedinUrl,
             linkedinConfidence: apolloResult.linkedinUrl ? 0.95 : contact.linkedinConfidence,
             title: apolloResult.title || contact.title,
@@ -1423,7 +1434,8 @@ export async function enrichContactWithPDL(
             companyDomain: apolloResult.companyDomain || contact.companyDomain,
             enrichmentSource: 'apollo',
             providerId: apolloResult.raw?.person?.id || null,
-          } as EnrichedContact & { enrichmentSource?: string; providerId?: string },
+            photoUrl: apolloResult.photoUrl || contact.photoUrl,
+          } as EnrichedContact,
           relationshipConfidence: 'high',
           relationshipNote: null,
         };
@@ -1448,9 +1460,11 @@ export async function enrichContactWithPDL(
         
         // Validate EnrichLayer email
         let elEmailValid = false;
+        let elEmailStatus: 'valid' | 'invalid' | 'catch-all' | 'unknown' | 'not_validated' = 'not_validated';
         if (elResult.email) {
           const validation = await validateEmail(elResult.email);
           elEmailValid = validation.isValid;
+          elEmailStatus = validation.isValid ? 'valid' : (validation.status as any) || 'invalid';
         }
         
         return {
@@ -1461,13 +1475,15 @@ export async function enrichContactWithPDL(
             emailConfidence: elEmailValid ? 0.85 : contact.emailConfidence,
             emailSource: elEmailValid ? 'enrichlayer' : contact.emailSource,
             emailValidated: elEmailValid,
+            emailValidationStatus: elEmailValid ? 'valid' : (contact.emailValidationStatus || elEmailStatus),
             linkedinUrl: elResult.linkedinUrl || contact.linkedinUrl,
             linkedinConfidence: elResult.linkedinUrl ? 0.9 : contact.linkedinConfidence,
             title: elResult.title || contact.title,
             employerName: elResult.company || contact.employerName,
             enrichmentSource: 'enrichlayer',
             providerId: elResult.linkedinUrl || null,
-          } as EnrichedContact & { enrichmentSource?: string; providerId?: string },
+            photoUrl: elResult.profilePicture || contact.photoUrl,
+          } as EnrichedContact,
           relationshipConfidence: 'high',
           relationshipNote: null,
         };
@@ -1986,6 +2002,7 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
         emailConfidence: c.email ? 0.7 : null,
         emailSource: c.emailSource || null,
         emailValidated: false,
+        emailValidationStatus: 'not_validated' as const,
         phone: aiPhone,
         normalizedPhone: aiPhone ? aiPhone.replace(/[^0-9]/g, '') : null,
         phoneConfidence: aiPhoneConfidence,
@@ -2357,6 +2374,7 @@ export async function storeEnrichmentResults(
           email: contact.email,
           normalizedEmail: contact.normalizedEmail,
           emailConfidence: contact.emailConfidence,
+          emailValidationStatus: contact.emailValidationStatus || existingContact.emailValidationStatus,
           phone: contact.phone,
           normalizedPhone: contact.normalizedPhone,
           phoneConfidence: contact.phoneConfidence,
@@ -2378,6 +2396,9 @@ export async function storeEnrichmentResults(
           contactRationale: contact.contactRationale,
           needsReview: contact.needsReview,
           reviewReason: contact.reviewReason,
+          providerId: contact.providerId || existingContact.providerId,
+          enrichmentSource: contact.enrichmentSource || existingContact.enrichmentSource,
+          photoUrl: contact.photoUrl || existingContact.photoUrl,
           updatedAt: new Date(),
         })
         .where(eq(contacts.id, existingContact.id));
@@ -2391,6 +2412,7 @@ export async function storeEnrichmentResults(
           email: contact.email,
           normalizedEmail: contact.normalizedEmail,
           emailConfidence: contact.emailConfidence,
+          emailValidationStatus: contact.emailValidationStatus,
           phone: contact.phone,
           normalizedPhone: contact.normalizedPhone,
           phoneConfidence: contact.phoneConfidence,
@@ -2413,13 +2435,16 @@ export async function storeEnrichmentResults(
           contactRationale: contact.contactRationale,
           needsReview: contact.needsReview,
           reviewReason: contact.reviewReason,
+          providerId: contact.providerId,
+          enrichmentSource: contact.enrichmentSource,
+          photoUrl: contact.photoUrl,
         })
         .onConflictDoNothing()
         .returning({ id: contacts.id });
       contactId = inserted?.id || contact.id;
       
-      // Auto-fetch LinkedIn profile photo if we have a LinkedIn URL
-      if (contact.linkedinUrl && contactId) {
+      // Only fetch LinkedIn profile photo if we don't have one from Apollo
+      if (contact.linkedinUrl && contactId && !contact.photoUrl) {
         // Fetch photo in background (don't block enrichment flow)
         getProfilePicture(contact.linkedinUrl).then(async (photoResult) => {
           if (photoResult.success && photoResult.url) {
