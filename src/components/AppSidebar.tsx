@@ -101,8 +101,8 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   });
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full">
-      <div className="p-4 border-b border-border">
+    <div className="flex flex-col h-full bg-white">
+      <div className="p-4 border-b border-gray-200">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 relative flex-shrink-0">
             <Image
@@ -153,7 +153,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         ))}
       </nav>
 
-      <div className="p-4 border-t border-border space-y-4">
+      <div className="p-4 border-t border-gray-200 space-y-4">
         {isSignedIn && (
           <div className="flex items-center gap-2">
             <UserButton
@@ -181,16 +181,16 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   );
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-gray-50">
       <aside
-        className={`hidden lg:flex flex-col border-r border-border bg-card transition-all duration-300 ${
+        className={`hidden lg:flex flex-col border-r border-gray-200 bg-white transition-all duration-300 ${
           collapsed ? 'w-16' : 'w-64'
         }`}
       >
         <SidebarContent />
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute bottom-20 -right-3 w-6 h-6 bg-card border border-border rounded-full flex items-center justify-center hover:bg-muted"
+          className="absolute bottom-20 -right-3 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center hover:bg-gray-100"
           style={{ left: collapsed ? '52px' : '248px' }}
           data-testid="button-toggle-sidebar"
         >
@@ -211,13 +211,13 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           className="absolute inset-0 bg-black/50"
           onClick={() => setMobileOpen(false)}
         />
-        <aside className="absolute left-0 top-0 bottom-0 w-64 bg-card">
+        <aside className="absolute left-0 top-0 bottom-0 w-64 bg-white shadow-lg">
           <SidebarContent />
         </aside>
       </div>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 lg:hidden">
+        <header className="h-14 border-b border-gray-200 bg-white flex items-center justify-between px-4 lg:hidden">
           <button
             onClick={() => setMobileOpen(true)}
             className="p-2"
@@ -225,21 +225,10 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           >
             <Menu className="w-5 h-5" />
           </button>
-          <Link href="/" className="flex items-center gap-2">
-            <div className="w-6 h-6 relative">
-              <Image
-                src="/greenfinch-logo.jpg"
-                alt="Greenfinch"
-                fill
-                className="object-contain rounded"
-              />
-            </div>
-            <span className="font-semibold">Greenfinch</span>
-          </Link>
           <div className="w-10" />
         </header>
 
-        <header className="h-14 border-b border-border bg-card hidden lg:flex items-center justify-between px-4">
+        <header className="h-14 border-b border-gray-200 bg-white hidden lg:flex items-center justify-between px-4">
           <div className="flex items-center gap-4">
             {isSignedIn && (
               <OrganizationSwitcher
