@@ -36,6 +36,7 @@ export class DashboardMap {
   private initError: string | null = null;
   private handlersRegistered = false; // Track if handlers were registered
   private styleSwitchPending = false; // Prevent multiple style switches
+  private resizeObserver: ResizeObserver | null = null; // Track container size changes
 
   constructor(config: DashboardMapConfig) {
     this.config = config;
@@ -68,6 +69,15 @@ export class DashboardMap {
 
     this.map.addControl(new mapboxgl.NavigationControl(), 'top-right');
     this.map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+
+    // Set up ResizeObserver to handle container size changes
+    // This fixes coordinate mismatch when flex layout changes container dimensions
+    this.resizeObserver = new ResizeObserver(() => {
+      if (this.map && !this.isDestroyed) {
+        this.map.resize();
+      }
+    });
+    this.resizeObserver.observe(this.config.container);
 
     this.hoverPopup = new mapboxgl.Popup({
       closeButton: false,
@@ -183,6 +193,11 @@ export class DashboardMap {
     this.addLayers();
     this.registerEventHandlers();
     this.updateLayerVisibility();
+    
+    // Resize to ensure coordinate system matches container dimensions
+    // This is critical for flex layouts where container size may change
+    this.map.resize();
+    
     this.emitBounds();
 
     // Mark ready after a short delay to let tiles start loading
@@ -566,6 +581,10 @@ export class DashboardMap {
 
   destroy() {
     this.isDestroyed = true;
+    if (this.resizeObserver) {
+      this.resizeObserver.disconnect();
+      this.resizeObserver = null;
+    }
     if (this.hoverPopup) {
       this.hoverPopup.remove();
       this.hoverPopup = null;

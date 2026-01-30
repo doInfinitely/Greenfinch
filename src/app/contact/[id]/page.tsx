@@ -896,9 +896,9 @@ export default function ContactDetailPage() {
                 <p className="text-gray-500 text-center py-8">No properties associated with this contact.</p>
               ) : (
                 <div className="space-y-3">
-                  {properties.map((prop) => (
+                  {properties.map((prop, index) => (
                     <Link
-                      key={prop.id}
+                      key={`${prop.id}-${prop.role || index}`}
                       href={`/property/${prop.id}`}
                       className="block p-4 border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors"
                     >
