@@ -18,7 +18,7 @@ import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import PipelineStatus from '@/components/PipelineStatus';
 import PropertyNotes from '@/components/PropertyNotes';
 import PropertyActivity from '@/components/PropertyActivity';
-import { normalizeCommonName } from '@/lib/normalization';
+import { normalizeCommonName, toTitleCase } from '@/lib/normalization';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
   ssr: false,
