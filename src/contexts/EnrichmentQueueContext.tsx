@@ -41,6 +41,11 @@ interface EnrichmentQueueContextType {
   removeItem: (id: string) => void;
   clearCompleted: () => void;
   startPolling: (id: string, config: Omit<PollConfig, 'currentAttempt'>) => void;
+  getEnrichmentStatus: (entityId: string, type?: EnrichmentItemType) => { 
+    isActive: boolean; 
+    status: EnrichmentStatus | null; 
+    error?: string;
+  };
 }
 
 const EnrichmentQueueContext = createContext<EnrichmentQueueContextType | undefined>(undefined);
@@ -394,6 +399,27 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
 
   const activeCount = items.filter(item => item.status === 'pending' || item.status === 'processing' || item.status === 'polling').length;
 
+  const getEnrichmentStatus = useCallback((entityId: string, type?: EnrichmentItemType) => {
+    // Find the most recent enrichment for this entity (optionally filtered by type)
+    const matchingItems = items.filter(item => 
+      item.entityId === entityId && (!type || item.type === type)
+    );
+    
+    if (matchingItems.length === 0) {
+      return { isActive: false, status: null };
+    }
+    
+    // Get the most recent item (items are sorted newest first)
+    const latestItem = matchingItems[0];
+    const isActive = latestItem.status === 'pending' || latestItem.status === 'processing' || latestItem.status === 'polling';
+    
+    return {
+      isActive,
+      status: latestItem.status,
+      error: latestItem.error,
+    };
+  }, [items]);
+
   return (
     <EnrichmentQueueContext.Provider value={{
       items,
@@ -405,6 +431,7 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       removeItem,
       clearCompleted,
       startPolling,
+      getEnrichmentStatus,
     }}>
       {children}
     </EnrichmentQueueContext.Provider>

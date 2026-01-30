@@ -16,12 +16,16 @@ const TYPE_LABELS: Record<string, string> = {
   property: 'Property',
   contact: 'Contact',
   organization: 'Organization',
+  contact_phone: 'Phone Lookup',
+  contact_email: 'Email Lookup',
 };
 
 const TYPE_COLORS: Record<string, string> = {
   property: 'bg-blue-100 text-blue-700',
   contact: 'bg-purple-100 text-purple-700',
   organization: 'bg-amber-100 text-amber-700',
+  contact_phone: 'bg-emerald-100 text-emerald-700',
+  contact_email: 'bg-teal-100 text-teal-700',
 };
 
 function getResultUrl(item: EnrichmentQueueItem): string | undefined {
@@ -42,13 +46,13 @@ function getResultUrl(item: EnrichmentQueueItem): string | undefined {
 
 function QueueItem({ item, onRemove }: { item: EnrichmentQueueItem; onRemove: () => void }) {
   const resultUrl = getResultUrl(item);
-  const isActive = item.status === 'pending' || item.status === 'processing';
+  const isActive = item.status === 'pending' || item.status === 'processing' || item.status === 'polling';
   
   const content = (
     <div className={`p-3 border-b border-gray-100 last:border-b-0 ${resultUrl ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 mt-0.5">
-          {item.status === 'processing' && (
+          {(item.status === 'processing' || item.status === 'polling') && (
             <Loader2 className="w-4 h-4 text-green-600 animate-spin" />
           )}
           {item.status === 'pending' && (
