@@ -519,38 +519,38 @@ export default function ContactDetailPage() {
     setIsFindingPhone(true);
     setPhoneMessage(null);
 
-    try {
-      const response = await fetch(`/api/contacts/${contactId}/waterfall-phone`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
+    // Track the original enrichedAt timestamp to detect when webhook updates the contact
+    const originalEnrichedAt = contact.enrichedAt;
 
-      const data = await response.json();
-
-      if (data.success) {
-        setPhoneMessage('Phone lookup initiated. Results will arrive shortly.');
-        // Poll for updates after a few seconds
-        setTimeout(async () => {
-          try {
-            const refreshResponse = await fetch(`/api/contacts/${contactId}`);
-            const refreshData = await refreshResponse.json();
-            if (refreshData.contact?.phone) {
-              setContact(prev => prev ? { ...prev, ...refreshData.contact } : null);
-              setPhoneMessage('Phone number found!');
-            }
-          } catch {}
-          setTimeout(() => setPhoneMessage(null), 5000);
-        }, 5000);
-      } else {
-        setPhoneMessage(data.error || 'Could not initiate phone lookup');
-        setTimeout(() => setPhoneMessage(null), 5000);
-      }
-    } catch (err) {
-      setPhoneMessage('Failed to initiate phone lookup');
-      setTimeout(() => setPhoneMessage(null), 5000);
-    } finally {
-      setIsFindingPhone(false);
-    }
+    startEnrichment({
+      type: 'contact_phone',
+      entityId: contactId,
+      entityName: `${contact.fullName || 'Contact'} - Phone`,
+      apiEndpoint: `/api/contacts/${contactId}/waterfall-phone`,
+      pollForCompletion: {
+        checkEndpoint: `/api/contacts/${contactId}`,
+        // Check if enrichedAt timestamp changed (indicating webhook updated the contact)
+        checkField: 'contact.enrichedAt',
+        originalValue: originalEnrichedAt,
+        compareMode: 'changed',
+        maxAttempts: 20,
+        intervalMs: 3000,
+      },
+      onSuccess: async () => {
+        // Refresh contact data after successful enrichment
+        try {
+          const refreshResponse = await fetch(`/api/contacts/${contactId}`);
+          const refreshData = await refreshResponse.json();
+          if (refreshData.contact) {
+            setContact(prev => prev ? { ...prev, ...refreshData.contact } : null);
+          }
+        } catch {}
+        setIsFindingPhone(false);
+      },
+      onError: () => {
+        setIsFindingPhone(false);
+      },
+    });
   };
 
   const handleFindEmail = async () => {
@@ -559,38 +559,38 @@ export default function ContactDetailPage() {
     setIsFindingEmail(true);
     setEmailMessage(null);
 
-    try {
-      const response = await fetch(`/api/contacts/${contactId}/waterfall-email`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-      });
+    // Track the original enrichedAt timestamp to detect when webhook updates the contact
+    const originalEnrichedAt = contact.enrichedAt;
 
-      const data = await response.json();
-
-      if (data.success) {
-        setEmailMessage('Email lookup initiated. Results will arrive shortly.');
-        // Poll for updates after a few seconds
-        setTimeout(async () => {
-          try {
-            const refreshResponse = await fetch(`/api/contacts/${contactId}`);
-            const refreshData = await refreshResponse.json();
-            if (refreshData.contact?.email) {
-              setContact(prev => prev ? { ...prev, ...refreshData.contact } : null);
-              setEmailMessage('Email found!');
-            }
-          } catch {}
-          setTimeout(() => setEmailMessage(null), 5000);
-        }, 5000);
-      } else {
-        setEmailMessage(data.error || 'Could not initiate email lookup');
-        setTimeout(() => setEmailMessage(null), 5000);
-      }
-    } catch (err) {
-      setEmailMessage('Failed to initiate email lookup');
-      setTimeout(() => setEmailMessage(null), 5000);
-    } finally {
-      setIsFindingEmail(false);
-    }
+    startEnrichment({
+      type: 'contact_email',
+      entityId: contactId,
+      entityName: `${contact.fullName || 'Contact'} - Email`,
+      apiEndpoint: `/api/contacts/${contactId}/waterfall-email`,
+      pollForCompletion: {
+        checkEndpoint: `/api/contacts/${contactId}`,
+        // Check if enrichedAt timestamp changed (indicating webhook updated the contact)
+        checkField: 'contact.enrichedAt',
+        originalValue: originalEnrichedAt,
+        compareMode: 'changed',
+        maxAttempts: 20,
+        intervalMs: 3000,
+      },
+      onSuccess: async () => {
+        // Refresh contact data after successful enrichment
+        try {
+          const refreshResponse = await fetch(`/api/contacts/${contactId}`);
+          const refreshData = await refreshResponse.json();
+          if (refreshData.contact) {
+            setContact(prev => prev ? { ...prev, ...refreshData.contact } : null);
+          }
+        } catch {}
+        setIsFindingEmail(false);
+      },
+      onError: () => {
+        setIsFindingEmail(false);
+      },
+    });
   };
 
   if (isLoading) {

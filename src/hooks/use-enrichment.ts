@@ -11,6 +11,14 @@ interface EnrichmentOptions {
   requestBody?: Record<string, unknown>;
   onSuccess?: (data: unknown) => void;
   onError?: (error: string) => void;
+  pollForCompletion?: {
+    checkEndpoint: string;
+    checkField: string;
+    maxAttempts?: number;
+    intervalMs?: number;
+    originalValue?: unknown;
+    compareMode?: 'truthy' | 'changed' | 'valid_status';
+  };
 }
 
 const PROGRESS_MESSAGES: Record<EnrichmentItemType, string[]> = {
@@ -35,13 +43,27 @@ const PROGRESS_MESSAGES: Record<EnrichmentItemType, string[]> = {
     'Validating emails...',
     'Building your contact list...',
   ],
+  contact_phone: [
+    'Initiating phone lookup...',
+    'Searching provider databases...',
+    'Verifying phone numbers...',
+    'Waiting for results...',
+    'Completing phone lookup...',
+  ],
+  contact_email: [
+    'Initiating email lookup...',
+    'Searching provider databases...',
+    'Validating email addresses...',
+    'Waiting for results...',
+    'Completing email lookup...',
+  ],
 };
 
 export function useEnrichment() {
   const { addToQueue, updateItem, markCompleted, markFailed } = useEnrichmentQueue();
 
   const startEnrichment = useCallback(async (options: EnrichmentOptions) => {
-    const { type, entityId, entityName, apiEndpoint, requestBody, onSuccess, onError } = options;
+    const { type, entityId, entityName, apiEndpoint, requestBody, onSuccess, onError, pollForCompletion } = options;
     
     const queueId = addToQueue({
       type,
@@ -71,10 +93,9 @@ export function useEnrichment() {
       }
       const response = await fetch(apiEndpoint, fetchOptions);
       
-      clearInterval(progressInterval);
-      
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
+        clearInterval(progressInterval);
         if (response.redirected || response.status === 307) {
           throw new Error('Session expired - please refresh the page');
         }
@@ -84,12 +105,75 @@ export function useEnrichment() {
       const data = await response.json();
       
       if (!response.ok) {
+        clearInterval(progressInterval);
         throw new Error(data.error || 'Enrichment failed');
+      }
+
+      // If polling for webhook-based completion, wait for the field to be populated
+      if (pollForCompletion) {
+        const { 
+          checkEndpoint, 
+          checkField, 
+          maxAttempts = 20, 
+          intervalMs = 3000,
+          originalValue,
+          compareMode = 'truthy'
+        } = pollForCompletion;
+        
+        updateItem(queueId, { message: 'Waiting for results...', progress: 50 });
+        
+        let attempts = 0;
+        let completed = false;
+        
+        while (attempts < maxAttempts && !completed) {
+          await new Promise(resolve => setTimeout(resolve, intervalMs));
+          attempts++;
+          
+          try {
+            const checkResponse = await fetch(checkEndpoint);
+            if (checkResponse.ok) {
+              const checkData = await checkResponse.json();
+              const fieldValue = checkField.split('.').reduce((obj: any, key) => obj?.[key], checkData);
+              
+              // Determine if the condition is met based on compare mode
+              let conditionMet = false;
+              if (compareMode === 'truthy') {
+                conditionMet = Boolean(fieldValue);
+              } else if (compareMode === 'changed') {
+                conditionMet = fieldValue !== originalValue;
+              } else if (compareMode === 'valid_status') {
+                // For email validation - check if status is 'valid' and different from original
+                conditionMet = fieldValue === 'valid' && fieldValue !== originalValue;
+              }
+              
+              if (conditionMet) {
+                completed = true;
+                updateItem(queueId, { message: 'Results received!', progress: 90 });
+              } else {
+                const pollProgress = 50 + (attempts / maxAttempts) * 30;
+                updateItem(queueId, { 
+                  message: `Waiting for results... (${attempts}/${maxAttempts})`,
+                  progress: Math.min(pollProgress, 80)
+                });
+              }
+            }
+          } catch {
+            // Continue polling on error
+          }
+        }
+        
+        clearInterval(progressInterval);
+        
+        if (!completed) {
+          throw new Error('Lookup timed out - results may still arrive. Please refresh the page later.');
+        }
+      } else {
+        clearInterval(progressInterval);
       }
       
       const resultUrl = type === 'property' 
         ? `/property/${entityId}` 
-        : type === 'contact'
+        : (type === 'contact' || type === 'contact_phone' || type === 'contact_email')
           ? `/contact/${entityId}`
           : `/organization/${entityId}`;
       

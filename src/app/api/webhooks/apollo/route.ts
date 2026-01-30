@@ -198,6 +198,11 @@ export async function POST(request: NextRequest) {
 
       // Also update emails if provided
       const emails = person.emails || [];
+      console.log('[Apollo Webhook] Emails found:', emails.length);
+      if (emails.length > 0) {
+        console.log('[Apollo Webhook] First email data:', JSON.stringify(emails[0]));
+      }
+      
       if (emails.length > 0 && emails[0].email) {
         const existingContacts = await db.select()
           .from(contacts)
@@ -208,8 +213,13 @@ export async function POST(request: NextRequest) {
           const contact = existingContacts[0];
           const emailData = emails[0];
           
-          // Only update if we don't have an email yet
-          if (!contact.email) {
+          // Update if no email OR current email is not validated
+          const shouldUpdateEmail = !contact.email || contact.emailValidationStatus !== 'valid';
+          console.log('[Apollo Webhook] Should update email:', shouldUpdateEmail, 
+            '(current email:', contact.email, 
+            ', validation:', contact.emailValidationStatus, ')');
+          
+          if (shouldUpdateEmail) {
             const emailStatus = emailData.email_status_cd?.toLowerCase() === 'verified' 
               ? 'valid' 
               : (emailData.email_status_cd?.toLowerCase() || 'not_validated');
@@ -222,7 +232,8 @@ export async function POST(request: NextRequest) {
               })
               .where(eq(contacts.id, contact.id));
 
-            console.log('[Apollo Webhook] Updated contact email:', emailData.email);
+            console.log('[Apollo Webhook] Updated contact email:', emailData.email, 'status:', emailStatus);
+            updatedContacts++;
           }
         }
       }

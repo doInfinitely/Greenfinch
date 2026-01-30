@@ -3,7 +3,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import { useToast } from '@/hooks/use-toast';
 
-export type EnrichmentItemType = 'property' | 'contact' | 'organization';
+export type EnrichmentItemType = 'property' | 'contact' | 'organization' | 'contact_phone' | 'contact_email';
 export type EnrichmentStatus = 'pending' | 'processing' | 'completed' | 'failed';
 
 export interface EnrichmentQueueItem {
