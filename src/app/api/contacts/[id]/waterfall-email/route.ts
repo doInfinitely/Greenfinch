@@ -73,7 +73,9 @@ export async function POST(
       );
     }
 
-    if (result.apolloId && !contact.providerId) {
+    // Always update providerId with the ID from the waterfall response
+    // Apollo returns different IDs for different API calls, and the webhook uses the waterfall ID
+    if (result.apolloId) {
       await db.update(contacts)
         .set({ 
           providerId: result.apolloId,
