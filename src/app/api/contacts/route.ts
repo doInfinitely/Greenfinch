@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
     const query = searchParams.get('q')?.trim();
     const emailStatus = searchParams.get('emailStatus');
     const title = searchParams.get('title');
+    const organizationId = searchParams.get('organizationId');
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(searchParams.get('limit') || String(DEFAULT_LIMIT), 10)));
     const sortBy = searchParams.get('sortBy') || 'fullName';
@@ -39,6 +40,15 @@ export async function GET(request: NextRequest) {
       conditions.push(ilike(contacts.title, `%${title}%`));
     }
 
+    // Filter by organization - find contacts linked to a specific org
+    if (organizationId) {
+      const contactIdsInOrg = db
+        .select({ contactId: contactOrganizations.contactId })
+        .from(contactOrganizations)
+        .where(eq(contactOrganizations.orgId, organizationId));
+      conditions.push(sql`${contacts.id} IN (${contactIdsInOrg})`);
+    }
+
     const propertyCountSubquery = db
       .select({
         contactId: propertyContacts.contactId,
@@ -63,6 +73,11 @@ export async function GET(request: NextRequest) {
         fullName: contacts.fullName,
         email: contacts.email,
         phone: contacts.phone,
+        phoneLabel: contacts.phoneLabel,
+        aiPhone: contacts.aiPhone,
+        aiPhoneLabel: contacts.aiPhoneLabel,
+        enrichmentPhoneWork: contacts.enrichmentPhoneWork,
+        enrichmentPhonePersonal: contacts.enrichmentPhonePersonal,
         title: contacts.title,
         employerName: contacts.employerName,
         emailStatus: contacts.emailStatus,

@@ -25,6 +25,11 @@ interface Contact {
   fullName: string | null;
   email: string | null;
   phone: string | null;
+  phoneLabel: string | null;
+  aiPhone: string | null;
+  aiPhoneLabel: string | null;
+  enrichmentPhoneWork: string | null;
+  enrichmentPhonePersonal: string | null;
   title: string | null;
   employerName: string | null;
   emailStatus: string | null;
@@ -35,6 +40,12 @@ interface Contact {
   properties: PropertyRelation[];
   organizationCount: number;
   organizations: OrgRelation[];
+}
+
+interface Organization {
+  id: string;
+  name: string | null;
+  domain: string | null;
 }
 
 interface PaginationInfo {
@@ -63,6 +74,12 @@ export default function ContactsPage() {
   const [availableTitles, setAvailableTitles] = useState<string[]>([]);
   const [expandedContact, setExpandedContact] = useState<string | null>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [organizationFilter, setOrganizationFilter] = useState<Organization | null>(null);
+  const [orgSearchQuery, setOrgSearchQuery] = useState('');
+  const [orgSearchResults, setOrgSearchResults] = useState<Organization[]>([]);
+  const [showOrgDropdown, setShowOrgDropdown] = useState(false);
+  const orgSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const orgDropdownRef = useRef<HTMLDivElement>(null);
 
   const fetchContacts = useCallback(async (page = 1) => {
     setIsLoading(true);
@@ -76,6 +93,7 @@ export default function ContactsPage() {
       if (searchQuery) params.set('q', searchQuery);
       if (emailStatusFilter) params.set('emailStatus', emailStatusFilter);
       if (titleFilter) params.set('title', titleFilter);
+      if (organizationFilter) params.set('organizationId', organizationFilter.id);
 
       const response = await fetch(`/api/contacts?${params.toString()}`);
       const data = await response.json();
@@ -97,7 +115,73 @@ export default function ContactsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, emailStatusFilter, titleFilter, sortBy, sortOrder]);
+  }, [searchQuery, emailStatusFilter, titleFilter, organizationFilter, sortBy, sortOrder]);
+
+  // Organization search functionality
+  const searchOrganizations = useCallback(async (query: string) => {
+    if (query.length < 2) {
+      setOrgSearchResults([]);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/organizations/list?q=${encodeURIComponent(query)}&limit=10`);
+      const data = await response.json();
+      setOrgSearchResults(data.organizations || []);
+    } catch {
+      setOrgSearchResults([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (orgSearchTimeoutRef.current) {
+      clearTimeout(orgSearchTimeoutRef.current);
+    }
+
+    if (orgSearchQuery.length >= 2) {
+      orgSearchTimeoutRef.current = setTimeout(() => {
+        searchOrganizations(orgSearchQuery);
+      }, 300);
+    } else {
+      setOrgSearchResults([]);
+    }
+
+    return () => {
+      if (orgSearchTimeoutRef.current) {
+        clearTimeout(orgSearchTimeoutRef.current);
+      }
+    };
+  }, [orgSearchQuery, searchOrganizations]);
+
+  // Close org dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (orgDropdownRef.current && !orgDropdownRef.current.contains(event.target as Node)) {
+        setShowOrgDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Helper to get all phone numbers for a contact
+  const getPhoneNumbers = (contact: Contact): { number: string; label: string }[] => {
+    const phones: { number: string; label: string }[] = [];
+    
+    if (contact.phone) {
+      phones.push({ number: contact.phone, label: contact.phoneLabel || 'Primary' });
+    }
+    if (contact.enrichmentPhoneWork && contact.enrichmentPhoneWork !== contact.phone) {
+      phones.push({ number: contact.enrichmentPhoneWork, label: 'Work' });
+    }
+    if (contact.enrichmentPhonePersonal && contact.enrichmentPhonePersonal !== contact.phone && contact.enrichmentPhonePersonal !== contact.enrichmentPhoneWork) {
+      phones.push({ number: contact.enrichmentPhonePersonal, label: 'Personal' });
+    }
+    if (contact.aiPhone && contact.aiPhone !== contact.phone && contact.aiPhone !== contact.enrichmentPhoneWork && contact.aiPhone !== contact.enrichmentPhonePersonal) {
+      phones.push({ number: contact.aiPhone, label: contact.aiPhoneLabel || 'AI' });
+    }
+    
+    return phones;
+  };
 
   useEffect(() => {
     if (searchTimeoutRef.current) {
@@ -210,6 +294,58 @@ export default function ContactsPage() {
                 </option>
               ))}
             </select>
+            <div className="relative flex-1 min-w-[180px]" ref={orgDropdownRef}>
+              {organizationFilter ? (
+                <div className="flex items-center gap-2 px-3 py-2 text-sm border border-green-500 rounded-lg bg-green-50">
+                  <span className="truncate">{organizationFilter.name || organizationFilter.domain}</span>
+                  <button
+                    onClick={() => {
+                      setOrganizationFilter(null);
+                      setOrgSearchQuery('');
+                    }}
+                    className="text-gray-500 hover:text-gray-700 flex-shrink-0"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <input
+                    type="text"
+                    placeholder="Filter by organization..."
+                    value={orgSearchQuery}
+                    onChange={(e) => {
+                      setOrgSearchQuery(e.target.value);
+                      setShowOrgDropdown(true);
+                    }}
+                    onFocus={() => setShowOrgDropdown(true)}
+                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+                  />
+                  {showOrgDropdown && orgSearchResults.length > 0 && (
+                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                      {orgSearchResults.map((org) => (
+                        <button
+                          key={org.id}
+                          onClick={() => {
+                            setOrganizationFilter(org);
+                            setOrgSearchQuery('');
+                            setShowOrgDropdown(false);
+                          }}
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex flex-col"
+                        >
+                          <span className="font-medium text-gray-900">{org.name || 'Unknown'}</span>
+                          {org.domain && (
+                            <span className="text-xs text-gray-500">{org.domain}</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -243,7 +379,7 @@ export default function ContactsPage() {
             </svg>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No contacts found</h3>
             <p className="text-gray-500">
-              {searchQuery || emailStatusFilter || titleFilter
+              {searchQuery || emailStatusFilter || titleFilter || organizationFilter
                 ? 'Try adjusting your search or filter criteria.'
                 : 'Contacts will appear here once enriched.'}
             </p>
@@ -328,12 +464,25 @@ export default function ContactsPage() {
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {contact.phone ? (
-                              <span className="text-sm text-gray-900">{contact.phone}</span>
-                            ) : (
-                              <span className="text-sm text-gray-400">—</span>
-                            )}
+                          <td className="px-6 py-4">
+                            {(() => {
+                              const phones = getPhoneNumbers(contact);
+                              if (phones.length === 0) {
+                                return <span className="text-sm text-gray-400">—</span>;
+                              }
+                              return (
+                                <div className="flex flex-col gap-0.5">
+                                  {phones.map((p, idx) => (
+                                    <div key={idx} className="flex items-center gap-1.5">
+                                      <span className="text-sm text-gray-900">{p.number}</span>
+                                      {phones.length > 1 && (
+                                        <span className="text-xs text-gray-500">({p.label})</span>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              );
+                            })()}
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             {contact.title ? (
