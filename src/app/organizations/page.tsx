@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface Organization {
   id: string;
@@ -47,7 +48,7 @@ export default function OrganizationsPage() {
       params.set('sortBy', sortBy);
       params.set('sortOrder', sortOrder);
       if (searchQuery) params.set('q', searchQuery);
-      if (typeFilter) params.set('type', typeFilter);
+      if (typeFilter && typeFilter !== 'all') params.set('type', typeFilter);
 
       const response = await fetch(`/api/organizations?${params.toString()}`);
       const data = await response.json();
@@ -139,18 +140,19 @@ export default function OrganizationsPage() {
               />
             </svg>
           </div>
-          <select
-            value={typeFilter}
-            onChange={(e) => setTypeFilter(e.target.value)}
-            className="w-full md:w-auto px-4 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
-          >
-            <option value="">All Types</option>
-            {availableTypes.map((type) => (
-              <option key={type} value={type}>
-                {type}
-              </option>
-            ))}
-          </select>
+          <Select value={typeFilter} onValueChange={setTypeFilter}>
+            <SelectTrigger className="w-full md:w-48">
+              <SelectValue placeholder="All Types" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Types</SelectItem>
+              {availableTypes.map((type) => (
+                <SelectItem key={type} value={type}>
+                  {type}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {error && (
@@ -183,7 +185,7 @@ export default function OrganizationsPage() {
             </svg>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No organizations found</h3>
             <p className="text-gray-500">
-              {searchQuery || typeFilter
+              {searchQuery || (typeFilter && typeFilter !== 'all')
                 ? 'Try adjusting your search or filter criteria.'
                 : 'Organizations will appear here once enriched.'}
             </p>

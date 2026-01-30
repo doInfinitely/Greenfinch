@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 interface PropertyRelation {
   propertyId: string;
@@ -90,8 +91,8 @@ export default function ContactsPage() {
       params.set('sortBy', sortBy);
       params.set('sortOrder', sortOrder);
       if (searchQuery) params.set('q', searchQuery);
-      if (emailStatusFilter) params.set('emailStatus', emailStatusFilter);
-      if (titleFilter) params.set('title', titleFilter);
+      if (emailStatusFilter && emailStatusFilter !== 'all') params.set('emailStatus', emailStatusFilter);
+      if (titleFilter && titleFilter !== 'all') params.set('title', titleFilter);
       if (organizationFilter) params.set('organizationId', organizationFilter.id);
 
       const response = await fetch(`/api/contacts?${params.toString()}`);
@@ -267,30 +268,32 @@ export default function ContactsPage() {
             </svg>
           </div>
           <div className="flex flex-wrap gap-2">
-            <select
-              value={emailStatusFilter}
-              onChange={(e) => setEmailStatusFilter(e.target.value)}
-              className="flex-1 min-w-[140px] px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
-            >
-              <option value="">All Email Status</option>
-              {availableStatuses.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-            <select
-              value={titleFilter}
-              onChange={(e) => setTitleFilter(e.target.value)}
-              className="flex-1 min-w-[140px] px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
-            >
-              <option value="">All Titles</option>
-              {availableTitles.map((title) => (
-                <option key={title} value={title}>
-                  {title}
-                </option>
-              ))}
-            </select>
+            <Select value={emailStatusFilter} onValueChange={setEmailStatusFilter}>
+              <SelectTrigger className="flex-1 min-w-[140px]">
+                <SelectValue placeholder="All Email Status" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Email Status</SelectItem>
+                {availableStatuses.map((status) => (
+                  <SelectItem key={status} value={status}>
+                    {status}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={titleFilter} onValueChange={setTitleFilter}>
+              <SelectTrigger className="flex-1 min-w-[140px]">
+                <SelectValue placeholder="All Titles" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Titles</SelectItem>
+                {availableTitles.map((title) => (
+                  <SelectItem key={title} value={title}>
+                    {title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <div className="relative flex-1 min-w-[180px]" ref={orgDropdownRef}>
               {organizationFilter ? (
                 <div className="flex items-center gap-2 px-3 py-2 text-sm border border-green-500 rounded-lg bg-green-50">
@@ -376,7 +379,7 @@ export default function ContactsPage() {
             </svg>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No contacts found</h3>
             <p className="text-gray-500">
-              {searchQuery || emailStatusFilter || titleFilter || organizationFilter
+              {searchQuery || (emailStatusFilter && emailStatusFilter !== 'all') || (titleFilter && titleFilter !== 'all') || organizationFilter
                 ? 'Try adjusting your search or filter criteria.'
                 : 'Contacts will appear here once enriched.'}
             </p>

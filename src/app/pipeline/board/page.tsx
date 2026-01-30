@@ -218,16 +218,19 @@ export default function PipelineBoard() {
 
   return (
     <AppSidebar>
-      <div className="h-full bg-gray-50 p-6 overflow-x-auto">
+      <div className="h-full bg-gray-50 p-4 md:p-6 overflow-x-auto">
         <div className="max-w-full">
-          <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-            <h1 className="text-2xl font-bold text-gray-900">Pipeline Board</h1>
+          <div className="flex items-center justify-between mb-4 md:mb-6 flex-wrap gap-3">
+            <div>
+              <h1 className="text-xl md:text-2xl font-bold text-gray-900">Pipeline Board</h1>
+              <p className="text-xs text-gray-500 md:hidden mt-1">Swipe to see more columns →</p>
+            </div>
             
             {isAdmin && (
               <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-muted-foreground" />
+                <Users className="w-4 h-4 text-muted-foreground hidden md:block" />
                 <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-                  <SelectTrigger className="w-48" data-testid="select-owner-filter">
+                  <SelectTrigger className="w-36 md:w-48" data-testid="select-owner-filter">
                     <SelectValue placeholder="Filter by owner" />
                   </SelectTrigger>
                   <SelectContent>
@@ -260,11 +263,11 @@ export default function PipelineBoard() {
           ) : error ? (
             <div className="text-center py-12 text-red-600">{error}</div>
           ) : (
-            <div className="flex gap-4 min-w-max pb-4">
+            <div className="flex gap-3 md:gap-4 min-w-max pb-4 snap-x snap-mandatory">
               {BOARD_COLUMNS.map((status) => (
                 <div 
                   key={status} 
-                  className="w-72 flex-shrink-0" 
+                  className="w-64 md:w-72 flex-shrink-0 snap-start" 
                   data-testid={`column-${status}`}
                   onDragOver={(e) => handleDragOver(e, status)}
                   onDragLeave={handleDragLeave}
@@ -281,7 +284,7 @@ export default function PipelineBoard() {
                         </span>
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className={`min-h-[400px] max-h-[600px] overflow-y-auto space-y-3 transition-colors ${
+                    <CardContent className={`min-h-[300px] md:min-h-[400px] max-h-[500px] md:max-h-[600px] overflow-y-auto space-y-2 md:space-y-3 transition-colors ${
                       dragOverColumn === status ? 'bg-primary/5' : ''
                     }`}>
                       {(data?.items[status]?.length || 0) > 0 ? (
