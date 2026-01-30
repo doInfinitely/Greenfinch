@@ -442,6 +442,13 @@ Return JSON:
     const parsed = parseJsonResponse(text);
     
     console.log(`[FocusedEnrichment] Stage 2 complete with ${sources.length} grounded sources`);
+    console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${parsed.propertyWebsite || 'none'}, phone: ${parsed.propertyPhone || 'none'}`);
+    
+    // Log parsed keys when website/phone missing to help diagnose
+    if (!parsed.propertyWebsite || !parsed.propertyPhone) {
+      const keys = Object.keys(parsed || {});
+      console.log(`[FocusedEnrichment] Stage 2 parsed keys: ${keys.join(', ')}`);
+    }
     
     return {
       data: {
