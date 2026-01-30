@@ -26,7 +26,7 @@ export default function LandingNav() {
               <div className="w-8 h-8 bg-gradient-to-br from-green-500 to-emerald-600 rounded-lg flex items-center justify-center">
                 <span className="text-white font-bold text-lg">G</span>
               </div>
-              <span className="text-xl font-semibold text-gray-900">Greenfinch</span>
+              <span className="text-xl font-semibold text-gray-900">greenfinch.ai</span>
             </Link>
             
             <div className="hidden md:flex items-center gap-6">

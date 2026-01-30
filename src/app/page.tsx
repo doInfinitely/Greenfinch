@@ -8,7 +8,7 @@ import LandingFooter from '@/components/LandingFooter';
 
 const testimonials = [
   {
-    quote: "Greenfinch has completely transformed how we prospect. We're connecting with decision makers 3x faster than before.",
+    quote: "greenfinch.ai has completely transformed how we prospect. We're connecting with decision makers 3x faster than before.",
     name: "Sarah Jenkins",
     title: "VP of Sales, Apex Property Management",
     initial: "S",
@@ -300,7 +300,7 @@ export default function LandingPage() {
                 Qualify fast. Then feed your CRM.
               </h2>
               <p className="text-lg text-gray-600 mb-6">
-                Greenfinch sits upstream of your CRM. We help you find the right properties and people so you only fill your pipeline with high-quality, verified leads.
+                greenfinch.ai sits upstream of your CRM. We help you find the right properties and people so you only fill your pipeline with high-quality, verified leads.
               </p>
               <Link
                 href="/product"
