@@ -473,17 +473,17 @@ export default function PipelineStatus({ propertyId, inline = false }: PipelineS
         </div>
         {assignDialog}
         <Dialog open={showQualifyDialog} onOpenChange={setShowQualifyDialog}>
-          <DialogContent>
+          <DialogContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
             <DialogHeader>
-              <DialogTitle>
+              <DialogTitle className="text-gray-900 dark:text-gray-100">
                 {pendingStatus === 'qualified' ? 'Qualify Property' : 'Update Deal Value'}
               </DialogTitle>
-              <DialogDescription>
+              <DialogDescription className="text-gray-500 dark:text-gray-400">
                 Enter the expected deal value for this property. This helps track your pipeline value.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-              <Label htmlFor="dealValue">Expected Deal Value</Label>
+              <Label htmlFor="dealValue" className="text-gray-700 dark:text-gray-300">Expected Deal Value</Label>
               <div className="relative mt-2">
                 <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -495,7 +495,7 @@ export default function PipelineStatus({ propertyId, inline = false }: PipelineS
                     const val = e.target.value.replace(/[^0-9]/g, '');
                     setDealValueInput(val ? parseInt(val, 10).toLocaleString() : '');
                   }}
-                  className="pl-8"
+                  className="pl-8 bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-100"
                   data-testid="input-deal-value"
                 />
               </div>
@@ -574,17 +574,17 @@ export default function PipelineStatus({ propertyId, inline = false }: PipelineS
       </Card>
 
       <Dialog open={showQualifyDialog} onOpenChange={setShowQualifyDialog}>
-        <DialogContent>
+        <DialogContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800">
           <DialogHeader>
-            <DialogTitle>
+            <DialogTitle className="text-gray-900 dark:text-gray-100">
               {pendingStatus === 'qualified' ? 'Qualify Property' : 'Update Deal Value'}
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-gray-500 dark:text-gray-400">
               Enter the expected deal value for this property. This helps track your pipeline value.
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
-            <Label htmlFor="dealValue">Expected Deal Value</Label>
+            <Label htmlFor="dealValue" className="text-gray-700 dark:text-gray-300">Expected Deal Value</Label>
             <div className="relative mt-2">
               <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
@@ -596,7 +596,7 @@ export default function PipelineStatus({ propertyId, inline = false }: PipelineS
                   const val = e.target.value.replace(/[^0-9]/g, '');
                   setDealValueInput(val ? parseInt(val, 10).toLocaleString() : '');
                 }}
-                className="pl-8"
+                className="pl-8 bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-100"
                 data-testid="input-deal-value"
               />
             </div>
