@@ -31,7 +31,7 @@ const DIRECTIONALS: Record<string, string> = {
   'SW': 'SW', 'SOUTHWEST': 'SW',
 };
 
-function toTitleCase(word: string): string {
+export function toTitleCase(word: string): string {
   if (!word) return word;
   if (word.length === 1) return word.toUpperCase();
   return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();

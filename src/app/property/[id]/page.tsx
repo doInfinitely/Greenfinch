@@ -18,10 +18,7 @@ import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import PipelineStatus from '@/components/PipelineStatus';
 import PropertyNotes from '@/components/PropertyNotes';
 import PropertyActivity from '@/components/PropertyActivity';
-
-function toTitleCase(str: string): string {
-  return str.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-}
+import { normalizeCommonName } from '@/lib/normalization';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
   ssr: false,
@@ -584,7 +581,7 @@ export default function PropertyDetailPage() {
               const parentData = await parentRes.json();
               setParentProperty({
                 propertyKey: prop.parentPropertyKey,
-                commonName: parentData.property?.commonName || parentData.property?.dcadBizName || null,
+                commonName: parentData.property?.commonName || normalizeCommonName(parentData.property?.dcadBizName) || null,
               });
             }
           }
@@ -931,7 +928,7 @@ export default function PropertyDetailPage() {
                   )}
                   
                   <div className="flex flex-wrap items-center gap-2 mt-3">
-                    <EnrichmentStatusBadge status={enrichmentStatus} />
+                    {enrichmentStatus !== 'pending' && <EnrichmentStatusBadge status={enrichmentStatus} />}
                     {enrichedProperty?.assetCategory && (() => {
                       const colors = CATEGORY_COLORS[enrichedProperty.assetCategory] || DEFAULT_CATEGORY_COLORS;
                       return (
@@ -1009,7 +1006,7 @@ export default function PropertyDetailPage() {
                 </div>
               </div>
 
-              {enrichmentMessage && (
+              {enrichmentMessage && enrichmentStatus !== 'pending' && (
                 <div className={`mb-6 p-3 rounded-lg ${enrichmentStatus === 'completed' ? 'bg-green-50 text-green-700' : enrichmentStatus === 'failed' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
                   <p className="text-sm">{enrichmentMessage}</p>
                 </div>
@@ -1307,7 +1304,7 @@ export default function PropertyDetailPage() {
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="font-medium text-gray-900">
-                            {constituent.commonName || constituent.dcadBizName || 'Unnamed Property'}
+                            {constituent.commonName || normalizeCommonName(constituent.dcadBizName) || 'Unnamed Property'}
                           </p>
                           {constituent.buildingSqft && (
                             <p className="text-sm text-gray-500">
