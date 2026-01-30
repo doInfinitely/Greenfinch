@@ -147,47 +147,76 @@ export async function POST(request: NextRequest) {
           const contact = existingContacts[0];
           console.log('[Apollo Webhook] Found matching contact:', contact.fullName);
 
-          // Get primary phone (first one) and all phones
-          const primaryPhone = phoneNumbers[0].sanitized_number || phoneNumbers[0].raw_number;
-          const allPhones = phoneNumbers.map(p => p.sanitized_number || p.raw_number);
+          // Get all phones with their types
+          const allPhones = phoneNumbers.map(p => ({
+            number: p.sanitized_number || p.raw_number,
+            type: p.type_cd
+          }));
           
-          // Separate work and mobile phones
-          const workPhones = phoneNumbers.filter(p => 
-            p.type_cd === 'work' || p.type_cd === 'work_direct' || p.type_cd === 'work_hq'
-          );
-          const mobilePhones = phoneNumbers.filter(p => p.type_cd === 'mobile');
-
-          // Build update data - DON'T replace existing phone if contact already has one
+          // Get existing phones to check for duplicates (normalize for comparison)
+          const normalizePhone = (phone: string | null) => phone?.replace(/\D/g, '') || '';
+          const existingPhones = new Set([
+            normalizePhone(contact.phone),
+            normalizePhone(contact.aiPhone),
+            normalizePhone(contact.enrichmentPhoneWork),
+            normalizePhone(contact.enrichmentPhonePersonal),
+          ].filter(p => p));
+          
+          // Filter out duplicates
+          const newPhones = allPhones.filter(p => !existingPhones.has(normalizePhone(p.number)));
+          
+          console.log('[Apollo Webhook] Existing phones:', Array.from(existingPhones));
+          console.log('[Apollo Webhook] New phones to add:', newPhones.map(p => `${p.number} (${p.type})`));
+          
+          // Build update data
           const updateData: Record<string, any> = {
             phoneSource: 'apollo_waterfall',
             enrichedAt: new Date(),
           };
 
-          // Store work phones in enrichmentPhoneWork
-          if (workPhones.length > 0) {
-            updateData.enrichmentPhoneWork = workPhones[0].sanitized_number || workPhones[0].raw_number;
+          // Separate by type from new phones
+          const workPhones = newPhones.filter(p => 
+            p.type === 'work' || p.type === 'work_direct' || p.type === 'work_hq'
+          );
+          const mobilePhones = newPhones.filter(p => p.type === 'mobile');
+          const otherPhones = newPhones.filter(p => 
+            p.type !== 'work' && p.type !== 'work_direct' && p.type !== 'work_hq' && p.type !== 'mobile'
+          );
+
+          // Store work phones in enrichmentPhoneWork (if slot is empty)
+          if (workPhones.length > 0 && !contact.enrichmentPhoneWork) {
+            updateData.enrichmentPhoneWork = workPhones[0].number;
           }
-          // Store mobile phones in enrichmentPhonePersonal
-          if (mobilePhones.length > 0) {
-            updateData.enrichmentPhonePersonal = mobilePhones[0].sanitized_number || mobilePhones[0].raw_number;
+          // Store mobile phones in enrichmentPhonePersonal (if slot is empty)
+          if (mobilePhones.length > 0 && !contact.enrichmentPhonePersonal) {
+            updateData.enrichmentPhonePersonal = mobilePhones[0].number;
           }
 
-          // Only set primary phone if contact doesn't already have one
-          if (!contact.phone && !contact.aiPhone) {
-            updateData.phone = primaryPhone;
-            updateData.normalizedPhone = primaryPhone;
+          // Set primary phone if contact doesn't have one - use first new phone of any type
+          if (!contact.phone && !contact.aiPhone && newPhones.length > 0) {
+            const primaryPhone = newPhones[0];
+            updateData.phone = primaryPhone.number;
+            updateData.normalizedPhone = primaryPhone.number;
             
-            // Determine phone label from first phone
+            // Determine phone label
             let phoneLabel = 'unknown';
-            const firstPhoneTypeCd = phoneNumbers[0].type_cd;
-            if (firstPhoneTypeCd === 'mobile') {
+            if (primaryPhone.type === 'mobile') {
               phoneLabel = 'mobile';
-            } else if (firstPhoneTypeCd === 'work' || firstPhoneTypeCd === 'work_direct' || firstPhoneTypeCd === 'work_hq') {
+            } else if (primaryPhone.type === 'work' || primaryPhone.type === 'work_direct' || primaryPhone.type === 'work_hq') {
               phoneLabel = 'work';
-            } else if (firstPhoneTypeCd === 'home') {
+            } else if (primaryPhone.type === 'home') {
               phoneLabel = 'home';
             }
             updateData.phoneLabel = phoneLabel;
+          }
+          
+          // If primary phone slot is taken but we have "other" type phones, store in available slot
+          if (contact.phone && otherPhones.length > 0) {
+            if (!contact.enrichmentPhoneWork && !updateData.enrichmentPhoneWork) {
+              updateData.enrichmentPhoneWork = otherPhones[0].number;
+            } else if (!contact.enrichmentPhonePersonal && !updateData.enrichmentPhonePersonal) {
+              updateData.enrichmentPhonePersonal = otherPhones[0].number;
+            }
           }
 
           await db.update(contacts)

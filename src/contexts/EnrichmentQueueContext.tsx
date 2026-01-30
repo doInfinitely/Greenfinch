@@ -144,6 +144,13 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
     
     setItems(prev => {
       const item = prev.find(i => i.id === id);
+      
+      // Guard against duplicate completion - if already completed, don't show toast again
+      if (item?.status === 'completed') {
+        console.log(`[EnrichmentQueue] Item ${id} already completed, skipping duplicate toast`);
+        return prev;
+      }
+      
       const name = entityName || item?.entityName || 'Item';
       toast({
         title: 'Enrichment Complete',
