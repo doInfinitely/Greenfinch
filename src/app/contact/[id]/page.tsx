@@ -855,13 +855,6 @@ export default function ContactDetailPage() {
                   </div>
                 </div>
                 
-                <div>
-                  <label className="block text-sm font-medium text-gray-500 mb-1">Source</label>
-                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-700">
-                    {contact.source || 'Unknown'}
-                  </span>
-                </div>
-                
                 {contact.reviewReason && (
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-500 mb-1">Review Reason</label>

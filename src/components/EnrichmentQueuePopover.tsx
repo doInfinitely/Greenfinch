@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useEnrichmentQueue, EnrichmentQueueItem } from '@/contexts/EnrichmentQueueContext';
 import { Loader2, CheckCircle, XCircle, ChevronRight, X, Sparkles } from 'lucide-react';
@@ -10,6 +10,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
+import confetti from 'canvas-confetti';
 
 const TYPE_LABELS: Record<string, string> = {
   property: 'Property',
@@ -127,14 +128,41 @@ function QueueItem({ item, onRemove }: { item: EnrichmentQueueItem; onRemove: ()
 export default function EnrichmentQueuePopover() {
   const [isOpen, setIsOpen] = useState(false);
   const { items, activeCount, removeItem, clearCompleted } = useEnrichmentQueue();
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const prevCompletedCountRef = useRef(0);
   
   const hasItems = items.length > 0;
   const hasCompletedItems = items.some(item => item.status === 'completed' || item.status === 'failed');
+  const completedCount = items.filter(item => item.status === 'completed').length;
+  
+  // Trigger confetti when a new item completes
+  useEffect(() => {
+    if (completedCount > prevCompletedCountRef.current && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      const x = (rect.left + rect.width / 2) / window.innerWidth;
+      const y = (rect.top + rect.height / 2) / window.innerHeight;
+      
+      // Subtle confetti burst near the queue icon
+      confetti({
+        particleCount: 30,
+        spread: 50,
+        origin: { x, y },
+        colors: ['#10b981', '#34d399', '#6ee7b7', '#fbbf24', '#f59e0b'],
+        ticks: 100,
+        gravity: 1.2,
+        scalar: 0.8,
+        shapes: ['circle', 'square'],
+        disableForReducedMotion: true,
+      });
+    }
+    prevCompletedCountRef.current = completedCount;
+  }, [completedCount]);
   
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
         <button
+          ref={buttonRef}
           className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
           title="Enrichment Queue"
           data-testid="button-enrichment-queue"
