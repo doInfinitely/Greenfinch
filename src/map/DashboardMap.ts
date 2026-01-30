@@ -163,11 +163,21 @@ export class DashboardMap {
   private onStyleReady() {
     if (!this.map) return;
 
+    console.log('[DashboardMap] Style ready, adding sources and layers');
+    console.log('[DashboardMap] regridToken:', !!this.config.regridToken, 'regridTileUrl:', !!this.config.regridTileUrl);
+    
     this.addSources();
     this.addLayers();
     this.registerEventHandlers();
     this.updateLayerVisibility();
     this.emitBounds();
+
+    console.log('[DashboardMap] Layers added. Checking layer existence:');
+    console.log('  - clusters:', !!this.map.getLayer('clusters'));
+    console.log('  - property-points:', !!this.map.getLayer('property-points'));
+    console.log('  - parcels-fill:', !!this.map.getLayer('parcels-fill'));
+    console.log('  - parcels-outline:', !!this.map.getLayer('parcels-outline'));
+    console.log('  - regrid source:', !!this.map.getSource('regrid'));
 
     // Mark ready after a short delay to let tiles start loading
     setTimeout(() => {
@@ -319,8 +329,10 @@ export class DashboardMap {
   };
 
   private onPropertyPointClick = (e: mapboxgl.MapLayerMouseEvent) => {
+    console.log('[DashboardMap] property-points click', e.features?.length, 'features');
     if (!e.features?.length) return;
     const propertyKey = e.features[0].properties?.propertyKey;
+    console.log('[DashboardMap] propertyKey:', propertyKey);
     if (propertyKey && this.config.onPropertyClick) {
       this.config.onPropertyClick(propertyKey);
     }
