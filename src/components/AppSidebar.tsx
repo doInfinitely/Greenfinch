@@ -9,6 +9,7 @@ import {
   MapPin,
   Building2,
   Users,
+  List,
   LayoutDashboard,
   Kanban,
   Settings,
@@ -54,6 +55,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         { href: '/dashboard/map', label: 'Properties', icon: <MapPin className="w-4 h-4" /> },
         { href: '/organizations', label: 'Organizations', icon: <Building2 className="w-4 h-4" /> },
         { href: '/contacts', label: 'Contacts', icon: <Users className="w-4 h-4" /> },
+        { href: '/lists', label: 'My Lists', icon: <List className="w-4 h-4" /> },
       ],
     },
     {

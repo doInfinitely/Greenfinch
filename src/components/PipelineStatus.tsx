@@ -26,6 +26,7 @@ import { PIPELINE_STATUS_LABELS, type PipelineStatus as PipelineStatusType } fro
 
 interface PipelineStatusProps {
   propertyId: string;
+  inline?: boolean;
 }
 
 const STATUS_COLORS: Record<PipelineStatusType, string> = {
@@ -56,7 +57,7 @@ const PIPELINE_PROGRESSION: PipelineStatusType[] = [
   'won',
 ];
 
-export default function PipelineStatus({ propertyId }: PipelineStatusProps) {
+export default function PipelineStatus({ propertyId, inline = false }: PipelineStatusProps) {
   const [pipeline, setPipeline] = useState<{
     status: PipelineStatusType;
     dealValue: number | null;
@@ -148,6 +149,13 @@ export default function PipelineStatus({ propertyId }: PipelineStatusProps) {
   }
 
   if (loading) {
+    if (inline) {
+      return (
+        <div className="flex items-center gap-2">
+          <div className="h-9 w-24 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-md" />
+        </div>
+      );
+    }
     return (
       <Card>
         <CardHeader className="pb-3">
@@ -166,6 +174,125 @@ export default function PipelineStatus({ propertyId }: PipelineStatusProps) {
   const currentStatus = pipeline?.status || 'new';
   const dealValue = pipeline?.dealValue;
 
+  const dropdownContent = (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="outline"
+          className={`flex items-center gap-2 ${STATUS_COLORS[currentStatus]}`}
+          disabled={updating}
+          data-testid="dropdown-pipeline-status"
+        >
+          {STATUS_ICONS[currentStatus]}
+          {PIPELINE_STATUS_LABELS[currentStatus]}
+          <ChevronDown className="w-4 h-4 ml-1" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48">
+        {PIPELINE_PROGRESSION.map((status) => (
+          <DropdownMenuItem
+            key={status}
+            onClick={() => updateStatus(status)}
+            className={currentStatus === status ? 'bg-accent' : ''}
+            data-testid={`menu-item-status-${status}`}
+          >
+            <span className={`flex items-center gap-2 ${STATUS_COLORS[status]} px-2 py-1 rounded-md w-full`}>
+              {STATUS_ICONS[status]}
+              {PIPELINE_STATUS_LABELS[status]}
+            </span>
+          </DropdownMenuItem>
+        ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => updateStatus('lost')}
+          data-testid="menu-item-status-lost"
+        >
+          <span className={`flex items-center gap-2 ${STATUS_COLORS['lost']} px-2 py-1 rounded-md w-full`}>
+            {STATUS_ICONS['lost']}
+            {PIPELINE_STATUS_LABELS['lost']}
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => updateStatus('disqualified')}
+          data-testid="menu-item-status-disqualified"
+        >
+          <span className={`flex items-center gap-2 ${STATUS_COLORS['disqualified']} px-2 py-1 rounded-md w-full`}>
+            {STATUS_ICONS['disqualified']}
+            {PIPELINE_STATUS_LABELS['disqualified']}
+          </span>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
+  const dealValueDisplay = dealValue && dealValue > 0 ? (
+    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+      <DollarSign className="w-4 h-4" />
+      <span className="font-medium">{formatCurrency(dealValue)}</span>
+    </div>
+  ) : null;
+
+  if (inline) {
+    return (
+      <>
+        <div className="flex items-center gap-3">
+          {dropdownContent}
+          {dealValueDisplay}
+        </div>
+        <Dialog open={showQualifyDialog} onOpenChange={setShowQualifyDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {pendingStatus === 'qualified' ? 'Qualify Property' : 'Update Deal Value'}
+              </DialogTitle>
+              <DialogDescription>
+                Enter the expected deal value for this property. This helps track your pipeline value.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="dealValue">Expected Deal Value</Label>
+              <div className="relative mt-2">
+                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="dealValue"
+                  type="text"
+                  placeholder="10,000"
+                  value={dealValueInput}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '');
+                    setDealValueInput(val ? parseInt(val, 10).toLocaleString() : '');
+                  }}
+                  className="pl-8"
+                  data-testid="input-deal-value"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowQualifyDialog(false);
+                  setDealValueInput('');
+                  setPendingStatus(null);
+                }}
+                data-testid="button-cancel-deal-value"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleQualifySubmit}
+                disabled={!dealValueInput}
+                data-testid="button-confirm-deal-value"
+              >
+                {pendingStatus === 'qualified' ? 'Qualify' : 'Update'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </>
+    );
+  }
+
   return (
     <>
       <Card>
@@ -177,61 +304,8 @@ export default function PipelineStatus({ propertyId }: PipelineStatusProps) {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  className={`flex items-center gap-2 ${STATUS_COLORS[currentStatus]}`}
-                  disabled={updating}
-                  data-testid="dropdown-pipeline-status"
-                >
-                  {STATUS_ICONS[currentStatus]}
-                  {PIPELINE_STATUS_LABELS[currentStatus]}
-                  <ChevronDown className="w-4 h-4 ml-1" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                {PIPELINE_PROGRESSION.map((status) => (
-                  <DropdownMenuItem
-                    key={status}
-                    onClick={() => updateStatus(status)}
-                    className={currentStatus === status ? 'bg-accent' : ''}
-                    data-testid={`menu-item-status-${status}`}
-                  >
-                    <span className={`flex items-center gap-2 ${STATUS_COLORS[status]} px-2 py-1 rounded-md w-full`}>
-                      {STATUS_ICONS[status]}
-                      {PIPELINE_STATUS_LABELS[status]}
-                    </span>
-                  </DropdownMenuItem>
-                ))}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem
-                  onClick={() => updateStatus('lost')}
-                  data-testid="menu-item-status-lost"
-                >
-                  <span className={`flex items-center gap-2 ${STATUS_COLORS['lost']} px-2 py-1 rounded-md w-full`}>
-                    {STATUS_ICONS['lost']}
-                    {PIPELINE_STATUS_LABELS['lost']}
-                  </span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => updateStatus('disqualified')}
-                  data-testid="menu-item-status-disqualified"
-                >
-                  <span className={`flex items-center gap-2 ${STATUS_COLORS['disqualified']} px-2 py-1 rounded-md w-full`}>
-                    {STATUS_ICONS['disqualified']}
-                    {PIPELINE_STATUS_LABELS['disqualified']}
-                  </span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            {dealValue && dealValue > 0 && (
-              <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                <DollarSign className="w-4 h-4" />
-                <span className="font-medium">{formatCurrency(dealValue)}</span>
-              </div>
-            )}
+            {dropdownContent}
+            {dealValueDisplay}
           </div>
 
           {currentStatus === 'disqualified' && (

@@ -950,7 +950,8 @@ export default function PropertyDetailPage() {
                     <LowConfidenceMarker confidence={enrichedProperty?.categoryConfidence} />
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  <PipelineStatus propertyId={property.propertyKey} inline />
                   {(() => {
                     const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
                     const isEnrichmentActive = queueStatus.isActive;
@@ -1560,8 +1561,6 @@ export default function PropertyDetailPage() {
 
           <div className="lg:col-span-1">
             <div className="sticky top-20 space-y-4">
-              <PipelineStatus propertyId={property.propertyKey} />
-              
               <PropertyNotes propertyId={property.propertyKey} />
               
               <PropertyActivity propertyId={property.propertyKey} />
