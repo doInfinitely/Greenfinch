@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreHorizontal, List, Upload } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreHorizontal, List, Upload, User } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -381,6 +381,7 @@ export default function PropertyDetailPage() {
   const [enrichmentStatus, setEnrichmentStatus] = useState<EnrichmentStatusType>('not_enriched');
   const [enrichmentMessage, setEnrichmentMessage] = useState<string>('');
   const [showAddToListModal, setShowAddToListModal] = useState(false);
+  const [assignDialogTrigger, setAssignDialogTrigger] = useState(0);
   const { startEnrichment } = useEnrichment();
   const { getEnrichmentStatus } = useEnrichmentQueue();
   
@@ -954,7 +955,7 @@ export default function PropertyDetailPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus />
+                  <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls triggerAssignDialog={assignDialogTrigger} />
                   {(() => {
                     const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
                     const isEnrichmentActive = queueStatus.isActive;
@@ -994,7 +995,16 @@ export default function PropertyDetailPage() {
                         <MoreHorizontal className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuContent align="end" className="w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+                      <AdminOnly>
+                        <DropdownMenuItem 
+                          onClick={() => setAssignDialogTrigger(prev => prev + 1)}
+                          data-testid="menu-item-assign-owner"
+                        >
+                          <User className="w-4 h-4 mr-2" />
+                          Assign Owner
+                        </DropdownMenuItem>
+                      </AdminOnly>
                       <DropdownMenuItem 
                         onClick={handleAddToList}
                         disabled={!userId}

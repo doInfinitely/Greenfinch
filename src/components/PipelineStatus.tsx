@@ -37,6 +37,8 @@ interface PipelineStatusProps {
   propertyId: string;
   inline?: boolean;
   autoAssignOnFirstStatus?: boolean;
+  hideOwnerControls?: boolean;
+  triggerAssignDialog?: number; // Increment to open dialog from parent
 }
 
 const STATUS_COLORS: Record<PipelineStatusType, string> = {
@@ -83,7 +85,7 @@ interface OrgMember {
   profileImageUrl: string;
 }
 
-export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false }: PipelineStatusProps) {
+export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false, hideOwnerControls = false, triggerAssignDialog = 0 }: PipelineStatusProps) {
   const { orgRole } = useAuth();
   const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
   
@@ -108,6 +110,13 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   useEffect(() => {
     fetchPipeline();
   }, [propertyId]);
+
+  // Handle external trigger to open assign dialog
+  useEffect(() => {
+    if (triggerAssignDialog > 0) {
+      openAssignDialog();
+    }
+  }, [triggerAssignDialog]);
 
   async function fetchPipeline() {
     try {
@@ -376,7 +385,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         </AvatarFallback>
       </Avatar>
       <span className="truncate max-w-[120px]">{pipeline.owner.displayName}</span>
-      {isAdmin && (
+      {!hideOwnerControls && isAdmin && (
         <Button
           variant="ghost"
           size="sm"
@@ -390,7 +399,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     </div>
   ) : (
     <div className="flex items-center gap-2">
-      {pipeline?.id && currentStatus === 'new' && !pipeline.ownerId && (
+      {!hideOwnerControls && pipeline?.id && currentStatus === 'new' && !pipeline.ownerId && (
         <Button
           variant="outline"
           size="sm"
@@ -403,7 +412,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
           {claiming ? 'Claiming...' : 'Claim'}
         </Button>
       )}
-      {isAdmin && pipeline?.id && (
+      {!hideOwnerControls && isAdmin && pipeline?.id && (
         <Button
           variant="ghost"
           size="sm"
