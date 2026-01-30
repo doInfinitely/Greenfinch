@@ -217,7 +217,7 @@ Return JSON:
   "lot_acres_confidence":0.0-1.0,
   "net_sqft":number|null,
   "net_sqft_confidence":0.0-1.0,
-  "summary":"One sentence: '[Name] is a Class [X] [category] [anchored by X / featuring Y], built in [year] [and renovated in year if applicable].'"
+  "summary":"A natural sentence describing the property type, class, key features, and year built."
 }`;
 
   console.log('[FocusedEnrichment] Stage 1: Classification and physical verification...');
@@ -400,7 +400,7 @@ Return JSON:
   "managementCompany":{"name":"Company or null","domain":"website.com or null","confidence":0.0-1.0},
   "propertyWebsite":"https://propertyname.com or null - property-specific website, NOT management company site",
   "propertyPhone":"+1-XXX-XXX-XXXX or null - main leasing/property phone",
-  "summary":"One sentence: 'The property was [acquired/developed] by [Owner] in [year] and is [self-managed / managed by Company], [a firm specializing in X].'"
+  "summary":"A natural sentence describing the ownership history and management arrangement."
 }`;
 
   console.log('[FocusedEnrichment] Stage 2: Ownership identification...');
@@ -496,12 +496,13 @@ ADDRESS: ${classification.canonicalAddress}
 MANAGEMENT COMPANY: ${managementInfo}
 OWNER: ${ownerInfo}
 
-TASK: Search the web to find 3-7 contacts who make property decisions:
-- Property managers responsible for THIS specific location
-- Facilities managers/directors, maintainence supervisors, and property operations staff for THIS specific location 
-- Include leasing or owner contacts or property management contacts not directly connected to the location ONLY if no other relevant contacts are found
+TASK: Search the web to find 3-7 contacts who make property decisions for THIS SPECIFIC PROPERTY at THIS ADDRESS:
+- Property managers responsible for THIS specific location in ${property.city || 'Dallas'}, Texas
+- Facilities managers/directors, maintenance supervisors, and property operations staff for THIS specific location
+- Include leasing or owner contacts ONLY if directly connected to this property
 
-DO NOT include: condo unit owners, HOA board members, residential tenants.
+CRITICAL: Only include organizations and contacts that are DIRECTLY involved with THIS property at THIS address.
+DO NOT include: organizations from other states/cities, condo unit owners, HOA board members, residential tenants, or companies with similar names but different locations.
 
 CONTACT INFORMATION TO CAPTURE:
 - Email: Include ONLY if found from credible source (company website, LinkedIn, press release). Do NOT guess.
@@ -514,7 +515,7 @@ Return JSON:
 {
   "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","email":"found@email.com or null","phone":"+1-555-123-4567 or null","phone_label":"direct_work|office|personal|null","phone_confidence":0.0-1.0,"role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8,"contact_type":"individual|general"}],
   "organizations":[{"name":"Org name","domain":"domain.com","org_type":"owner|management|tenant|developer","roles":["property_manager","owner"]}],
-  "summary":"2-3 sentences citing evidence: 'Based on [source], the primary contact is [Name], listed on [website] as [role]. [Secondary contact] at [company] handles [responsibility].'"
+  "summary":"A brief natural description of the key decision-makers found and their roles at this property."
 }
 
 contact_type values:
@@ -670,19 +671,19 @@ export async function cleanupAISummary(rawSummary: string): Promise<string> {
   
   const client = getGeminiClient();
   
-  const prompt = `You are an editor cleaning up an AI research summary for a commercial real estate prospecting tool. 
+  const prompt = `You are an editor polishing a research summary for a commercial real estate prospecting tool.
 
-Edit the following research summary to:
-1. Remove any internal system references (error messages, timeout notices, API names like "Gemini", technical debug info)
-2. Remove citation numbers like [1], [2], [3, 4], etc. - just integrate the information naturally
-3. Fix grammar, improve readability, and ensure professional tone
-4. Keep it concise - aim for 2-3 clear sentences maximum
-5. Focus on the key facts: property ownership, management, and any notable details
-6. If the summary is mostly errors or unhelpful, return a brief statement like "Research in progress." or summarize whatever useful info exists
+Edit the following research summary into a flowing, natural paragraph:
+1. Combine information into 2-4 sentences that read naturally as a cohesive paragraph
+2. Remove citation numbers like [1], [2], etc. - just integrate the information smoothly
+3. Remove any system references, error messages, or technical debug info
+4. Focus on key facts: property type, ownership, management, and notable features
+5. Write in professional but conversational tone - avoid bullet points or fragmented phrases
+6. Do NOT truncate or cut off mid-sentence - complete each thought naturally
 
-IMPORTANT: Return ONLY the cleaned summary text. No explanations, no markdown, no quotes.
+IMPORTANT: Return ONLY the polished paragraph. No explanations, no markdown, no quotes.
 
-Raw summary to clean:
+Raw summary to polish:
 ${rawSummary}`;
 
   try {
