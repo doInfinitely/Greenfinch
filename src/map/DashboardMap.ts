@@ -34,6 +34,8 @@ export class DashboardMap {
   private pendingStyleSwitch: string | null = null;
   private isAnimating = false;
   private initError: string | null = null;
+  private handlersRegistered = false; // Track if handlers were registered
+  private styleSwitchPending = false; // Prevent multiple style switches
 
   constructor(config: DashboardMapConfig) {
     this.config = config;
@@ -107,12 +109,17 @@ export class DashboardMap {
     this.map.on('zoom', () => {
       if (this.isDestroyed || !this.map || !this.styleReady) return;
       this.updateLayerVisibility();
+    });
+    
+    // Check style switch on idle (after user stops interacting) instead of on every zoom
+    this.map.on('idle', () => {
+      if (this.isDestroyed || !this.map || !this.styleReady) return;
       this.checkStyleSwitch();
     });
   }
 
   private checkStyleSwitch() {
-    if (!this.map || !this.styleReady) return;
+    if (!this.map || !this.styleReady || this.styleSwitchPending) return;
     
     // Don't switch styles during animations - it interrupts flyTo
     if (this.isAnimating) return;
@@ -122,11 +129,20 @@ export class DashboardMap {
     const needsSatellite = shouldBeSatellite && this.currentStyle !== SATELLITE_STYLE;
     const needsLight = !shouldBeSatellite && this.currentStyle !== LIGHT_STYLE;
 
-    if (needsSatellite) {
-      this.switchStyle(SATELLITE_STYLE);
-    } else if (needsLight) {
-      // Temporarily disabled light switch to debug tile loading issue
-      // this.switchStyle(LIGHT_STYLE);
+    if (needsSatellite || needsLight) {
+      this.styleSwitchPending = true;
+      // Delay style switch to avoid interrupting user interaction
+      setTimeout(() => {
+        this.styleSwitchPending = false;
+        if (!this.map || !this.styleReady || this.isAnimating) return;
+        
+        const currentZoom = this.map.getZoom();
+        if (currentZoom >= 15 && this.currentStyle !== SATELLITE_STYLE) {
+          this.switchStyle(SATELLITE_STYLE);
+        } else if (currentZoom < 15 && this.currentStyle !== LIGHT_STYLE) {
+          this.switchStyle(LIGHT_STYLE);
+        }
+      }, 500);
     }
   }
 
@@ -163,21 +179,11 @@ export class DashboardMap {
   private onStyleReady() {
     if (!this.map) return;
 
-    console.log('[DashboardMap] Style ready, adding sources and layers');
-    console.log('[DashboardMap] regridToken:', !!this.config.regridToken, 'regridTileUrl:', !!this.config.regridTileUrl);
-    
     this.addSources();
     this.addLayers();
     this.registerEventHandlers();
     this.updateLayerVisibility();
     this.emitBounds();
-
-    console.log('[DashboardMap] Layers added. Checking layer existence:');
-    console.log('  - clusters:', !!this.map.getLayer('clusters'));
-    console.log('  - property-points:', !!this.map.getLayer('property-points'));
-    console.log('  - parcels-fill:', !!this.map.getLayer('parcels-fill'));
-    console.log('  - parcels-outline:', !!this.map.getLayer('parcels-outline'));
-    console.log('  - regrid source:', !!this.map.getSource('regrid'));
 
     // Mark ready after a short delay to let tiles start loading
     setTimeout(() => {
@@ -300,9 +306,10 @@ export class DashboardMap {
 
   private registerEventHandlers() {
     if (!this.map) return;
-
-    // Remove existing handlers by using named functions would be better,
-    // but for simplicity we just re-register (Mapbox handles duplicates)
+    
+    // Only register handlers once - they persist across style changes
+    if (this.handlersRegistered) return;
+    this.handlersRegistered = true;
 
     // Cluster click handler
     this.map.on('click', 'clusters', this.onClusterClick);
@@ -329,10 +336,8 @@ export class DashboardMap {
   };
 
   private onPropertyPointClick = (e: mapboxgl.MapLayerMouseEvent) => {
-    console.log('[DashboardMap] property-points click', e.features?.length, 'features');
     if (!e.features?.length) return;
     const propertyKey = e.features[0].properties?.propertyKey;
-    console.log('[DashboardMap] propertyKey:', propertyKey);
     if (propertyKey && this.config.onPropertyClick) {
       this.config.onPropertyClick(propertyKey);
     }
