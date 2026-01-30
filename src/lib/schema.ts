@@ -615,6 +615,9 @@ export const propertyPipeline = pgTable('property_pipeline', {
   propertyId: uuid('property_id').references(() => properties.id).notNull(),
   clerkOrgId: text('clerk_org_id').notNull(), // Clerk organization ID
   
+  // Owner - the user responsible for this opportunity
+  ownerId: uuid('owner_id').references(() => users.id),
+  
   // Pipeline status
   status: text('status').default('new').notNull(), // One of PIPELINE_STATUSES
   
@@ -631,6 +634,7 @@ export const propertyPipeline = pgTable('property_pipeline', {
   orgPropertyIdx: uniqueIndex('idx_property_pipeline_org_property').on(table.clerkOrgId, table.propertyId),
   statusIdx: index('idx_property_pipeline_status').on(table.status),
   orgIdx: index('idx_property_pipeline_org').on(table.clerkOrgId),
+  ownerIdx: index('idx_property_pipeline_owner').on(table.ownerId),
 }));
 
 // Property notes - notes with user attribution at org level
