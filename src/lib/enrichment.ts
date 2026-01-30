@@ -1802,7 +1802,7 @@ export async function enrichContactsWithLinkedIn(contacts: EnrichedContact[]): P
   const contactsWithLinkedIn = sortedContacts.filter(c => c.linkedinUrl);
   const skippedNonPerson = contacts.filter(c => isGenericRoleBasedName(c.fullName));
   
-  console.log(`[Enrichment] LinkedIn discovery for ${contactsNeedingLinkedIn.length} contacts (skipping ${skippedNonPerson.length} non-person names)...`);
+  console.log(`[Enrichment] LinkedIn SERP discovery: ${contactsNeedingLinkedIn.length} need lookup, ${contactsWithLinkedIn.length} already have LinkedIn (skipping ${skippedNonPerson.length} non-person names)`);
   
   const limit = pLimit(CONCURRENCY.SERP);
   
@@ -2175,7 +2175,9 @@ export async function enrichProperty(aggregatedProperty: AggregatedProperty): Pr
       });
     }
     
-    // Continue with LinkedIn enrichment for contacts that need it
+    // Continue with LinkedIn enrichment for contacts that need it (SERP API)
+    const contactsNeedingLinkedInCount = contactsWithPDL.filter(c => !c.linkedinUrl).length;
+    console.log(`[Enrichment] Running SERP LinkedIn lookup for ${contactsNeedingLinkedInCount} contacts without LinkedIn URLs`);
     const contactsWithLinkedIn = await enrichContactsWithLinkedIn(contactsWithPDL);
     const validatedContacts = await validateAllContacts(contactsWithLinkedIn);
     
