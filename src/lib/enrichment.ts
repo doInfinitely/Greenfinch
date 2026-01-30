@@ -2,7 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import { v5 as uuidv5 } from "uuid";
 import { db } from "./db";
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from "./schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNotNull } from "drizzle-orm";
 import type { AggregatedProperty } from "./snowflake";
 import { findEmail } from "./hunter";
 import { validateEmail as validateEmailNeverbounce } from "./neverbounce";
@@ -14,6 +14,7 @@ import { enrichPersonPDL, enrichCompanyPDL } from "./pdl";
 import { enrichPersonApollo } from "./apollo";
 import { lookupPerson as lookupPersonEnrichLayer } from "./enrichlayer";
 import { enrichContactCascade, ContactEnrichmentInput } from "./cascade-enrichment";
+import { normalizeDomain, normalizeName as normalizeNameForDedup } from "./deduplication";
 import pLimit from "p-limit";
 import { CONCURRENCY, GEMINI_MODEL } from "./constants";
 import { createRequire } from "module";
@@ -2335,11 +2336,13 @@ export async function storeEnrichmentResults(
   const orgsToEnrich: string[] = [];
   
   for (const org of result.organizations) {
-    const existingOrg = org.domain
-      ? await db.query.organizations.findFirst({
-          where: eq(organizations.domain, org.domain),
-        })
-      : null;
+    // Use normalized domain matching to prevent duplicates like pallas-midtown.com vs pallasmidtown.com
+    let existingOrg: typeof organizations.$inferSelect | null = null;
+    if (org.domain) {
+      const targetNormalized = normalizeDomain(org.domain);
+      const allOrgs = await db.select().from(organizations).where(isNotNull(organizations.domain));
+      existingOrg = allOrgs.find(o => normalizeDomain(o.domain) === targetNormalized) || null;
+    }
 
     let orgId: string;
     let needsEnrichment = false;
@@ -2418,11 +2421,25 @@ export async function storeEnrichmentResults(
   // Store contacts
   const contactIds: string[] = [];
   for (const contact of result.contacts) {
-    const existingContact = contact.normalizedEmail
-      ? await db.query.contacts.findFirst({
-          where: eq(contacts.normalizedEmail, contact.normalizedEmail),
-        })
-      : null;
+    // First try to match by normalized email
+    let existingContact: typeof contacts.$inferSelect | null = null;
+    if (contact.normalizedEmail) {
+      existingContact = await db.query.contacts.findFirst({
+        where: eq(contacts.normalizedEmail, contact.normalizedEmail),
+      }) || null;
+    }
+    
+    // If no email match, try matching by name + normalized domain
+    if (!existingContact && contact.fullName) {
+      const targetName = normalizeNameForDedup(contact.fullName);
+      const targetDomain = normalizeDomain(contact.companyDomain);
+      const allContacts = await db.select().from(contacts);
+      existingContact = allContacts.find(c => {
+        const cName = normalizeNameForDedup(c.fullName);
+        const cDomain = normalizeDomain(c.companyDomain);
+        return cName === targetName && cDomain === targetDomain;
+      }) || null;
+    }
 
     let contactId: string;
     if (existingContact) {

@@ -95,53 +95,65 @@ export async function findDuplicateOrganizations(): Promise<DuplicateGroup<typeo
 }
 
 /**
- * Find duplicate contacts by same name + similar domain
+ * Find duplicate contacts by:
+ * 1. Same validated email
+ * 2. Same name + similar domain
+ * 
+ * Returns merged groups avoiding double-counting contacts.
  */
 export async function findDuplicateContacts(): Promise<DuplicateGroup<typeof contacts.$inferSelect>[]> {
   const allContacts = await db.select().from(contacts);
+  const processedIds = new Set<string>();
+  const duplicates: DuplicateGroup<typeof contacts.$inferSelect>[] = [];
   
-  // Group by normalized name + normalized domain
-  const contactMap = new Map<string, (typeof contacts.$inferSelect)[]>();
-  
+  // First pass: Group by validated email
+  const emailMap = new Map<string, (typeof contacts.$inferSelect)[]>();
   for (const contact of allContacts) {
+    if (contact.emailValidationStatus === 'valid' && contact.normalizedEmail) {
+      const normalizedEmail = contact.normalizedEmail.toLowerCase().trim();
+      if (!emailMap.has(normalizedEmail)) {
+        emailMap.set(normalizedEmail, []);
+      }
+      emailMap.get(normalizedEmail)!.push(contact);
+    }
+  }
+  
+  // Process email-based duplicates first
+  for (const [email, contactList] of emailMap) {
+    if (contactList.length > 1) {
+      contactList.sort(sortContactsByPriority);
+      duplicates.push({
+        key: `email::${email}`,
+        items: contactList,
+        keepId: contactList[0].id,
+        deleteIds: contactList.slice(1).map(c => c.id),
+      });
+      contactList.forEach(c => processedIds.add(c.id));
+    }
+  }
+  
+  // Second pass: Group by normalized name + normalized domain (skip already processed)
+  const nameMap = new Map<string, (typeof contacts.$inferSelect)[]>();
+  for (const contact of allContacts) {
+    if (processedIds.has(contact.id)) continue;
+    
     const normalizedName = normalizeName(contact.fullName);
     const normalizedDomain = normalizeDomain(contact.companyDomain);
     
     if (!normalizedName) continue;
     
-    // Key is name + domain (domain can be empty)
     const key = `${normalizedName}::${normalizedDomain}`;
-    
-    if (!contactMap.has(key)) {
-      contactMap.set(key, []);
+    if (!nameMap.has(key)) {
+      nameMap.set(key, []);
     }
-    contactMap.get(key)!.push(contact);
+    nameMap.get(key)!.push(contact);
   }
   
-  const duplicates: DuplicateGroup<typeof contacts.$inferSelect>[] = [];
-  
-  for (const [key, contactList] of contactMap) {
+  for (const [key, contactList] of nameMap) {
     if (contactList.length > 1) {
-      // Sort by: has valid email first, has provider_id, then by enriched_at desc
-      contactList.sort((a, b) => {
-        // Prefer records with valid email
-        const aHasValidEmail = a.emailValidationStatus === 'valid';
-        const bHasValidEmail = b.emailValidationStatus === 'valid';
-        if (aHasValidEmail && !bHasValidEmail) return -1;
-        if (!aHasValidEmail && bHasValidEmail) return 1;
-        
-        // Then prefer records with Apollo providerId
-        if (a.providerId && !b.providerId) return -1;
-        if (!a.providerId && b.providerId) return 1;
-        
-        // Then by most recent enrichment
-        const aDate = a.enrichedAt?.getTime() || 0;
-        const bDate = b.enrichedAt?.getTime() || 0;
-        return bDate - aDate;
-      });
-      
+      contactList.sort(sortContactsByPriority);
       duplicates.push({
-        key,
+        key: `name::${key}`,
         items: contactList,
         keepId: contactList[0].id,
         deleteIds: contactList.slice(1).map(c => c.id),
@@ -150,6 +162,23 @@ export async function findDuplicateContacts(): Promise<DuplicateGroup<typeof con
   }
   
   return duplicates;
+}
+
+function sortContactsByPriority(a: typeof contacts.$inferSelect, b: typeof contacts.$inferSelect): number {
+  // Prefer records with valid email
+  const aHasValidEmail = a.emailValidationStatus === 'valid';
+  const bHasValidEmail = b.emailValidationStatus === 'valid';
+  if (aHasValidEmail && !bHasValidEmail) return -1;
+  if (!aHasValidEmail && bHasValidEmail) return 1;
+  
+  // Then prefer records with Apollo providerId
+  if (a.providerId && !b.providerId) return -1;
+  if (!a.providerId && b.providerId) return 1;
+  
+  // Then by most recent enrichment
+  const aDate = a.enrichedAt?.getTime() || 0;
+  const bDate = b.enrichedAt?.getTime() || 0;
+  return bDate - aDate;
 }
 
 /**
