@@ -23,35 +23,35 @@ interface EnrichmentOptions {
 
 const PROGRESS_MESSAGES: Record<EnrichmentItemType, string[]> = {
   organization: [
-    'Looking up company information...',
+    'Greenfinch is researching company...',
     'Searching industry databases...',
     'Gathering social profiles...',
     'Validating company details...',
-    'Finalizing enrichment...',
+    'Completing research...',
   ],
   contact: [
-    'Validating email address...',
+    'Greenfinch is verifying email...',
     'Searching LinkedIn profiles...',
     'Cross-referencing data sources...',
     'Verifying contact details...',
-    'Completing enrichment...',
+    'Completing research...',
   ],
   property: [
-    'Researching property ownership...',
+    'Greenfinch is researching property...',
     'Identifying decision makers...',
     'Finding contact information...',
     'Validating emails...',
     'Building your contact list...',
   ],
   contact_phone: [
-    'Initiating phone lookup...',
+    'Greenfinch is finding phone number...',
     'Searching provider databases...',
     'Verifying phone numbers...',
     'Waiting for results...',
     'Completing phone lookup...',
   ],
   contact_email: [
-    'Initiating email lookup...',
+    'Greenfinch is finding email...',
     'Searching provider databases...',
     'Validating email addresses...',
     'Waiting for results...',
@@ -106,7 +106,7 @@ export function useEnrichment() {
       
       if (!response.ok) {
         clearInterval(progressInterval);
-        throw new Error(data.error || 'Enrichment failed');
+        throw new Error(data.error || 'Research failed');
       }
 
       clearInterval(progressInterval);
@@ -150,7 +150,7 @@ export function useEnrichment() {
       return { success: true, data };
     } catch (err) {
       clearInterval(progressInterval);
-      const errorMessage = err instanceof Error ? err.message : 'Enrichment failed';
+      const errorMessage = err instanceof Error ? err.message : 'Research failed';
       markFailed(queueId, errorMessage);
       onError?.(errorMessage);
       return { success: false, error: errorMessage };

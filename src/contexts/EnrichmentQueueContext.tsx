@@ -215,7 +215,7 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       
       return prev.map(i => 
         i.id === id 
-          ? { ...i, status: 'completed' as const, progress: 100, message: 'Enrichment complete', completedAt: Date.now(), resultUrl, pollConfig: undefined }
+          ? { ...i, status: 'completed' as const, progress: 100, message: 'Research complete', completedAt: Date.now(), resultUrl, pollConfig: undefined }
           : i
       );
     });
@@ -223,8 +223,8 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
     // Show toast OUTSIDE of setItems to avoid React batching issues
     if (shouldShowToast) {
       toast({
-        title: 'Enrichment Complete',
-        description: `${toastName} has been enriched successfully.`,
+        title: 'Research Complete',
+        description: `Greenfinch has finished researching ${toastName}.`,
       });
     }
   }, [toast]);
@@ -261,7 +261,7 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       
       return prev.map(i => 
         i.id === id 
-          ? { ...i, status: 'failed' as const, error, message: 'Enrichment failed', completedAt: Date.now(), pollConfig: undefined }
+          ? { ...i, status: 'failed' as const, error, message: 'Research failed', completedAt: Date.now(), pollConfig: undefined }
           : i
       );
     });
@@ -269,8 +269,8 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
     // Show toast OUTSIDE of setItems to avoid React batching issues
     if (shouldShowToast) {
       toast({
-        title: 'Enrichment Failed',
-        description: `Failed to enrich ${toastName}: ${error}`,
+        title: 'Research Failed',
+        description: `Greenfinch couldn't complete research for ${toastName}: ${error}`,
         variant: 'destructive',
       });
     }

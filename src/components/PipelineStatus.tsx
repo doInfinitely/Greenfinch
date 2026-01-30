@@ -29,13 +29,13 @@ interface PipelineStatusProps {
 }
 
 const STATUS_COLORS: Record<PipelineStatusType, string> = {
-  new: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-  qualified: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300',
-  attempted_contact: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300',
-  active_opportunity: 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300',
-  won: 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300',
-  lost: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300',
-  disqualified: 'bg-orange-100 text-orange-700 dark:bg-orange-900 dark:text-orange-300',
+  new: 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
+  qualified: 'bg-blue-200 text-blue-800 dark:bg-blue-800 dark:text-blue-200',
+  attempted_contact: 'bg-amber-200 text-amber-800 dark:bg-amber-800 dark:text-amber-200',
+  active_opportunity: 'bg-violet-200 text-violet-800 dark:bg-violet-800 dark:text-violet-200',
+  won: 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-200',
+  lost: 'bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200',
+  disqualified: 'bg-orange-200 text-orange-800 dark:bg-orange-800 dark:text-orange-200',
 };
 
 const STATUS_ICONS: Record<PipelineStatusType, React.ReactNode> = {

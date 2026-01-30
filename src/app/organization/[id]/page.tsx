@@ -8,6 +8,7 @@ import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import { Loader2, XCircle } from 'lucide-react';
+import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 
 interface PropertyRelation {
   id: string;
@@ -132,7 +133,7 @@ export default function OrganizationDetailPage() {
   const handleEnrichOrganization = async () => {
     if (!organization) return;
     
-    setEnrichMessage('Enrichment started - check the queue for progress');
+    setEnrichMessage('Greenfinch is researching - check the queue for progress');
     
     startEnrichment({
       type: 'organization',
@@ -143,7 +144,7 @@ export default function OrganizationDetailPage() {
         const result = data as { organization: Organization };
         if (result.organization) {
           setOrganization(result.organization);
-          setEnrichMessage('Enriched successfully');
+          setEnrichMessage('Research complete');
           setTimeout(() => setEnrichMessage(null), 5000);
         } else {
           setEnrichMessage(null);
@@ -337,8 +338,10 @@ export default function OrganizationDetailPage() {
                           <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
                         ) : enrichmentHasFailed ? (
                           <XCircle className="w-3 h-3 mr-1.5" />
-                        ) : null}
-                        {isEnrichmentActive ? 'Enriching...' : enrichmentHasFailed ? 'Failed' : 'Enrich Company'}
+                        ) : (
+                          <GreenfinchAgentIcon size={12} className="mr-1.5" />
+                        )}
+                        {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : 'Research Company'}
                       </button>
                     </AdminOnly>
                   );

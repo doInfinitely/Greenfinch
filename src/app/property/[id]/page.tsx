@@ -14,6 +14,7 @@ import StreetView from '@/components/StreetView';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
+import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import PipelineStatus from '@/components/PipelineStatus';
 import PropertyNotes from '@/components/PropertyNotes';
 import PropertyActivity from '@/components/PropertyActivity';
@@ -649,7 +650,7 @@ export default function PropertyDetailPage() {
     if (!property) return;
 
     setEnrichmentStatus('pending');
-    setEnrichmentMessage('Enrichment started - check the queue for progress');
+    setEnrichmentMessage('Greenfinch is researching - check the queue for progress');
 
     // Build display name: prefer common name with address, or just address
     const displayName = enrichedProperty?.commonName 
@@ -976,11 +977,9 @@ export default function PropertyDetailPage() {
                           ) : enrichmentHasFailed ? (
                             <XCircle className="w-4 h-4 mr-2" />
                           ) : (
-                            <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                            </svg>
+                            <GreenfinchAgentIcon className="w-4 h-4 mr-2" />
                           )}
-                          {isEnrichmentActive ? 'Enriching...' : enrichmentHasFailed ? 'Enrichment Failed' : 'Find Decision Makers'}
+                          {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Research Failed' : 'Research with Greenfinch Agent'}
                         </button>
                       </AdminOnly>
                     );
@@ -1484,16 +1483,16 @@ export default function PropertyDetailPage() {
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                  </svg>
+                  <div className="w-12 h-12 text-gray-300 mx-auto mb-3 flex items-center justify-center">
+                    <GreenfinchAgentIcon size={48} className="text-gray-300" />
+                  </div>
                   <p className="text-gray-500 mb-3">No contacts discovered yet</p>
                   <AdminOnly>
                     <button
                       onClick={handleEnrichment}
                       className="text-sm text-green-600 hover:text-green-700"
                     >
-                      Click "Find Decision Makers" to discover contacts
+                      Click "Research with Greenfinch Agent" to discover contacts
                     </button>
                   </AdminOnly>
                 </div>

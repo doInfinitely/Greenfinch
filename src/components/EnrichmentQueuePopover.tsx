@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useEnrichmentQueue, EnrichmentQueueItem } from '@/contexts/EnrichmentQueueContext';
-import { Loader2, CheckCircle, XCircle, ChevronRight, X, Sparkles } from 'lucide-react';
+import { Loader2, CheckCircle, XCircle, ChevronRight, X } from 'lucide-react';
+import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { Button } from '@/components/ui/button';
 import {
   Popover,
@@ -177,10 +178,10 @@ export default function EnrichmentQueuePopover() {
         <button
           ref={buttonRef}
           className="relative p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-          title="Enrichment Queue"
-          data-testid="button-enrichment-queue"
+          title="Greenfinch Agent"
+          data-testid="button-greenfinch-agent"
         >
-          <Sparkles className="w-5 h-5" />
+          <GreenfinchAgentIcon size={20} />
           {activeCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-green-500 text-white text-xs font-medium rounded-full flex items-center justify-center animate-pulse" data-testid="badge-active-enrichments">
               {activeCount}
@@ -195,7 +196,7 @@ export default function EnrichmentQueuePopover() {
       <PopoverContent className="w-80 p-0 bg-white dark:bg-gray-900 shadow-lg" align="end" data-testid="popover-enrichment-queue">
         <div className="p-3 border-b border-gray-200 bg-gray-50 rounded-t-lg">
           <div className="flex items-center justify-between">
-            <h3 className="font-semibold text-gray-900">Enrichment Queue</h3>
+            <h3 className="font-semibold text-gray-900">Greenfinch Agent</h3>
             {hasCompletedItems && (
               <Button
                 variant="ghost"
@@ -210,7 +211,7 @@ export default function EnrichmentQueuePopover() {
           </div>
           {activeCount > 0 && (
             <p className="text-xs text-gray-500 mt-1">
-              {activeCount} enrichment{activeCount !== 1 ? 's' : ''} in progress
+              {activeCount} research task{activeCount !== 1 ? 's' : ''} in progress
             </p>
           )}
         </div>
@@ -218,10 +219,10 @@ export default function EnrichmentQueuePopover() {
         <div className="max-h-80 overflow-y-auto">
           {items.length === 0 ? (
             <div className="p-6 text-center text-gray-500">
-              <Sparkles className="w-8 h-8 mx-auto mb-2 text-gray-300" />
-              <p className="text-sm">No recent enrichments</p>
+              <GreenfinchAgentIcon size={32} className="mx-auto mb-2 text-gray-300" />
+              <p className="text-sm">No recent research</p>
               <p className="text-xs text-gray-400 mt-1">
-                Enrichment requests will appear here
+                Research tasks will appear here
               </p>
             </div>
           ) : (
