@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2 } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import Header from '@/components/Header';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
@@ -314,20 +314,105 @@ function EnrichmentStatusBadge({ status }: { status: EnrichmentStatusType }) {
   );
 }
 
-function EmailValidationBadge({ status }: { status: Contact['emailValidationStatus'] }) {
-  const config: Record<NonNullable<Contact['emailValidationStatus']>, { color: string; label: string }> = {
-    valid: { color: 'bg-green-100 text-green-700', label: 'Valid' },
-    invalid: { color: 'bg-red-100 text-red-700', label: 'Invalid' },
-    pending: { color: 'bg-yellow-100 text-yellow-700', label: 'Validating...' },
-    not_validated: { color: 'bg-gray-100 text-gray-500', label: 'Not Validated' },
-  };
+// Validation status icon for email
+function EmailValidationIcon({ hasEmail, status }: { hasEmail: boolean; status: Contact['emailValidationStatus'] }) {
+  if (!hasEmail) {
+    return (
+      <span title="No email" className="inline-flex items-center text-gray-400">
+        <span className="relative">
+          <Mail className="w-4 h-4" />
+          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
+        </span>
+      </span>
+    );
+  }
   
-  const { color, label } = config[status || 'not_validated'];
+  if (status === 'valid') {
+    return (
+      <span title="Email validated" className="inline-flex items-center text-green-600">
+        <span className="relative">
+          <Mail className="w-4 h-4" />
+          <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
+        </span>
+      </span>
+    );
+  }
+  
+  if (status === 'pending') {
+    return (
+      <span title="Validating email..." className="inline-flex items-center text-amber-500">
+        <span className="relative">
+          <Mail className="w-4 h-4" />
+          <div className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 border border-amber-500 border-t-transparent rounded-full animate-spin bg-white" />
+        </span>
+      </span>
+    );
+  }
   
   return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs ${color}`}>
-      {label}
+    <span title="Email not validated" className="inline-flex items-center text-amber-500">
+      <span className="relative">
+        <Mail className="w-4 h-4" />
+        <HelpCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-amber-500 bg-white rounded-full" />
+      </span>
     </span>
+  );
+}
+
+// Validation status icon for phone
+function PhoneValidationIcon({ hasPhone }: { hasPhone: boolean }) {
+  if (!hasPhone) {
+    return (
+      <span title="No phone" className="inline-flex items-center text-gray-400">
+        <span className="relative">
+          <Phone className="w-4 h-4" />
+          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
+        </span>
+      </span>
+    );
+  }
+  
+  return (
+    <span title="Phone available" className="inline-flex items-center text-green-600">
+      <span className="relative">
+        <Phone className="w-4 h-4" />
+        <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
+      </span>
+    </span>
+  );
+}
+
+// Validation status icon for LinkedIn
+function LinkedInValidationIcon({ hasLinkedIn }: { hasLinkedIn: boolean }) {
+  if (!hasLinkedIn) {
+    return (
+      <span title="No LinkedIn" className="inline-flex items-center text-gray-400">
+        <span className="relative">
+          <Linkedin className="w-4 h-4" />
+          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
+        </span>
+      </span>
+    );
+  }
+  
+  return (
+    <span title="LinkedIn available" className="inline-flex items-center text-green-600">
+      <span className="relative">
+        <Linkedin className="w-4 h-4" />
+        <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
+      </span>
+    </span>
+  );
+}
+
+// Contact info summary with validation icons
+function ContactInfoIcons({ contact }: { contact: Contact }) {
+  return (
+    <div className="flex items-center gap-2" data-testid={`contact-info-icons-${contact.id}`}>
+      <EmailValidationIcon hasEmail={!!contact.email} status={contact.emailValidationStatus} />
+      <PhoneValidationIcon hasPhone={!!contact.phone} />
+      <LinkedInValidationIcon hasLinkedIn={!!contact.linkedinUrl} />
+    </div>
   );
 }
 
@@ -1345,16 +1430,17 @@ export default function PropertyDetailPage() {
                             <p className="text-sm text-gray-600 mb-1">{contact.title}</p>
                           )}
                           
-                          <div className="flex flex-wrap items-center gap-3 mt-2">
+                          {/* Contact info validation summary icons */}
+                          <div className="flex items-center gap-2 mt-2 mb-2">
+                            <ContactInfoIcons contact={contact} />
+                          </div>
+                          
+                          <div className="flex flex-wrap items-center gap-3">
                             {contact.email ? (
                               <div className="flex items-center gap-2">
-                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                </svg>
                                 <a href={`mailto:${contact.email}`} className="text-sm text-green-600 hover:text-green-700">
                                   {contact.email}
                                 </a>
-                                <EmailValidationBadge status={contact.emailValidationStatus} />
                                 {contact.emailValidationStatus !== 'valid' && contact.emailValidationStatus !== 'pending' && (
                                   <button
                                     onClick={() => handleValidateEmail(contact)}
@@ -1365,52 +1451,23 @@ export default function PropertyDetailPage() {
                                   </button>
                                 )}
                               </div>
-                            ) : (
-                              <span className="text-xs text-gray-400 flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                                </svg>
-                                No email
-                              </span>
-                            )}
+                            ) : null}
                             
                             {contact.phone ? (
-                              <div className="flex items-center gap-2">
-                                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                                </svg>
-                                <a href={`tel:${contact.phone}`} className="text-sm text-gray-600 hover:text-gray-800">
-                                  {contact.phone}
-                                </a>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-gray-400 flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
-                                </svg>
-                                No phone
-                              </span>
-                            )}
+                              <a href={`tel:${contact.phone}`} className="text-sm text-gray-600 hover:text-gray-800">
+                                {contact.phone}
+                              </a>
+                            ) : null}
                             
-                            {contact.linkedinUrl ? (
+                            {contact.linkedinUrl && (
                               <a
                                 href={contact.linkedinUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="inline-flex items-center text-sm text-blue-600 hover:text-blue-700"
                               >
-                                <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                                </svg>
-                                LinkedIn
+                                View LinkedIn
                               </a>
-                            ) : (
-                              <span className="text-xs text-gray-400 flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 24 24">
-                                  <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
-                                </svg>
-                                No LinkedIn
-                              </span>
                             )}
                             
                             {contact.id && (

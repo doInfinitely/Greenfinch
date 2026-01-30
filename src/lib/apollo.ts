@@ -71,11 +71,12 @@ export async function enrichPersonApollo(
   }
 
   // Build request body for Apollo People Match API
+  // Note: reveal_phone_number requires a webhook_url which we don't have
+  // So we only use reveal_personal_emails for now
   const requestBody: Record<string, any> = {
     first_name: firstName,
     last_name: lastName,
     reveal_personal_emails: options?.revealEmails ?? false,
-    reveal_phone_number: options?.revealPhone ?? false,
   };
   
   if (domain) {

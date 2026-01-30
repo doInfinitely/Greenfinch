@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertTriangle, Flag, Check, X, ExternalLink } from 'lucide-react';
+import { AlertTriangle, Flag, Check, X, ExternalLink, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle } from 'lucide-react';
 import Header from '@/components/Header';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -126,20 +126,135 @@ function LowConfidenceMarker({ confidence }: { confidence: number | null | undef
   );
 }
 
-function EmailStatusBadge({ status }: { status: string | null }) {
-  const config: Record<string, { color: string; label: string }> = {
-    valid: { color: 'bg-green-100 text-green-700', label: 'Valid' },
-    invalid: { color: 'bg-red-100 text-red-700', label: 'Invalid' },
-    pending: { color: 'bg-yellow-100 text-yellow-700', label: 'Pending' },
-    unverified: { color: 'bg-gray-100 text-gray-600', label: 'Unverified' },
-  };
+// Validation status icon for email - shows whether email exists and is validated
+function EmailValidationIcon({ hasEmail, status }: { hasEmail: boolean; status: string | null }) {
+  if (!hasEmail) {
+    // No email - X icon
+    return (
+      <span title="No email" className="inline-flex items-center text-gray-400">
+        <span className="relative">
+          <Mail className="w-4 h-4" />
+          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
+        </span>
+      </span>
+    );
+  }
   
-  const { color, label } = config[status?.toLowerCase() || ''] || config.unverified;
+  const normalizedStatus = status?.toLowerCase();
   
+  if (normalizedStatus === 'valid') {
+    // Validated email - checkmark
+    return (
+      <span title="Email validated" className="inline-flex items-center text-green-600">
+        <span className="relative">
+          <Mail className="w-4 h-4" />
+          <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
+        </span>
+      </span>
+    );
+  }
+  
+  if (normalizedStatus === 'pending') {
+    // Email validation in progress - spinner
+    return (
+      <span title="Validating email..." className="inline-flex items-center text-amber-500">
+        <span className="relative">
+          <Mail className="w-4 h-4" />
+          <div className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 border border-amber-500 border-t-transparent rounded-full animate-spin bg-white" />
+        </span>
+      </span>
+    );
+  }
+  
+  // Has email but not validated - question mark
   return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${color}`}>
-      {label}
+    <span title="Email not validated" className="inline-flex items-center text-amber-500">
+      <span className="relative">
+        <Mail className="w-4 h-4" />
+        <HelpCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-amber-500 bg-white rounded-full" />
+      </span>
     </span>
+  );
+}
+
+// Validation status icon for phone
+function PhoneValidationIcon({ hasPhone }: { hasPhone: boolean }) {
+  if (!hasPhone) {
+    return (
+      <span title="No phone" className="inline-flex items-center text-gray-400">
+        <span className="relative">
+          <Phone className="w-4 h-4" />
+          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
+        </span>
+      </span>
+    );
+  }
+  
+  // Has phone - show checkmark (phones from enrichment are considered validated)
+  return (
+    <span title="Phone available" className="inline-flex items-center text-green-600">
+      <span className="relative">
+        <Phone className="w-4 h-4" />
+        <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
+      </span>
+    </span>
+  );
+}
+
+// Validation status icon for LinkedIn
+function LinkedInValidationIcon({ hasLinkedIn, confidence }: { hasLinkedIn: boolean; confidence: number | null }) {
+  if (!hasLinkedIn) {
+    return (
+      <span title="No LinkedIn" className="inline-flex items-center text-gray-400">
+        <span className="relative">
+          <Linkedin className="w-4 h-4" />
+          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
+        </span>
+      </span>
+    );
+  }
+  
+  // High confidence (>= 0.7) or any LinkedIn URL present
+  const isValidated = confidence !== null && confidence >= 0.7;
+  
+  if (isValidated) {
+    return (
+      <span title={`LinkedIn validated (${Math.round((confidence || 0) * 100)}% confidence)`} className="inline-flex items-center text-green-600">
+        <span className="relative">
+          <Linkedin className="w-4 h-4" />
+          <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
+        </span>
+      </span>
+    );
+  }
+  
+  // Has LinkedIn but low confidence
+  return (
+    <span title={`LinkedIn needs review (${Math.round((confidence || 0) * 100)}% confidence)`} className="inline-flex items-center text-amber-500">
+      <span className="relative">
+        <Linkedin className="w-4 h-4" />
+        <HelpCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-amber-500 bg-white rounded-full" />
+      </span>
+    </span>
+  );
+}
+
+// Contact info summary row with validation icons
+function ContactInfoSummary({ contact }: { contact: Contact }) {
+  return (
+    <div className="flex items-center gap-3" data-testid="contact-info-summary">
+      <EmailValidationIcon 
+        hasEmail={!!contact.email} 
+        status={contact.emailValidationStatus} 
+      />
+      <PhoneValidationIcon 
+        hasPhone={!!(contact.phone || contact.normalizedPhone)} 
+      />
+      <LinkedInValidationIcon 
+        hasLinkedIn={!!contact.linkedinUrl} 
+        confidence={contact.linkedinConfidence} 
+      />
+    </div>
   );
 }
 
@@ -487,6 +602,10 @@ export default function ContactDetailPage() {
                 {contact.employerName && (
                   <p className="text-gray-500">{contact.employerName}</p>
                 )}
+                {/* Contact info validation summary icons */}
+                <div className="mt-2">
+                  <ContactInfoSummary contact={contact} />
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-3">
@@ -541,6 +660,7 @@ export default function ContactDetailPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-500 mb-1">Email</label>
                   <div className="flex items-center gap-2">
+                    <EmailValidationIcon hasEmail={!!contact.email} status={contact.emailValidationStatus} />
                     {contact.email ? (
                       <a href={`mailto:${contact.email}`} className="text-green-600 hover:text-green-700 hover:underline">
                         {contact.email}
@@ -548,7 +668,6 @@ export default function ContactDetailPage() {
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
-                    {contact.emailStatus && <EmailStatusBadge status={contact.emailStatus} />}
                     <LowConfidenceMarker confidence={contact.emailConfidence} />
                   </div>
                 </div>
@@ -556,6 +675,7 @@ export default function ContactDetailPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-500 mb-1">Phone</label>
                   <div className="flex items-center gap-2">
+                    <PhoneValidationIcon hasPhone={!!(contact.phone || contact.normalizedPhone)} />
                     <span className="text-gray-900">
                       {contact.phone || contact.normalizedPhone || '—'}
                     </span>
@@ -593,6 +713,7 @@ export default function ContactDetailPage() {
                   <label className="block text-sm font-medium text-gray-500 mb-1">LinkedIn</label>
                   <div className="space-y-3">
                     <div className="flex items-center gap-3 flex-wrap">
+                      <LinkedInValidationIcon hasLinkedIn={!!contact.linkedinUrl} confidence={contact.linkedinConfidence} />
                       {contact.linkedinUrl ? (
                         <>
                           <a 
@@ -602,9 +723,6 @@ export default function ContactDetailPage() {
                             className="text-green-600 hover:text-green-700 hover:underline flex items-center gap-1"
                             data-testid="link-linkedin-profile"
                           >
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
-                            </svg>
                             View Profile
                             <LowConfidenceMarker confidence={contact.linkedinConfidence} />
                           </a>

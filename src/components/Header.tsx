@@ -142,6 +142,9 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
         </div>
 
         <div className="flex items-center space-x-3">
+          {/* Enrichment Queue - always visible when signed in */}
+          {isSignedIn && <EnrichmentQueuePopover />}
+          
           {!isLoaded ? (
             <div className="hidden sm:flex items-center space-x-2 px-3 py-1.5">
               <div className="w-7 h-7 bg-gray-200 rounded-full animate-pulse"></div>
@@ -165,7 +168,6 @@ export default function Header({ showBackButton, onBack }: HeaderProps) {
                   {orgRole?.replace('org:', '').toUpperCase()}
                 </span>
               )}
-              <EnrichmentQueuePopover />
               <Link
                 href="/settings"
                 className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
