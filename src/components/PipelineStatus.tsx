@@ -195,7 +195,7 @@ export default function PipelineStatus({ propertyId, inline = false }: PipelineS
           <ChevronDown className="w-4 h-4 ml-1" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-48">
+      <DropdownMenuContent align="start" className="w-48 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 shadow-lg z-[100]">
         {PIPELINE_PROGRESSION.map((status) => (
           <DropdownMenuItem
             key={status}
