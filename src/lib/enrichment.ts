@@ -1479,6 +1479,11 @@ export async function enrichContactWithPDL(
           apolloEmailStatus = validation.isValid ? 'valid' : (validation.status as any) || 'invalid';
         }
         
+        // LinkedIn-verified data should boost confidence - Apollo data is reliable
+        const linkedinVerified = !!apolloResult.linkedinUrl;
+        const boostedNameConfidence = linkedinVerified ? 0.95 : Math.max(contact.nameConfidence || 0, 0.8);
+        const boostedTitleConfidence = linkedinVerified && apolloResult.title ? 0.95 : (contact.titleConfidence || 0.7);
+        
         return {
           contact: {
             ...contact,
@@ -1491,6 +1496,8 @@ export async function enrichContactWithPDL(
             linkedinUrl: apolloResult.linkedinUrl || contact.linkedinUrl,
             linkedinConfidence: apolloResult.linkedinUrl ? 0.95 : contact.linkedinConfidence,
             title: apolloResult.title || contact.title,
+            nameConfidence: boostedNameConfidence,
+            titleConfidence: boostedTitleConfidence,
             employerName: apolloResult.company || contact.employerName,
             companyDomain: apolloResult.companyDomain || contact.companyDomain,
             enrichmentSource: 'apollo',
@@ -1528,6 +1535,11 @@ export async function enrichContactWithPDL(
           elEmailStatus = validation.isValid ? 'valid' : (validation.status as any) || 'invalid';
         }
         
+        // LinkedIn-verified data should boost confidence
+        const linkedinVerified = !!elResult.linkedinUrl;
+        const boostedNameConfidence = linkedinVerified ? 0.9 : Math.max(contact.nameConfidence || 0, 0.75);
+        const boostedTitleConfidence = linkedinVerified && elResult.title ? 0.9 : (contact.titleConfidence || 0.7);
+        
         return {
           contact: {
             ...contact,
@@ -1540,6 +1552,8 @@ export async function enrichContactWithPDL(
             linkedinUrl: elResult.linkedinUrl || contact.linkedinUrl,
             linkedinConfidence: elResult.linkedinUrl ? 0.9 : contact.linkedinConfidence,
             title: elResult.title || contact.title,
+            nameConfidence: boostedNameConfidence,
+            titleConfidence: boostedTitleConfidence,
             employerName: elResult.company || contact.employerName,
             enrichmentSource: 'enrichlayer',
             providerId: elResult.linkedinUrl || null,

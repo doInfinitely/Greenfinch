@@ -356,8 +356,13 @@ export async function enrichContactCascade(
           raw: { validationSource: 'zerobounce+serp' },
         };
       }
+    } else if (emailStatus === 'catch-all') {
+      // Keep catch-all emails - we'll show them as "unsure" in UI
+      // Still continue provider cascade to try finding a better email
+      validatedEmail = email;
+      console.log(`[CascadeEnrichment] Email is catch-all, keeping as unsure: ${email}`);
     } else {
-      console.log(`[CascadeEnrichment] Email invalid/catch-all: ${email} (${emailStatus})`);
+      console.log(`[CascadeEnrichment] Email invalid: ${email} (${emailStatus})`);
     }
   }
   

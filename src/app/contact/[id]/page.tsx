@@ -163,6 +163,18 @@ function EmailValidationIcon({ hasEmail, status }: { hasEmail: boolean; status: 
     );
   }
   
+  if (normalizedStatus === 'catch-all' || normalizedStatus === 'catchall') {
+    // Catch-all email - amber warning, treated as "unsure"
+    return (
+      <span title="Catch-all domain - email may not reach intended recipient" className="inline-flex items-center text-amber-500">
+        <span className="relative">
+          <Mail className="w-4 h-4" />
+          <AlertTriangle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-amber-500 bg-white rounded-full" />
+        </span>
+      </span>
+    );
+  }
+  
   if (normalizedStatus === 'pending') {
     // Email validation in progress - spinner
     return (
