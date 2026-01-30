@@ -504,11 +504,18 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       const startStyle = startZoom >= 14 ? SATELLITE_STYLE : LIGHT_STYLE;
       currentStyle.current = startStyle;
 
+      const DALLAS_BOUNDS: [[number, number], [number, number]] = [
+        [-97.6, 32.4],
+        [-96.3, 33.2],
+      ];
+
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
         style: startStyle,
         center: startCenter,
         zoom: startZoom,
+        maxBounds: DALLAS_BOUNDS,
+        minZoom: 9,
       });
 
       map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
