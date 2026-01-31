@@ -45,8 +45,7 @@ export async function POST(
     return NextResponse.json({
       success: true,
       organization: updatedOrg,
-      parentOrgId: result.parentOrgId,
-      ultimateParentOrgId: result.ultimateParentOrgId,
+      enrichedData: result.enrichedData,
     });
   } catch (error) {
     console.error('Error enriching organization:', error);
