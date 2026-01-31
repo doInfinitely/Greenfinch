@@ -38,6 +38,7 @@ interface PipelineStatusProps {
   inline?: boolean;
   autoAssignOnFirstStatus?: boolean;
   hideOwnerControls?: boolean;
+  hideOwnerDisplay?: boolean; // Completely hide owner avatar/name (for when shown elsewhere)
   triggerAssignDialog?: number; // Increment to open dialog from parent
 }
 
@@ -85,7 +86,7 @@ interface OrgMember {
   profileImageUrl: string;
 }
 
-export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false, hideOwnerControls = false, triggerAssignDialog = 0 }: PipelineStatusProps) {
+export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false, hideOwnerControls = false, hideOwnerDisplay = false, triggerAssignDialog = 0 }: PipelineStatusProps) {
   const { orgRole } = useAuth();
   const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
   
@@ -571,7 +572,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
           {isDisqualified && disqualifiedIndicator}
           {isQualified && opportunityStageSelector}
           {isQualified && editDealValueButton}
-          {isQualified && ownerDisplay}
+          {isQualified && !hideOwnerDisplay && ownerDisplay}
         </div>
         {assignDialog}
         <Dialog open={showQualifyDialog} onOpenChange={setShowQualifyDialog}>

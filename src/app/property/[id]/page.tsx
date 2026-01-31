@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreVertical, List, Upload, User } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreVertical, List, Upload, User, UserCircle } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -421,6 +423,15 @@ export default function PropertyDetailPage() {
   const [mapToken, setMapToken] = useState<string>('');
   const [regridToken, setRegridToken] = useState<string>('');
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>('');
+  
+  // Pipeline owner state for header display
+  const [pipelineOwner, setPipelineOwner] = useState<{
+    id: string;
+    firstName: string | null;
+    lastName: string | null;
+    profileImageUrl: string | null;
+    displayName: string;
+  } | null>(null);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -649,6 +660,27 @@ export default function PropertyDetailPage() {
     fetchProperty();
     fetchServiceProviders();
   }, [propertyId, fetchServiceProviders]);
+
+  // Fetch pipeline data for owner display in header
+  useEffect(() => {
+    if (!propertyId) return;
+    
+    const fetchPipeline = async () => {
+      try {
+        const response = await fetch(`/api/properties/${propertyId}/pipeline`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.pipeline?.owner) {
+            setPipelineOwner(data.pipeline.owner);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch pipeline:', err);
+      }
+    };
+    
+    fetchPipeline();
+  }, [propertyId]);
 
   const handleEnrichment = async () => {
     if (!property) return;
@@ -956,8 +988,62 @@ export default function PropertyDetailPage() {
                   </div>
                 </div>
                 
-                {/* Add to List button + Fixed ⋮ button - never wraps */}
+                {/* Owner avatar, Research button, Add to List, and More actions - never wraps */}
                 <div className="flex-shrink-0 flex items-center gap-2">
+                  {/* Owner avatar with tooltip */}
+                  {pipelineOwner && (
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Avatar className="w-8 h-8 cursor-default" data-testid="avatar-pipeline-owner">
+                          <AvatarImage src={pipelineOwner.profileImageUrl || ''} />
+                          <AvatarFallback className="text-xs bg-green-100 text-green-700">
+                            {pipelineOwner.displayName?.charAt(0) || '?'}
+                          </AvatarFallback>
+                        </Avatar>
+                      </TooltipTrigger>
+                      <TooltipContent className="bg-popover border shadow-lg">
+                        <p>Owner: {pipelineOwner.displayName}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  )}
+                  
+                  {/* Research button moved to header */}
+                  {(() => {
+                    const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
+                    const isEnrichmentActive = queueStatus.isActive;
+                    const enrichmentHasFailed = queueStatus.status === 'failed';
+                    const isResearchComplete = enrichmentStatus === 'completed';
+                    
+                    return (
+                      <AdminOnly>
+                        <Button
+                          variant={isResearchComplete ? "default" : "outline"}
+                          size="sm"
+                          onClick={isResearchComplete ? undefined : handleEnrichment}
+                          disabled={isEnrichmentActive || enrichmentHasFailed || isResearchComplete}
+                          className={
+                            isResearchComplete 
+                              ? 'bg-purple-600 text-white border-purple-600 cursor-default'
+                              : enrichmentHasFailed 
+                                ? 'text-gray-500 border-gray-300' 
+                                : 'border-purple-500 text-purple-700 dark:text-purple-400'
+                          }
+                          title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'}` : undefined}
+                          data-testid="button-find-decision-makers"
+                        >
+                          {isEnrichmentActive ? (
+                            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          ) : enrichmentHasFailed ? (
+                            <XCircle className="w-4 h-4 mr-1" />
+                          ) : (
+                            <GreenfinchAgentIcon className="w-4 h-4 mr-1" />
+                          )}
+                          {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : isResearchComplete ? 'Researched' : 'Research'}
+                        </Button>
+                      </AdminOnly>
+                    );
+                  })()}
+                  
                   <Button
                     variant="outline"
                     size="icon"
@@ -1005,44 +1091,9 @@ export default function PropertyDetailPage() {
                 </div>
               </div>
               
-              {/* Action row: Qualify/Disqualify/Research buttons with flex-wrap */}
+              {/* Action row: Qualify/Disqualify buttons */}
               <div className="flex flex-wrap items-center gap-2 mb-6">
-                <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls triggerAssignDialog={assignDialogTrigger} />
-                {(() => {
-                  const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
-                  const isEnrichmentActive = queueStatus.isActive;
-                  const enrichmentHasFailed = queueStatus.status === 'failed';
-                  const isResearchComplete = enrichmentStatus === 'completed';
-                  
-                  return (
-                    <AdminOnly>
-                      <Button
-                        variant={isResearchComplete ? "default" : "outline"}
-                        size="sm"
-                        onClick={isResearchComplete ? undefined : handleEnrichment}
-                        disabled={isEnrichmentActive || enrichmentHasFailed || isResearchComplete}
-                        className={
-                          isResearchComplete 
-                            ? 'bg-purple-600 text-white border-purple-600 cursor-default'
-                            : enrichmentHasFailed 
-                              ? 'text-gray-500 border-gray-300' 
-                              : 'border-purple-500 text-purple-700 dark:text-purple-400'
-                        }
-                        title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'}` : undefined}
-                        data-testid="button-find-decision-makers"
-                      >
-                        {isEnrichmentActive ? (
-                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                        ) : enrichmentHasFailed ? (
-                          <XCircle className="w-4 h-4 mr-1" />
-                        ) : (
-                          <GreenfinchAgentIcon className="w-4 h-4 mr-1" />
-                        )}
-                        {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : isResearchComplete ? 'Researched' : 'Research Property'}
-                      </Button>
-                    </AdminOnly>
-                  );
-                })()}
+                <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls hideOwnerDisplay triggerAssignDialog={assignDialogTrigger} />
               </div>
 
               {enrichmentMessage && enrichmentStatus !== 'pending' && (
