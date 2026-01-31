@@ -1002,20 +1002,21 @@ export default function PropertyDetailPage() {
                   const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
                   const isEnrichmentActive = queueStatus.isActive;
                   const enrichmentHasFailed = queueStatus.status === 'failed';
-                  
-                  // Hide button if enrichment already completed successfully
-                  if (enrichmentStatus === 'completed') return null;
+                  const isResearchComplete = enrichmentStatus === 'completed';
                   
                   return (
                     <AdminOnly>
                       <Button
-                        variant="outline"
+                        variant={isResearchComplete ? "default" : "outline"}
                         size="sm"
-                        onClick={handleEnrichment}
-                        disabled={isEnrichmentActive || enrichmentHasFailed}
-                        className={enrichmentHasFailed 
-                          ? 'text-gray-500 border-gray-300' 
-                          : 'text-gray-600 border-gray-300'
+                        onClick={isResearchComplete ? undefined : handleEnrichment}
+                        disabled={isEnrichmentActive || enrichmentHasFailed || isResearchComplete}
+                        className={
+                          isResearchComplete 
+                            ? 'bg-purple-600 text-white border-purple-600 cursor-default'
+                            : enrichmentHasFailed 
+                              ? 'text-gray-500 border-gray-300' 
+                              : 'border-purple-500 text-purple-700 dark:text-purple-400'
                         }
                         title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'}` : undefined}
                         data-testid="button-find-decision-makers"
@@ -1027,7 +1028,7 @@ export default function PropertyDetailPage() {
                         ) : (
                           <GreenfinchAgentIcon className="w-4 h-4 mr-1" />
                         )}
-                        {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : 'Research Property'}
+                        {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : isResearchComplete ? 'Researched' : 'Research Property'}
                       </Button>
                     </AdminOnly>
                   );

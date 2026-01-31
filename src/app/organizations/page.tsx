@@ -254,7 +254,7 @@ export default function OrganizationsPage() {
             {activeFilterCount > 0 && (
               <button
                 onClick={clearAllFilters}
-                className="px-3 py-2 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg active:bg-red-100"
+                className="px-3 py-2 text-sm font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-lg active:bg-gray-100"
                 data-testid="button-clear-org-filters"
               >
                 Clear ({activeFilterCount})

@@ -43,12 +43,12 @@ interface PipelineStatusProps {
 
 const STATUS_COLORS: Record<PipelineStatusType, string> = {
   new: 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
-  qualified: 'bg-blue-200 text-blue-800 dark:bg-blue-800 dark:text-blue-200',
+  qualified: 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200',
   attempted_contact: 'bg-amber-200 text-amber-800 dark:bg-amber-800 dark:text-amber-200',
   active_opportunity: 'bg-violet-200 text-violet-800 dark:bg-violet-800 dark:text-violet-200',
   won: 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-200',
   lost: 'bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200',
-  disqualified: 'bg-orange-200 text-orange-800 dark:bg-orange-800 dark:text-orange-200',
+  disqualified: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
 };
 
 const STATUS_ICONS: Record<PipelineStatusType, React.ReactNode> = {
@@ -327,31 +327,39 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   const currentStatus = pipeline?.status || 'new';
   const dealValue = pipeline?.dealValue;
   const isNewProperty = currentStatus === 'new';
+  const isQualified = currentStatus === 'qualified';
+  const isDisqualified = currentStatus === 'disqualified';
 
-  // Initial action buttons for new properties (Qualify / Disqualify)
-  const initialActionButtons = (
+  // Action buttons with filled state when action is complete
+  const actionButtons = (
     <div className="flex items-center gap-2">
       <Button
-        variant="default"
+        variant={isQualified ? "default" : "outline"}
         size="sm"
-        onClick={() => updateStatus('qualified')}
-        disabled={updating}
-        className="bg-green-600 text-white"
+        onClick={() => isQualified ? undefined : updateStatus('qualified')}
+        disabled={updating || isQualified}
+        className={isQualified 
+          ? "bg-green-600 text-white border-green-600 cursor-default" 
+          : "border-green-500 text-green-700 dark:text-green-400"
+        }
         data-testid="button-qualify"
       >
         <Check className="w-4 h-4 mr-1" />
-        Qualify
+        {isQualified ? 'Qualified' : 'Qualify'}
       </Button>
       <Button
-        variant="outline"
+        variant={isDisqualified ? "default" : "outline"}
         size="sm"
-        onClick={() => updateStatus('disqualified')}
-        disabled={updating}
-        className="text-red-600 border-red-300"
+        onClick={() => isDisqualified ? undefined : updateStatus('disqualified')}
+        disabled={updating || isDisqualified}
+        className={isDisqualified 
+          ? "bg-gray-500 text-white border-gray-500 cursor-default" 
+          : "border-gray-400 text-gray-600 dark:text-gray-400"
+        }
         data-testid="button-disqualify"
       >
         <X className="w-4 h-4 mr-1" />
-        Disqualify
+        {isDisqualified ? 'Disqualified' : 'Disqualify'}
       </Button>
     </div>
   );
@@ -544,7 +552,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     return (
       <>
         <div className="flex items-center gap-3 flex-wrap">
-          {isNewProperty ? initialActionButtons : dropdownContent}
+          {(isNewProperty || isQualified || isDisqualified) ? actionButtons : dropdownContent}
           {!isNewProperty && editDealValueButton}
           {!isNewProperty && ownerDisplay}
         </div>
@@ -614,7 +622,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
-            {isNewProperty ? initialActionButtons : (
+            {(isNewProperty || isQualified || isDisqualified) ? actionButtons : (
               <>
                 {dropdownContent}
                 {dealValueDisplay}

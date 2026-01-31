@@ -23,12 +23,12 @@ const BOARD_COLUMNS: PipelineStatus[] = ['new', 'qualified', 'attempted_contact'
 
 const COLUMN_COLORS: Record<PipelineStatus, string> = {
   new: 'border-t-gray-400',
-  qualified: 'border-t-blue-500',
+  qualified: 'border-t-green-500',
   attempted_contact: 'border-t-yellow-500',
   active_opportunity: 'border-t-purple-500',
-  won: 'border-t-green-500',
+  won: 'border-t-emerald-500',
   lost: 'border-t-red-500',
-  disqualified: 'border-t-orange-500',
+  disqualified: 'border-t-gray-400',
 };
 
 interface PipelineItem {

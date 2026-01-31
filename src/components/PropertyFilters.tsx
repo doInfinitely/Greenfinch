@@ -273,7 +273,7 @@ export default function PropertyFilters({
       {onClear && count !== undefined && count > 0 && (
         <button
           onClick={(e) => { e.stopPropagation(); onClear(); }}
-          className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg active:bg-red-100"
+          className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-lg active:bg-gray-100"
           data-testid={`button-clear-${id}`}
         >
           Clear
@@ -289,7 +289,7 @@ export default function PropertyFilters({
         {activeFilterCount > 0 && (
           <button
             onClick={handleClearFilters}
-            className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg active:bg-red-100"
+            className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-lg active:bg-gray-100"
             data-testid="button-clear-filters"
           >
             Clear all
