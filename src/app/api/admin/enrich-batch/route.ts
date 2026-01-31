@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { startBatch, isBatchRunning, getMaxBatchSize } from '@/lib/enrichment-queue';
 import { requireAdminAccess } from '@/lib/auth';
+import { rateLimitMiddleware } from '@/lib/rate-limit';
+
+const checkRateLimit = rateLimitMiddleware(20, 60);
 
 export async function POST(request: NextRequest) {
   try {
+    const rateResponse = await checkRateLimit(request);
+    if (rateResponse) return rateResponse;
+
     await requireAdminAccess();
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {

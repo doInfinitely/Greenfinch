@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchPropertiesFromPostgres, getPropertiesInBoundsFromPostgres, getPropertiesByKeys, getFilteredPropertiesFromPostgres, PropertyFilters } from '@/lib/postgres-queries';
+import { searchPropertiesFromPostgres, getPropertiesInBoundsFromPostgres, getPropertiesByKeys, getFilteredPropertiesFromPostgres, PropertyFilters, searchPropertiesWithCursorFromPostgres, encodeCursor, decodeCursor } from '@/lib/postgres-queries';
 
 const MAX_LIMIT = 100;
 const DEFAULT_LIMIT = 50;
@@ -69,7 +69,10 @@ export async function GET(request: NextRequest) {
     const maxLatStr = searchParams.get('maxLat');
     const minLonStr = searchParams.get('minLon');
     const maxLonStr = searchParams.get('maxLon');
+    const cursor = searchParams.get('cursor');
     const limit = validateLimit(searchParams.get('limit'));
+    const sortBy = searchParams.get('sortBy') || 'address';
+    const sortOrder = (searchParams.get('sortOrder') || 'asc') as 'asc' | 'desc';
     const filters = parseFilters(searchParams);
 
     if (minLatStr && maxLatStr && minLonStr && maxLonStr) {
@@ -134,8 +137,56 @@ export async function GET(request: NextRequest) {
           { status: 400 }
         );
       }
-      const properties = await searchPropertiesFromPostgres(sanitizedQuery, limit);
-      return NextResponse.json({ properties });
+
+      // Handle cursor pagination for search queries
+      let decodedCursor = null;
+      if (cursor) {
+        decodedCursor = decodeCursor(cursor);
+        if (!decodedCursor) {
+          return NextResponse.json(
+            { error: 'Invalid cursor' },
+            { status: 400 }
+          );
+        }
+      }
+
+      const searchResult = await searchPropertiesWithCursorFromPostgres(
+        sanitizedQuery,
+        limit,
+        decodedCursor,
+        sortBy,
+        sortOrder
+      );
+
+      let nextCursor: string | null = null;
+      if (searchResult.hasMore && searchResult.lastResult) {
+        let sortValue;
+        if (sortBy === 'address') {
+          sortValue = searchResult.lastResult.address;
+        } else if (sortBy === 'city') {
+          sortValue = searchResult.lastResult.city;
+        } else if (sortBy === 'owner') {
+          sortValue = searchResult.lastResult.owner;
+        } else {
+          sortValue = searchResult.lastResult.address;
+        }
+
+        nextCursor = encodeCursor({
+          id: searchResult.lastResult.id,
+          sortValue,
+        });
+      }
+
+      return NextResponse.json({
+        properties: searchResult.results,
+        hasMore: searchResult.hasMore,
+        nextCursor,
+        pagination: {
+          limit,
+          hasMore: searchResult.hasMore,
+          nextCursor,
+        }
+      });
     }
 
     return NextResponse.json({ error: 'Query or bounds required' }, { status: 400 });

@@ -4,6 +4,9 @@ import { contacts } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import { triggerWaterfallEmail } from '@/lib/apollo';
 import { requireSession, requireAdminAccess } from '@/lib/auth';
+import { rateLimitMiddleware } from '@/lib/rate-limit';
+
+const checkRateLimit = rateLimitMiddleware(20, 60);
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -23,6 +26,9 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const rateResponse = await checkRateLimit(request);
+    if (rateResponse) return rateResponse;
+
     await requireSession();
     await requireAdminAccess();
     

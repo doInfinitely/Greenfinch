@@ -1,8 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateEmail, validateAndUpdateContact, getCreditsUsed } from '@/lib/neverbounce';
+import { rateLimitMiddleware } from '@/lib/rate-limit';
+
+const checkRateLimit = rateLimitMiddleware(20, 60);
 
 export async function POST(request: NextRequest) {
   try {
+    const rateResponse = await checkRateLimit(request);
+    if (rateResponse) return rateResponse;
+
     const body = await request.json();
     const { email, contactId } = body;
 

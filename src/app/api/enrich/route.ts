@@ -6,6 +6,9 @@ import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import type { AggregatedProperty } from '@/lib/snowflake';
+import { rateLimitMiddleware } from '@/lib/rate-limit';
+
+const checkRateLimit = rateLimitMiddleware(20, 60);
 
 async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedProperty | null> {
   const [prop] = await db.select().from(properties).where(eq(properties.propertyKey, propertyKey));
@@ -121,6 +124,9 @@ async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedP
 
 export async function POST(request: NextRequest) {
   try {
+    const rateResponse = await checkRateLimit(request);
+    if (rateResponse) return rateResponse;
+
     if (await isBatchRunning()) {
       return NextResponse.json(
         { 

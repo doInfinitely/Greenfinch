@@ -1,6 +1,6 @@
 import { db } from './db';
 import { properties, parcelToProperty } from './schema';
-import { and, or, ilike, gte, lte, eq, sql, inArray } from 'drizzle-orm';
+import { and, or, ilike, gte, lte, eq, sql, inArray, asc, desc } from 'drizzle-orm';
 
 export interface PropertyResult {
   id: string;
@@ -90,6 +90,24 @@ function formatPropertyResult(row: typeof properties.$inferSelect): PropertyResu
   };
 }
 
+interface CursorData {
+  id: string;
+  sortValue: any;
+}
+
+export function encodeCursor(data: CursorData): string {
+  return Buffer.from(JSON.stringify(data)).toString('base64');
+}
+
+export function decodeCursor(cursorStr: string): CursorData | null {
+  try {
+    const decoded = Buffer.from(cursorStr, 'base64').toString('utf-8');
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 export async function searchPropertiesFromPostgres(
   query: string,
   limit: number = 50
@@ -116,6 +134,75 @@ export async function searchPropertiesFromPostgres(
     .limit(limit);
   
   return results.map(formatPropertyResult);
+}
+
+export async function searchPropertiesWithCursorFromPostgres(
+  query: string,
+  limit: number = 50,
+  cursor: CursorData | null = null,
+  sortBy: string = 'address',
+  sortOrder: 'asc' | 'desc' = 'asc'
+): Promise<{ results: PropertyResult[]; hasMore: boolean; lastResult: PropertyResult | null }> {
+  const searchTerm = `%${query}%`;
+  
+  const conditions = [
+    eq(properties.isActive, true),
+    eq(properties.isParentProperty, true),
+    or(
+      ilike(properties.regridAddress, searchTerm),
+      ilike(properties.validatedAddress, searchTerm),
+      ilike(properties.city, searchTerm),
+      ilike(properties.regridOwner, searchTerm),
+      ilike(properties.commonName, searchTerm),
+      ilike(properties.propertyKey, searchTerm)
+    )
+  ];
+
+  // Determine sort column
+  let sortColumn: any;
+  if (sortBy === 'address') {
+    sortColumn = properties.regridAddress;
+  } else if (sortBy === 'city') {
+    sortColumn = properties.city;
+  } else if (sortBy === 'owner') {
+    sortColumn = properties.regridOwner;
+  } else {
+    sortColumn = properties.regridAddress;
+  }
+
+  const orderExpression = sortOrder === 'desc' ? desc(sortColumn) : asc(sortColumn);
+
+  // Apply cursor condition if using cursor pagination
+  if (cursor) {
+    if (sortOrder === 'asc') {
+      conditions.push(
+        sql`${sortColumn} > ${cursor.sortValue} OR (${sortColumn} = ${cursor.sortValue} AND ${properties.id} > ${cursor.id})`
+      );
+    } else {
+      conditions.push(
+        sql`${sortColumn} < ${cursor.sortValue} OR (${sortColumn} = ${cursor.sortValue} AND ${properties.id} < ${cursor.id})`
+      );
+    }
+  }
+
+  const fetchLimit = limit + 1;
+  
+  const results = await db
+    .select()
+    .from(properties)
+    .where(and(...conditions))
+    .orderBy(orderExpression)
+    .limit(fetchLimit);
+
+  const hasMore = results.length > limit;
+  const displayResults = hasMore ? results.slice(0, limit) : results;
+  const lastResult = displayResults.length > 0 ? displayResults[displayResults.length - 1] : null;
+
+  return {
+    results: displayResults.map(formatPropertyResult),
+    hasMore,
+    lastResult: lastResult ? formatPropertyResult(lastResult) : null,
+  };
 }
 
 export async function getPropertiesInBoundsFromPostgres(
