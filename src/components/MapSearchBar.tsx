@@ -211,7 +211,7 @@ export default function MapSearchBar({ onSelect, mapCenter }: MapSearchBarProps)
           onKeyDown={handleKeyDown}
           onFocus={() => suggestions.length > 0 && setIsOpen(true)}
           placeholder="Search address, POI, neighborhood..."
-          className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-lg shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          className="w-full pl-10 pr-10 py-2.5 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-sm text-sm text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
         />
         {query && (
           <button
@@ -226,15 +226,15 @@ export default function MapSearchBar({ onSelect, mapCenter }: MapSearchBarProps)
       </div>
 
       {isOpen && suggestions.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-96 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg overflow-hidden max-h-96 overflow-y-auto">
           {suggestions.map((suggestion, index) => (
             <button
               key={`${suggestion.id || 'suggestion'}-${index}`}
               onClick={() => handleSelect(suggestion)}
               className={`w-full text-left px-3 py-2.5 flex items-start gap-3 transition-colors ${
                 index === highlightedIndex 
-                  ? 'bg-green-50' 
-                  : 'hover:bg-gray-50'
+                  ? 'bg-green-50 dark:bg-green-900/30' 
+                  : 'active:bg-gray-50 dark:active:bg-gray-800'
               }`}
             >
               <div className="text-gray-400 mt-0.5">

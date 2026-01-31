@@ -2,6 +2,7 @@ import mapboxgl from 'mapbox-gl';
 import { normalizeCommonName } from '@/lib/normalization';
 
 const LIGHT_STYLE = 'mapbox://styles/mapbox/light-v11';
+const DARK_STYLE = 'mapbox://styles/mapbox/dark-v11';
 const SATELLITE_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
 
 export interface MapBounds {
@@ -18,6 +19,7 @@ export interface DashboardMapConfig {
   regridTileUrl?: string;
   initialCenter?: { lat: number; lon: number };
   initialZoom?: number;
+  theme?: 'light' | 'dark';
   onBoundsChange?: (bounds: MapBounds, zoom: number) => void;
   onPropertyClick?: (propertyKey: string) => void;
   onError?: (error: string) => void;
@@ -35,13 +37,19 @@ export class DashboardMap {
   private pendingStyleSwitch: string | null = null;
   private isAnimating = false;
   private initError: string | null = null;
-  private handlersRegistered = false; // Track if handlers were registered
-  private styleSwitchPending = false; // Prevent multiple style switches
-  private resizeObserver: ResizeObserver | null = null; // Track container size changes
+  private handlersRegistered = false;
+  private styleSwitchPending = false;
+  private resizeObserver: ResizeObserver | null = null;
+  private currentTheme: 'light' | 'dark' = 'light';
 
   constructor(config: DashboardMapConfig) {
     this.config = config;
+    this.currentTheme = config.theme || 'light';
     this.initialize();
+  }
+
+  private getBaseStyle(): string {
+    return this.currentTheme === 'dark' ? DARK_STYLE : LIGHT_STYLE;
   }
 
   private initialize() {
@@ -51,7 +59,7 @@ export class DashboardMap {
     const initialCenter: [number, number] = this.config.initialCenter
       ? [this.config.initialCenter.lon, this.config.initialCenter.lat]
       : [-96.7784, 32.8639];
-    const initialStyle = initialZoom >= 14 ? SATELLITE_STYLE : LIGHT_STYLE;
+    const initialStyle = initialZoom >= 14 ? SATELLITE_STYLE : this.getBaseStyle();
     this.currentStyle = initialStyle;
 
     try {
@@ -137,21 +145,22 @@ export class DashboardMap {
 
     const zoom = this.map.getZoom();
     const shouldBeSatellite = zoom >= 15;
+    const baseStyle = this.getBaseStyle();
     const needsSatellite = shouldBeSatellite && this.currentStyle !== SATELLITE_STYLE;
-    const needsLight = !shouldBeSatellite && this.currentStyle !== LIGHT_STYLE;
+    const needsBase = !shouldBeSatellite && this.currentStyle !== baseStyle;
 
-    if (needsSatellite || needsLight) {
+    if (needsSatellite || needsBase) {
       this.styleSwitchPending = true;
-      // Delay style switch to avoid interrupting user interaction
       setTimeout(() => {
         this.styleSwitchPending = false;
         if (!this.map || !this.styleReady || this.isAnimating) return;
         
         const currentZoom = this.map.getZoom();
+        const currentBaseStyle = this.getBaseStyle();
         if (currentZoom >= 15 && this.currentStyle !== SATELLITE_STYLE) {
           this.switchStyle(SATELLITE_STYLE);
-        } else if (currentZoom < 15 && this.currentStyle !== LIGHT_STYLE) {
-          this.switchStyle(LIGHT_STYLE);
+        } else if (currentZoom < 15 && this.currentStyle !== currentBaseStyle) {
+          this.switchStyle(currentBaseStyle);
         }
       }, 500);
     }
@@ -577,7 +586,6 @@ export class DashboardMap {
   flyTo(lat: number, lon: number, zoom: number = 16) {
     if (!this.map) return;
     
-    // Prevent style switching during animation
     this.isAnimating = true;
     
     this.map.flyTo({
@@ -586,12 +594,22 @@ export class DashboardMap {
       duration: 1500,
     });
     
-    // Re-enable style switching after animation completes
     this.map.once('moveend', () => {
       this.isAnimating = false;
-      // Check if we need to switch styles after animation
       this.checkStyleSwitch();
     });
+  }
+
+  setTheme(theme: 'light' | 'dark') {
+    if (this.currentTheme === theme) return;
+    this.currentTheme = theme;
+    
+    if (!this.map) return;
+    
+    const zoom = this.map.getZoom();
+    if (zoom < 15) {
+      this.switchStyle(this.getBaseStyle());
+    }
   }
 
   destroy() {

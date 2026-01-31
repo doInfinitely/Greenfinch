@@ -21,9 +21,12 @@ import {
   ChevronRight,
   Menu,
   X,
+  Moon,
+  Sun,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EnrichmentQueuePopover from '@/components/EnrichmentQueuePopover';
+import { useTheme } from '@/components/ThemeProvider';
 
 interface NavItem {
   href: string;
@@ -44,6 +47,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   const [mobileOpen, setMobileOpen] = useState(false);
   const { orgSlug, orgRole, isSignedIn } = useAuth();
   const { user } = useUser();
+  const { theme, toggleTheme } = useTheme();
 
   const isGreenfinchMember = orgSlug === 'greenfinch';
   const isOrgAdmin = orgRole === 'org:admin';
@@ -103,8 +107,8 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   });
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-white">
-      <div className="p-4 border-b border-gray-200">
+    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
+      <div className="p-4 border-b border-gray-200 dark:border-gray-800">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 relative flex-shrink-0">
             <Image
@@ -155,7 +159,20 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         ))}
       </nav>
 
-      <div className="p-4 border-t border-gray-200 space-y-4">
+      <div className="p-4 border-t border-gray-200 dark:border-gray-800 space-y-4">
+        <button
+          onClick={toggleTheme}
+          className="flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          data-testid="button-toggle-theme"
+          title={collapsed ? (theme === 'dark' ? 'Light Mode' : 'Dark Mode') : undefined}
+        >
+          {theme === 'dark' ? (
+            <Sun className="w-4 h-4" />
+          ) : (
+            <Moon className="w-4 h-4" />
+          )}
+          {!collapsed && <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>}
+        </button>
         {isSignedIn && (
           <div className="flex items-center gap-2">
             <UserButton
@@ -183,16 +200,16 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   );
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 dark:bg-gray-950">
       <aside
-        className={`hidden lg:flex flex-col border-r border-gray-200 bg-white transition-all duration-300 relative ${
+        className={`hidden lg:flex flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 transition-all duration-300 relative ${
           collapsed ? 'w-16' : 'w-64'
         }`}
       >
         <SidebarContent />
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute top-1/2 -right-3 transform -translate-y-1/2 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center hover:bg-gray-100 shadow-sm z-10"
+          className="absolute top-1/2 -right-3 transform -translate-y-1/2 w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 shadow-sm z-10"
           data-testid="button-toggle-sidebar"
         >
           {collapsed ? (
@@ -212,13 +229,13 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           className="absolute inset-0 bg-black/50"
           onClick={() => setMobileOpen(false)}
         />
-        <aside className="absolute left-0 top-0 bottom-0 w-64 bg-white shadow-lg">
+        <aside className="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-gray-900 shadow-lg">
           <SidebarContent />
         </aside>
       </div>
 
       <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 border-b border-gray-200 bg-white flex items-center justify-between px-4 lg:hidden">
+        <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between px-4 lg:hidden">
           <button
             onClick={() => setMobileOpen(true)}
             className="p-2"

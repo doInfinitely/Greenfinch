@@ -402,7 +402,7 @@ export default function PropertyFilters({
   );
 
   const filterContent = (isMobile: boolean = false) => (
-    <div className="p-4 space-y-2">
+    <div className="p-4 space-y-2 bg-background">
       {!isMobile && (
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-medium text-gray-900 dark:text-gray-100">Filter Properties</h3>
@@ -437,16 +437,16 @@ export default function PropertyFilters({
               value={orgSearch}
               onChange={(e) => setOrgSearch(e.target.value)}
               placeholder="Search organizations..."
-              className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800"
+              className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
               data-testid="input-org-search"
             />
             {orgResults.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+              <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                 {orgResults.map((org) => (
                   <button
                     key={org.id}
                     onClick={() => selectOrg(org)}
-                    className="w-full text-left px-3 py-3 min-h-[44px] text-base active:bg-gray-100 dark:active:bg-gray-700"
+                    className="w-full text-left px-3 py-3 min-h-[44px] text-base text-gray-900 dark:text-gray-100 active:bg-gray-100 dark:active:bg-gray-700"
                     data-testid={`org-result-${org.id}`}
                   >
                     {org.name}
@@ -477,16 +477,16 @@ export default function PropertyFilters({
               value={contactSearch}
               onChange={(e) => setContactSearch(e.target.value)}
               placeholder="Search contacts..."
-              className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800"
+              className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
               data-testid="input-contact-search"
             />
             {contactResults.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+              <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
                 {contactResults.map((contact) => (
                   <button
                     key={contact.id}
                     onClick={() => selectContact(contact)}
-                    className="w-full text-left px-3 py-3 min-h-[44px] text-base active:bg-gray-100 dark:active:bg-gray-700"
+                    className="w-full text-left px-3 py-3 min-h-[44px] text-base text-gray-900 dark:text-gray-100 active:bg-gray-100 dark:active:bg-gray-700"
                     data-testid={`contact-result-${contact.id}`}
                   >
                     {contact.fullName}
@@ -512,7 +512,7 @@ export default function PropertyFilters({
                   value={localMinLotAcres}
                   onChange={(e) => handleAcresChange('minLotAcres', e.target.value, setLocalMinLotAcres)}
                   placeholder="Min"
-                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800"
+                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   data-testid="input-min-lot-acres"
                 />
                 <input
@@ -521,7 +521,7 @@ export default function PropertyFilters({
                   value={localMaxLotAcres}
                   onChange={(e) => handleAcresChange('maxLotAcres', e.target.value, setLocalMaxLotAcres)}
                   placeholder="Max"
-                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800"
+                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   data-testid="input-max-lot-acres"
                 />
               </div>
@@ -535,7 +535,7 @@ export default function PropertyFilters({
                   value={localMinNetSqft}
                   onChange={(e) => handleNumberChange('minNetSqft', e.target.value, setLocalMinNetSqft)}
                   placeholder="Min"
-                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800"
+                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   data-testid="input-min-net-sqft"
                 />
                 <input
@@ -544,7 +544,7 @@ export default function PropertyFilters({
                   value={localMaxNetSqft}
                   onChange={(e) => handleNumberChange('maxNetSqft', e.target.value, setLocalMaxNetSqft)}
                   placeholder="Max"
-                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-600 rounded-lg text-base bg-white dark:bg-gray-800"
+                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
                   data-testid="input-max-net-sqft"
                 />
               </div>
@@ -792,7 +792,7 @@ export default function PropertyFilters({
               </div>
               
               {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto overscroll-contain">
+              <div className="flex-1 overflow-y-auto overscroll-contain bg-background">
                 {filterContent(true)}
               </div>
               

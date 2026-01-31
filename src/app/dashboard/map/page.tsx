@@ -6,6 +6,7 @@ import type { MapBounds } from '@/map/DashboardMap';
 import type { MapCanvasHandle } from '@/map/MapCanvas';
 import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, QuickFilterChips } from '@/components/PropertyFilters';
 import MapSearchBar from '@/components/MapSearchBar';
+import { useTheme } from '@/components/ThemeProvider';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
   ssr: false,
@@ -86,6 +87,7 @@ function saveFiltersToStorage(filters: FilterState) {
 
 export default function MapPage() {
   const mapRef = useRef<MapCanvasHandle>(null);
+  const { theme } = useTheme();
   const [config, setConfig] = useState<{ mapboxToken: string; regridToken: string; regridTileUrl: string } | null>(null);
   const [allProperties, setAllProperties] = useState<PropertyFeature[]>([]);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
@@ -178,7 +180,7 @@ export default function MapPage() {
 
   if (isLoading) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-50">
+      <div className="w-full h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
         <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600"></div>
       </div>
     );
@@ -186,8 +188,8 @@ export default function MapPage() {
 
   if (!config?.mapboxToken) {
     return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-50">
-        <p className="text-gray-500">Map configuration unavailable</p>
+      <div className="w-full h-full flex items-center justify-center bg-gray-50 dark:bg-gray-950">
+        <p className="text-gray-500 dark:text-gray-400">Map configuration unavailable</p>
       </div>
     );
   }
@@ -201,6 +203,7 @@ export default function MapPage() {
           regridToken={config.regridToken}
           regridTileUrl={config.regridTileUrl}
           properties={filteredProperties}
+          theme={theme}
           onBoundsChange={handleBoundsChange}
           onPropertyClick={handlePropertyClick}
         />
@@ -215,21 +218,21 @@ export default function MapPage() {
         </div>
       </div>
 
-      <div className="hidden md:flex md:w-80 bg-white border-l border-gray-200 flex-col">
-        <div className="px-4 py-3 border-b border-gray-200">
-          <h2 className="font-semibold text-gray-900">
-            Properties in View <span className="text-green-600 font-normal">({visibleProperties.length})</span>
+      <div className="hidden md:flex md:w-80 bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 flex-col">
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">
+            Properties in View <span className="text-green-600 dark:text-green-500 font-normal">({visibleProperties.length})</span>
           </h2>
           {(filters.minLotAcres || filters.maxLotAcres || filters.categories.length > 0 || filters.organizationId || filters.contactId || filters.enrichmentStatus !== 'all') && (
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
               Filtered from {allProperties.length} total
             </p>
           )}
         </div>
         <div className="flex-1 overflow-y-auto">
           {visibleProperties.length === 0 ? (
-            <div className="p-4 text-center text-gray-500">
-              <svg className="w-10 h-10 mx-auto mb-2 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <div className="p-4 text-center text-gray-500 dark:text-gray-400">
+              <svg className="w-10 h-10 mx-auto mb-2 text-gray-300 dark:text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
               </svg>
               <p>Pan or zoom to see properties</p>
@@ -239,25 +242,25 @@ export default function MapPage() {
               <button
                 key={`property-${f.properties.propertyKey || idx}-${idx}`}
                 onClick={() => handlePropertyClick(f.properties.propertyKey)}
-                className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                className="w-full text-left px-4 py-3 border-b border-gray-100 dark:border-gray-800 active:bg-gray-50 dark:active:bg-gray-800 transition-colors"
                 data-testid={`property-item-${f.properties.propertyKey}`}
               >
                 {f.properties.commonName ? (
                   <>
-                    <p className="font-medium text-gray-900 truncate">{f.properties.commonName}</p>
-                    <p className="text-sm text-gray-500 truncate">{f.properties.address}</p>
+                    <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{f.properties.commonName}</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400 truncate">{f.properties.address}</p>
                   </>
                 ) : (
-                  <p className="font-medium text-gray-900 truncate">{f.properties.address}</p>
+                  <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{f.properties.address}</p>
                 )}
                 <div className="flex items-center gap-2 mt-1 flex-wrap">
                   {f.properties.category && (
-                    <span className="inline-block px-2 py-0.5 text-xs bg-gray-100 text-gray-600 rounded">
+                    <span className="inline-block px-2 py-0.5 text-xs bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 rounded">
                       {f.properties.category}
                     </span>
                   )}
                   {f.properties.lotSqft > 0 && (
-                    <span className="text-xs text-gray-500">
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
                       {(f.properties.lotSqft / 43560).toFixed(1)} ac
                     </span>
                   )}
