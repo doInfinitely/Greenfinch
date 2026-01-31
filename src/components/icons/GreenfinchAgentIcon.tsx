@@ -10,34 +10,22 @@ export default function GreenfinchAgentIcon({ className = '', size = 20 }: Green
     <svg
       width={size}
       height={size}
-      viewBox="0 0 100 100"
-      fill="currentColor"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
       className={className}
-      aria-label="Greenfinch Agent"
+      aria-label="AI Research"
     >
-      {/* Detective silhouette with hat, coat, and magnifying glass */}
-      {/* Hat brim */}
-      <ellipse cx="38" cy="18" rx="28" ry="6" />
-      {/* Hat top */}
-      <path d="M20 18 Q20 8 38 6 Q56 8 56 18 Z" />
-      {/* Head */}
-      <ellipse cx="38" cy="28" rx="14" ry="10" />
-      {/* Coat collar left */}
-      <path d="M24 35 Q10 45 8 70 L30 55 Z" />
-      {/* Coat collar right */}
-      <path d="M52 35 Q60 45 55 65 L38 50 Z" />
-      {/* Coat body */}
-      <path d="M8 70 Q5 85 15 95 L55 95 Q62 85 55 65 L38 50 L30 55 Z" />
-      {/* Coat lapel detail (white line effect - we'll create a gap) */}
-      <path d="M30 55 Q32 48 38 50" fill="none" stroke="currentColor" strokeWidth="0.5" opacity="0.3" />
-      {/* Arm holding magnifying glass */}
-      <ellipse cx="60" cy="82" rx="12" ry="8" />
-      {/* Magnifying glass handle */}
-      <rect x="72" y="58" width="6" height="18" rx="2" transform="rotate(35 75 67)" />
-      {/* Magnifying glass ring */}
-      <circle cx="82" cy="48" r="14" fill="none" stroke="currentColor" strokeWidth="5" />
-      {/* Magnifying glass inner (transparent) */}
-      <circle cx="82" cy="48" r="9" fill="white" fillOpacity="0" />
+      {/* Magnifying glass */}
+      <circle cx="11" cy="11" r="7" />
+      <line x1="16" y1="16" x2="21" y2="21" />
+      {/* AI Sparkles */}
+      <path d="M3 3l1 2 2 1-2 1-1 2-1-2-2-1 2-1z" fill="currentColor" stroke="none" />
+      <path d="M19 2l0.5 1 1 0.5-1 0.5-0.5 1-0.5-1-1-0.5 1-0.5z" fill="currentColor" stroke="none" />
+      <path d="M21 10l0.4 0.8 0.8 0.4-0.8 0.4-0.4 0.8-0.4-0.8-0.8-0.4 0.8-0.4z" fill="currentColor" stroke="none" />
     </svg>
   );
 }
