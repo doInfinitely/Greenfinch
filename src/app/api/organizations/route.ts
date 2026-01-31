@@ -11,6 +11,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q')?.trim();
     const type = searchParams.get('type');
+    const hasProperties = searchParams.get('hasProperties');
+    const hasContacts = searchParams.get('hasContacts');
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(searchParams.get('limit') || String(DEFAULT_LIMIT), 10)));
     const sortBy = searchParams.get('sortBy') || 'name';
@@ -64,6 +66,20 @@ export async function GET(request: NextRequest) {
       baseQuery = baseQuery.where(eq(organizations.orgType, type)) as typeof baseQuery;
     }
 
+    // Filter by has properties
+    if (hasProperties === 'true') {
+      baseQuery = baseQuery.where(sql`${propertyCountSubquery.count} > 0`) as typeof baseQuery;
+    } else if (hasProperties === 'false') {
+      baseQuery = baseQuery.where(sql`${propertyCountSubquery.count} IS NULL OR ${propertyCountSubquery.count} = 0`) as typeof baseQuery;
+    }
+
+    // Filter by has contacts
+    if (hasContacts === 'true') {
+      baseQuery = baseQuery.where(sql`${contactCountSubquery.count} > 0`) as typeof baseQuery;
+    } else if (hasContacts === 'false') {
+      baseQuery = baseQuery.where(sql`${contactCountSubquery.count} IS NULL OR ${contactCountSubquery.count} = 0`) as typeof baseQuery;
+    }
+
     let orderExpression;
     if (sortBy === 'propertyCount') {
       orderExpression = sortOrder === 'desc' 
@@ -86,7 +102,12 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    let countQuery = db.select({ count: sql<number>`count(*)::int` }).from(organizations);
+    // Build count query with same filters
+    let countQuery = db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(organizations)
+      .leftJoin(propertyCountSubquery, eq(organizations.id, propertyCountSubquery.orgId))
+      .leftJoin(contactCountSubquery, eq(organizations.id, contactCountSubquery.orgId));
     
     if (query) {
       countQuery = countQuery.where(
@@ -99,6 +120,18 @@ export async function GET(request: NextRequest) {
     
     if (type) {
       countQuery = countQuery.where(eq(organizations.orgType, type)) as typeof countQuery;
+    }
+
+    if (hasProperties === 'true') {
+      countQuery = countQuery.where(sql`${propertyCountSubquery.count} > 0`) as typeof countQuery;
+    } else if (hasProperties === 'false') {
+      countQuery = countQuery.where(sql`${propertyCountSubquery.count} IS NULL OR ${propertyCountSubquery.count} = 0`) as typeof countQuery;
+    }
+
+    if (hasContacts === 'true') {
+      countQuery = countQuery.where(sql`${contactCountSubquery.count} > 0`) as typeof countQuery;
+    } else if (hasContacts === 'false') {
+      countQuery = countQuery.where(sql`${contactCountSubquery.count} IS NULL OR ${contactCountSubquery.count} = 0`) as typeof countQuery;
     }
 
     const [totalResult] = await countQuery;

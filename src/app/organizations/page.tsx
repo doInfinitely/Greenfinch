@@ -27,6 +27,8 @@ export default function OrganizationsPage() {
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('');
+  const [hasPropertiesFilter, setHasPropertiesFilter] = useState<'all' | 'true' | 'false'>('all');
+  const [hasContactsFilter, setHasContactsFilter] = useState<'all' | 'true' | 'false'>('all');
   const [sortBy, setSortBy] = useState('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [pagination, setPagination] = useState<PaginationInfo>({
@@ -37,6 +39,17 @@ export default function OrganizationsPage() {
   });
   const [availableTypes, setAvailableTypes] = useState<string[]>([]);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const activeFilterCount = (typeFilter && typeFilter !== 'all' ? 1 : 0) +
+    (hasPropertiesFilter !== 'all' ? 1 : 0) +
+    (hasContactsFilter !== 'all' ? 1 : 0);
+
+  const clearAllFilters = () => {
+    setTypeFilter('');
+    setHasPropertiesFilter('all');
+    setHasContactsFilter('all');
+    setSearchQuery('');
+  };
 
   const fetchOrganizations = useCallback(async (page = 1) => {
     setIsLoading(true);
@@ -49,6 +62,8 @@ export default function OrganizationsPage() {
       params.set('sortOrder', sortOrder);
       if (searchQuery) params.set('q', searchQuery);
       if (typeFilter && typeFilter !== 'all') params.set('type', typeFilter);
+      if (hasPropertiesFilter !== 'all') params.set('hasProperties', hasPropertiesFilter);
+      if (hasContactsFilter !== 'all') params.set('hasContacts', hasContactsFilter);
 
       const response = await fetch(`/api/organizations?${params.toString()}`);
       const data = await response.json();
@@ -67,7 +82,7 @@ export default function OrganizationsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, typeFilter, sortBy, sortOrder]);
+  }, [searchQuery, typeFilter, hasPropertiesFilter, hasContactsFilter, sortBy, sortOrder]);
 
   useEffect(() => {
     if (searchTimeoutRef.current) {
@@ -116,17 +131,20 @@ export default function OrganizationsPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="w-full px-4 md:px-6 py-6 md:py-8">
-        <div className="flex flex-col gap-3 mb-6">
-          <div className="relative flex-1">
+        {/* Search and Filters */}
+        <div className="flex flex-col gap-4 mb-6">
+          {/* Search Bar */}
+          <div className="relative">
             <input
               type="text"
               placeholder="Search by name or domain..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 pl-10 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              className="w-full px-4 py-2.5 pl-10 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              data-testid="input-search-orgs"
             />
             <svg
-              className="absolute left-3 top-2.5 w-4 h-4 text-gray-400"
+              className="absolute left-3 top-3 w-4 h-4 text-gray-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -140,19 +158,109 @@ export default function OrganizationsPage() {
               />
             </svg>
           </div>
-          <Select value={typeFilter} onValueChange={setTypeFilter}>
-            <SelectTrigger className="w-full md:w-48">
-              <SelectValue placeholder="All Types" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Types</SelectItem>
-              {availableTypes.map((type) => (
-                <SelectItem key={type} value={type}>
-                  {type}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+
+          {/* Filter Row */}
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Type Filter */}
+            <Select value={typeFilter || 'all'} onValueChange={setTypeFilter}>
+              <SelectTrigger className="w-full md:w-40" data-testid="select-org-type">
+                <SelectValue placeholder="All Types" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Types</SelectItem>
+                {availableTypes.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {type}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Has Properties Filter */}
+            <div className="flex items-center rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <button
+                onClick={() => setHasPropertiesFilter('all')}
+                className={`px-3 py-2 text-sm transition-colors ${
+                  hasPropertiesFilter === 'all'
+                    ? 'bg-green-100 text-green-700 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+                data-testid="button-properties-all"
+              >
+                Properties: All
+              </button>
+              <button
+                onClick={() => setHasPropertiesFilter('true')}
+                className={`px-3 py-2 text-sm border-l border-gray-200 transition-colors ${
+                  hasPropertiesFilter === 'true'
+                    ? 'bg-green-100 text-green-700 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+                data-testid="button-properties-has"
+              >
+                Has
+              </button>
+              <button
+                onClick={() => setHasPropertiesFilter('false')}
+                className={`px-3 py-2 text-sm border-l border-gray-200 transition-colors ${
+                  hasPropertiesFilter === 'false'
+                    ? 'bg-green-100 text-green-700 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+                data-testid="button-properties-none"
+              >
+                None
+              </button>
+            </div>
+
+            {/* Has Contacts Filter */}
+            <div className="flex items-center rounded-lg border border-gray-200 bg-white overflow-hidden">
+              <button
+                onClick={() => setHasContactsFilter('all')}
+                className={`px-3 py-2 text-sm transition-colors ${
+                  hasContactsFilter === 'all'
+                    ? 'bg-green-100 text-green-700 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+                data-testid="button-contacts-all"
+              >
+                Contacts: All
+              </button>
+              <button
+                onClick={() => setHasContactsFilter('true')}
+                className={`px-3 py-2 text-sm border-l border-gray-200 transition-colors ${
+                  hasContactsFilter === 'true'
+                    ? 'bg-green-100 text-green-700 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+                data-testid="button-contacts-has"
+              >
+                Has
+              </button>
+              <button
+                onClick={() => setHasContactsFilter('false')}
+                className={`px-3 py-2 text-sm border-l border-gray-200 transition-colors ${
+                  hasContactsFilter === 'false'
+                    ? 'bg-green-100 text-green-700 font-medium'
+                    : 'text-gray-600 hover:bg-gray-50'
+                }`}
+                data-testid="button-contacts-none"
+              >
+                None
+              </button>
+            </div>
+
+            {/* Clear All Button */}
+            {activeFilterCount > 0 && (
+              <button
+                onClick={clearAllFilters}
+                className="px-3 py-2 text-sm font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg active:bg-red-100"
+                data-testid="button-clear-org-filters"
+              >
+                Clear ({activeFilterCount})
+              </button>
+            )}
+          </div>
         </div>
 
         {error && (
