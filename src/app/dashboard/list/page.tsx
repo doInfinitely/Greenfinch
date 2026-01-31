@@ -156,8 +156,8 @@ export default function ListPage() {
   }, [router]);
 
   return (
-    <div className="h-full flex flex-col bg-background">
-      <div className="px-4 md:px-6 py-3 md:py-4 border-b border-border bg-card">
+    <div className="h-full flex flex-col bg-white dark:bg-slate-950">
+      <div className="px-4 md:px-6 py-3 md:py-4 border-b border-border bg-white dark:bg-slate-900">
         <div className="flex flex-col md:flex-row md:items-center gap-3 md:justify-between">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-base md:text-lg font-semibold text-foreground">
@@ -177,7 +177,7 @@ export default function ListPage() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search by name, address..."
-                className="w-full md:w-80 pl-9 pr-3 py-2 border border-input rounded-lg text-sm bg-background text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-primary"
+                className="w-full md:w-80 pl-9 pr-3 py-2 border border-input rounded-lg text-sm bg-white dark:bg-slate-800 text-foreground placeholder:text-muted-foreground focus:ring-2 focus:ring-primary focus:border-primary"
                 data-testid="input-search-properties"
               />
               <svg className="absolute left-3 top-2.5 w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -192,11 +192,11 @@ export default function ListPage() {
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
           </div>
         ) : filteredProperties.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-            <svg className="w-12 h-12 mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+            <svg className="w-12 h-12 mb-3 text-muted-foreground/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
             </svg>
             <p>No properties found</p>
@@ -205,7 +205,7 @@ export default function ListPage() {
           <>
             <div className="hidden md:block">
               <table className="w-full">
-                <thead className="bg-muted sticky top-0">
+                <thead className="bg-slate-100 dark:bg-slate-800 sticky top-0">
                   <tr>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Property</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Category</th>
@@ -309,7 +309,7 @@ export default function ListPage() {
 
             {/* Pagination Controls */}
             {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 md:px-6 py-3 border-t border-border bg-card sticky bottom-0">
+              <div className="flex items-center justify-between px-4 md:px-6 py-3 border-t border-border bg-white dark:bg-slate-900 sticky bottom-0">
                 <div className="text-sm text-muted-foreground">
                   Showing {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, filteredProperties.length)} of {filteredProperties.length.toLocaleString()}
                 </div>

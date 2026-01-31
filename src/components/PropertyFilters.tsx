@@ -402,7 +402,7 @@ export default function PropertyFilters({
   );
 
   const filterContent = (isMobile: boolean = false) => (
-    <div className="p-4 space-y-2 bg-background">
+    <div className="p-4 space-y-2 bg-white dark:bg-slate-900">
       {!isMobile && (
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-medium text-foreground">Filter Properties</h3>
@@ -775,9 +775,9 @@ export default function PropertyFilters({
               className="absolute inset-0 bg-black/50"
               onClick={() => setIsOpen(false)}
             />
-            <div className="relative flex-1 flex flex-col mt-12 bg-background rounded-t-2xl overflow-hidden">
+            <div className="relative flex-1 flex flex-col mt-12 bg-white dark:bg-slate-900 rounded-t-2xl overflow-hidden">
               {/* Sticky Header */}
-              <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-4 border-b bg-background">
+              <div className="sticky top-0 z-10 flex items-center justify-between px-4 py-4 border-b bg-white dark:bg-slate-900">
                 <h2 className="font-semibold text-lg">Filters</h2>
                 <button
                   onClick={() => setIsOpen(false)}
@@ -792,12 +792,12 @@ export default function PropertyFilters({
               </div>
               
               {/* Scrollable Content */}
-              <div className="flex-1 overflow-y-auto overscroll-contain bg-background">
+              <div className="flex-1 overflow-y-auto overscroll-contain bg-white dark:bg-slate-900">
                 {filterContent(true)}
               </div>
               
               {/* Sticky Footer */}
-              <div className="sticky bottom-0 z-10 flex items-center gap-3 px-4 py-4 border-t border-border bg-background">
+              <div className="sticky bottom-0 z-10 flex items-center gap-3 px-4 py-4 border-t border-border bg-white dark:bg-slate-900">
                 <button
                   onClick={handleClearFilters}
                   className="flex-1 min-h-[44px] px-4 py-3 text-sm font-medium text-foreground bg-muted rounded-lg"

@@ -23,11 +23,11 @@ export default function DashboardLayout({
 
   return (
     <AppSidebar>
-      <div className="h-full flex flex-col bg-background">
-        <div className="bg-card border-b border-border px-4 py-2">
+      <div className="h-full flex flex-col bg-white dark:bg-slate-950">
+        <div className="bg-white dark:bg-slate-900 border-b border-border px-4 py-2">
           <div className="flex items-center">
             <div 
-              className="inline-flex items-center bg-muted rounded-full p-0.5"
+              className="inline-flex items-center bg-slate-100 dark:bg-slate-800 rounded-full p-0.5"
               role="tablist"
               data-testid="view-toggle"
             >
@@ -38,7 +38,7 @@ export default function DashboardLayout({
                 data-testid="toggle-map"
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full transition-all ${
                   isMapView
-                    ? 'bg-card text-foreground shadow-sm'
+                    ? 'bg-white dark:bg-slate-900 text-foreground shadow-sm'
                     : 'text-muted-foreground'
                 }`}
               >
@@ -52,7 +52,7 @@ export default function DashboardLayout({
                 data-testid="toggle-list"
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full transition-all ${
                   !isMapView
-                    ? 'bg-card text-foreground shadow-sm'
+                    ? 'bg-white dark:bg-slate-900 text-foreground shadow-sm'
                     : 'text-muted-foreground'
                 }`}
               >

@@ -107,7 +107,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   });
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-card text-card-foreground">
+    <div className="flex flex-col h-full bg-white dark:bg-slate-900 text-foreground">
       <div className="p-4 border-b border-border">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 relative flex-shrink-0">
@@ -189,14 +189,14 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex h-screen bg-background">
       <aside
-        className={`hidden lg:flex flex-col border-r border-border bg-card transition-all duration-300 relative ${
+        className={`hidden lg:flex flex-col border-r border-border bg-white dark:bg-slate-900 transition-all duration-300 relative ${
           collapsed ? 'w-16' : 'w-64'
         }`}
       >
         <SidebarContent />
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute top-1/2 -right-3 transform -translate-y-1/2 w-6 h-6 bg-card border border-border rounded-full flex items-center justify-center hover:bg-muted shadow-sm z-10 text-muted-foreground"
+          className="absolute top-1/2 -right-3 transform -translate-y-1/2 w-6 h-6 bg-white dark:bg-slate-900 border border-border rounded-full flex items-center justify-center hover:bg-muted shadow-sm z-10 text-muted-foreground"
           data-testid="button-toggle-sidebar"
         >
           {collapsed ? (
@@ -208,7 +208,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
       </aside>
 
       <div
-        className={`fixed inset-0 z-40 lg:hidden transition-opacity ${
+        className={`fixed inset-0 z-50 lg:hidden transition-opacity ${
           mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
@@ -216,13 +216,13 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           className="absolute inset-0 bg-black/50"
           onClick={() => setMobileOpen(false)}
         />
-        <aside className="absolute left-0 top-0 bottom-0 w-64 bg-card shadow-lg">
+        <aside className="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-slate-900 shadow-lg z-50">
           <SidebarContent />
         </aside>
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 bg-background">
-        <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 lg:hidden">
+        <header className="h-14 border-b border-border bg-white dark:bg-slate-900 flex items-center justify-between px-4 lg:hidden">
           <Button
             variant="ghost"
             size="icon"
@@ -246,7 +246,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           </Button>
         </header>
 
-        <header className="h-14 border-b border-border bg-card hidden lg:flex items-center justify-between px-4">
+        <header className="h-14 border-b border-border bg-white dark:bg-slate-900 hidden lg:flex items-center justify-between px-4">
           <div className="flex items-center gap-4">
             {isSignedIn && (
               <OrganizationSwitcher
