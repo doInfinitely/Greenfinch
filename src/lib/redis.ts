@@ -65,17 +65,24 @@ export async function cacheDelete(key: string): Promise<boolean> {
   }
 }
 
+const lockTokens = new Map<string, string>();
+
 export async function acquireLock(lockName: string, ttlSeconds: number = 30): Promise<boolean> {
   const r = getRedis();
-  if (!r) return true;
+  if (!r) return true; // Allow single-instance operation when Redis unavailable
   
   try {
     const lockKey = `${LOCK_PREFIX}${lockName}`;
-    const result = await r.set(lockKey, Date.now(), { nx: true, ex: ttlSeconds });
-    return result === 'OK';
+    const token = `${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const result = await r.set(lockKey, token, { nx: true, ex: ttlSeconds });
+    if (result === 'OK') {
+      lockTokens.set(lockName, token); // Store token for safe release
+      return true;
+    }
+    return false;
   } catch (error) {
     console.error('[Redis] Acquire lock error:', error);
-    return true;
+    return false; // Fail-closed: deny lock on Redis error to prevent concurrent access
   }
 }
 
@@ -83,11 +90,24 @@ export async function releaseLock(lockName: string): Promise<boolean> {
   const r = getRedis();
   if (!r) return true;
   
+  const token = lockTokens.get(lockName);
+  if (!token) return false; // No token stored, shouldn't release
+  
   try {
-    await r.del(`${LOCK_PREFIX}${lockName}`);
-    return true;
+    const lockKey = `${LOCK_PREFIX}${lockName}`;
+    // Check-and-delete: only release if we own the lock
+    const currentToken = await r.get<string>(lockKey);
+    if (currentToken === token) {
+      await r.del(lockKey);
+      lockTokens.delete(lockName);
+      return true;
+    }
+    // Lock was taken by another process or expired
+    lockTokens.delete(lockName);
+    return false;
   } catch (error) {
     console.error('[Redis] Release lock error:', error);
+    lockTokens.delete(lockName);
     return false;
   }
 }
@@ -218,6 +238,45 @@ export async function get<T>(key: string): Promise<T | null> {
   } catch (error) {
     console.error('[Redis] Get error:', error);
     return null;
+  }
+}
+
+export async function queueStateGet<T>(key: string): Promise<T | null> {
+  const r = getRedis();
+  if (!r) return null;
+  
+  try {
+    const value = await r.get<T>(`${QUEUE_PREFIX}${key}`);
+    return value;
+  } catch (error) {
+    console.error('[Redis] Queue state get error:', error);
+    return null;
+  }
+}
+
+export async function queueStateSet<T>(key: string, value: T, ttlSeconds: number): Promise<boolean> {
+  const r = getRedis();
+  if (!r) return false;
+  
+  try {
+    await r.set(`${QUEUE_PREFIX}${key}`, value, { ex: ttlSeconds });
+    return true;
+  } catch (error) {
+    console.error('[Redis] Queue state set error:', error);
+    return false;
+  }
+}
+
+export async function queueStateDelete(key: string): Promise<boolean> {
+  const r = getRedis();
+  if (!r) return false;
+  
+  try {
+    await r.del(`${QUEUE_PREFIX}${key}`);
+    return true;
+  } catch (error) {
+    console.error('[Redis] Queue state delete error:', error);
+    return false;
   }
 }
 

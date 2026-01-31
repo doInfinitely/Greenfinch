@@ -15,8 +15,8 @@ export async function GET() {
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
-  const status = getQueueStatus();
-  const isRunning = isBatchRunning();
+  const status = await getQueueStatus();
+  const isRunning = await isBatchRunning();
 
   if (!status) {
     return NextResponse.json({

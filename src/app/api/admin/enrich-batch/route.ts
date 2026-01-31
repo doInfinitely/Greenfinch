@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { propertyIds, propertyKeys, limit, onlyUnenriched, concurrency } = body;
 
-    if (isBatchRunning()) {
+    if (await isBatchRunning()) {
       return NextResponse.json(
         { error: 'A batch is already running. Please wait for it to complete or check status at /api/admin/enrich-status' },
         { status: 409 }

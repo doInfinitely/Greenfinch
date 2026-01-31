@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { contacts, propertyContacts, contactOrganizations, properties, organizations } from '@/lib/schema';
-import { eq, ilike, or, sql, desc, asc, and } from 'drizzle-orm';
+import { eq, ilike, or, sql, desc, asc, and, inArray } from 'drizzle-orm';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -119,41 +119,62 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .offset(offset);
 
-    const contactsWithRelations = await Promise.all(
-      contactsList.map(async (contact) => {
-        const propertyRelations = await db
-          .select({
-            propertyId: propertyContacts.propertyId,
-            role: propertyContacts.role,
-            propertyKey: properties.propertyKey,
-            address: properties.regridAddress,
-            city: properties.city,
-            state: properties.state,
-          })
-          .from(propertyContacts)
-          .leftJoin(properties, eq(propertyContacts.propertyId, properties.id))
-          .where(eq(propertyContacts.contactId, contact.id))
-          .limit(5);
-
-        const orgRelations = await db
-          .select({
-            orgId: contactOrganizations.orgId,
-            title: contactOrganizations.title,
-            orgName: organizations.name,
-            orgDomain: organizations.domain,
-          })
-          .from(contactOrganizations)
-          .leftJoin(organizations, eq(contactOrganizations.orgId, organizations.id))
-          .where(eq(contactOrganizations.contactId, contact.id))
-          .limit(5);
-
-        return {
-          ...contact,
-          properties: propertyRelations,
-          organizations: orgRelations,
-        };
+    // Batch fetch property relations for all contacts (fix N+1)
+    const contactIds = contactsList.map(c => c.id);
+    
+    const allPropertyRelations = contactIds.length > 0 ? await db
+      .select({
+        contactId: propertyContacts.contactId,
+        propertyId: propertyContacts.propertyId,
+        role: propertyContacts.role,
+        propertyKey: properties.propertyKey,
+        address: properties.regridAddress,
+        city: properties.city,
+        state: properties.state,
       })
-    );
+      .from(propertyContacts)
+      .leftJoin(properties, eq(propertyContacts.propertyId, properties.id))
+      .where(inArray(propertyContacts.contactId, contactIds)) : [];
+
+    // Batch fetch org relations for all contacts (fix N+1)
+    const allOrgRelations = contactIds.length > 0 ? await db
+      .select({
+        contactId: contactOrganizations.contactId,
+        orgId: contactOrganizations.orgId,
+        title: contactOrganizations.title,
+        orgName: organizations.name,
+        orgDomain: organizations.domain,
+      })
+      .from(contactOrganizations)
+      .leftJoin(organizations, eq(contactOrganizations.orgId, organizations.id))
+      .where(inArray(contactOrganizations.contactId, contactIds)) : [];
+
+    // Group relations by contactId
+    const propsByContact = new Map<string, typeof allPropertyRelations>();
+    for (const rel of allPropertyRelations) {
+      if (!rel.contactId) continue;
+      const existing = propsByContact.get(rel.contactId) || [];
+      if (existing.length < 5) { // Limit to 5 per contact
+        existing.push(rel);
+        propsByContact.set(rel.contactId, existing);
+      }
+    }
+
+    const orgsByContact = new Map<string, typeof allOrgRelations>();
+    for (const rel of allOrgRelations) {
+      if (!rel.contactId) continue;
+      const existing = orgsByContact.get(rel.contactId) || [];
+      if (existing.length < 5) { // Limit to 5 per contact
+        existing.push(rel);
+        orgsByContact.set(rel.contactId, existing);
+      }
+    }
+
+    const contactsWithRelations = contactsList.map((contact) => ({
+      ...contact,
+      properties: (propsByContact.get(contact.id) || []).map(({ contactId, ...rest }) => rest),
+      organizations: (orgsByContact.get(contact.id) || []).map(({ contactId, ...rest }) => rest),
+    }));
 
     let countQuery = db.select({ count: sql<number>`count(*)::int` }).from(contacts);
     

@@ -121,7 +121,7 @@ async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedP
 
 export async function POST(request: NextRequest) {
   try {
-    if (isBatchRunning()) {
+    if (await isBatchRunning()) {
       return NextResponse.json(
         { 
           error: 'A batch enrichment is currently running. Individual enrichment requests are blocked to prevent conflicts.',
@@ -149,7 +149,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    updateLastRequestTime();
+    await updateLastRequestTime();
     console.log(`[API] Enrichment request for property: ${propertyKey}`);
 
     // Try PostgreSQL first (already ingested data), fall back to Snowflake

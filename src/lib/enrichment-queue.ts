@@ -7,8 +7,26 @@ import { enrichAndStoreProperty } from './enrichment';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
 import { CONCURRENCY } from './constants';
+import { 
+  isRedisConfigured, 
+  acquireLock, 
+  releaseLock, 
+  hashSet, 
+  hashGet, 
+  hashGetAll,
+  hashDelete,
+  queueStateGet, 
+  queueStateSet,
+  queueStateDelete 
+} from './redis';
 
 const ENRICHMENT_MAX_BATCH_SIZE = parseInt(process.env.ENRICHMENT_MAX_BATCH_SIZE || '200', 10);
+
+// Keys without prefix - queueStateGet/Set adds 'gf:queue:' prefix, acquireLock adds 'gf:lock:' prefix
+const REDIS_BATCH_KEY = 'enrichment:batch';
+const REDIS_QUEUE_KEY = 'enrichment:items';
+const REDIS_LOCK_KEY = 'enrichment:batch';
+const REDIS_RATE_LIMIT_KEY = 'enrichment:last_request';
 
 async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedProperty | null> {
   const [dbProperty] = await db
@@ -117,33 +135,92 @@ interface QueueItem {
   propertyId?: string;
 }
 
-let currentBatch: BatchStatus | null = null;
-let queue: QueueItem[] = [];
-let isProcessing = false;
-let lastIndividualRequestTime = 0;
-let batchStartLock = false; // Simple mutex for atomic batch starting
+// In-memory fallback state (used when Redis is not configured)
+let memoryBatch: BatchStatus | null = null;
+let memoryQueue: QueueItem[] = [];
+let memoryIsProcessing = false;
+let memoryLastRequestTime = 0;
+let memoryBatchStartLock = false;
 const INDIVIDUAL_RATE_LIMIT_MS = 2000; // 2 seconds between individual requests
+const BATCH_LOCK_TTL_SECONDS = 300; // 5 minute lock for batch operations
 
-export function getQueueStatus(): BatchStatus | null {
-  return currentBatch;
+// Redis-backed state management with in-memory fallback
+async function getBatchStatus(): Promise<BatchStatus | null> {
+  if (isRedisConfigured()) {
+    return await queueStateGet<BatchStatus>(REDIS_BATCH_KEY);
+  }
+  return memoryBatch;
 }
 
-export function isBatchRunning(): boolean {
-  return isProcessing || (currentBatch?.status === 'running');
+async function setBatchStatus(batch: BatchStatus): Promise<void> {
+  if (isRedisConfigured()) {
+    await queueStateSet(REDIS_BATCH_KEY, batch, 3600); // 1 hour TTL
+  }
+  memoryBatch = batch;
+}
+
+async function clearBatchStatus(): Promise<void> {
+  if (isRedisConfigured()) {
+    await queueStateDelete(REDIS_BATCH_KEY);
+  }
+  memoryBatch = null;
+}
+
+async function getQueueItems(): Promise<QueueItem[]> {
+  if (isRedisConfigured()) {
+    const items = await queueStateGet<QueueItem[]>(REDIS_QUEUE_KEY);
+    return items || [];
+  }
+  return memoryQueue;
+}
+
+async function setQueueItems(items: QueueItem[]): Promise<void> {
+  if (isRedisConfigured()) {
+    await queueStateSet(REDIS_QUEUE_KEY, items, 3600);
+  }
+  memoryQueue = items;
+}
+
+async function getLastRequestTime(): Promise<number> {
+  if (isRedisConfigured()) {
+    const time = await queueStateGet<number>(REDIS_RATE_LIMIT_KEY);
+    return time || 0;
+  }
+  return memoryLastRequestTime;
+}
+
+async function setLastRequestTime(time: number): Promise<void> {
+  if (isRedisConfigured()) {
+    await queueStateSet(REDIS_RATE_LIMIT_KEY, time, 60); // 1 minute TTL
+  }
+  memoryLastRequestTime = time;
+}
+
+export async function getQueueStatus(): Promise<BatchStatus | null> {
+  return getBatchStatus();
+}
+
+export async function isBatchRunning(): Promise<boolean> {
+  const batch = await getBatchStatus();
+  if (isRedisConfigured()) {
+    return batch?.status === 'running';
+  }
+  return memoryIsProcessing || (batch?.status === 'running');
 }
 
 export async function checkRateLimitForIndividual(): Promise<boolean> {
   const now = Date.now();
-  const timeSinceLastRequest = now - lastIndividualRequestTime;
-  return timeSinceLastRequest >= INDIVIDUAL_RATE_LIMIT_MS;
+  const lastTime = await getLastRequestTime();
+  return now - lastTime >= INDIVIDUAL_RATE_LIMIT_MS;
 }
 
-export function updateLastRequestTime(): void {
-  lastIndividualRequestTime = Date.now();
+export async function updateLastRequestTime(): Promise<void> {
+  await setLastRequestTime(Date.now());
 }
 
-export function addToQueue(items: QueueItem[]): void {
-  queue.push(...items);
+export async function addToQueue(items: QueueItem[]): Promise<void> {
+  const currentQueue = await getQueueItems();
+  await setQueueItems([...currentQueue, ...items]);
 }
 
 async function processPropertyItem(
@@ -172,52 +249,53 @@ async function processPropertyItem(
   }
 }
 
-function updateProgressStats(startTime: number): void {
-  if (!currentBatch) return;
-  
+function updateProgressStats(batch: BatchStatus, startTime: number): void {
   const elapsedMs = Date.now() - startTime;
   const elapsedMinutes = elapsedMs / 60000;
   
-  if (elapsedMinutes > 0 && currentBatch.progress.processed > 0) {
-    currentBatch.progress.propertiesPerMinute = Math.round(
-      currentBatch.progress.processed / elapsedMinutes
+  if (elapsedMinutes > 0 && batch.progress.processed > 0) {
+    batch.progress.propertiesPerMinute = Math.round(
+      batch.progress.processed / elapsedMinutes
     );
     
-    const remaining = currentBatch.progress.total - currentBatch.progress.processed;
-    if (currentBatch.progress.propertiesPerMinute > 0) {
-      currentBatch.progress.estimatedSecondsRemaining = Math.round(
-        (remaining / currentBatch.progress.propertiesPerMinute) * 60
+    const remaining = batch.progress.total - batch.progress.processed;
+    if (batch.progress.propertiesPerMinute > 0) {
+      batch.progress.estimatedSecondsRemaining = Math.round(
+        (remaining / batch.progress.propertiesPerMinute) * 60
       );
     }
   }
 }
 
 export async function processQueue(): Promise<void> {
-  if (isProcessing) {
+  // Check if already processing
+  if (await isBatchRunning()) {
     console.log('[EnrichmentQueue] Already processing, skipping');
     return;
   }
 
+  const queue = await getQueueItems();
   if (queue.length === 0) {
     console.log('[EnrichmentQueue] Queue is empty');
     return;
   }
 
-  isProcessing = true;
+  // For in-memory mode, set the flag
+  memoryIsProcessing = true;
   return processQueueInternal();
 }
 
 async function processQueueInternal(): Promise<void> {
-  // Note: isProcessing should already be set by caller (either processQueue or startBatch)
   const startTime = Date.now();
-  const concurrencyLimit = currentBatch?.concurrency || CONCURRENCY.PROPERTIES;
+  let batch = await getBatchStatus();
+  const concurrencyLimit = batch?.concurrency || CONCURRENCY.PROPERTIES;
   const limit = pLimit(concurrencyLimit);
   
   console.log(`[EnrichmentQueue] Starting parallel processing with concurrency=${concurrencyLimit}`);
 
   try {
-    const items = [...queue];
-    queue = [];
+    const items = await getQueueItems();
+    await setQueueItems([]); // Clear queue
     
     const promises = items.map((item, index) =>
       limit(async () => {
@@ -226,24 +304,27 @@ async function processQueueInternal(): Promise<void> {
         
         const result = await processPropertyItem(item, startTime);
         
-        if (currentBatch) {
-          currentBatch.progress.processed++;
+        // Re-fetch batch status to get latest state (for distributed updates)
+        batch = await getBatchStatus();
+        if (batch) {
+          batch.progress.processed++;
           if (result.success) {
-            currentBatch.progress.succeeded++;
+            batch.progress.succeeded++;
           } else {
-            currentBatch.progress.failed++;
-            currentBatch.errors.push({
+            batch.progress.failed++;
+            batch.errors.push({
               propertyKey: item.propertyKey,
               error: result.error || 'Unknown error',
             });
           }
-          updateProgressStats(startTime);
+          updateProgressStats(batch, startTime);
+          await setBatchStatus(batch); // Persist updated status
         }
         
         const elapsed = ((Date.now() - itemStart) / 1000).toFixed(1);
         const status = result.success ? 'SUCCESS' : 'FAILED';
-        const ppm = currentBatch?.progress.propertiesPerMinute || 0;
-        const eta = currentBatch?.progress.estimatedSecondsRemaining;
+        const ppm = batch?.progress.propertiesPerMinute || 0;
+        const eta = batch?.progress.estimatedSecondsRemaining;
         const etaStr = eta ? `ETA: ${Math.round(eta / 60)}m ${eta % 60}s` : '';
         
         console.log(`[EnrichmentQueue] [${index + 1}/${items.length}] ${status} (${elapsed}s) | Rate: ${ppm}/min | ${etaStr}`);
@@ -254,22 +335,34 @@ async function processQueueInternal(): Promise<void> {
 
     await Promise.all(promises);
 
-    if (currentBatch) {
-      currentBatch.status = 'completed';
-      currentBatch.completedAt = new Date();
+    batch = await getBatchStatus();
+    if (batch) {
+      batch.status = 'completed';
+      batch.completedAt = new Date();
+      await setBatchStatus(batch);
       
       const totalTime = ((Date.now() - startTime) / 1000).toFixed(1);
-      const finalRate = currentBatch.progress.propertiesPerMinute || 0;
-      console.log(`[EnrichmentQueue] Batch complete: ${currentBatch.progress.succeeded}/${currentBatch.progress.total} succeeded in ${totalTime}s (${finalRate}/min)`);
+      const finalRate = batch.progress.propertiesPerMinute || 0;
+      console.log(`[EnrichmentQueue] Batch complete: ${batch.progress.succeeded}/${batch.progress.total} succeeded in ${totalTime}s (${finalRate}/min)`);
+    }
+    
+    // Release distributed lock if using Redis
+    if (isRedisConfigured()) {
+      await releaseLock(REDIS_LOCK_KEY);
     }
   } catch (error) {
     console.error('[EnrichmentQueue] Queue processing failed:', error);
-    if (currentBatch) {
-      currentBatch.status = 'failed';
-      currentBatch.completedAt = new Date();
+    batch = await getBatchStatus();
+    if (batch) {
+      batch.status = 'failed';
+      batch.completedAt = new Date();
+      await setBatchStatus(batch);
+    }
+    if (isRedisConfigured()) {
+      await releaseLock(REDIS_LOCK_KEY);
     }
   } finally {
-    isProcessing = false;
+    memoryIsProcessing = false;
   }
 }
 
@@ -282,85 +375,102 @@ export interface StartBatchOptions {
 }
 
 export async function startBatch(options: StartBatchOptions): Promise<BatchStatus> {
-  // Atomic check-and-lock to prevent race conditions when multiple batch requests arrive simultaneously
-  if (batchStartLock) {
-    throw new Error('Another batch start is in progress. Please wait.');
+  // Try to acquire distributed lock (Redis) or in-memory lock
+  if (isRedisConfigured()) {
+    const lockAcquired = await acquireLock(REDIS_LOCK_KEY, BATCH_LOCK_TTL_SECONDS);
+    if (!lockAcquired) {
+      throw new Error('Another batch start is in progress. Please wait.');
+    }
+  } else {
+    if (memoryBatchStartLock) {
+      throw new Error('Another batch start is in progress. Please wait.');
+    }
+    memoryBatchStartLock = true;
   }
-  batchStartLock = true;
   
   try {
-    if (isBatchRunning()) {
+    if (await isBatchRunning()) {
       throw new Error('A batch is already running. Please wait for it to complete.');
     }
 
-  const batchId = uuidv4();
-  const limit = Math.min(options.limit || ENRICHMENT_MAX_BATCH_SIZE, ENRICHMENT_MAX_BATCH_SIZE);
-  const concurrency = options.concurrency || CONCURRENCY.PROPERTIES;
-  
-  let propertyKeysToEnrich: string[] = [];
+    const batchId = uuidv4();
+    const batchLimit = Math.min(options.limit || ENRICHMENT_MAX_BATCH_SIZE, ENRICHMENT_MAX_BATCH_SIZE);
+    const concurrency = options.concurrency || CONCURRENCY.PROPERTIES;
+    
+    let propertyKeysToEnrich: string[] = [];
 
-  if (options.propertyKeys && options.propertyKeys.length > 0) {
-    propertyKeysToEnrich = options.propertyKeys.slice(0, limit);
-  } else if (options.propertyIds && options.propertyIds.length > 0) {
-    const propertiesFromDb = await db.query.properties.findMany({
-      where: inArray(properties.id, options.propertyIds.slice(0, limit)),
-      columns: { propertyKey: true },
-    });
-    propertyKeysToEnrich = propertiesFromDb.map(p => p.propertyKey);
-  } else if (options.onlyUnenriched) {
-    const unenrichedProperties = await db.query.properties.findMany({
-      where: or(
-        isNull(properties.enrichmentStatus),
-        eq(properties.enrichmentStatus, 'pending'),
-        eq(properties.enrichmentStatus, 'enriched')
-      ),
-      columns: { propertyKey: true },
-      limit,
-    });
-    propertyKeysToEnrich = unenrichedProperties.map(p => p.propertyKey);
-  }
-
-  if (propertyKeysToEnrich.length === 0) {
-    throw new Error('No properties found to enrich');
-  }
-
-  queue = [];
-  currentBatch = {
-    batchId,
-    status: 'running',
-    progress: {
-      total: propertyKeysToEnrich.length,
-      processed: 0,
-      succeeded: 0,
-      failed: 0,
-    },
-    startedAt: new Date(),
-    completedAt: null,
-    errors: [],
-    concurrency,
-  };
-
-  console.log(`[EnrichmentQueue] Starting batch ${batchId}: ${propertyKeysToEnrich.length} properties with concurrency=${concurrency}`);
-
-  addToQueue(propertyKeysToEnrich.map(key => ({ propertyKey: key })));
-
-  // Set isProcessing synchronously to prevent race window between lock release and processQueue setting the flag
-  isProcessing = true;
-  
-  // Start background processing (processQueue will skip its isProcessing check since we already set it)
-  processQueueInternal().catch(error => {
-    console.error('[EnrichmentQueue] Background processing error:', error);
-    isProcessing = false;
-    if (currentBatch) {
-      currentBatch.status = 'failed';
-      currentBatch.completedAt = new Date();
+    if (options.propertyKeys && options.propertyKeys.length > 0) {
+      propertyKeysToEnrich = options.propertyKeys.slice(0, batchLimit);
+    } else if (options.propertyIds && options.propertyIds.length > 0) {
+      const propertiesFromDb = await db.query.properties.findMany({
+        where: inArray(properties.id, options.propertyIds.slice(0, batchLimit)),
+        columns: { propertyKey: true },
+      });
+      propertyKeysToEnrich = propertiesFromDb.map(p => p.propertyKey);
+    } else if (options.onlyUnenriched) {
+      const unenrichedProperties = await db.query.properties.findMany({
+        where: or(
+          isNull(properties.enrichmentStatus),
+          eq(properties.enrichmentStatus, 'pending'),
+          eq(properties.enrichmentStatus, 'enriched')
+        ),
+        columns: { propertyKey: true },
+        limit: batchLimit,
+      });
+      propertyKeysToEnrich = unenrichedProperties.map(p => p.propertyKey);
     }
-  });
 
-  return currentBatch;
+    if (propertyKeysToEnrich.length === 0) {
+      throw new Error('No properties found to enrich');
+    }
+
+    const newBatch: BatchStatus = {
+      batchId,
+      status: 'running',
+      progress: {
+        total: propertyKeysToEnrich.length,
+        processed: 0,
+        succeeded: 0,
+        failed: 0,
+      },
+      startedAt: new Date(),
+      completedAt: null,
+      errors: [],
+      concurrency,
+    };
+    
+    // Clear queue and set batch status
+    await setQueueItems([]);
+    await setBatchStatus(newBatch);
+
+    console.log(`[EnrichmentQueue] Starting batch ${batchId}: ${propertyKeysToEnrich.length} properties with concurrency=${concurrency}`);
+
+    await addToQueue(propertyKeysToEnrich.map(key => ({ propertyKey: key })));
+
+    // Set in-memory processing flag for fallback mode
+    memoryIsProcessing = true;
+    
+    // Start background processing
+    processQueueInternal().catch(async (error) => {
+      console.error('[EnrichmentQueue] Background processing error:', error);
+      memoryIsProcessing = false;
+      const batch = await getBatchStatus();
+      if (batch) {
+        batch.status = 'failed';
+        batch.completedAt = new Date();
+        await setBatchStatus(batch);
+      }
+      if (isRedisConfigured()) {
+        await releaseLock(REDIS_LOCK_KEY);
+      }
+    });
+
+    return newBatch;
   } finally {
-    // Release the lock after batch state is established (isProcessing and currentBatch are set)
-    batchStartLock = false;
+    // Release in-memory lock (Redis lock is held until processing completes)
+    if (!isRedisConfigured()) {
+      memoryBatchStartLock = false;
+    }
   }
 }
 

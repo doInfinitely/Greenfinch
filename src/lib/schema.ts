@@ -191,6 +191,9 @@ export const properties = pgTable('properties', {
   propertyKeyIdx: uniqueIndex('idx_properties_property_key').on(table.propertyKey),
   cityStateIdx: index('idx_properties_city_state').on(table.city, table.state),
   assetCategoryIdx: index('idx_properties_asset_category').on(table.assetCategory),
+  zipIdx: index('idx_properties_zip').on(table.zip),
+  assetSubcategoryIdx: index('idx_properties_asset_subcategory').on(table.assetSubcategory),
+  enrichmentStatusIdx: index('idx_properties_enrichment_status').on(table.enrichmentStatus),
 }));
 
 // Contacts table
@@ -384,7 +387,10 @@ export const contactOrganizations = pgTable('contact_organizations', {
   isCurrent: boolean('is_current').default(true),
   startedAt: timestamp('started_at'),
   endedAt: timestamp('ended_at'),
-});
+}, (table) => ({
+  contactOrgIdx: index('idx_contact_organizations').on(table.contactId, table.orgId),
+  orgIdx: index('idx_contact_organizations_org').on(table.orgId),
+}));
 
 // Classification cache - stores AI classifications by unique field combinations
 export const classificationCache = pgTable('classification_cache', {

@@ -49,7 +49,12 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Cascade Enrichment Architecture**: Uses a multi-provider cascade approach for enrichment with provider tracking and early-exit optimization for both organizations and contacts.
 - **Email Validation Rules**: Prioritizes ZeroBounce with NeverBounce as fallback. Catch-all emails are invalid, and personal email providers trigger further business email enrichment.
 - **Enrichment Queue System**: A non-blocking queue system allows background processing of enrichment tasks with UI progress updates and persistence.
-- **Concurrent User Support (Single Instance Only)**: Implements safeguards like batch enrichment locking (`batchStartLock` mutex pattern), rate limiting (2s between individual requests), and database-level deduplication for single-instance deployments. In-memory global state (`currentBatch`, `queue`, `isProcessing`) means batch locking won't work across multiple server instances. Contact deduplication uses application-level check-then-insert pattern and lacks unique constraints.
+- **Horizontal Scaling Infrastructure**: Redis-backed distributed state management using Upstash for cross-instance coordination.
+  - **Redis State**: Enrichment queue, caches (ZeroBounce, Mapbox POI, Google Places) use Redis with in-memory fallback when Redis unavailable.
+  - **Distributed Locking**: Uses Redis SETNX pattern with unique tokens for batch enrichment locks (5-minute timeout). Fail-closed on Redis errors to prevent concurrent access.
+  - **Cache TTLs**: ZeroBounce 1hr, Mapbox POI 24hr, Google Places 24hr.
+  - **Key Prefixes**: `gf:cache:`, `gf:queue:`, `gf:lock:` for namespace isolation (helpers auto-prefix).
+- **Database Performance**: Indexes on properties.zip, properties.assetSubcategory, properties.enrichmentStatus, and composite indexes on contactOrganizations for relationship lookups. N+1 queries fixed via batch fetching with inArray() in contacts and analytics APIs.
 - **Organization Domain Enrichment**: Automates enrichment for organizations using Hunter.io and EnrichLayer, including parent company discovery and industry classification.
 - **AI Enrichment Rules**: Employs `gemini-3-flash-preview` with search grounding for property enrichment, excluding condo/HOA and focusing on management companies and developers. Building and lot square footage are calculated with source tracking and precedence rules.
 

@@ -1,10 +1,14 @@
+import { cacheGet, cacheSet, isRedisConfigured } from './redis';
+
 export interface CommonNameResult {
   commonName: string | null;
   rawResponse: unknown;
 }
 
-const nameCache = new Map<string, { result: CommonNameResult; timestamp: number }>();
+// In-memory fallback cache
+const memoryNameCache = new Map<string, { result: CommonNameResult; timestamp: number }>();
 const NAME_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const NAME_CACHE_TTL_SECONDS = 86400; // 24 hours for Redis
 
 let lastRequestTime = 0;
 const MIN_REQUEST_INTERVAL_MS = 100;
@@ -23,7 +27,7 @@ async function throttle(): Promise<void> {
 function getNameCacheKey(lat: number, lon: number): string {
   const roundedLat = Math.round(lat * 100000) / 100000;
   const roundedLon = Math.round(lon * 100000) / 100000;
-  return `${roundedLat},${roundedLon}`;
+  return `gplaces:${roundedLat},${roundedLon}`;
 }
 
 export async function getCommonNameFromGooglePlaces(lat: number, lon: number): Promise<CommonNameResult> {
@@ -35,10 +39,18 @@ export async function getCommonNameFromGooglePlaces(lat: number, lon: number): P
   }
   
   const cacheKey = getNameCacheKey(lat, lon);
-  const cached = nameCache.get(cacheKey);
   
-  if (cached && Date.now() - cached.timestamp < NAME_CACHE_TTL_MS) {
-    return cached.result;
+  // Check cache (Redis with in-memory fallback)
+  if (isRedisConfigured()) {
+    const redisCached = await cacheGet<CommonNameResult>(cacheKey);
+    if (redisCached) {
+      return redisCached;
+    }
+  } else {
+    const memoryCached = memoryNameCache.get(cacheKey);
+    if (memoryCached && Date.now() - memoryCached.timestamp < NAME_CACHE_TTL_MS) {
+      return memoryCached.result;
+    }
   }
   
   await throttle();
@@ -77,7 +89,11 @@ export async function getCommonNameFromGooglePlaces(lat: number, lon: number): P
 
     if (places.length === 0) {
       const noResult: CommonNameResult = { commonName: null, rawResponse: data };
-      nameCache.set(cacheKey, { result: noResult, timestamp: Date.now() });
+      if (isRedisConfigured()) {
+        await cacheSet(cacheKey, noResult, NAME_CACHE_TTL_SECONDS);
+      } else {
+        memoryNameCache.set(cacheKey, { result: noResult, timestamp: Date.now() });
+      }
       return noResult;
     }
 
@@ -85,7 +101,11 @@ export async function getCommonNameFromGooglePlaces(lat: number, lon: number): P
     const commonName = firstPlace.displayName?.text || null;
 
     const result: CommonNameResult = { commonName, rawResponse: data };
-    nameCache.set(cacheKey, { result, timestamp: Date.now() });
+    if (isRedisConfigured()) {
+      await cacheSet(cacheKey, result, NAME_CACHE_TTL_SECONDS);
+    } else {
+      memoryNameCache.set(cacheKey, { result, timestamp: Date.now() });
+    }
     return result;
   } catch (error) {
     console.error('[Google Places] Error getting common name:', error);
@@ -94,7 +114,7 @@ export async function getCommonNameFromGooglePlaces(lat: number, lon: number): P
 }
 
 export function clearNameCache(): void {
-  nameCache.clear();
+  memoryNameCache.clear();
 }
 
 interface ContainingPlaceResult {

@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { cacheGet, cacheSet, isRedisConfigured } from './redis';
 
 const MAPBOX_ACCESS_TOKEN = process.env.MAPBOX_API_KEY;
 const MAPBOX_SEARCHBOX_URL = 'https://api.mapbox.com/search/searchbox/v1';
@@ -127,13 +128,15 @@ function parseOperationalStatus(status: string | undefined): MapboxPOIResult['op
   return 'unknown';
 }
 
-const poiCache = new Map<string, { result: MapboxPOIResult; timestamp: number }>();
+// In-memory fallback cache
+const memoryPoiCache = new Map<string, { result: MapboxPOIResult; timestamp: number }>();
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const CACHE_TTL_SECONDS = 86400; // 24 hours for Redis
 
 function getCacheKey(lat: number, lon: number): string {
   const roundedLat = Math.round(lat * 10000) / 10000;
   const roundedLon = Math.round(lon * 10000) / 10000;
-  return `${roundedLat},${roundedLon}`;
+  return `mapbox:${roundedLat},${roundedLon}`;
 }
 
 let lastRequestTime = 0;
@@ -165,10 +168,18 @@ export async function enrichWithMapboxPOI(lat: number, lon: number): Promise<Map
   }
   
   const cacheKey = getCacheKey(lat, lon);
-  const cached = poiCache.get(cacheKey);
   
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
-    return cached.result;
+  // Check cache (Redis with in-memory fallback)
+  if (isRedisConfigured()) {
+    const redisCached = await cacheGet<MapboxPOIResult>(cacheKey);
+    if (redisCached) {
+      return redisCached;
+    }
+  } else {
+    const memoryCached = memoryPoiCache.get(cacheKey);
+    if (memoryCached && Date.now() - memoryCached.timestamp < CACHE_TTL_MS) {
+      return memoryCached.result;
+    }
   }
   
   await throttle();
@@ -199,7 +210,11 @@ export async function enrichWithMapboxPOI(lat: number, lon: number): Promise<Map
         rawResponse: response.data,
       };
       
-      poiCache.set(cacheKey, { result: noPoiResult, timestamp: Date.now() });
+      if (isRedisConfigured()) {
+        await cacheSet(cacheKey, noPoiResult, CACHE_TTL_SECONDS);
+      } else {
+        memoryPoiCache.set(cacheKey, { result: noPoiResult, timestamp: Date.now() });
+      }
       return noPoiResult;
     }
     
@@ -227,7 +242,11 @@ export async function enrichWithMapboxPOI(lat: number, lon: number): Promise<Map
       rawResponse: response.data,
     };
     
-    poiCache.set(cacheKey, { result, timestamp: Date.now() });
+    if (isRedisConfigured()) {
+      await cacheSet(cacheKey, result, CACHE_TTL_SECONDS);
+    } else {
+      memoryPoiCache.set(cacheKey, { result, timestamp: Date.now() });
+    }
     return result;
     
   } catch (error) {
@@ -302,20 +321,20 @@ export async function batchEnrichWithMapboxPOI(
 }
 
 export function clearPOICache(): void {
-  poiCache.clear();
+  memoryPoiCache.clear();
 }
 
 export function getPOICacheStats(): { size: number; oldestMs: number | null } {
   let oldestTs = Infinity;
   
-  for (const [, value] of poiCache) {
+  for (const [, value] of memoryPoiCache) {
     if (value.timestamp < oldestTs) {
       oldestTs = value.timestamp;
     }
   }
   
   return {
-    size: poiCache.size,
+    size: memoryPoiCache.size,
     oldestMs: oldestTs === Infinity ? null : Date.now() - oldestTs,
   };
 }

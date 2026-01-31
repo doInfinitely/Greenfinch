@@ -5,11 +5,14 @@
  * API Documentation: https://www.zerobounce.net/docs/email-validation-api-quickstart/v2-validate-emails
  */
 
+import { cacheGet, cacheSet, isRedisConfigured } from './redis';
+
 const ZEROBOUNCE_API_URL = 'https://api.zerobounce.net/v2';
 
-// In-memory cache for email validation results to avoid duplicate API calls
-const validationCache = new Map<string, { result: ValidateEmailResult; timestamp: number }>();
+// In-memory fallback cache for email validation results
+const memoryValidationCache = new Map<string, { result: ValidateEmailResult; timestamp: number }>();
 const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour cache TTL
+const CACHE_TTL_SECONDS = 3600; // 1 hour in seconds for Redis
 
 interface ZeroBounceValidateResponse {
   address: string;
@@ -58,12 +61,22 @@ export async function validateEmail(email: string): Promise<ValidateEmailResult>
     throw new Error('ZEROBOUNCE_API_KEY is not configured');
   }
 
-  // Check cache first
+  // Check cache first (Redis with in-memory fallback)
   const normalizedEmail = email.toLowerCase().trim();
-  const cached = validationCache.get(normalizedEmail);
-  if (cached && (Date.now() - cached.timestamp) < CACHE_TTL_MS) {
-    console.log('[ZeroBounce] Cache hit for:', normalizedEmail, '->', cached.result.status);
-    return cached.result;
+  const cacheKey = `zerobounce:${normalizedEmail}`;
+  
+  if (isRedisConfigured()) {
+    const redisCached = await cacheGet<ValidateEmailResult>(cacheKey);
+    if (redisCached) {
+      console.log('[ZeroBounce] Redis cache hit for:', normalizedEmail, '->', redisCached.status);
+      return redisCached;
+    }
+  } else {
+    const memoryCached = memoryValidationCache.get(normalizedEmail);
+    if (memoryCached && (Date.now() - memoryCached.timestamp) < CACHE_TTL_MS) {
+      console.log('[ZeroBounce] Memory cache hit for:', normalizedEmail, '->', memoryCached.result.status);
+      return memoryCached.result;
+    }
   }
 
   console.log('[ZeroBounce] Validating email:', email);
@@ -127,8 +140,12 @@ export async function validateEmail(email: string): Promise<ValidateEmailResult>
       raw: data,
     };
 
-    // Store in cache
-    validationCache.set(normalizedEmail, { result, timestamp: Date.now() });
+    // Store in cache (Redis with in-memory fallback)
+    if (isRedisConfigured()) {
+      await cacheSet(cacheKey, result, CACHE_TTL_SECONDS);
+    } else {
+      memoryValidationCache.set(normalizedEmail, { result, timestamp: Date.now() });
+    }
     console.log('[EmailValidation] ZeroBounce:', email, '->', normalizedStatus, `(valid=${normalizedStatus === 'valid'})`);
 
     return result;

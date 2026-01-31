@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth, clerkClient } from '@clerk/nextjs/server';
 import { db } from '@/lib/db';
 import { propertyPipeline, propertyActivity, users } from '@/lib/schema';
-import { eq, sql, gte, and } from 'drizzle-orm';
+import { eq, sql, gte, and, inArray } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   try {
@@ -61,29 +61,28 @@ export async function GET(request: NextRequest) {
       .orderBy(sql`COUNT(*) DESC`)
       .limit(20);
 
-    const enrichedTeamActivity = await Promise.all(
-      teamActivity.map(async (activity) => {
-        let userName = 'Unknown User';
-        try {
-          const [user] = await db
-            .select({ firstName: users.firstName, lastName: users.lastName, email: users.email })
-            .from(users)
-            .where(eq(users.id, activity.userId))
-            .limit(1);
-          if (user) {
-            userName = user.firstName && user.lastName 
-              ? `${user.firstName} ${user.lastName}`
-              : user.email || 'Unknown User';
-          }
-        } catch (e) {
-          console.error('Error fetching user:', e);
-        }
-        return {
-          ...activity,
-          userName,
-        };
-      })
-    );
+    // Batch fetch user info (fix N+1)
+    const userIds = teamActivity.map(a => a.userId);
+    const usersData = userIds.length > 0 ? await db
+      .select({ id: users.id, firstName: users.firstName, lastName: users.lastName, email: users.email })
+      .from(users)
+      .where(inArray(users.id, userIds)) : [];
+    
+    const usersMap = new Map(usersData.map(u => [u.id, u]));
+    
+    const enrichedTeamActivity = teamActivity.map((activity) => {
+      const user = usersMap.get(activity.userId);
+      let userName = 'Unknown User';
+      if (user) {
+        userName = user.firstName && user.lastName 
+          ? `${user.firstName} ${user.lastName}`
+          : user.email || 'Unknown User';
+      }
+      return {
+        ...activity,
+        userName,
+      };
+    });
 
     return NextResponse.json({
       teamMemberCount,
