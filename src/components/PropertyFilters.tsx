@@ -247,10 +247,10 @@ export default function PropertyFilters({
   };
 
   const SectionHeader = ({ id, title, count, onClear }: { id: string; title: string; count?: number; onClear?: () => void }) => (
-    <div className="flex items-center justify-between py-2">
+    <div className="flex items-center justify-between py-3">
       <button
         onClick={() => toggleSection(id)}
-        className="flex-1 flex items-center justify-between text-sm font-medium text-gray-700 hover:text-gray-900"
+        className="flex-1 flex items-center justify-between text-sm font-medium text-gray-700 active:text-gray-900"
         data-testid={`section-${id}`}
       >
         <span className="flex items-center gap-2">
@@ -262,7 +262,7 @@ export default function PropertyFilters({
           )}
         </span>
         <svg
-          className={`w-4 h-4 transition-transform ${openSections.has(id) ? 'rotate-180' : ''}`}
+          className={`w-5 h-5 transition-transform ${openSections.has(id) ? 'rotate-180' : ''}`}
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -301,10 +301,10 @@ export default function PropertyFilters({
       <div className="border-b border-gray-100 pb-3">
         <label className="block text-xs text-gray-600 mb-1.5 font-medium">Organization</label>
         {selectedOrg ? (
-          <div className="flex items-center justify-between bg-green-50 border border-green-200 px-2 py-1.5 rounded text-sm">
+          <div className="flex items-center justify-between bg-green-50 border border-green-200 px-3 py-2.5 rounded-lg text-sm">
             <span className="text-green-800 truncate">{selectedOrg.name}</span>
-            <button onClick={clearOrg} className="text-green-600 hover:text-green-800 ml-2 flex-shrink-0" data-testid="button-clear-org">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button onClick={clearOrg} className="text-green-600 active:text-green-800 ml-2 flex-shrink-0 p-1" data-testid="button-clear-org">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -316,7 +316,7 @@ export default function PropertyFilters({
               value={orgSearch}
               onChange={(e) => setOrgSearch(e.target.value)}
               placeholder="Search organizations..."
-              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
               data-testid="input-org-search"
             />
             {orgResults.length > 0 && (
@@ -341,10 +341,10 @@ export default function PropertyFilters({
       <div className="border-b border-gray-100 pb-3">
         <label className="block text-xs text-gray-600 mb-1.5 font-medium">Contact</label>
         {selectedContact ? (
-          <div className="flex items-center justify-between bg-green-50 border border-green-200 px-2 py-1.5 rounded text-sm">
+          <div className="flex items-center justify-between bg-green-50 border border-green-200 px-3 py-2.5 rounded-lg text-sm">
             <span className="text-green-800 truncate">{selectedContact.fullName}</span>
-            <button onClick={clearContact} className="text-green-600 hover:text-green-800 ml-2 flex-shrink-0" data-testid="button-clear-contact">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button onClick={clearContact} className="text-green-600 active:text-green-800 ml-2 flex-shrink-0 p-1" data-testid="button-clear-contact">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -356,7 +356,7 @@ export default function PropertyFilters({
               value={contactSearch}
               onChange={(e) => setContactSearch(e.target.value)}
               placeholder="Search contacts..."
-              className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
               data-testid="input-contact-search"
             />
             {contactResults.length > 0 && (
@@ -381,9 +381,9 @@ export default function PropertyFilters({
       <div className="border-b border-gray-100 pb-2">
         <SectionHeader id="size" title="Size" count={(filters.minLotAcres || filters.maxLotAcres ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0)} />
         {openSections.has('size') && (
-          <div className="mt-2 space-y-3">
+          <div className="mt-2 space-y-4">
             <div>
-              <label className="block text-xs text-gray-600 mb-1">Lot Size (acres)</label>
+              <label className="block text-xs text-gray-600 mb-1.5">Lot Size (acres)</label>
               <div className="flex gap-2">
                 <input
                   type="number"
@@ -391,7 +391,7 @@ export default function PropertyFilters({
                   value={localMinLotAcres}
                   onChange={(e) => handleAcresChange('minLotAcres', e.target.value, setLocalMinLotAcres)}
                   placeholder="Min"
-                  className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
                   data-testid="input-min-lot-acres"
                 />
                 <input
@@ -400,20 +400,20 @@ export default function PropertyFilters({
                   value={localMaxLotAcres}
                   onChange={(e) => handleAcresChange('maxLotAcres', e.target.value, setLocalMaxLotAcres)}
                   placeholder="Max"
-                  className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
                   data-testid="input-max-lot-acres"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-xs text-gray-600 mb-1">Net Building Sq Ft</label>
+              <label className="block text-xs text-gray-600 mb-1.5">Net Building Sq Ft</label>
               <div className="flex gap-2">
                 <input
                   type="number"
                   value={localMinNetSqft}
                   onChange={(e) => handleNumberChange('minNetSqft', e.target.value, setLocalMinNetSqft)}
                   placeholder="Min"
-                  className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
                   data-testid="input-min-net-sqft"
                 />
                 <input
@@ -421,7 +421,7 @@ export default function PropertyFilters({
                   value={localMaxNetSqft}
                   onChange={(e) => handleNumberChange('maxNetSqft', e.target.value, setLocalMaxNetSqft)}
                   placeholder="Max"
-                  className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
+                  className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
                   data-testid="input-max-net-sqft"
                 />
               </div>
@@ -439,14 +439,14 @@ export default function PropertyFilters({
           onClear={() => { handleClearArray('categories'); handleClearArray('subcategories'); }}
         />
         {openSections.has('category') && (
-          <div className="mt-2 space-y-2 max-h-40 overflow-y-auto">
+          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
             {availableCategories.map((cat) => (
-              <label key={cat} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 px-1 py-0.5 rounded">
+              <label key={cat} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
                 <input
                   type="checkbox"
                   checked={filters.categories?.includes(cat) ?? false}
                   onChange={() => handleArrayToggle('categories', cat)}
-                  className="w-3.5 h-3.5 text-green-600 rounded"
+                  className="w-4 h-4 text-green-600 rounded border-gray-300"
                   data-testid={`checkbox-category-${cat.toLowerCase().replace(/\s+/g, '-')}`}
                 />
                 <span className="text-gray-700">{cat}</span>
@@ -454,14 +454,14 @@ export default function PropertyFilters({
             ))}
             {availableSubcategories.length > 0 && (
               <>
-                <div className="text-xs text-gray-500 mt-2 mb-1">Subcategories</div>
+                <div className="text-xs text-gray-500 mt-3 mb-1 px-2">Subcategories</div>
                 {availableSubcategories.map((sub) => (
-                  <label key={sub} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 px-1 py-0.5 rounded pl-4">
+                  <label key={sub} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2 rounded-lg pl-5">
                     <input
                       type="checkbox"
                       checked={filters.subcategories?.includes(sub) ?? false}
                       onChange={() => handleArrayToggle('subcategories', sub)}
-                      className="w-3.5 h-3.5 text-green-600 rounded"
+                      className="w-4 h-4 text-green-600 rounded border-gray-300"
                       data-testid={`checkbox-subcategory-${sub.toLowerCase().replace(/\s+/g, '-')}`}
                     />
                     <span className="text-gray-600">{sub}</span>
@@ -487,10 +487,10 @@ export default function PropertyFilters({
               <button
                 key={cls}
                 onClick={() => handleArrayToggle('buildingClasses', cls)}
-                className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                className={`px-4 py-2 text-sm rounded-full border transition-colors ${
                   filters.buildingClasses?.includes(cls)
                     ? 'bg-green-100 border-green-500 text-green-700'
-                    : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+                    : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
                 }`}
                 data-testid={`button-class-${cls}`}
               >
@@ -514,16 +514,16 @@ export default function PropertyFilters({
             <div className="mt-2 space-y-3">
               {availableAcTypes.length > 0 && (
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">AC Type</label>
-                  <div className="flex flex-wrap gap-1">
+                  <label className="block text-xs text-gray-600 mb-1.5">AC Type</label>
+                  <div className="flex flex-wrap gap-2">
                     {availableAcTypes.slice(0, 6).map((type) => (
                       <button
                         key={type}
                         onClick={() => handleArrayToggle('acTypes', type)}
-                        className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+                        className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
                           filters.acTypes?.includes(type)
                             ? 'bg-blue-100 border-blue-400 text-blue-700'
-                            : 'bg-white border-gray-300 text-gray-600'
+                            : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
                         }`}
                         data-testid={`button-ac-${type.toLowerCase().replace(/\s+/g, '-')}`}
                       >
@@ -535,16 +535,16 @@ export default function PropertyFilters({
               )}
               {availableHeatingTypes.length > 0 && (
                 <div>
-                  <label className="block text-xs text-gray-600 mb-1">Heating Type</label>
-                  <div className="flex flex-wrap gap-1">
+                  <label className="block text-xs text-gray-600 mb-1.5">Heating Type</label>
+                  <div className="flex flex-wrap gap-2">
                     {availableHeatingTypes.slice(0, 6).map((type) => (
                       <button
                         key={type}
                         onClick={() => handleArrayToggle('heatingTypes', type)}
-                        className={`px-2 py-0.5 text-xs rounded border transition-colors ${
+                        className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
                           filters.heatingTypes?.includes(type)
                             ? 'bg-orange-100 border-orange-400 text-orange-700'
-                            : 'bg-white border-gray-300 text-gray-600'
+                            : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
                         }`}
                         data-testid={`button-heating-${type.toLowerCase().replace(/\s+/g, '-')}`}
                       >
@@ -571,10 +571,10 @@ export default function PropertyFilters({
           <div className="mt-2 flex flex-wrap gap-2">
             <button
               onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'all' })}
-              className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
                 filters.enrichmentStatus === 'all'
                   ? 'bg-green-100 border-green-500 text-green-700'
-                  : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
               }`}
               data-testid="button-enrichment-all"
             >
@@ -582,10 +582,10 @@ export default function PropertyFilters({
             </button>
             <button
               onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'researched' })}
-              className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
                 filters.enrichmentStatus === 'researched'
                   ? 'bg-green-100 border-green-500 text-green-700'
-                  : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
               }`}
               data-testid="button-enrichment-researched"
             >
@@ -593,10 +593,10 @@ export default function PropertyFilters({
             </button>
             <button
               onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'not_researched' })}
-              className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
                 filters.enrichmentStatus === 'not_researched'
                   ? 'bg-green-100 border-green-500 text-green-700'
-                  : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
               }`}
               data-testid="button-enrichment-not-researched"
             >
@@ -643,21 +643,50 @@ export default function PropertyFilters({
               className="absolute inset-0 bg-black/50"
               onClick={() => setIsOpen(false)}
             />
-            <div className="relative w-full max-h-[85vh] bg-white rounded-t-xl overflow-hidden flex flex-col">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
-                <h2 className="font-semibold text-gray-900">Filters</h2>
+            <div className="relative w-full max-h-[90vh] bg-white rounded-t-2xl overflow-hidden flex flex-col">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-4 border-b border-gray-200 bg-white">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
+                  {activeFilterCount > 0 && (
+                    <span className="inline-flex items-center justify-center min-w-[20px] px-1.5 py-0.5 text-xs font-medium bg-green-600 text-white rounded-full">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </div>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="p-2 hover:bg-gray-100 rounded-lg"
+                  className="p-2 -mr-2 rounded-full active:bg-gray-100"
                   data-testid="button-close-filters-mobile"
                 >
-                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
               </div>
-              <div className="flex-1 overflow-y-auto">
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto overscroll-contain">
                 {filterContent}
+              </div>
+              {/* Sticky Footer */}
+              <div className="flex items-center gap-3 px-4 py-4 border-t border-gray-200 bg-white">
+                <button
+                  onClick={() => {
+                    handleClearFilters();
+                  }}
+                  disabled={activeFilterCount === 0}
+                  className="flex-1 px-4 py-3 text-sm font-medium border border-gray-300 rounded-lg text-gray-700 disabled:opacity-50 disabled:text-gray-400 active:bg-gray-100"
+                  data-testid="button-clear-filters-mobile"
+                >
+                  Clear All
+                </button>
+                <button
+                  onClick={() => setIsOpen(false)}
+                  className="flex-1 px-4 py-3 text-sm font-medium bg-green-600 text-white rounded-lg active:bg-green-700"
+                  data-testid="button-apply-filters-mobile"
+                >
+                  Show Results
+                </button>
               </div>
             </div>
           </div>
