@@ -108,7 +108,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-      <div className="p-4 border-b border-border">
+      <div className="p-4 border-b border-slate-200 dark:border-slate-700">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 relative flex-shrink-0">
             <Image
@@ -159,7 +159,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         ))}
       </nav>
 
-      <div className="p-4 border-t border-border space-y-3">
+      <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
         {isSignedIn && (
           <div className="flex items-center gap-2">
             <UserButton
@@ -189,14 +189,14 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex h-screen bg-background">
       <aside
-        className={`hidden lg:flex flex-col border-r border-border bg-white dark:bg-slate-900 transition-all duration-300 relative ${
+        className={`hidden lg:flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 transition-all duration-300 relative ${
           collapsed ? 'w-16' : 'w-64'
         }`}
       >
         <SidebarContent />
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute top-1/2 -right-3 transform -translate-y-1/2 w-6 h-6 bg-white dark:bg-slate-900 border border-border rounded-full flex items-center justify-center hover:bg-muted shadow-sm z-10 text-muted-foreground"
+          className="absolute top-1/2 -right-3 transform -translate-y-1/2 w-6 h-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 shadow-sm z-10 text-slate-500 dark:text-slate-400"
           data-testid="button-toggle-sidebar"
         >
           {collapsed ? (
@@ -222,12 +222,13 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
       </div>
 
       <div className="flex-1 flex flex-col min-w-0 bg-background">
-        <header className="h-14 border-b border-border bg-white dark:bg-slate-900 flex items-center justify-between px-4 lg:hidden">
+        <header className="h-14 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center justify-between px-4 lg:hidden">
           <Button
             variant="ghost"
             size="icon"
             onClick={() => setMobileOpen(true)}
             data-testid="button-mobile-menu"
+            className="text-slate-700 dark:text-slate-200"
           >
             <Menu className="w-5 h-5" />
           </Button>
@@ -237,6 +238,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
             onClick={toggleTheme}
             data-testid="button-toggle-theme-mobile"
             title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            className="text-slate-700 dark:text-slate-200"
           >
             {theme === 'dark' ? (
               <Sun className="w-4 h-4" />
@@ -246,7 +248,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           </Button>
         </header>
 
-        <header className="h-14 border-b border-border bg-white dark:bg-slate-900 hidden lg:flex items-center justify-between px-4">
+        <header className="h-14 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hidden lg:flex items-center justify-between px-4">
           <div className="flex items-center gap-4">
             {isSignedIn && (
               <OrganizationSwitcher
@@ -268,6 +270,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
               onClick={toggleTheme}
               data-testid="button-toggle-theme-header"
               title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+              className="text-slate-700 dark:text-slate-200"
             >
               {theme === 'dark' ? (
                 <Sun className="w-4 h-4" />
