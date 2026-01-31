@@ -8,7 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { PIPELINE_STATUS_LABELS, type PipelineStatus } from '@/lib/schema';
-import { Loader2, Clock, Users } from 'lucide-react';
+import { Loader2, Clock, Users, Check, X, Eye, EyeOff } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { normalizeCommonName } from '@/lib/normalization';
 
@@ -19,15 +20,17 @@ interface OrgMember {
   profileImageUrl: string;
 }
 
-const BOARD_COLUMNS: PipelineStatus[] = ['new', 'qualified', 'attempted_contact', 'active_opportunity', 'won', 'lost'];
+// Only show opportunity stages (exclude new and disqualified)
+const DEFAULT_COLUMNS: PipelineStatus[] = ['qualified', 'attempted_contact', 'active_opportunity', 'won'];
+const ALL_COLUMNS: PipelineStatus[] = ['qualified', 'attempted_contact', 'active_opportunity', 'won', 'lost'];
 
 const COLUMN_STYLES: Record<PipelineStatus, { bg: string; accent: string; badge: string }> = {
   new: { bg: 'bg-slate-50', accent: 'bg-slate-400', badge: 'bg-slate-100 text-slate-700' },
   qualified: { bg: 'bg-green-50/50', accent: 'bg-green-500', badge: 'bg-green-100 text-green-700' },
-  attempted_contact: { bg: 'bg-amber-50/50', accent: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700' },
-  active_opportunity: { bg: 'bg-slate-50/50', accent: 'bg-slate-500', badge: 'bg-slate-100 text-slate-700' },
-  won: { bg: 'bg-green-50/50', accent: 'bg-green-500', badge: 'bg-green-100 text-green-700' },
-  lost: { bg: 'bg-gray-50', accent: 'bg-gray-400', badge: 'bg-gray-100 text-gray-600' },
+  attempted_contact: { bg: 'bg-yellow-50/50', accent: 'bg-yellow-500', badge: 'bg-yellow-100 text-yellow-700' },
+  active_opportunity: { bg: 'bg-purple-50/50', accent: 'bg-purple-500', badge: 'bg-purple-100 text-purple-700' },
+  won: { bg: 'bg-green-100', accent: 'bg-green-600', badge: 'bg-green-200 text-green-800' },
+  lost: { bg: 'bg-red-50', accent: 'bg-red-400', badge: 'bg-red-100 text-red-700' },
   disqualified: { bg: 'bg-gray-50', accent: 'bg-gray-400', badge: 'bg-gray-100 text-gray-600' },
 };
 
@@ -99,10 +102,14 @@ export default function PipelineBoard() {
   const [updating, setUpdating] = useState<string | null>(null);
   const [ownerFilter, setOwnerFilter] = useState<string>('mine');
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
+  const [showLost, setShowLost] = useState(false);
   const { toast } = useToast();
   const { membership } = useOrganization();
   
   const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:super_admin';
+  
+  // Columns to display (hide lost by default)
+  const visibleColumns = showLost ? ALL_COLUMNS : DEFAULT_COLUMNS;
 
   useEffect(() => {
     if (isAdmin) {
@@ -165,6 +172,58 @@ export default function PipelineBoard() {
     e.dataTransfer.dropEffect = 'move';
     setDragOverColumn(status);
   }, []);
+
+  // Quick action to set status to won or lost
+  const handleQuickStatus = useCallback(async (item: PipelineItem, newStatus: 'won' | 'lost', e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (item.status === newStatus) return;
+    
+    const oldStatus = item.status;
+    setUpdating(item.id);
+    
+    // Optimistic update
+    setData(prev => {
+      if (!prev) return prev;
+      const newItems = { ...prev.items };
+      const newCounts = { ...prev.counts };
+      
+      newItems[oldStatus] = newItems[oldStatus].filter(i => i.id !== item.id);
+      newCounts[oldStatus] = newItems[oldStatus].length;
+      
+      const updatedItem = { ...item, status: newStatus, statusChangedAt: new Date().toISOString() };
+      newItems[newStatus] = [...newItems[newStatus], updatedItem];
+      newCounts[newStatus] = newItems[newStatus].length;
+      
+      return { items: newItems, counts: newCounts };
+    });
+    
+    try {
+      const response = await fetch(`/api/properties/${item.propertyId}/pipeline`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus }),
+      });
+      
+      if (!response.ok) throw new Error('Failed to update');
+      
+      toast({
+        title: newStatus === 'won' ? 'Closed Won!' : 'Closed Lost',
+        description: `Deal moved to ${PIPELINE_STATUS_LABELS[newStatus]}`,
+      });
+    } catch (error) {
+      // Revert on error
+      fetchBoardData();
+      toast({
+        title: 'Error',
+        description: 'Failed to update status',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdating(null);
+    }
+  }, [fetchBoardData, toast]);
 
   const handleDragLeave = useCallback(() => {
     setDragOverColumn(null);
@@ -253,32 +312,45 @@ export default function PipelineBoard() {
               <p className="text-xs text-muted-foreground md:hidden">Swipe to navigate</p>
             </div>
             
-            {isAdmin && (
-              <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-                <SelectTrigger className="w-36 md:w-44" data-testid="select-owner-filter">
-                  <Users className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
-                  <SelectValue placeholder="Filter" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="mine">My Pipeline</SelectItem>
-                  <SelectItem value="all">All Members</SelectItem>
-                  <SelectItem value="unassigned">Unassigned</SelectItem>
-                  {orgMembers.map((member) => (
-                    <SelectItem key={member.id} value={member.id}>
-                      <div className="flex items-center gap-2">
-                        <Avatar className="w-4 h-4">
-                          <AvatarImage src={member.profileImageUrl} />
-                          <AvatarFallback className="text-[10px]">
-                            {member.displayName?.charAt(0) || '?'}
-                          </AvatarFallback>
-                        </Avatar>
-                        <span className="truncate">{member.displayName}</span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
+            <div className="flex items-center gap-2">
+              <Button
+                variant={showLost ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setShowLost(!showLost)}
+                className="gap-1"
+                data-testid="button-toggle-lost"
+              >
+                {showLost ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                <span className="hidden md:inline">{showLost ? 'Hide Lost' : 'Show Lost'}</span>
+              </Button>
+              
+              {isAdmin && (
+                <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+                  <SelectTrigger className="w-36 md:w-44" data-testid="select-owner-filter">
+                    <Users className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
+                    <SelectValue placeholder="Filter" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="mine">My Pipeline</SelectItem>
+                    <SelectItem value="all">All Members</SelectItem>
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                    {orgMembers.map((member) => (
+                      <SelectItem key={member.id} value={member.id}>
+                        <div className="flex items-center gap-2">
+                          <Avatar className="w-4 h-4">
+                            <AvatarImage src={member.profileImageUrl} />
+                            <AvatarFallback className="text-[10px]">
+                              {member.displayName?.charAt(0) || '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                          <span className="truncate">{member.displayName}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </div>
         </div>
         
@@ -291,7 +363,7 @@ export default function PipelineBoard() {
         ) : (
           <div className="h-[calc(100%-64px)] overflow-x-auto overflow-y-hidden">
             <div className="flex gap-3 p-4 md:p-6 min-w-max h-full snap-x snap-mandatory scroll-smooth">
-              {BOARD_COLUMNS.map((status) => {
+              {visibleColumns.map((status: PipelineStatus) => {
                 const style = COLUMN_STYLES[status];
                 const isDropTarget = dragOverColumn === status;
                 
@@ -363,9 +435,37 @@ export default function PipelineBoard() {
                                     )}
                                   </div>
                                   
-                                  <div className="flex items-center gap-1 mt-2 text-xs text-muted-foreground">
-                                    <Clock className="w-3 h-3" />
-                                    <span>{formatDaysInStage(days)}</span>
+                                  <div className="flex items-center justify-between mt-2">
+                                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                      <Clock className="w-3 h-3" />
+                                      <span>{formatDaysInStage(days)}</span>
+                                    </div>
+                                    
+                                    {/* Quick action buttons for closing deals - only show if not already won/lost */}
+                                    {item.status !== 'won' && item.status !== 'lost' && (
+                                      <div className="flex items-center gap-0.5">
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="text-green-600"
+                                          onClick={(e) => handleQuickStatus(item, 'won', e)}
+                                          title="Mark as Won"
+                                          data-testid={`button-won-${item.propertyId}`}
+                                        >
+                                          <Check className="w-4 h-4" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost"
+                                          size="icon"
+                                          className="text-red-500"
+                                          onClick={(e) => handleQuickStatus(item, 'lost', e)}
+                                          title="Mark as Lost"
+                                          data-testid={`button-lost-${item.propertyId}`}
+                                        >
+                                          <X className="w-4 h-4" />
+                                        </Button>
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
                               </Link>
