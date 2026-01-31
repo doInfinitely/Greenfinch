@@ -247,12 +247,14 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   async function handleAssignOwner() {
     if (!pipeline?.id || !selectedOwnerId) return;
     
+    const isUnassigning = selectedOwnerId === 'unassigned';
+    
     setUpdating(true);
     try {
       const res = await fetch(`/api/pipeline/${pipeline.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ownerId: selectedOwnerId === 'unassigned' ? null : selectedOwnerId }),
+        body: JSON.stringify({ ownerId: isUnassigning ? null : selectedOwnerId }),
       });
 
       if (!res.ok) {
@@ -260,11 +262,16 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         throw new Error(error.error || 'Failed to assign owner');
       }
 
-      await fetchPipeline();
+      // Close dialog first to prevent any blocking UI
       setShowAssignDialog(false);
+      setSelectedOwnerId('');
+      
+      // Then refresh data
+      await fetchPipeline();
+      
       toast({
         title: 'Owner assigned',
-        description: selectedOwnerId === 'unassigned' ? 'Owner removed from this opportunity' : 'Owner successfully assigned',
+        description: isUnassigning ? 'Owner removed from this opportunity' : 'Owner successfully assigned',
       });
     } catch (error) {
       toast({
@@ -273,8 +280,10 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         variant: 'destructive',
       });
     } finally {
-      setUpdating(false);
-      setSelectedOwnerId('');
+      // Use setTimeout to ensure state updates don't conflict with dialog animations
+      setTimeout(() => {
+        setUpdating(false);
+      }, 100);
     }
   }
 
@@ -512,12 +521,31 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     </Dialog>
   );
 
+  // Editable deal value button for inline mode
+  const editDealValueButton = dealValue && dealValue > 0 ? (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={() => {
+        setDealValueInput(dealValue.toString());
+        setPendingStatus(currentStatus);
+        setShowQualifyDialog(true);
+      }}
+      disabled={updating}
+      data-testid="button-edit-deal-value-inline"
+      title="Edit deal value"
+    >
+      <DollarSign className="w-4 h-4 mr-1" />
+      <span className="font-medium">{formatCurrency(dealValue)}</span>
+    </Button>
+  ) : null;
+
   if (inline) {
     return (
       <>
         <div className="flex items-center gap-3 flex-wrap">
           {isNewProperty ? initialActionButtons : dropdownContent}
-          {!isNewProperty && dealValueDisplay}
+          {!isNewProperty && editDealValueButton}
           {!isNewProperty && ownerDisplay}
         </div>
         {assignDialog}

@@ -48,16 +48,19 @@ export async function GET(request: NextRequest) {
       const dbUser = dbUsers.find(u => u.clerkId === clerkUserId);
       
       return {
-        id: dbUser?.id || null,
-        clerkId: clerkUserId,
+        id: clerkUserId || m.id,
+        clerkUserId: clerkUserId,
+        dbUserId: dbUser?.id || null,
         email: m.publicUserData?.identifier || dbUser?.email || '',
         firstName: m.publicUserData?.firstName || dbUser?.firstName || '',
         lastName: m.publicUserData?.lastName || dbUser?.lastName || '',
         profileImageUrl: m.publicUserData?.imageUrl || dbUser?.profileImageUrl || '',
         role: m.role,
         displayName: [m.publicUserData?.firstName, m.publicUserData?.lastName].filter(Boolean).join(' ') || m.publicUserData?.identifier || 'Unknown',
+        joinedAt: m.createdAt ? new Date(m.createdAt).toISOString() : new Date().toISOString(),
+        membershipId: m.id,
       };
-    }).filter(m => m.id !== null);
+    });
 
     return NextResponse.json({ members });
   } catch (error) {
