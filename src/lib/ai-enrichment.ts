@@ -217,7 +217,7 @@ Return JSON:
   "lot_acres_confidence":0.0-1.0,
   "net_sqft":number|null,
   "net_sqft_confidence":0.0-1.0,
-  "summary":"A natural sentence describing the property type, class, key features, and year built."
+  "summary":"2-3 sentences describing the property type, building class, key physical features (size, year built, condition), tenant mix, and any notable renovations or upgrades found during research."
 }`;
 
   console.log('[FocusedEnrichment] Stage 1: Classification and physical verification...');
@@ -400,7 +400,7 @@ Return JSON:
   "managementCompany":{"name":"Company or null","domain":"website.com or null","confidence":0.0-1.0},
   "propertyWebsite":"https://propertyname.com or null - property-specific website, NOT management company site",
   "propertyPhone":"+1-XXX-XXX-XXXX or null - main leasing/property phone",
-  "summary":"A natural sentence describing the ownership history and management arrangement."
+  "summary":"2-3 sentences describing the beneficial owner (entity type and when acquired), the management company and their specialty/portfolio size if known, and any notable changes in ownership or management in recent years."
 }`;
 
   console.log('[FocusedEnrichment] Stage 2: Ownership identification...');
@@ -515,7 +515,7 @@ Return JSON:
 {
   "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","email":"found@email.com or null","phone":"+1-555-123-4567 or null","phone_label":"direct_work|office|personal|null","phone_confidence":0.0-1.0,"role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8,"contact_type":"individual|general"}],
   "organizations":[{"name":"Org name","domain":"domain.com","org_type":"owner|management|tenant|developer","roles":["property_manager","owner"]}],
-  "summary":"A brief natural description of the key decision-makers found and their roles at this property."
+  "summary":"2-3 sentences describing the key decision-makers (property manager, facilities director, owner contact if available), their organization, specific roles and responsibilities at this property, and any notable decision-making authority or specializations they bring."
 }
 
 contact_type values:

@@ -3,10 +3,21 @@ import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
 import { sql, ilike, or, and, eq } from 'drizzle-orm';
 
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 100;
+
+function validateLimit(value: string | null): number {
+  if (!value) return DEFAULT_LIMIT;
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed) || parsed < 1) return DEFAULT_LIMIT;
+  return Math.min(parsed, MAX_LIMIT);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get('q') || searchParams.get('search'))?.trim();
+    const limit = validateLimit(searchParams.get('limit'));
     
     let whereClause = and(
       eq(properties.isActive, true),
@@ -57,14 +68,18 @@ export async function GET(request: NextRequest) {
           properties.commonName,
           properties.regridAddress
         )
-        .limit(5000)
+        .limit(limit + 1)
     ]);
     
     const total = countResult[0]?.count ?? results.length;
+    const hasMore = results.length > limit;
+    const properties_slice = results.slice(0, limit);
     
     return NextResponse.json({
-      properties: results,
+      properties: properties_slice,
       total,
+      hasMore,
+      limit,
     });
   } catch (error) {
     console.error('Properties search error:', error);

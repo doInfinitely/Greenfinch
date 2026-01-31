@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { MessageSquare, Send, User } from 'lucide-react';
+import { MessageSquare, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
@@ -107,13 +107,15 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
 
   return (
     <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base font-medium flex items-center gap-2">
-          <MessageSquare className="w-4 h-4" />
+      <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+            <MessageSquare className="w-4 h-4 text-green-600 dark:text-green-400" />
+          </div>
           Notes
         </CardTitle>
       </CardHeader>
-      <CardContent className="space-y-4">
+      <CardContent className="space-y-4" data-testid="card-notes">
         <form onSubmit={handleSubmit} className="space-y-3">
           <Textarea
             placeholder="Add a note..."
@@ -134,25 +136,28 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
         </form>
 
         {loading ? (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {[1, 2].map((i) => (
-              <div key={i} className="animate-pulse">
-                <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-3/4 mb-2" />
-                <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/4" />
+              <div key={i} className="animate-pulse flex gap-3">
+                <div className="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded-full flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4" />
+                  <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/4" />
+                </div>
               </div>
             ))}
           </div>
         ) : notes.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">
+          <p className="text-sm text-muted-foreground text-center py-6">
             No notes yet. Add a note to track your progress.
           </p>
         ) : (
           <div className="space-y-4 max-h-64 overflow-y-auto">
             {notes.map((note) => (
-              <div key={note.id} className="flex gap-3">
+              <div key={note.id} className="flex gap-3 pb-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0 last:pb-0">
                 <Avatar className="w-8 h-8 flex-shrink-0">
                   <AvatarImage src={note.user.profileImage || undefined} />
-                  <AvatarFallback className="text-xs">
+                  <AvatarFallback className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
                     {getUserInitials(note.user.firstName, note.user.lastName)}
                   </AvatarFallback>
                 </Avatar>

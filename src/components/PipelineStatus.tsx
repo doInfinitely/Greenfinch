@@ -45,9 +45,9 @@ const STATUS_COLORS: Record<PipelineStatusType, string> = {
   new: 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
   qualified: 'bg-green-100 text-green-800 dark:bg-green-800 dark:text-green-200',
   attempted_contact: 'bg-amber-200 text-amber-800 dark:bg-amber-800 dark:text-amber-200',
-  active_opportunity: 'bg-violet-200 text-violet-800 dark:bg-violet-800 dark:text-violet-200',
-  won: 'bg-emerald-200 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-200',
-  lost: 'bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200',
+  active_opportunity: 'bg-slate-200 text-slate-800 dark:bg-slate-700 dark:text-slate-200',
+  won: 'bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-200',
+  lost: 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200',
   disqualified: 'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
 };
 
@@ -327,44 +327,9 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   const currentStatus = pipeline?.status || 'new';
   const dealValue = pipeline?.dealValue;
   const isNewProperty = currentStatus === 'new';
-  const isQualified = currentStatus === 'qualified';
-  const isDisqualified = currentStatus === 'disqualified';
 
-  // Action buttons with filled state when action is complete
-  const actionButtons = (
-    <div className="flex items-center gap-2">
-      <Button
-        variant={isQualified ? "default" : "outline"}
-        size="sm"
-        onClick={() => isQualified ? undefined : updateStatus('qualified')}
-        disabled={updating || isQualified}
-        className={isQualified 
-          ? "bg-green-600 text-white border-green-600 cursor-default" 
-          : "border-green-500 text-green-700 dark:text-green-400"
-        }
-        data-testid="button-qualify"
-      >
-        <Check className="w-4 h-4 mr-1" />
-        {isQualified ? 'Qualified' : 'Qualify'}
-      </Button>
-      <Button
-        variant={isDisqualified ? "default" : "outline"}
-        size="sm"
-        onClick={() => isDisqualified ? undefined : updateStatus('disqualified')}
-        disabled={updating || isDisqualified}
-        className={isDisqualified 
-          ? "bg-gray-500 text-white border-gray-500 cursor-default" 
-          : "border-gray-400 text-gray-600 dark:text-gray-400"
-        }
-        data-testid="button-disqualify"
-      >
-        <X className="w-4 h-4 mr-1" />
-        {isDisqualified ? 'Disqualified' : 'Disqualify'}
-      </Button>
-    </div>
-  );
-
-  const dropdownContent = (
+  // Status indicator - shows current status as icon/badge
+  const statusIndicator = (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button
@@ -402,9 +367,19 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
             {PIPELINE_STATUS_LABELS['lost']}
           </span>
         </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          onClick={() => updateStatus('qualified')}
+          data-testid="button-qualify"
+        >
+          <span className={`flex items-center gap-2 ${STATUS_COLORS['qualified']} px-2 py-1 rounded-md w-full`}>
+            {STATUS_ICONS['qualified']}
+            {PIPELINE_STATUS_LABELS['qualified']}
+          </span>
+        </DropdownMenuItem>
         <DropdownMenuItem
           onClick={() => updateStatus('disqualified')}
-          data-testid="menu-item-status-disqualified"
+          data-testid="button-disqualify"
         >
           <span className={`flex items-center gap-2 ${STATUS_COLORS['disqualified']} px-2 py-1 rounded-md w-full`}>
             {STATUS_ICONS['disqualified']}
@@ -552,7 +527,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     return (
       <>
         <div className="flex items-center gap-3 flex-wrap">
-          {(isNewProperty || isQualified || isDisqualified) ? actionButtons : dropdownContent}
+          {statusIndicator}
           {!isNewProperty && editDealValueButton}
           {!isNewProperty && ownerDisplay}
         </div>
@@ -622,12 +597,8 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
-            {(isNewProperty || isQualified || isDisqualified) ? actionButtons : (
-              <>
-                {dropdownContent}
-                {dealValueDisplay}
-              </>
-            )}
+            {statusIndicator}
+            {dealValueDisplay}
           </div>
 
           {currentStatus === 'disqualified' && (
@@ -658,6 +629,56 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
             >
               Edit Deal Value
             </Button>
+          )}
+
+          {(currentStatus === 'qualified' || currentStatus === 'active_opportunity') && (
+            <div className="border-t pt-4">
+              <Label htmlFor="opportunity-stage" className="text-sm font-medium mb-2">Opportunity Stage</Label>
+              <Select 
+                value={currentStatus}
+                onValueChange={(value) => {
+                  if (value && !updating) {
+                    updateStatus(value as PipelineStatusType);
+                  }
+                }}
+              >
+                <SelectTrigger id="opportunity-stage" className="w-full" data-testid="select-opportunity-stage">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="qualified">
+                    <div className="flex items-center gap-2">
+                      {STATUS_ICONS['qualified']}
+                      {PIPELINE_STATUS_LABELS['qualified']}
+                    </div>
+                  </SelectItem>
+                  {currentStatus === 'qualified' && (
+                    <SelectItem value="active_opportunity">
+                      <div className="flex items-center gap-2">
+                        {STATUS_ICONS['active_opportunity']}
+                        {PIPELINE_STATUS_LABELS['active_opportunity']}
+                      </div>
+                    </SelectItem>
+                  )}
+                  {(currentStatus === 'qualified' || currentStatus === 'active_opportunity') && (
+                    <>
+                      <SelectItem value="won">
+                        <div className="flex items-center gap-2">
+                          {STATUS_ICONS['won']}
+                          {PIPELINE_STATUS_LABELS['won']}
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="lost">
+                        <div className="flex items-center gap-2">
+                          {STATUS_ICONS['lost']}
+                          {PIPELINE_STATUS_LABELS['lost']}
+                        </div>
+                      </SelectItem>
+                    </>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
           )}
         </CardContent>
       </Card>

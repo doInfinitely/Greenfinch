@@ -167,20 +167,22 @@ export default function PropertyActivity({ propertyId }: PropertyActivityProps) 
   if (loading) {
     return (
       <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base font-medium flex items-center gap-2">
-            <Activity className="w-4 h-4" />
+        <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Activity className="w-4 h-4 text-green-600 dark:text-green-400" />
+            </div>
             Activity
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {[1, 2, 3].map((i) => (
               <div key={i} className="animate-pulse flex gap-3">
-                <div className="w-8 h-8 bg-gray-100 dark:bg-gray-800 rounded-full" />
-                <div className="flex-1">
-                  <div className="h-4 bg-gray-100 dark:bg-gray-800 rounded w-3/4 mb-2" />
-                  <div className="h-3 bg-gray-100 dark:bg-gray-800 rounded w-1/4" />
+                <div className="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded-full flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4" />
+                  <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/4" />
                 </div>
               </div>
             ))}
@@ -191,29 +193,33 @@ export default function PropertyActivity({ propertyId }: PropertyActivityProps) 
   }
 
   return (
-    <Card>
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base font-medium flex items-center gap-2">
-          <Activity className="w-4 h-4" />
+    <Card data-testid="card-activity">
+      <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
+        <CardTitle className="text-base font-semibold flex items-center gap-2">
+          <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Activity className="w-4 h-4 text-green-600 dark:text-green-400" />
+          </div>
           Activity
         </CardTitle>
       </CardHeader>
       <CardContent>
         {activities.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-4">
+          <p className="text-sm text-muted-foreground text-center py-6">
             No activity yet.
           </p>
         ) : (
           <div className="space-y-4 max-h-64 overflow-y-auto">
             {activities.map((activity, index) => (
-              <div key={activity.id} className="flex gap-3 relative">
+              <div key={activity.id} className="flex gap-3 relative pb-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0 last:pb-0">
                 {index < activities.length - 1 && (
-                  <div className="absolute left-4 top-8 bottom-0 w-px bg-border" />
+                  <div className="absolute left-4 top-8 bottom-0 w-px bg-gray-200 dark:bg-gray-700" />
                 )}
-                <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center flex-shrink-0 z-10">
-                  {ACTIVITY_ICONS[activity.activityType] || <Activity className="w-4 h-4" />}
+                <div className="w-8 h-8 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center flex-shrink-0 z-10">
+                  <span className="text-green-600 dark:text-green-400">
+                    {ACTIVITY_ICONS[activity.activityType] || <Activity className="w-4 h-4" />}
+                  </span>
                 </div>
-                <div className="flex-1 min-w-0 pb-4">
+                <div className="flex-1 min-w-0">
                   <p className="text-sm">
                     {getActivityDescription(activity)}
                   </p>

@@ -4,6 +4,16 @@ import { properties } from '@/lib/schema';
 import { eq, isNotNull, and, or, sql } from 'drizzle-orm';
 import { normalizeCommonName } from '@/lib/normalization';
 
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 100;
+
+function validateLimit(value: string | null): number {
+  if (!value) return DEFAULT_LIMIT;
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed) || parsed < 1) return DEFAULT_LIMIT;
+  return Math.min(parsed, MAX_LIMIT);
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -11,6 +21,7 @@ export async function GET(request: NextRequest) {
     const subcategory = searchParams.get('subcategory');
     const enriched = searchParams.get('enriched');
     const zipCode = searchParams.get('zipCode');
+    const limit = validateLimit(searchParams.get('limit'));
 
     const conditions = [
       isNotNull(properties.lat),
@@ -34,28 +45,39 @@ export async function GET(request: NextRequest) {
       conditions.push(eq(properties.zip, zipCode));
     }
 
-    const allProperties = await db
-      .select({
-        propertyKey: properties.propertyKey,
-        regridAddress: properties.regridAddress,
-        validatedAddress: properties.validatedAddress,
-        city: properties.city,
-        zip: properties.zip,
-        lat: properties.lat,
-        lon: properties.lon,
-        regridOwner: properties.regridOwner,
-        commonName: properties.commonName,
-        dcadBizName: properties.dcadBizName,
-        assetCategory: properties.assetCategory,
-        assetSubcategory: properties.assetSubcategory,
-        operationalStatus: properties.operationalStatus,
-        lastEnrichedAt: properties.lastEnrichedAt,
-        lotSqft: properties.lotSqft,
-        propertyClass: properties.propertyClass,
-        sourceLlUuid: properties.sourceLlUuid,
-      })
-      .from(properties)
-      .where(and(...conditions));
+    const [countResult, allProperties] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(properties)
+        .where(and(...conditions)),
+      db
+        .select({
+          propertyKey: properties.propertyKey,
+          regridAddress: properties.regridAddress,
+          validatedAddress: properties.validatedAddress,
+          city: properties.city,
+          zip: properties.zip,
+          lat: properties.lat,
+          lon: properties.lon,
+          regridOwner: properties.regridOwner,
+          commonName: properties.commonName,
+          dcadBizName: properties.dcadBizName,
+          assetCategory: properties.assetCategory,
+          assetSubcategory: properties.assetSubcategory,
+          operationalStatus: properties.operationalStatus,
+          lastEnrichedAt: properties.lastEnrichedAt,
+          lotSqft: properties.lotSqft,
+          buildingSqft: properties.buildingSqft,
+          propertyClass: properties.propertyClass,
+          sourceLlUuid: properties.sourceLlUuid,
+        })
+        .from(properties)
+        .where(and(...conditions))
+        .limit(limit),
+    ]);
+
+    const totalCount = countResult[0]?.count ?? 0;
+    const hasMore = totalCount > limit;
 
     const features = allProperties
       .filter(p => p.lat && p.lon)
@@ -83,6 +105,7 @@ export async function GET(request: NextRequest) {
             operationalStatus: p.operationalStatus || '',
             enriched: isEnriched,
             lotSqft: p.lotSqft || 0,
+            buildingSqft: p.buildingSqft || 0,
             llUuid: p.sourceLlUuid || '',
           },
         };
@@ -91,6 +114,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       type: 'FeatureCollection',
       features,
+      totalCount,
+      hasMore,
+      limit,
     });
   } catch (error) {
     console.error('GeoJSON error:', error);

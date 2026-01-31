@@ -14,6 +14,7 @@ export default function CelebrationAnimation({ trigger, onComplete, originRef }:
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState({ x: 50, y: 10 });
   const playerRef = useRef<Player>(null);
+  const isInitialMount = useRef(true);
 
   const updatePosition = useCallback(() => {
     if (originRef?.current) {
@@ -25,6 +26,12 @@ export default function CelebrationAnimation({ trigger, onComplete, originRef }:
   }, [originRef]);
 
   useEffect(() => {
+    // Skip animation on initial mount
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
+      return;
+    }
+    
     if (trigger && !isPlaying) {
       updatePosition();
       setIsPlaying(true);

@@ -1,10 +1,15 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, UNKNOWN_BUILDING_CLASS } from '@/components/PropertyFilters';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, UNKNOWN_BUILDING_CLASS, serializeFiltersToParams, parseFiltersFromParams } from '@/components/PropertyFilters';
 import { normalizeCommonName } from '@/lib/normalization';
 import { useDebounce } from '@/hooks/use-debounce';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { BulkActionBar } from '@/components/BulkActionBar';
+import { Sparkles, ListPlus } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface Property {
   propertyKey: string;
@@ -38,44 +43,76 @@ const formatBuildingSqft = (sqft: number | null) => {
 };
 
 const PAGE_SIZE = 50;
+const API_LIMIT = 100;
 
 export default function ListPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { toast } = useToast();
   const [properties, setProperties] = useState<Property[]>([]);
   const [totalCount, setTotalCount] = useState(0);
+  const [hasMore, setHasMore] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState<FilterState>(emptyFilters);
+  const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
   const [currentPage, setCurrentPage] = useState(1);
+  const [selectedProperties, setSelectedProperties] = useState<Set<string>>(new Set());
 
-  // Debounce search query with 300ms delay
   const debouncedQuery = useDebounce(searchQuery, 300);
+
+  const handleFiltersChange = useCallback((newFilters: FilterState) => {
+    setFilters(newFilters);
+    const params = serializeFiltersToParams(newFilters);
+    const queryString = params.toString();
+    router.replace(`${pathname}${queryString ? `?${queryString}` : ''}`, { scroll: false });
+  }, [router, pathname]);
 
   useEffect(() => {
     setIsLoading(true);
     const url = debouncedQuery
-      ? `/api/properties/search?q=${encodeURIComponent(debouncedQuery)}`
-      : '/api/properties/search';
+      ? `/api/properties/search?q=${encodeURIComponent(debouncedQuery)}&limit=${API_LIMIT}`
+      : `/api/properties/search?limit=${API_LIMIT}`;
     
     fetch(url)
       .then(r => r.json())
       .then(data => {
         setProperties(data.properties || []);
         setTotalCount(data.total || 0);
+        setHasMore(data.hasMore || false);
         setIsLoading(false);
         setCurrentPage(1);
+        setSelectedProperties(new Set());
       })
       .catch(() => setIsLoading(false));
   }, [debouncedQuery]);
 
-  // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
   }, [filters]);
 
+  const handleLoadMore = useCallback(async () => {
+    setIsLoadingMore(true);
+    try {
+      const url = debouncedQuery
+        ? `/api/properties/search?q=${encodeURIComponent(debouncedQuery)}&limit=${totalCount}`
+        : `/api/properties/search?limit=${totalCount}`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      setProperties(data.properties || []);
+      setTotalCount(data.total || 0);
+      setHasMore(data.hasMore || false);
+    } catch (error) {
+      console.error('Error loading more properties:', error);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [debouncedQuery, totalCount]);
+
   const filteredProperties = useMemo(() => {
     return properties.filter((p) => {
-      // Lot size filter
       if (filters.minLotAcres) {
         const lotAcres = (p.lotSqft || 0) / 43560;
         if (lotAcres < filters.minLotAcres) return false;
@@ -85,7 +122,13 @@ export default function ListPage() {
         if (lotAcres > filters.maxLotAcres) return false;
       }
       
-      // Category filter - supports "Unknown / Unassigned" for null categories
+      if (filters.minNetSqft) {
+        if ((p.buildingSqft || 0) < filters.minNetSqft) return false;
+      }
+      if (filters.maxNetSqft) {
+        if ((p.buildingSqft || 0) > filters.maxNetSqft) return false;
+      }
+      
       if ((filters.categories?.length ?? 0) > 0) {
         const hasUnknown = filters.categories?.includes(UNKNOWN_CATEGORY);
         const matchesCategory = p.category && filters.categories?.includes(p.category);
@@ -95,7 +138,10 @@ export default function ListPage() {
         }
       }
       
-      // Enrichment status filter - normalize on enriched boolean
+      if (filters.zipCode) {
+        if (!p.zip || !p.zip.includes(filters.zipCode)) return false;
+      }
+      
       const isEnriched = p.enriched || p.enrichmentStatus === 'completed';
       if (filters.enrichmentStatus === 'researched') {
         if (!isEnriched) return false;
@@ -107,7 +153,6 @@ export default function ListPage() {
     });
   }, [properties, filters]);
 
-  // Paginate filtered results
   const totalPages = Math.ceil(filteredProperties.length / PAGE_SIZE);
   const paginatedProperties = filteredProperties.slice(
     (currentPage - 1) * PAGE_SIZE,
@@ -118,22 +163,76 @@ export default function ListPage() {
     router.push(`/property/${propertyKey}`);
   }, [router]);
 
+  const handleSelectProperty = useCallback((propertyKey: string, checked: boolean) => {
+    setSelectedProperties(prev => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(propertyKey);
+      } else {
+        next.delete(propertyKey);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback((checked: boolean) => {
+    if (checked) {
+      const allKeys = new Set(paginatedProperties.map(p => p.propertyKey));
+      setSelectedProperties(allKeys);
+    } else {
+      setSelectedProperties(new Set());
+    }
+  }, [paginatedProperties]);
+
+  const handleDeselectAll = useCallback(() => {
+    setSelectedProperties(new Set());
+  }, []);
+
+  const handleRunAIResearch = useCallback(() => {
+    const selectedKeys = Array.from(selectedProperties);
+    toast({
+      title: 'AI Research Started',
+      description: `Running AI research on ${selectedKeys.length} selected properties...`,
+    });
+  }, [selectedProperties, toast]);
+
+  const handleAddToList = useCallback(() => {
+    const selectedKeys = Array.from(selectedProperties);
+    toast({
+      title: 'Add to List',
+      description: `Adding ${selectedKeys.length} properties to list...`,
+    });
+  }, [selectedProperties, toast]);
+
+  const allSelected = paginatedProperties.length > 0 && paginatedProperties.every(p => selectedProperties.has(p.propertyKey));
+  const someSelected = paginatedProperties.some(p => selectedProperties.has(p.propertyKey));
+
   return (
     <div className="h-full flex flex-col bg-white">
       <div className="px-4 md:px-6 py-3 md:py-4 border-b border-gray-200">
         <div className="flex flex-col md:flex-row md:items-center gap-3 md:justify-between">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-base md:text-lg font-semibold text-gray-900">
-              Properties <span className="text-green-600 font-normal">({filteredProperties.length.toLocaleString()})</span>
-            </h1>
-            {filteredProperties.length !== totalCount && (
-              <span className="text-sm text-gray-500">
-                of {totalCount.toLocaleString()} total
-              </span>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-base md:text-lg font-semibold text-gray-900">
+                Properties <span className="text-green-600 font-normal">({filteredProperties.length.toLocaleString()})</span>
+              </h1>
+            </div>
+            {properties.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap text-sm">
+                {hasMore ? (
+                  <span className="text-gray-600">
+                    Showing first {API_LIMIT} of {totalCount.toLocaleString()} properties
+                  </span>
+                ) : (
+                  <span className="text-gray-500">
+                    {filteredProperties.length !== totalCount && `of ${totalCount.toLocaleString()} total`}
+                  </span>
+                )}
+              </div>
             )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <PropertyFilters filters={filters} onFiltersChange={setFilters} />
+            <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
             <div className="relative flex-1 min-w-[200px] md:flex-none">
               <input
                 type="text"
@@ -167,8 +266,17 @@ export default function ListPage() {
           <>
             <div className="hidden md:block">
               <table className="w-full">
-                <thead className="bg-gray-50 sticky top-0">
+                <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
+                    <th className="px-4 py-3 text-left w-10">
+                      <Checkbox
+                        checked={allSelected}
+                        indeterminate={someSelected && !allSelected}
+                        onChange={(e) => handleSelectAll(e.target.checked)}
+                        data-testid="checkbox-select-all-properties"
+                        aria-label="Select all properties"
+                      />
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lot Size</th>
@@ -182,11 +290,22 @@ export default function ListPage() {
                   {paginatedProperties.map((p) => (
                     <tr
                       key={p.propertyKey}
-                      onClick={() => handleRowClick(p.propertyKey)}
-                      className="hover:bg-gray-50 cursor-pointer transition-colors"
+                      className={`hover:bg-gray-50 cursor-pointer transition-colors ${selectedProperties.has(p.propertyKey) ? 'bg-green-50' : ''}`}
                       data-testid={`row-property-${p.propertyKey}`}
                     >
-                      <td className="px-6 py-4">
+                      <td className="px-4 py-4">
+                        <Checkbox
+                          checked={selectedProperties.has(p.propertyKey)}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleSelectProperty(p.propertyKey, e.target.checked);
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          data-testid={`checkbox-property-${p.propertyKey}`}
+                          aria-label={`Select ${p.address}`}
+                        />
+                      </td>
+                      <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
                         {p.commonName ? (
                           <>
                             <p className="font-medium text-gray-900">{normalizeCommonName(p.commonName)}</p>
@@ -196,7 +315,7 @@ export default function ListPage() {
                           <p className="font-medium text-gray-900">{p.address}</p>
                         )}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
                         {p.category && (
                           <span className="inline-block px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
                             {p.category}
@@ -206,19 +325,19 @@ export default function ListPage() {
                           <p className="text-xs text-gray-500 mt-1">{p.subcategory}</p>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
+                      <td className="px-6 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
                         {formatLotSize(p.lotSqft)}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
+                      <td className="px-6 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
                         {formatBuildingSqft(p.buildingSqft)}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600">
+                      <td className="px-6 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
                         {p.city}, {p.zip}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate">
+                      <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" onClick={() => handleRowClick(p.propertyKey)}>
                         {p.primaryOwner || '-'}
                       </td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
                         <span className={`inline-block px-2 py-1 text-xs rounded ${
                           p.enrichmentStatus === 'completed' 
                             ? 'bg-green-100 text-green-700' 
@@ -235,72 +354,125 @@ export default function ListPage() {
             
             <div className="md:hidden divide-y divide-gray-200">
               {paginatedProperties.map((p) => (
-                <button
+                <div
                   key={p.propertyKey}
-                  onClick={() => handleRowClick(p.propertyKey)}
-                  className="w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors"
+                  className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-start gap-3 ${selectedProperties.has(p.propertyKey) ? 'bg-green-50' : ''}`}
                   data-testid={`card-property-${p.propertyKey}`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      {p.commonName ? (
-                        <>
-                          <p className="font-medium text-gray-900 truncate">{normalizeCommonName(p.commonName)}</p>
-                          <p className="text-sm text-gray-500 truncate">{p.address}</p>
-                        </>
-                      ) : (
-                        <p className="font-medium text-gray-900 truncate">{p.address}</p>
-                      )}
-                      <p className="text-xs text-gray-500 mt-0.5">{p.city}, {p.zip}</p>
+                  <Checkbox
+                    checked={selectedProperties.has(p.propertyKey)}
+                    onChange={(e) => handleSelectProperty(p.propertyKey, e.target.checked)}
+                    className="mt-1 flex-shrink-0"
+                    data-testid={`checkbox-mobile-property-${p.propertyKey}`}
+                    aria-label={`Select ${p.address}`}
+                  />
+                  <button
+                    onClick={() => handleRowClick(p.propertyKey)}
+                    className="flex-1 text-left min-w-0"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        {p.commonName ? (
+                          <>
+                            <p className="font-medium text-gray-900 truncate">{normalizeCommonName(p.commonName)}</p>
+                            <p className="text-sm text-gray-500 truncate">{p.address}</p>
+                          </>
+                        ) : (
+                          <p className="font-medium text-gray-900 truncate">{p.address}</p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-0.5">{p.city}, {p.zip}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {p.category && (
+                          <span className="inline-block px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">
+                            {p.category}
+                          </span>
+                        )}
+                        <span className="text-xs text-gray-500">{formatLotSize(p.lotSqft)}</span>
+                      </div>
                     </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      {p.category && (
-                        <span className="inline-block px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">
-                          {p.category}
-                        </span>
-                      )}
-                      <span className="text-xs text-gray-500">{formatLotSize(p.lotSqft)}</span>
-                    </div>
-                  </div>
-                  {p.subcategory && (
-                    <p className="text-xs text-gray-500 mt-1">{p.subcategory}</p>
-                  )}
-                </button>
+                    {p.subcategory && (
+                      <p className="text-xs text-gray-500 mt-1">{p.subcategory}</p>
+                    )}
+                  </button>
+                </div>
               ))}
             </div>
 
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between px-4 md:px-6 py-3 border-t border-gray-200 bg-white sticky bottom-0">
-                <div className="text-sm text-gray-500">
-                  Showing {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, filteredProperties.length)} of {filteredProperties.length.toLocaleString()}
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    data-testid="button-prev-page"
-                  >
-                    Previous
-                  </button>
-                  <span className="text-sm text-gray-600">
-                    Page {currentPage} of {totalPages}
-                  </span>
-                  <button
-                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                    data-testid="button-next-page"
-                  >
-                    Next
-                  </button>
-                </div>
+            {(hasMore || totalPages > 1) && (
+              <div className="px-4 md:px-6 py-3 border-t border-gray-200 bg-white sticky bottom-0">
+                {hasMore ? (
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="text-sm text-gray-600">
+                      Showing first {filteredProperties.length.toLocaleString()} of {totalCount.toLocaleString()} properties
+                    </div>
+                    <button
+                      onClick={handleLoadMore}
+                      disabled={isLoadingMore}
+                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      data-testid="button-load-more-all"
+                    >
+                      {isLoadingMore ? 'Loading more...' : 'Load More'}
+                    </button>
+                  </div>
+                ) : totalPages > 1 ? (
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div className="text-sm text-gray-500">
+                      Showing {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, filteredProperties.length)} of {filteredProperties.length.toLocaleString()}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                        disabled={currentPage === 1}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        data-testid="button-prev-page"
+                      >
+                        Previous
+                      </button>
+                      <span className="text-sm text-gray-600">
+                        Page {currentPage} of {totalPages}
+                      </span>
+                      <button
+                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                        disabled={currentPage === totalPages}
+                        className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                        data-testid="button-next-page"
+                      >
+                        Next
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             )}
           </>
         )}
       </div>
+
+      <BulkActionBar
+        selectedCount={selectedProperties.size}
+        itemLabel="property"
+        onDeselectAll={handleDeselectAll}
+      >
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRunAIResearch}
+          data-testid="button-bulk-ai-research"
+        >
+          <Sparkles className="h-4 w-4" />
+          Run AI Research
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleAddToList}
+          data-testid="button-bulk-add-to-list"
+        >
+          <ListPlus className="h-4 w-4" />
+          Add to List
+        </Button>
+      </BulkActionBar>
     </div>
   );
 }

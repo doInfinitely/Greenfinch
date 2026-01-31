@@ -1,18 +1,67 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { organizations, propertyOrganizations, contactOrganizations } from '@/lib/schema';
-import { eq, ilike, or, sql, desc, asc } from 'drizzle-orm';
+import { eq, ilike, or, sql, desc, asc, and, isNotNull } from 'drizzle-orm';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+
+function getPropertyCountCondition(bucket: string, subquery: { count: any }) {
+  switch (bucket) {
+    case '1':
+      return sql`COALESCE(${subquery.count}, 0) = 1`;
+    case '2-5':
+      return sql`COALESCE(${subquery.count}, 0) >= 2 AND COALESCE(${subquery.count}, 0) <= 5`;
+    case '6-10':
+      return sql`COALESCE(${subquery.count}, 0) >= 6 AND COALESCE(${subquery.count}, 0) <= 10`;
+    case '10+':
+      return sql`COALESCE(${subquery.count}, 0) > 10`;
+    default:
+      return null;
+  }
+}
+
+function getContactCountCondition(bucket: string, subquery: { count: any }) {
+  switch (bucket) {
+    case '0':
+      return sql`COALESCE(${subquery.count}, 0) = 0`;
+    case '1-5':
+      return sql`COALESCE(${subquery.count}, 0) >= 1 AND COALESCE(${subquery.count}, 0) <= 5`;
+    case '6-10':
+      return sql`COALESCE(${subquery.count}, 0) >= 6 AND COALESCE(${subquery.count}, 0) <= 10`;
+    case '10+':
+      return sql`COALESCE(${subquery.count}, 0) > 10`;
+    default:
+      return null;
+  }
+}
+
+function getEmployeesCondition(bucket: string) {
+  switch (bucket) {
+    case '1-10':
+      return sql`${organizations.employees} >= 1 AND ${organizations.employees} <= 10`;
+    case '11-50':
+      return sql`${organizations.employees} >= 11 AND ${organizations.employees} <= 50`;
+    case '51-200':
+      return sql`${organizations.employees} >= 51 AND ${organizations.employees} <= 200`;
+    case '201-500':
+      return sql`${organizations.employees} >= 201 AND ${organizations.employees} <= 500`;
+    case '500+':
+      return sql`${organizations.employees} > 500`;
+    default:
+      return null;
+  }
+}
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q')?.trim();
     const type = searchParams.get('type');
-    const hasProperties = searchParams.get('hasProperties');
-    const hasContacts = searchParams.get('hasContacts');
+    const industry = searchParams.get('industry');
+    const employeesBucket = searchParams.get('employees');
+    const propertyCountBucket = searchParams.get('propertyCount');
+    const contactCountBucket = searchParams.get('contactCount');
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(searchParams.get('limit') || String(DEFAULT_LIMIT), 10)));
     const sortBy = searchParams.get('sortBy') || 'name';
@@ -44,6 +93,9 @@ export async function GET(request: NextRequest) {
         name: organizations.name,
         domain: organizations.domain,
         orgType: organizations.orgType,
+        industry: organizations.industry,
+        employees: organizations.employees,
+        employeesRange: organizations.employeesRange,
         createdAt: organizations.createdAt,
         updatedAt: organizations.updatedAt,
         propertyCount: sql<number>`COALESCE(${propertyCountSubquery.count}, 0)`.as('property_count'),
@@ -62,22 +114,33 @@ export async function GET(request: NextRequest) {
       ) as typeof baseQuery;
     }
     
-    if (type) {
+    if (type && type !== 'all') {
       baseQuery = baseQuery.where(eq(organizations.orgType, type)) as typeof baseQuery;
     }
 
-    // Filter by has properties
-    if (hasProperties === 'true') {
-      baseQuery = baseQuery.where(sql`${propertyCountSubquery.count} > 0`) as typeof baseQuery;
-    } else if (hasProperties === 'false') {
-      baseQuery = baseQuery.where(sql`${propertyCountSubquery.count} IS NULL OR ${propertyCountSubquery.count} = 0`) as typeof baseQuery;
+    if (industry && industry !== 'all') {
+      baseQuery = baseQuery.where(eq(organizations.industry, industry)) as typeof baseQuery;
     }
 
-    // Filter by has contacts
-    if (hasContacts === 'true') {
-      baseQuery = baseQuery.where(sql`${contactCountSubquery.count} > 0`) as typeof baseQuery;
-    } else if (hasContacts === 'false') {
-      baseQuery = baseQuery.where(sql`${contactCountSubquery.count} IS NULL OR ${contactCountSubquery.count} = 0`) as typeof baseQuery;
+    if (employeesBucket && employeesBucket !== 'all') {
+      const condition = getEmployeesCondition(employeesBucket);
+      if (condition) {
+        baseQuery = baseQuery.where(condition) as typeof baseQuery;
+      }
+    }
+
+    if (propertyCountBucket && propertyCountBucket !== 'all') {
+      const condition = getPropertyCountCondition(propertyCountBucket, propertyCountSubquery);
+      if (condition) {
+        baseQuery = baseQuery.where(condition) as typeof baseQuery;
+      }
+    }
+
+    if (contactCountBucket && contactCountBucket !== 'all') {
+      const condition = getContactCountCondition(contactCountBucket, contactCountSubquery);
+      if (condition) {
+        baseQuery = baseQuery.where(condition) as typeof baseQuery;
+      }
     }
 
     let orderExpression;
@@ -89,9 +152,14 @@ export async function GET(request: NextRequest) {
       orderExpression = sortOrder === 'desc'
         ? sql`COALESCE(${contactCountSubquery.count}, 0) DESC`
         : sql`COALESCE(${contactCountSubquery.count}, 0) ASC`;
+    } else if (sortBy === 'employees') {
+      orderExpression = sortOrder === 'desc'
+        ? sql`COALESCE(${organizations.employees}, 0) DESC`
+        : sql`COALESCE(${organizations.employees}, 0) ASC`;
     } else {
       const orderColumn = sortBy === 'domain' ? organizations.domain : 
                           sortBy === 'type' ? organizations.orgType :
+                          sortBy === 'industry' ? organizations.industry :
                           sortBy === 'createdAt' ? organizations.createdAt :
                           organizations.name;
       orderExpression = sortOrder === 'desc' ? desc(orderColumn) : asc(orderColumn);
@@ -118,20 +186,33 @@ export async function GET(request: NextRequest) {
       ) as typeof countQuery;
     }
     
-    if (type) {
+    if (type && type !== 'all') {
       countQuery = countQuery.where(eq(organizations.orgType, type)) as typeof countQuery;
     }
 
-    if (hasProperties === 'true') {
-      countQuery = countQuery.where(sql`${propertyCountSubquery.count} > 0`) as typeof countQuery;
-    } else if (hasProperties === 'false') {
-      countQuery = countQuery.where(sql`${propertyCountSubquery.count} IS NULL OR ${propertyCountSubquery.count} = 0`) as typeof countQuery;
+    if (industry && industry !== 'all') {
+      countQuery = countQuery.where(eq(organizations.industry, industry)) as typeof countQuery;
     }
 
-    if (hasContacts === 'true') {
-      countQuery = countQuery.where(sql`${contactCountSubquery.count} > 0`) as typeof countQuery;
-    } else if (hasContacts === 'false') {
-      countQuery = countQuery.where(sql`${contactCountSubquery.count} IS NULL OR ${contactCountSubquery.count} = 0`) as typeof countQuery;
+    if (employeesBucket && employeesBucket !== 'all') {
+      const condition = getEmployeesCondition(employeesBucket);
+      if (condition) {
+        countQuery = countQuery.where(condition) as typeof countQuery;
+      }
+    }
+
+    if (propertyCountBucket && propertyCountBucket !== 'all') {
+      const condition = getPropertyCountCondition(propertyCountBucket, propertyCountSubquery);
+      if (condition) {
+        countQuery = countQuery.where(condition) as typeof countQuery;
+      }
+    }
+
+    if (contactCountBucket && contactCountBucket !== 'all') {
+      const condition = getContactCountCondition(contactCountBucket, contactCountSubquery);
+      if (condition) {
+        countQuery = countQuery.where(condition) as typeof countQuery;
+      }
     }
 
     const [totalResult] = await countQuery;
@@ -139,6 +220,10 @@ export async function GET(request: NextRequest) {
 
     const [typesResult] = await db
       .select({ types: sql<string[]>`array_agg(DISTINCT org_type) FILTER (WHERE org_type IS NOT NULL)` })
+      .from(organizations);
+
+    const [industriesResult] = await db
+      .select({ industries: sql<string[]>`array_agg(DISTINCT industry) FILTER (WHERE industry IS NOT NULL)` })
       .from(organizations);
 
     return NextResponse.json({
@@ -150,6 +235,7 @@ export async function GET(request: NextRequest) {
         totalPages: Math.ceil(total / limit),
       },
       availableTypes: typesResult?.types || [],
+      availableIndustries: industriesResult?.industries || [],
     });
   } catch (error) {
     console.error('Organizations API error:', error);

@@ -6,8 +6,16 @@ import Link from 'next/link';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
-import { Loader2, XCircle } from 'lucide-react';
+import { Loader2, XCircle, MoreVertical, FileJson, Users, Building2 } from 'lucide-react';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from '@/components/ui/dropdown-menu';
+import { Button } from '@/components/ui/button';
 
 interface PropertyRelation {
   id: string;
@@ -230,6 +238,43 @@ export default function OrganizationDetailPage() {
   
   const industryDisplay = [organization.industry, organization.subIndustry].filter(Boolean).join(' - ');
 
+  const handleExportOrganizationData = () => {
+    // Prepare organization data for export
+    const exportData = {
+      organization: {
+        id: organization.id,
+        name: organization.name,
+        legalName: organization.legalName,
+        domain: organization.domain,
+        orgType: organization.orgType,
+        description: organization.description,
+        sector: organization.sector,
+        industry: organization.industry,
+        subIndustry: organization.subIndustry,
+        employees: organization.employees,
+        employeesRange: organization.employeesRange,
+        location: organization.location,
+        city: organization.city,
+        state: organization.state,
+        country: organization.country,
+        linkedinHandle: organization.linkedinHandle,
+        twitterHandle: organization.twitterHandle,
+        logoUrl: organization.logoUrl,
+      },
+      properties: properties,
+      contacts: contacts,
+    };
+
+    // Create and trigger download
+    const element = document.createElement('a');
+    element.setAttribute('href', 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(exportData, null, 2)));
+    element.setAttribute('download', `${organization.name || 'organization'}-export.json`);
+    element.style.display = 'none';
+    document.body.appendChild(element);
+    element.click();
+    document.body.removeChild(element);
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="w-full px-4 sm:px-6 py-6 sm:py-8">
@@ -346,6 +391,55 @@ export default function OrganizationDetailPage() {
                     {enrichMessage}
                   </span>
                 )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button 
+                      variant="outline" 
+                      size="icon"
+                      className="h-9 w-9"
+                      data-testid="button-org-actions"
+                      title="Organization actions"
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    <DropdownMenuItem 
+                      onClick={() => {
+                        // Scroll to properties section
+                        const propertiesSection = document.getElementById('properties-section');
+                        if (propertiesSection) {
+                          propertiesSection.scrollIntoView({ behavior: 'smooth' });
+                        }
+                      }}
+                      data-testid="menu-item-view-properties"
+                    >
+                      <Building2 className="w-4 h-4 mr-2" />
+                      View all properties ({properties.length})
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
+                      onClick={() => {
+                        // Scroll to contacts section
+                        const contactsSection = document.getElementById('contacts-section');
+                        if (contactsSection) {
+                          contactsSection.scrollIntoView({ behavior: 'smooth' });
+                        }
+                      }}
+                      data-testid="menu-item-view-contacts"
+                    >
+                      <Users className="w-4 h-4 mr-2" />
+                      View all contacts ({contacts.length})
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem 
+                      onClick={handleExportOrganizationData}
+                      data-testid="menu-item-export"
+                    >
+                      <FileJson className="w-4 h-4 mr-2" />
+                      Export organization data
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -448,7 +542,7 @@ export default function OrganizationDetailPage() {
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div id="properties-section" className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
               <h2 className="text-lg font-semibold text-gray-900">
                 Properties ({properties.length})
@@ -501,7 +595,7 @@ export default function OrganizationDetailPage() {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+          <div id="contacts-section" className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
               <h2 className="text-lg font-semibold text-gray-900">
                 Contacts ({contacts.length})

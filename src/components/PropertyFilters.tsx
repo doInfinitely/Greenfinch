@@ -16,6 +16,7 @@ export interface FilterState {
   organizationId: string | null;
   contactId: string | null;
   enrichmentStatus: 'all' | 'researched' | 'not_researched';
+  zipCode: string | null;
   // Legacy fields for backwards compatibility
   minLotSqft: number | null;
   maxLotSqft: number | null;
@@ -63,11 +64,69 @@ export const emptyFilters: FilterState = {
   organizationId: null,
   contactId: null,
   enrichmentStatus: 'all',
+  zipCode: null,
   minLotSqft: null,
   maxLotSqft: null,
 };
 
 export { UNKNOWN_CATEGORY };
+
+export function serializeFiltersToParams(filters: FilterState): URLSearchParams {
+  const params = new URLSearchParams();
+  
+  if (filters.minLotAcres) params.set('minLotAcres', String(filters.minLotAcres));
+  if (filters.maxLotAcres) params.set('maxLotAcres', String(filters.maxLotAcres));
+  if (filters.minNetSqft) params.set('minNetSqft', String(filters.minNetSqft));
+  if (filters.maxNetSqft) params.set('maxNetSqft', String(filters.maxNetSqft));
+  if (filters.categories.length > 0) params.set('categories', filters.categories.join(','));
+  if (filters.subcategories.length > 0) params.set('subcategories', filters.subcategories.join(','));
+  if (filters.buildingClasses.length > 0) params.set('buildingClasses', filters.buildingClasses.join(','));
+  if (filters.acTypes.length > 0) params.set('acTypes', filters.acTypes.join(','));
+  if (filters.heatingTypes.length > 0) params.set('heatingTypes', filters.heatingTypes.join(','));
+  if (filters.organizationId) params.set('organizationId', filters.organizationId);
+  if (filters.contactId) params.set('contactId', filters.contactId);
+  if (filters.enrichmentStatus !== 'all') params.set('enrichmentStatus', filters.enrichmentStatus);
+  if (filters.zipCode) params.set('zipCode', filters.zipCode);
+  
+  return params;
+}
+
+export function parseFiltersFromParams(searchParams: URLSearchParams): FilterState {
+  const minLotAcres = searchParams.get('minLotAcres');
+  const maxLotAcres = searchParams.get('maxLotAcres');
+  const minNetSqft = searchParams.get('minNetSqft');
+  const maxNetSqft = searchParams.get('maxNetSqft');
+  const categories = searchParams.get('categories');
+  const subcategories = searchParams.get('subcategories');
+  const buildingClasses = searchParams.get('buildingClasses');
+  const acTypes = searchParams.get('acTypes');
+  const heatingTypes = searchParams.get('heatingTypes');
+  const organizationId = searchParams.get('organizationId');
+  const contactId = searchParams.get('contactId');
+  const enrichmentStatus = searchParams.get('enrichmentStatus') as 'all' | 'researched' | 'not_researched' | null;
+  const zipCode = searchParams.get('zipCode');
+
+  const parsedMinLotAcres = minLotAcres ? parseFloat(minLotAcres) : null;
+  const parsedMaxLotAcres = maxLotAcres ? parseFloat(maxLotAcres) : null;
+
+  return {
+    minLotAcres: parsedMinLotAcres,
+    maxLotAcres: parsedMaxLotAcres,
+    minNetSqft: minNetSqft ? parseInt(minNetSqft, 10) : null,
+    maxNetSqft: maxNetSqft ? parseInt(maxNetSqft, 10) : null,
+    categories: categories ? categories.split(',') : [],
+    subcategories: subcategories ? subcategories.split(',') : [],
+    buildingClasses: buildingClasses ? buildingClasses.split(',') : [],
+    acTypes: acTypes ? acTypes.split(',') : [],
+    heatingTypes: heatingTypes ? heatingTypes.split(',') : [],
+    organizationId: organizationId || null,
+    contactId: contactId || null,
+    enrichmentStatus: enrichmentStatus || 'all',
+    zipCode: zipCode || null,
+    minLotSqft: parsedMinLotAcres ? Math.round(parsedMinLotAcres * 43560) : null,
+    maxLotSqft: parsedMaxLotAcres ? Math.round(parsedMaxLotAcres * 43560) : null,
+  };
+}
 
 export default function PropertyFilters({
   filters,
@@ -94,6 +153,7 @@ export default function PropertyFilters({
   );
   const [orgSearch, setOrgSearch] = useState('');
   const [contactSearch, setContactSearch] = useState('');
+  const [localZipCode, setLocalZipCode] = useState<string>(filters.zipCode || '');
   const [orgResults, setOrgResults] = useState<{id: string; name: string}[]>([]);
   const [contactResults, setContactResults] = useState<{id: string; fullName: string}[]>([]);
   const [selectedOrg, setSelectedOrg] = useState<{id: string; name: string} | null>(null);
@@ -103,6 +163,7 @@ export default function PropertyFilters({
   // Debounce organization and contact search inputs with 300ms delay
   const debouncedOrgSearch = useDebounce(orgSearch, 300);
   const debouncedContactSearch = useDebounce(contactSearch, 300);
+  const debouncedZipCode = useDebounce(localZipCode, 300);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -158,6 +219,13 @@ export default function PropertyFilters({
     return () => controller.abort();
   }, [debouncedContactSearch]);
 
+  useEffect(() => {
+    onFiltersChange({
+      ...filters,
+      zipCode: debouncedZipCode.trim() || null,
+    });
+  }, [debouncedZipCode]);
+
   const handleAcresChange = (field: 'minLotAcres' | 'maxLotAcres', value: string, setter: (v: string) => void) => {
     setter(value);
     const numValue = parseFloat(value);
@@ -198,6 +266,7 @@ export default function PropertyFilters({
     setLocalMaxNetSqft('');
     setOrgSearch('');
     setContactSearch('');
+    setLocalZipCode('');
     setSelectedOrg(null);
     setSelectedContact(null);
     onFiltersChange(emptyFilters);
@@ -237,7 +306,8 @@ export default function PropertyFilters({
     ((filters.heatingTypes?.length ?? 0) > 0 ? 1 : 0) +
     (filters.organizationId ? 1 : 0) +
     (filters.contactId ? 1 : 0) +
-    (filters.enrichmentStatus !== 'all' ? 1 : 0);
+    (filters.enrichmentStatus !== 'all' ? 1 : 0) +
+    (filters.zipCode ? 1 : 0);
 
   const toggleSection = (id: string) => {
     setOpenSections(prev => {
@@ -380,6 +450,32 @@ export default function PropertyFilters({
             )}
           </div>
         )}
+      </div>
+
+      {/* Zip Code Filter - Top Level */}
+      <div className="border-b border-gray-100 pb-3">
+        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Zip Code</label>
+        <div className="relative">
+          <input
+            type="text"
+            value={localZipCode}
+            onChange={(e) => setLocalZipCode(e.target.value)}
+            placeholder="Enter zip code..."
+            className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
+            data-testid="input-zip-code"
+          />
+          {localZipCode && (
+            <button
+              onClick={() => setLocalZipCode('')}
+              className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
+              data-testid="button-clear-zip-code"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Size Filters */}
@@ -716,8 +812,20 @@ export default function PropertyFilters({
           </div>
 
           {/* Desktop: Dropdown */}
-          <div className="hidden md:block absolute top-full left-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[70vh] overflow-y-auto">
-            {filterContent}
+          <div className="hidden md:block absolute top-full left-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[70vh] overflow-hidden flex flex-col">
+            <div className="flex-1 overflow-y-auto">
+              {filterContent}
+            </div>
+            {/* Desktop Footer */}
+            <div className="border-t border-gray-200 bg-white px-4 py-3 flex gap-2">
+              <button
+                onClick={() => setIsOpen(false)}
+                className="flex-1 px-4 py-2.5 text-sm font-medium bg-green-600 text-white rounded-lg active:bg-green-700"
+                data-testid="button-apply-filters-desktop"
+              >
+                Apply Filters
+              </button>
+            </div>
           </div>
         </>
       )}

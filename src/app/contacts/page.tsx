@@ -2,7 +2,11 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
+import { BulkActionBar } from '@/components/BulkActionBar';
+import { Phone, Mail, ListPlus, Filter } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface PropertyRelation {
   propertyId: string;
@@ -56,12 +60,13 @@ interface PaginationInfo {
 }
 
 export default function ContactsPage() {
+  const { toast } = useToast();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [emailStatusFilter, setEmailStatusFilter] = useState('');
-  const [titleFilter, setTitleFilter] = useState('');
+  const [emailStatusFilter, setEmailStatusFilter] = useState('all');
+  const [titleFilter, setTitleFilter] = useState('all');
   const [sortBy, setSortBy] = useState('fullName');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [pagination, setPagination] = useState<PaginationInfo>({
@@ -80,6 +85,21 @@ export default function ContactsPage() {
   const [showOrgDropdown, setShowOrgDropdown] = useState(false);
   const orgSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const orgDropdownRef = useRef<HTMLDivElement>(null);
+  const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const filterDropdownRef = useRef<HTMLDivElement>(null);
+
+  const activeFilterCount = 
+    (emailStatusFilter !== 'all' ? 1 : 0) +
+    (titleFilter !== 'all' ? 1 : 0) +
+    (organizationFilter ? 1 : 0);
+
+  const clearAllFilters = () => {
+    setEmailStatusFilter('all');
+    setTitleFilter('all');
+    setOrganizationFilter(null);
+    setOrgSearchQuery('');
+  };
 
   const fetchContacts = useCallback(async (page = 1) => {
     setIsLoading(true);
@@ -110,6 +130,7 @@ export default function ContactsPage() {
       if (data.availableTitles) {
         setAvailableTitles(data.availableTitles);
       }
+      setSelectedContacts(new Set());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load contacts');
     } finally {
@@ -117,7 +138,6 @@ export default function ContactsPage() {
     }
   }, [searchQuery, emailStatusFilter, titleFilter, organizationFilter, sortBy, sortOrder]);
 
-  // Organization search functionality
   const searchOrganizations = useCallback(async (query: string) => {
     if (query.length < 2) {
       setOrgSearchResults([]);
@@ -152,7 +172,6 @@ export default function ContactsPage() {
     };
   }, [orgSearchQuery, searchOrganizations]);
 
-  // Close org dropdown on outside click
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (orgDropdownRef.current && !orgDropdownRef.current.contains(event.target as Node)) {
@@ -163,7 +182,34 @@ export default function ContactsPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Helper to get all phone numbers for a contact
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
+        setIsFilterOpen(false);
+      }
+    }
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape' && isFilterOpen) {
+        setIsFilterOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isFilterOpen]);
+
+  useEffect(() => {
+    if (isFilterOpen && typeof window !== 'undefined' && window.innerWidth < 768) {
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = '';
+      };
+    }
+  }, [isFilterOpen]);
+
   const getPhoneNumbers = (contact: Contact): { number: string; label: string }[] => {
     const phones: { number: string; label: string }[] = [];
     
@@ -228,6 +274,58 @@ export default function ContactsPage() {
     }
   };
 
+  const handleSelectContact = useCallback((contactId: string, checked: boolean) => {
+    setSelectedContacts(prev => {
+      const next = new Set(prev);
+      if (checked) {
+        next.add(contactId);
+      } else {
+        next.delete(contactId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback((checked: boolean) => {
+    if (checked) {
+      const allIds = new Set(contacts.map(c => c.id));
+      setSelectedContacts(allIds);
+    } else {
+      setSelectedContacts(new Set());
+    }
+  }, [contacts]);
+
+  const handleDeselectAll = useCallback(() => {
+    setSelectedContacts(new Set());
+  }, []);
+
+  const handleFindPhones = useCallback(() => {
+    const selectedIds = Array.from(selectedContacts);
+    toast({
+      title: 'Phone Lookup Started',
+      description: `Finding phone numbers for ${selectedIds.length} selected contacts...`,
+    });
+  }, [selectedContacts, toast]);
+
+  const handleFindEmails = useCallback(() => {
+    const selectedIds = Array.from(selectedContacts);
+    toast({
+      title: 'Email Lookup Started',
+      description: `Finding emails for ${selectedIds.length} selected contacts...`,
+    });
+  }, [selectedContacts, toast]);
+
+  const handleAddToList = useCallback(() => {
+    const selectedIds = Array.from(selectedContacts);
+    toast({
+      title: 'Add to List',
+      description: `Adding ${selectedIds.length} contacts to list...`,
+    });
+  }, [selectedContacts, toast]);
+
+  const allSelected = contacts.length > 0 && contacts.every(c => selectedContacts.has(c.id));
+  const someSelected = contacts.some(c => selectedContacts.has(c.id));
+
   const SortIcon = ({ column }: { column: string }) => {
     if (sortBy !== column) return null;
     return (
@@ -241,20 +339,125 @@ export default function ContactsPage() {
     );
   };
 
+  const filterContent = (
+    <div className="p-4 space-y-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-medium text-gray-900">Filter Contacts</h3>
+        {activeFilterCount > 0 && (
+          <button
+            onClick={clearAllFilters}
+            className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-lg active:bg-gray-100"
+            data-testid="button-clear-all-contact-filters"
+          >
+            Clear all
+          </button>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Email Status</label>
+        <select
+          value={emailStatusFilter}
+          onChange={(e) => setEmailStatusFilter(e.target.value)}
+          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white"
+          data-testid="select-email-status"
+        >
+          <option value="all">All Email Status</option>
+          {availableStatuses.map((status) => (
+            <option key={status} value={status}>{status}</option>
+          ))}
+        </select>
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Title</label>
+        <select
+          value={titleFilter}
+          onChange={(e) => setTitleFilter(e.target.value)}
+          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white"
+          data-testid="select-title"
+        >
+          <option value="all">All Titles</option>
+          {availableTitles.map((title) => (
+            <option key={title} value={title}>{title}</option>
+          ))}
+        </select>
+      </div>
+
+      <div ref={orgDropdownRef}>
+        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Organization</label>
+        {organizationFilter ? (
+          <div className="flex items-center justify-between bg-green-50 border border-green-200 px-3 py-2.5 rounded-lg text-sm">
+            <span className="text-green-800 truncate">{organizationFilter.name || organizationFilter.domain}</span>
+            <button
+              onClick={() => {
+                setOrganizationFilter(null);
+                setOrgSearchQuery('');
+              }}
+              className="text-green-600 active:text-green-800 ml-2 flex-shrink-0 p-1"
+              data-testid="button-clear-org-filter"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        ) : (
+          <div className="relative">
+            <input
+              type="text"
+              value={orgSearchQuery}
+              onChange={(e) => {
+                setOrgSearchQuery(e.target.value);
+                setShowOrgDropdown(true);
+              }}
+              onFocus={() => setShowOrgDropdown(true)}
+              placeholder="Search organizations..."
+              className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
+              data-testid="input-org-search"
+            />
+            {showOrgDropdown && orgSearchResults.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-32 overflow-y-auto">
+                {orgSearchResults.map((org) => (
+                  <button
+                    key={org.id}
+                    onClick={() => {
+                      setOrganizationFilter(org);
+                      setOrgSearchQuery('');
+                      setShowOrgDropdown(false);
+                    }}
+                    className="w-full text-left px-2 py-1.5 text-sm hover:bg-gray-100"
+                    data-testid={`org-result-${org.id}`}
+                  >
+                    <span className="font-medium text-gray-900">{org.name || 'Unknown'}</span>
+                    {org.domain && (
+                      <span className="text-xs text-gray-500 ml-2">{org.domain}</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="min-h-screen bg-gray-50">
       <main className="w-full px-4 md:px-6 py-6 md:py-8">
-        <div className="flex flex-col gap-3 mb-6">
+        <div className="flex flex-col md:flex-row gap-3 mb-6">
           <div className="relative flex-1">
             <input
               type="text"
-              placeholder="Search by name, email, or employer..."
+              placeholder="Search name, email, phone, company, title..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full px-4 py-2 pl-10 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              className="w-full px-4 py-2.5 pl-10 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+              data-testid="input-search-contacts"
             />
             <svg
-              className="absolute left-3 top-2.5 w-4 h-4 text-gray-400"
+              className="absolute left-3 top-3 w-4 h-4 text-gray-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -267,85 +470,59 @@ export default function ContactsPage() {
               />
             </svg>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Select value={emailStatusFilter} onValueChange={setEmailStatusFilter}>
-              <SelectTrigger className="flex-1 min-w-[140px]">
-                <SelectValue placeholder="All Email Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Email Status</SelectItem>
-                {availableStatuses.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {status}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={titleFilter} onValueChange={setTitleFilter}>
-              <SelectTrigger className="flex-1 min-w-[140px]">
-                <SelectValue placeholder="All Titles" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Titles</SelectItem>
-                {availableTitles.map((title) => (
-                  <SelectItem key={title} value={title}>
-                    {title}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="relative flex-1 min-w-[180px]" ref={orgDropdownRef}>
-              {organizationFilter ? (
-                <div className="flex items-center gap-2 px-3 py-2 text-sm border border-green-500 rounded-lg bg-green-50">
-                  <span className="truncate">{organizationFilter.name || organizationFilter.domain}</span>
-                  <button
-                    onClick={() => {
-                      setOrganizationFilter(null);
-                      setOrgSearchQuery('');
-                    }}
-                    className="text-gray-500 hover:text-gray-700 flex-shrink-0"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <input
-                    type="text"
-                    placeholder="Filter by organization..."
-                    value={orgSearchQuery}
-                    onChange={(e) => {
-                      setOrgSearchQuery(e.target.value);
-                      setShowOrgDropdown(true);
-                    }}
-                    onFocus={() => setShowOrgDropdown(true)}
-                    className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
-                  />
-                  {showOrgDropdown && orgSearchResults.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-                      {orgSearchResults.map((org) => (
-                        <button
-                          key={org.id}
-                          onClick={() => {
-                            setOrganizationFilter(org);
-                            setOrgSearchQuery('');
-                            setShowOrgDropdown(false);
-                          }}
-                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex flex-col"
-                        >
-                          <span className="font-medium text-gray-900">{org.name || 'Unknown'}</span>
-                          {org.domain && (
-                            <span className="text-xs text-gray-500">{org.domain}</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </>
+
+          <div className="relative" ref={filterDropdownRef}>
+            <button
+              onClick={() => setIsFilterOpen(!isFilterOpen)}
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border rounded-lg transition-colors ${
+                activeFilterCount > 0
+                  ? 'bg-green-50 border-green-500 text-green-700'
+                  : 'bg-white border-gray-200 text-gray-700 hover:bg-gray-50'
+              }`}
+              data-testid="button-open-contact-filters"
+            >
+              <Filter className="w-4 h-4" />
+              <span>Filters</span>
+              {activeFilterCount > 0 && (
+                <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-medium bg-green-100 text-green-700 rounded-full">
+                  {activeFilterCount}
+                </span>
               )}
-            </div>
+            </button>
+
+            {isFilterOpen && (
+              <>
+                <div className="hidden md:block absolute right-0 top-full mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50">
+                  {filterContent}
+                </div>
+                <div className="md:hidden fixed inset-0 z-50 flex flex-col bg-white">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200">
+                    <h2 className="text-lg font-semibold text-gray-900">Filters</h2>
+                    <button
+                      onClick={() => setIsFilterOpen(false)}
+                      className="p-2 text-gray-500 hover:text-gray-700"
+                      data-testid="button-close-contact-filters"
+                    >
+                      <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {filterContent}
+                  </div>
+                  <div className="px-4 py-3 border-t border-gray-200">
+                    <button
+                      onClick={() => setIsFilterOpen(false)}
+                      className="w-full py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg active:bg-green-700"
+                      data-testid="button-apply-contact-filters"
+                    >
+                      Apply Filters
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
 
@@ -379,19 +556,27 @@ export default function ContactsPage() {
             </svg>
             <h3 className="text-lg font-medium text-gray-900 mb-2">No contacts found</h3>
             <p className="text-gray-500">
-              {searchQuery || (emailStatusFilter && emailStatusFilter !== 'all') || (titleFilter && titleFilter !== 'all') || organizationFilter
+              {searchQuery || activeFilterCount > 0
                 ? 'Try adjusting your search or filter criteria.'
                 : 'Contacts will appear here once enriched.'}
             </p>
           </div>
         ) : (
           <>
-            {/* Desktop table view */}
             <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
+                      <th className="px-4 py-3 text-left w-10">
+                        <Checkbox
+                          checked={allSelected}
+                          indeterminate={someSelected && !allSelected}
+                          onChange={(e) => handleSelectAll(e.target.checked)}
+                          data-testid="checkbox-select-all-contacts"
+                          aria-label="Select all contacts"
+                        />
+                      </th>
                       <th
                         onClick={() => handleSort('fullName')}
                         className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
@@ -440,16 +625,33 @@ export default function ContactsPage() {
                     {contacts.map((contact) => (
                       <React.Fragment key={contact.id}>
                         <tr 
-                          className={`hover:bg-gray-50 ${contact.id ? 'cursor-pointer' : ''}`}
-                          onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                          className={`hover:bg-gray-50 ${contact.id ? 'cursor-pointer' : ''} ${selectedContacts.has(contact.id) ? 'bg-green-50' : ''}`}
                           data-testid={`contact-row-${contact.id}`}
                         >
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td className="px-4 py-4">
+                            <Checkbox
+                              checked={selectedContacts.has(contact.id)}
+                              onChange={(e) => {
+                                e.stopPropagation();
+                                handleSelectContact(contact.id, e.target.checked);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              data-testid={`checkbox-contact-${contact.id}`}
+                              aria-label={`Select ${contact.fullName || 'contact'}`}
+                            />
+                          </td>
+                          <td 
+                            className="px-6 py-4 whitespace-nowrap"
+                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                          >
                             <span className="text-sm font-medium text-gray-900">
                               {contact.fullName || 'Unknown'}
                             </span>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td 
+                            className="px-6 py-4 whitespace-nowrap"
+                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                          >
                             {contact.email ? (
                               <span
                                 onClick={(e) => {
@@ -464,7 +666,10 @@ export default function ContactsPage() {
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="px-6 py-4">
+                          <td 
+                            className="px-6 py-4"
+                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                          >
                             {(() => {
                               const phones = getPhoneNumbers(contact);
                               if (phones.length === 0) {
@@ -474,31 +679,46 @@ export default function ContactsPage() {
                                 <div className="flex flex-col gap-0.5">
                                   {phones.map((p, idx) => (
                                     <div key={idx} className="flex items-center gap-1.5">
-                                      <span className="text-sm text-gray-900">{p.number}</span>
-                                      {phones.length > 1 && (
-                                        <span className="text-xs text-gray-500">({p.label})</span>
-                                      )}
+                                      <span
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          window.location.href = `tel:${p.number}`;
+                                        }}
+                                        className="text-sm text-green-600 hover:text-green-700 hover:underline cursor-pointer"
+                                      >
+                                        {p.number}
+                                      </span>
+                                      <span className="text-xs text-gray-400">({p.label})</span>
                                     </div>
                                   ))}
                                 </div>
                               );
                             })()}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td 
+                            className="px-6 py-4 whitespace-nowrap"
+                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                          >
                             {contact.title ? (
                               <span className="text-sm text-gray-900">{contact.title}</span>
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td 
+                            className="px-6 py-4 whitespace-nowrap"
+                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                          >
                             {contact.employerName ? (
                               <span className="text-sm text-gray-900">{contact.employerName}</span>
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
+                          <td 
+                            className="px-6 py-4 whitespace-nowrap"
+                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                          >
                             {contact.emailStatus ? (
                               <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getEmailStatusColor(contact.emailStatus)}`}>
                                 {contact.emailStatus}
@@ -507,114 +727,92 @@ export default function ContactsPage() {
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center space-x-2">
-                              {contact.propertyCount > 0 && (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                  {contact.propertyCount} Properties
-                                </span>
-                              )}
-                              {contact.organizationCount > 0 && (
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                  {contact.organizationCount} Orgs
-                                </span>
-                              )}
+                          <td 
+                            className="px-6 py-4 whitespace-nowrap"
+                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {contact.propertyCount} prop
+                              </span>
+                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                {contact.organizationCount} org
+                              </span>
                             </div>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <div className="flex items-center justify-end space-x-2">
-                              {contact.linkedinUrl && (
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    window.open(contact.linkedinUrl!, '_blank');
-                                  }}
-                                  className="text-blue-600 hover:text-blue-700 cursor-pointer"
-                                  title="LinkedIn"
-                                >
-                                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                                    <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
-                                  </svg>
-                                </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedContact(expandedContact === contact.id ? null : contact.id);
+                              }}
+                              className="text-gray-500 hover:text-gray-700"
+                            >
+                              {expandedContact === contact.id ? (
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                                </svg>
+                              ) : (
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                </svg>
                               )}
-                              {(contact.propertyCount > 0 || contact.organizationCount > 0) && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setExpandedContact(expandedContact === contact.id ? null : contact.id);
-                                  }}
-                                  className="text-gray-500 hover:text-gray-700"
-                                >
-                                  <svg
-                                    className={`w-5 h-5 transform transition-transform ${expandedContact === contact.id ? 'rotate-180' : ''}`}
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
-                                  >
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                  </svg>
-                                </button>
-                              )}
-                              <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                            </div>
+                            </button>
                           </td>
                         </tr>
                         {expandedContact === contact.id && (
-                          <tr key={`${contact.id}-expanded`}>
-                            <td colSpan={8} className="px-6 py-4 bg-gray-50">
-                              <div className="grid grid-cols-2 gap-6">
+                          <tr>
+                            <td colSpan={9} className="px-6 py-4 bg-gray-50">
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {contact.properties.length > 0 && (
                                   <div>
-                                    <h4 className="text-sm font-medium text-gray-700 mb-2">Associated Properties</h4>
-                                    <div className="space-y-2">
-                                      {contact.properties.map((prop) => (
-                                        <Link
-                                          key={prop.propertyId}
-                                          href={`/property/${prop.propertyKey}`}
-                                          className="block p-2 bg-white rounded border border-gray-200 hover:border-green-500 transition-colors"
-                                        >
-                                          <div className="text-sm font-medium text-gray-900">
-                                            {prop.address || 'No Address'}
-                                          </div>
-                                          <div className="text-xs text-gray-500">
-                                            {prop.city}, {prop.state}
-                                            {prop.role && <span className="ml-2 text-green-600">({prop.role})</span>}
-                                          </div>
-                                        </Link>
+                                    <h4 className="text-sm font-medium text-gray-700 mb-2">Properties</h4>
+                                    <ul className="space-y-1">
+                                      {contact.properties.slice(0, 5).map((prop, idx) => (
+                                        <li key={idx} className="text-sm text-gray-600">
+                                          <Link href={`/property/${prop.propertyId}`} className="text-green-600 hover:underline">
+                                            {prop.address || prop.propertyKey || 'Unknown'}
+                                          </Link>
+                                          {prop.role && <span className="text-gray-400 ml-2">({prop.role})</span>}
+                                        </li>
                                       ))}
-                                    </div>
+                                      {contact.properties.length > 5 && (
+                                        <li className="text-sm text-gray-400">+{contact.properties.length - 5} more</li>
+                                      )}
+                                    </ul>
                                   </div>
                                 )}
                                 {contact.organizations.length > 0 && (
                                   <div>
                                     <h4 className="text-sm font-medium text-gray-700 mb-2">Organizations</h4>
-                                    <div className="space-y-2">
-                                      {contact.organizations.map((org) => (
-                                        <div
-                                          key={org.orgId}
-                                          className="p-2 bg-white rounded border border-gray-200"
-                                        >
-                                          <div className="text-sm font-medium text-gray-900">
-                                            {org.orgName || 'Unknown'}
-                                          </div>
-                                          <div className="text-xs text-gray-500">
-                                            {org.orgDomain && (
-                                              <a
-                                                href={`https://${org.orgDomain}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="text-green-600 hover:underline"
-                                              >
-                                                {org.orgDomain}
-                                              </a>
-                                            )}
-                                            {org.title && <span className="ml-2">• {org.title}</span>}
-                                          </div>
-                                        </div>
+                                    <ul className="space-y-1">
+                                      {contact.organizations.slice(0, 5).map((org, idx) => (
+                                        <li key={idx} className="text-sm text-gray-600">
+                                          <Link href={`/organization/${org.orgId}`} className="text-green-600 hover:underline">
+                                            {org.orgName || org.orgDomain || 'Unknown'}
+                                          </Link>
+                                          {org.title && <span className="text-gray-400 ml-2">({org.title})</span>}
+                                        </li>
                                       ))}
-                                    </div>
+                                      {contact.organizations.length > 5 && (
+                                        <li className="text-sm text-gray-400">+{contact.organizations.length - 5} more</li>
+                                      )}
+                                    </ul>
+                                  </div>
+                                )}
+                                {contact.linkedinUrl && (
+                                  <div>
+                                    <a
+                                      href={contact.linkedinUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                                    >
+                                      <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                        <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z" />
+                                      </svg>
+                                      LinkedIn Profile
+                                    </a>
                                   </div>
                                 )}
                               </div>
@@ -628,7 +826,6 @@ export default function ContactsPage() {
               </div>
             </div>
 
-            {/* Mobile card view */}
             <div className="md:hidden bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
               {contacts.map((contact) => (
                 <Link
@@ -638,14 +835,14 @@ export default function ContactsPage() {
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-green-600 truncate">
+                      <p className="font-medium text-gray-900 truncate">
                         {contact.fullName || 'Unknown'}
                       </p>
-                      {contact.title && (
-                        <p className="text-sm text-gray-600 truncate">{contact.title}</p>
+                      {contact.email && (
+                        <p className="text-sm text-green-600 truncate">{contact.email}</p>
                       )}
-                      {contact.employerName && (
-                        <p className="text-xs text-gray-500 truncate">{contact.employerName}</p>
+                      {contact.title && (
+                        <p className="text-xs text-gray-500 mt-1">{contact.title}</p>
                       )}
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
@@ -654,26 +851,23 @@ export default function ContactsPage() {
                           {contact.emailStatus}
                         </span>
                       )}
-                      {contact.propertyCount > 0 && (
-                        <span className="text-xs text-gray-500">
-                          {contact.propertyCount} properties
-                        </span>
-                      )}
                     </div>
                   </div>
-                  {contact.email && (
-                    <p className="text-sm text-gray-600 mt-1 truncate">{contact.email}</p>
-                  )}
-                  {contact.phone && (
-                    <p className="text-xs text-gray-500 mt-0.5">{contact.phone}</p>
-                  )}
+                  <div className="flex items-center gap-3 mt-2">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {contact.propertyCount} properties
+                    </span>
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                      {contact.organizationCount} orgs
+                    </span>
+                  </div>
                 </Link>
               ))}
             </div>
 
             {pagination.totalPages > 1 && (
               <div className="flex flex-col md:flex-row items-center justify-between gap-4 mt-6">
-                <div className="text-sm text-gray-500 text-center md:text-left">
+                <div className="text-sm text-gray-500">
                   Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
                   {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
                   {pagination.total} contacts
@@ -724,6 +918,45 @@ export default function ContactsPage() {
               </div>
             )}
           </>
+        )}
+
+        {selectedContacts.size > 0 && (
+          <BulkActionBar
+            selectedCount={selectedContacts.size}
+            itemLabel="contact"
+            onDeselectAll={handleDeselectAll}
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFindPhones}
+              className="bg-white text-gray-900"
+              data-testid="button-bulk-find-phones"
+            >
+              <Phone className="h-4 w-4 mr-1" />
+              Find Phones
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleFindEmails}
+              className="bg-white text-gray-900"
+              data-testid="button-bulk-find-emails"
+            >
+              <Mail className="h-4 w-4 mr-1" />
+              Find Emails
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleAddToList}
+              className="bg-white text-gray-900"
+              data-testid="button-bulk-add-to-list"
+            >
+              <ListPlus className="h-4 w-4 mr-1" />
+              Add to List
+            </Button>
+          </BulkActionBar>
         )}
       </main>
     </div>

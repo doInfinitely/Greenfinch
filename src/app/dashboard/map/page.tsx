@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import type { MapBounds } from '@/map/DashboardMap';
 import type { MapCanvasHandle } from '@/map/MapCanvas';
-import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY } from '@/components/PropertyFilters';
+import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, serializeFiltersToParams, parseFiltersFromParams } from '@/components/PropertyFilters';
 import MapSearchBar from '@/components/MapSearchBar';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
@@ -30,6 +31,7 @@ interface PropertyFeature {
     subcategory: string | null;
     enriched: boolean;
     lotSqft: number;
+    buildingSqft: number;
   };
 }
 
@@ -65,17 +67,27 @@ function getZoomForType(type: string, hasPropertyKey: boolean): number {
 
 export default function MapPage() {
   const mapRef = useRef<MapCanvasHandle>(null);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [config, setConfig] = useState<{ mapboxToken: string; regridToken: string; regridTileUrl: string } | null>(null);
   const [allProperties, setAllProperties] = useState<PropertyFeature[]>([]);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 32.8639, lon: -96.7784 });
   const [isLoading, setIsLoading] = useState(true);
-  const [filters, setFilters] = useState<FilterState>(emptyFilters);
+  const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
+
+  const handleFiltersChange = useCallback((newFilters: FilterState) => {
+    setFilters(newFilters);
+    const params = serializeFiltersToParams(newFilters);
+    const queryString = params.toString();
+    router.replace(`${pathname}${queryString ? `?${queryString}` : ''}`, { scroll: false });
+  }, [router, pathname]);
 
   useEffect(() => {
     Promise.all([
       fetch('/api/config').then(r => r.json()),
-      fetch('/api/properties/geojson').then(r => r.json()),
+      fetch('/api/properties/geojson?limit=100').then(r => r.json()),
     ]).then(([configData, geoData]) => {
       setConfig({ mapboxToken: configData.mapboxToken, regridToken: configData.regridToken, regridTileUrl: configData.regridTileUrl });
       setAllProperties(geoData.features || []);
@@ -113,6 +125,10 @@ export default function MapPage() {
       if (filters.minLotAcres && lotAcres < filters.minLotAcres) return false;
       if (filters.maxLotAcres && lotAcres > filters.maxLotAcres) return false;
       
+      // Building sqft filter
+      if (filters.minNetSqft && (f.properties.buildingSqft || 0) < filters.minNetSqft) return false;
+      if (filters.maxNetSqft && (f.properties.buildingSqft || 0) > filters.maxNetSqft) return false;
+      
       // Category filter - supports "Unknown / Unassigned" for null categories
       if (filters.categories.length > 0) {
         const hasUnknown = filters.categories.includes(UNKNOWN_CATEGORY);
@@ -121,6 +137,11 @@ export default function MapPage() {
         if (!matchesCategory && !matchesUnknown) {
           return false;
         }
+      }
+      
+      // Zip code filter
+      if (filters.zipCode) {
+        if (!f.properties.zip || !f.properties.zip.includes(filters.zipCode)) return false;
       }
       
       // Enrichment status filter
@@ -172,7 +193,7 @@ export default function MapPage() {
         />
         <div className="absolute top-3 left-3 right-14 md:right-auto z-10 flex flex-col gap-2">
           <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
-          <PropertyFilters filters={filters} onFiltersChange={setFilters} />
+          <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
         </div>
       </div>
 
@@ -181,7 +202,7 @@ export default function MapPage() {
           <h2 className="font-semibold text-gray-900">
             Properties in View <span className="text-green-600 font-normal">({visibleProperties.length})</span>
           </h2>
-          {(filters.minLotAcres || filters.maxLotAcres || filters.categories.length > 0 || filters.organizationId || filters.contactId || filters.enrichmentStatus !== 'all') && (
+          {(filters.minLotAcres || filters.maxLotAcres || filters.categories.length > 0 || filters.organizationId || filters.contactId || filters.enrichmentStatus !== 'all' || filters.zipCode) && (
             <p className="text-xs text-gray-500 mt-1">
               Filtered from {allProperties.length} total
             </p>

@@ -132,6 +132,7 @@ function QueueItem({ item, onRemove }: { item: EnrichmentQueueItem; onRemove: ()
 
 export default function EnrichmentQueuePopover() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
   const { items, activeCount, removeItem, clearCompleted } = useEnrichmentQueue();
   const { celebrate, setOriginRef } = useCelebration();
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -143,6 +144,11 @@ export default function EnrichmentQueuePopover() {
   
   const isInitialMount = useRef(true);
   
+  // Hydration effect - wait for component to fully mount before allowing celebrations
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
+  
   // Set the origin ref for the celebration animation
   useEffect(() => {
     if (buttonRef.current) {
@@ -152,10 +158,12 @@ export default function EnrichmentQueuePopover() {
   
   // Trigger celebration animation when a new item completes (not on mount)
   useEffect(() => {
-    // Skip on initial mount - only fire when new items complete during session
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
-      prevCompletedCountRef.current = completedCount;
+    // Skip on initial mount and before hydration - only fire when new items complete during session
+    if (!isHydrated || isInitialMount.current) {
+      if (isHydrated) {
+        isInitialMount.current = false;
+        prevCompletedCountRef.current = completedCount;
+      }
       return;
     }
     
@@ -163,7 +171,7 @@ export default function EnrichmentQueuePopover() {
       celebrate();
     }
     prevCompletedCountRef.current = completedCount;
-  }, [completedCount, celebrate]);
+  }, [completedCount, celebrate, isHydrated]);
   
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>

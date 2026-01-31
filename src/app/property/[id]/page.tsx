@@ -956,8 +956,18 @@ export default function PropertyDetailPage() {
                   </div>
                 </div>
                 
-                {/* Fixed ⋮ button - never wraps */}
-                <div className="flex-shrink-0">
+                {/* Add to List button + Fixed ⋮ button - never wraps */}
+                <div className="flex-shrink-0 flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setShowAddToListModal(true)}
+                    title="Add to prospecting list"
+                    disabled={!userId}
+                    data-testid="button-add-to-list"
+                  >
+                    <List className="w-4 h-4" />
+                  </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="icon" data-testid="button-more-actions">

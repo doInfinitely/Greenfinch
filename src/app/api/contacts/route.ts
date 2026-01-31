@@ -61,7 +61,9 @@ export async function GET(request: NextRequest) {
         or(
           ilike(contacts.fullName, `%${query}%`),
           ilike(contacts.email, `%${query}%`),
-          ilike(contacts.employerName, `%${query}%`)
+          ilike(contacts.phone, `%${query}%`),
+          ilike(contacts.employerName, `%${query}%`),
+          ilike(contacts.title, `%${query}%`)
         )
       );
     }
