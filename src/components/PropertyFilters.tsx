@@ -44,7 +44,10 @@ const DEFAULT_CATEGORIES = [
   UNKNOWN_CATEGORY,
 ];
 
-const DEFAULT_BUILDING_CLASSES = ['A+', 'A', 'B', 'C', 'D'];
+const UNKNOWN_BUILDING_CLASS = 'Unknown';
+const DEFAULT_BUILDING_CLASSES = ['A+', 'A', 'B', 'C', 'D', UNKNOWN_BUILDING_CLASS];
+
+export { UNKNOWN_BUILDING_CLASS };
 
 export const emptyFilters: FilterState = {
   minLotAcres: null,

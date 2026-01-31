@@ -181,7 +181,7 @@ export default function MapPage() {
           <h2 className="font-semibold text-gray-900">
             Properties in View <span className="text-green-600 font-normal">({visibleProperties.length})</span>
           </h2>
-          {(filters.minLotAcres || filters.maxLotAcres || filters.categories.length > 0 || filters.organizationId || filters.contactId) && (
+          {(filters.minLotAcres || filters.maxLotAcres || filters.categories.length > 0 || filters.organizationId || filters.contactId || filters.enrichmentStatus !== 'all') && (
             <p className="text-xs text-gray-500 mt-1">
               Filtered from {allProperties.length} total
             </p>

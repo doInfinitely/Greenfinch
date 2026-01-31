@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY } from '@/components/PropertyFilters';
+import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, UNKNOWN_BUILDING_CLASS } from '@/components/PropertyFilters';
 import { normalizeCommonName } from '@/lib/normalization';
 
 interface Property {
@@ -88,11 +88,12 @@ export default function ListPage() {
         }
       }
       
-      // Enrichment status filter
+      // Enrichment status filter - normalize on enriched boolean
+      const isEnriched = p.enriched || p.enrichmentStatus === 'completed';
       if (filters.enrichmentStatus === 'researched') {
-        if (!p.enriched && p.enrichmentStatus !== 'completed') return false;
+        if (!isEnriched) return false;
       } else if (filters.enrichmentStatus === 'not_researched') {
-        if (p.enriched || p.enrichmentStatus === 'completed') return false;
+        if (isEnriched) return false;
       }
       
       return true;
@@ -111,7 +112,7 @@ export default function ListPage() {
             <h1 className="text-base md:text-lg font-semibold text-gray-900">
               All Properties <span className="text-green-600 font-normal">({filteredProperties.length})</span>
             </h1>
-            {(filters.minLotAcres || (filters.categories?.length ?? 0) > 0) && (
+            {(filters.minLotAcres || filters.maxLotAcres || (filters.categories?.length ?? 0) > 0 || filters.enrichmentStatus !== 'all') && (
               <span className="text-sm text-gray-500">
                 of {properties.length} total
               </span>
