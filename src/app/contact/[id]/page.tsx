@@ -602,7 +602,8 @@ export default function ContactDetailPage() {
             Back
           </button>
           
-          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+          <div className="flex flex-col gap-4">
+            {/* Header row with avatar, name, and action buttons */}
             <div className="flex items-start gap-4">
               {/* Profile Photo Avatar */}
               <div className="relative flex-shrink-0" data-testid="contact-avatar-container">
@@ -631,8 +632,8 @@ export default function ContactDetailPage() {
                 </Avatar>
               </div>
               
-              <div>
-                <div className="flex items-center gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
                   <h1 className="text-2xl font-bold text-gray-900">{contact.fullName || 'Unknown Contact'}</h1>
                   {contact.linkedinUrl && (
                     <a
@@ -657,7 +658,7 @@ export default function ContactDetailPage() {
                 )}
                 {/* Employer and domain in header area */}
                 {(contact.employerName || contact.companyDomain) && (
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex flex-wrap items-center gap-2 mt-1">
                     {contact.employerName && (
                       <span className="text-gray-600">{contact.employerName}</span>
                     )}
@@ -682,7 +683,9 @@ export default function ContactDetailPage() {
                 </div>
               </div>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            
+            {/* Action buttons row - full width on mobile */}
+            <div className="flex flex-wrap items-center gap-2">
               {/* Find Phone button - hide once mobile or direct line has been identified */}
               {(() => {
                 const phoneStatus = getEnrichmentStatus(contactId as string, 'contact_phone');

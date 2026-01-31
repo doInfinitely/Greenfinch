@@ -226,7 +226,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           >
             <Menu className="w-5 h-5" />
           </button>
-          <div className="w-10" />
+          <EnrichmentQueuePopover />
         </header>
 
         <header className="h-14 border-b border-gray-200 bg-white hidden lg:flex items-center justify-between px-4">

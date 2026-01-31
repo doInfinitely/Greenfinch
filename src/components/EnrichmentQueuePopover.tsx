@@ -176,7 +176,7 @@ export default function EnrichmentQueuePopover() {
         >
           <GreenfinchAgentIcon size={20} />
           {activeCount > 0 && (
-            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-green-500 text-white text-xs font-medium rounded-full flex items-center justify-center animate-pulse" data-testid="badge-active-enrichments">
+            <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-green-500 text-white text-xs font-medium rounded-full flex items-center justify-center" data-testid="badge-active-enrichments">
               {activeCount}
             </span>
           )}
