@@ -26,7 +26,7 @@ export default function LandingNav() {
             <Link href="/" className="flex items-center space-x-2" data-testid="link-home-logo">
               <div className="w-10 h-10 relative flex-shrink-0">
                 <Image
-                  src="/greenfinch-logo-v4.png"
+                  src="/greenfinch-logo.png"
                   alt="greenfinch.ai"
                   fill
                   className="object-contain"
