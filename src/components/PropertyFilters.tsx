@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
+import { Checkbox } from '@/components/ui/checkbox';
 
 export interface FilterState {
   minLotAcres: number | null;
@@ -255,8 +256,12 @@ export default function PropertyFilters({
     onFiltersChange({ ...filters, [field]: newArray });
   };
 
-  const handleClearArray = (field: keyof FilterState) => {
-    onFiltersChange({ ...filters, [field]: [] });
+  const handleClearArray = (...fields: (keyof FilterState)[]) => {
+    const updates: Partial<FilterState> = {};
+    for (const field of fields) {
+      updates[field] = [] as never;
+    }
+    onFiltersChange({ ...filters, ...updates });
   };
 
   const handleClearFilters = () => {
@@ -556,17 +561,15 @@ export default function PropertyFilters({
           id="category" 
           title="Category" 
           count={(filters.categories?.length ?? 0) + (filters.subcategories?.length ?? 0)}
-          onClear={() => { handleClearArray('categories'); handleClearArray('subcategories'); }}
+          onClear={() => handleClearArray('categories', 'subcategories')}
         />
         {openSections.has('category') && (
           <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
             {availableCategories.map((cat) => (
               <label key={cat} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
-                <input
-                  type="checkbox"
+                <Checkbox
                   checked={filters.categories?.includes(cat) ?? false}
                   onChange={() => handleArrayToggle('categories', cat)}
-                  className="w-4 h-4 text-green-600 rounded border-gray-300"
                   data-testid={`checkbox-category-${cat.toLowerCase().replace(/\s+/g, '-')}`}
                 />
                 <span className="text-gray-700">{cat}</span>
@@ -577,11 +580,9 @@ export default function PropertyFilters({
                 <div className="text-xs text-gray-500 mt-3 mb-1 px-2">Subcategories</div>
                 {availableSubcategories.map((sub) => (
                   <label key={sub} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2 rounded-lg pl-5">
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={filters.subcategories?.includes(sub) ?? false}
                       onChange={() => handleArrayToggle('subcategories', sub)}
-                      className="w-4 h-4 text-green-600 rounded border-gray-300"
                       data-testid={`checkbox-subcategory-${sub.toLowerCase().replace(/\s+/g, '-')}`}
                     />
                     <span className="text-gray-600">{sub}</span>
@@ -628,7 +629,7 @@ export default function PropertyFilters({
             id="hvac" 
             title="HVAC" 
             count={(filters.acTypes?.length ?? 0) + (filters.heatingTypes?.length ?? 0)}
-            onClear={() => { handleClearArray('acTypes'); handleClearArray('heatingTypes'); }}
+            onClear={() => handleClearArray('acTypes', 'heatingTypes')}
           />
           {openSections.has('hvac') && (
             <div className="mt-2 space-y-3">
