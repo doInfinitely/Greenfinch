@@ -7,6 +7,7 @@ import type { MapBounds } from '@/map/DashboardMap';
 import type { MapCanvasHandle } from '@/map/MapCanvas';
 import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, serializeFiltersToParams, parseFiltersFromParams } from '@/components/PropertyFilters';
 import MapSearchBar from '@/components/MapSearchBar';
+import { useToast } from '@/hooks/use-toast';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
   ssr: false,
@@ -70,6 +71,7 @@ export default function MapPage() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
   const [config, setConfig] = useState<{ mapboxToken: string; regridToken: string; regridTileUrl: string } | null>(null);
   const [allProperties, setAllProperties] = useState<PropertyFeature[]>([]);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
@@ -104,8 +106,12 @@ export default function MapPage() {
   }, []);
 
   const handlePropertyClick = useCallback((propertyKey: string) => {
+    toast({
+      title: 'Opening property...',
+      description: 'Property details loading in new tab',
+    });
     window.open(`/property/${propertyKey}`, '_blank');
-  }, []);
+  }, [toast]);
 
   const handleSearchSelect = useCallback((suggestion: SearchSuggestion) => {
     const zoom = getZoomForType(suggestion.type, !!suggestion.propertyKey);
