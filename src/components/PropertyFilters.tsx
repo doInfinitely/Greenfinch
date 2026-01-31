@@ -247,12 +247,20 @@ export default function PropertyFilters({
   };
 
   const SectionHeader = ({ id, title, count, onClear }: { id: string; title: string; count?: number; onClear?: () => void }) => (
-    <div className="flex items-center justify-between py-3">
+    <div className="flex items-center justify-between py-3 gap-3">
       <button
         onClick={() => toggleSection(id)}
-        className="flex-1 flex items-center justify-between text-sm font-medium text-gray-700 active:text-gray-900"
+        className="flex-1 flex items-center gap-2 text-sm font-medium text-gray-700 active:text-gray-900"
         data-testid={`section-${id}`}
       >
+        <svg
+          className={`w-5 h-5 transition-transform flex-shrink-0 ${openSections.has(id) ? 'rotate-180' : ''}`}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
         <span className="flex items-center gap-2">
           {title}
           {count !== undefined && count > 0 && (
@@ -261,19 +269,11 @@ export default function PropertyFilters({
             </span>
           )}
         </span>
-        <svg
-          className={`w-5 h-5 transition-transform ${openSections.has(id) ? 'rotate-180' : ''}`}
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
       </button>
       {onClear && count !== undefined && count > 0 && (
         <button
           onClick={(e) => { e.stopPropagation(); onClear(); }}
-          className="ml-2 text-xs text-gray-400 hover:text-gray-600"
+          className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg active:bg-red-100"
           data-testid={`button-clear-${id}`}
         >
           Clear
@@ -289,7 +289,7 @@ export default function PropertyFilters({
         {activeFilterCount > 0 && (
           <button
             onClick={handleClearFilters}
-            className="text-xs text-gray-500 hover:text-gray-700"
+            className="px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 border border-red-200 rounded-lg active:bg-red-100"
             data-testid="button-clear-filters"
           >
             Clear all
@@ -379,7 +379,26 @@ export default function PropertyFilters({
 
       {/* Size Filters */}
       <div className="border-b border-gray-100 pb-2">
-        <SectionHeader id="size" title="Size" count={(filters.minLotAcres || filters.maxLotAcres ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0)} />
+        <SectionHeader 
+          id="size" 
+          title="Size" 
+          count={(filters.minLotAcres || filters.maxLotAcres ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0)}
+          onClear={() => {
+            setLocalMinLotAcres('');
+            setLocalMaxLotAcres('');
+            setLocalMinNetSqft('');
+            setLocalMaxNetSqft('');
+            onFiltersChange({
+              ...filters,
+              minLotAcres: null,
+              maxLotAcres: null,
+              minNetSqft: null,
+              maxNetSqft: null,
+              minLotSqft: null,
+              maxLotSqft: null,
+            });
+          }}
+        />
         {openSections.has('size') && (
           <div className="mt-2 space-y-4">
             <div>
