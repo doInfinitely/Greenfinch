@@ -131,7 +131,7 @@ function getDefaultLimit(route: string): number {
 /**
  * Extract identifier from request (user ID or IP address)
  */
-function getIdentifier(request: NextRequest): string {
+export function getIdentifier(request: NextRequest): string {
   // Try to get user ID from auth header or custom header
   const authHeader = request.headers.get('authorization');
   if (authHeader) {

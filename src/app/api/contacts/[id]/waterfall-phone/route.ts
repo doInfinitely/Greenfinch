@@ -4,7 +4,7 @@ import { contacts } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import { triggerWaterfallPhone } from '@/lib/apollo';
 import { requireSession, requireAdminAccess } from '@/lib/auth';
-import { rateLimitMiddleware } from '@/lib/rate-limit';
+import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
 
 const checkRateLimit = rateLimitMiddleware(20, 60);
 
@@ -94,13 +94,20 @@ export async function POST(
 
     console.log(`[WaterfallPhone] Request accepted for ${contact.fullName}, Apollo ID: ${result.apolloId}`);
 
-    return NextResponse.json({
+    // Get rate limit info for headers
+    const identifier = getIdentifier(request);
+    const route = new URL(request.url).pathname;
+    const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
+
+    const response = NextResponse.json({
       success: true,
       message: 'Phone lookup initiated. Results will arrive shortly via webhook.',
       requestId: result.requestId,
       apolloId: result.apolloId,
       waterfallStatus: result.waterfallStatus,
     });
+    addRateLimitHeaders(response, rateInfo);
+    return response;
   } catch (error) {
     console.error('[WaterfallPhone] API error:', error);
     

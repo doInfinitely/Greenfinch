@@ -6,7 +6,7 @@ import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import type { AggregatedProperty } from '@/lib/snowflake';
-import { rateLimitMiddleware } from '@/lib/rate-limit';
+import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
 
 const checkRateLimit = rateLimitMiddleware(20, 60);
 
@@ -177,6 +177,11 @@ export async function POST(request: NextRequest) {
 
     console.log(`[API] Found property from ${source}: ${property.address}, ${property.city}`);
 
+    // Get rate limit info for headers
+    const identifier = getIdentifier(request);
+    const route = new URL(request.url).pathname;
+    const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
+
     if (storeResults) {
       // Enrich and store results
       const { result, stored } = await enrichAndStoreProperty(property);
@@ -192,7 +197,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         propertyKey: result.propertyKey,
         enrichment: {
@@ -206,6 +211,8 @@ export async function POST(request: NextRequest) {
           orgIds: stored.orgIds,
         } : null,
       });
+      addRateLimitHeaders(response, rateInfo);
+      return response;
     } else {
       // Enrich only, don't store
       const result = await enrichProperty(property);
@@ -221,7 +228,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      return NextResponse.json({
+      const response = NextResponse.json({
         success: true,
         propertyKey: result.propertyKey,
         enrichment: {
@@ -231,6 +238,8 @@ export async function POST(request: NextRequest) {
         },
         rawResponse: result.rawResponse,
       });
+      addRateLimitHeaders(response, rateInfo);
+      return response;
     }
   } catch (error) {
     console.error('[API] Enrichment error:', error);

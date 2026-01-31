@@ -171,6 +171,7 @@ export async function searchPropertiesWithCursorFromPostgres(
   }
 
   const orderExpression = sortOrder === 'desc' ? desc(sortColumn) : asc(sortColumn);
+  const secondaryOrderExpression = sortOrder === 'desc' ? desc(properties.id) : asc(properties.id);
 
   // Apply cursor condition if using cursor pagination
   if (cursor) {
@@ -191,7 +192,7 @@ export async function searchPropertiesWithCursorFromPostgres(
     .select()
     .from(properties)
     .where(and(...conditions))
-    .orderBy(orderExpression)
+    .orderBy(orderExpression, secondaryOrderExpression)
     .limit(fetchLimit);
 
   const hasMore = results.length > limit;

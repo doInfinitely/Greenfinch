@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { startBatch, isBatchRunning, getMaxBatchSize } from '@/lib/enrichment-queue';
 import { requireAdminAccess } from '@/lib/auth';
-import { rateLimitMiddleware } from '@/lib/rate-limit';
+import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
 
 const checkRateLimit = rateLimitMiddleware(20, 60);
 
@@ -45,7 +45,12 @@ export async function POST(request: NextRequest) {
       concurrency: concurrency ? Math.min(Math.max(1, concurrency), 50) : undefined,
     });
 
-    return NextResponse.json({
+    // Get rate limit info for headers
+    const identifier = getIdentifier(request);
+    const route = new URL(request.url).pathname;
+    const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
+
+    const response = NextResponse.json({
       success: true,
       message: 'Batch enrichment started',
       batchId: batchStatus.batchId,
@@ -55,6 +60,8 @@ export async function POST(request: NextRequest) {
       status: batchStatus.status,
       checkStatusAt: '/api/admin/enrich-status',
     });
+    addRateLimitHeaders(response, rateInfo);
+    return response;
   } catch (error) {
     console.error('[API] Batch enrichment error:', error);
     return NextResponse.json(

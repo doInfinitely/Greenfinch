@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { validateEmail, validateAndUpdateContact, getCreditsUsed } from '@/lib/neverbounce';
-import { rateLimitMiddleware } from '@/lib/rate-limit';
+import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
 
 const checkRateLimit = rateLimitMiddleware(20, 60);
 
@@ -12,6 +12,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { email, contactId } = body;
 
+    // Get rate limit info for headers
+    const identifier = getIdentifier(request);
+    const route = new URL(request.url).pathname;
+    const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
+
     if (contactId) {
       const result = await validateAndUpdateContact(contactId);
       if (!result) {
@@ -20,7 +25,7 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         );
       }
-      return NextResponse.json({ 
+      const response = NextResponse.json({ 
         result: {
           isValid: result.isValid,
           confidence: result.confidence,
@@ -30,6 +35,8 @@ export async function POST(request: NextRequest) {
         creditsUsed: result.creditsUsed,
         totalCreditsUsed: getCreditsUsed(),
       });
+      addRateLimitHeaders(response, rateInfo);
+      return response;
     }
 
     if (!email) {
@@ -48,7 +55,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await validateEmail(email);
-    return NextResponse.json({ 
+    const response = NextResponse.json({ 
       result: {
         isValid: result.isValid,
         confidence: result.confidence,
@@ -58,6 +65,8 @@ export async function POST(request: NextRequest) {
       creditsUsed: result.creditsUsed,
       totalCreditsUsed: getCreditsUsed(),
     });
+    addRateLimitHeaders(response, rateInfo);
+    return response;
   } catch (error) {
     console.error('Email validation API error:', error);
     return NextResponse.json(

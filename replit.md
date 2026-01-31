@@ -54,6 +54,11 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
   - **Distributed Locking**: Uses Redis SETNX pattern with unique tokens for batch enrichment locks (5-minute timeout). Fail-closed on Redis errors to prevent concurrent access.
   - **Cache TTLs**: ZeroBounce 1hr, Mapbox POI 24hr, Google Places 24hr.
   - **Key Prefixes**: `gf:cache:`, `gf:queue:`, `gf:lock:` for namespace isolation (helpers auto-prefix).
+- **API Performance Optimizations**:
+  - **Cursor Pagination**: Contacts and properties APIs use cursor-based pagination for stable, efficient pagination on large datasets. Base64-encoded cursors contain id and sort value.
+  - **Rate Limiting**: Redis-based fixed window rate limiting protects expensive endpoints (enrichment, validation, waterfall) with 20 req/min limit. Falls back to in-memory when Redis unavailable.
+  - **Client Debouncing**: useDebounce hook (300ms default) applied to search inputs and filter components to reduce API calls.
+  - **Connection Pool Tuning**: PostgreSQL pool configured with max=20 connections, 30s idle timeout, 5s connection timeout.
 - **Database Performance**: Indexes on properties.zip, properties.assetSubcategory, properties.enrichmentStatus, and composite indexes on contactOrganizations for relationship lookups. N+1 queries fixed via batch fetching with inArray() in contacts and analytics APIs.
 - **Organization Domain Enrichment**: Automates enrichment for organizations using Hunter.io and EnrichLayer, including parent company discovery and industry classification.
 - **AI Enrichment Rules**: Employs `gemini-3-flash-preview` with search grounding for property enrichment, excluding condo/HOA and focusing on management companies and developers. Building and lot square footage are calculated with source tracking and precedence rules.
