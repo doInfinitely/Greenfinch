@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreHorizontal, List, Upload, User } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreVertical, List, Upload, User } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -915,16 +915,17 @@ export default function PropertyDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
-                <div>
+              {/* Header row: Property name + fixed ⋮ button */}
+              <div className="flex items-start justify-between gap-4 mb-4">
+                <div className="min-w-0 flex-1">
                   {enrichedProperty?.commonName && (
                     <div className="mb-1">
-                      <h1 className="text-2xl font-bold text-gray-900">
+                      <h1 className="text-2xl font-bold text-gray-900 break-words">
                         {normalizeCommonName(enrichedProperty.commonName)}
                       </h1>
                     </div>
                   )}
-                  <p className={`${enrichedProperty?.commonName ? 'text-lg text-gray-600' : 'text-2xl font-bold text-gray-900'} mb-1`}>
+                  <p className={`${enrichedProperty?.commonName ? 'text-lg text-gray-600' : 'text-2xl font-bold text-gray-900'} mb-1 break-words`}>
                     {property.address || 'No Address'}
                   </p>
                   <p className="text-gray-600">
@@ -954,45 +955,13 @@ export default function PropertyDetailPage() {
                     <LowConfidenceMarker confidence={enrichedProperty?.categoryConfidence} />
                   </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls triggerAssignDialog={assignDialogTrigger} />
-                  {(() => {
-                    const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
-                    const isEnrichmentActive = queueStatus.isActive;
-                    const enrichmentHasFailed = queueStatus.status === 'failed';
-                    
-                    // Hide button if enrichment already completed successfully
-                    if (enrichmentStatus === 'completed') return null;
-                    
-                    return (
-                      <AdminOnly>
-                        <button
-                          onClick={handleEnrichment}
-                          disabled={isEnrichmentActive || enrichmentHasFailed}
-                          className={`px-4 py-2 text-sm font-medium text-white rounded-lg transition-colors flex items-center disabled:cursor-not-allowed ${
-                            enrichmentHasFailed 
-                              ? 'bg-gray-400 hover:bg-gray-400' 
-                              : 'bg-green-600 hover:bg-green-700 disabled:opacity-50'
-                          }`}
-                          title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'}` : undefined}
-                          data-testid="button-find-decision-makers"
-                        >
-                          {isEnrichmentActive ? (
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          ) : enrichmentHasFailed ? (
-                            <XCircle className="w-4 h-4 mr-2" />
-                          ) : (
-                            <GreenfinchAgentIcon className="w-4 h-4 mr-2" />
-                          )}
-                          {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : 'Research Property'}
-                        </button>
-                      </AdminOnly>
-                    );
-                  })()}
+                
+                {/* Fixed ⋮ button - never wraps */}
+                <div className="flex-shrink-0">
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline" size="icon" data-testid="button-more-actions">
-                        <MoreHorizontal className="w-4 h-4" />
+                        <MoreVertical className="w-4 h-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
@@ -1024,6 +993,45 @@ export default function PropertyDetailPage() {
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
+              </div>
+              
+              {/* Action row: Qualify/Disqualify/Research buttons with flex-wrap */}
+              <div className="flex flex-wrap items-center gap-2 mb-6">
+                <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls triggerAssignDialog={assignDialogTrigger} />
+                {(() => {
+                  const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
+                  const isEnrichmentActive = queueStatus.isActive;
+                  const enrichmentHasFailed = queueStatus.status === 'failed';
+                  
+                  // Hide button if enrichment already completed successfully
+                  if (enrichmentStatus === 'completed') return null;
+                  
+                  return (
+                    <AdminOnly>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleEnrichment}
+                        disabled={isEnrichmentActive || enrichmentHasFailed}
+                        className={enrichmentHasFailed 
+                          ? 'text-gray-500 border-gray-300' 
+                          : 'text-gray-600 border-gray-300'
+                        }
+                        title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'}` : undefined}
+                        data-testid="button-find-decision-makers"
+                      >
+                        {isEnrichmentActive ? (
+                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        ) : enrichmentHasFailed ? (
+                          <XCircle className="w-4 h-4 mr-1" />
+                        ) : (
+                          <GreenfinchAgentIcon className="w-4 h-4 mr-1" />
+                        )}
+                        {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : 'Research Property'}
+                      </Button>
+                    </AdminOnly>
+                  );
+                })()}
               </div>
 
               {enrichmentMessage && enrichmentStatus !== 'pending' && (

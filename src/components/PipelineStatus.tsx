@@ -338,7 +338,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         size="sm"
         onClick={() => updateStatus('disqualified')}
         disabled={updating}
-        className="text-orange-600 border-orange-300"
+        className="text-red-600 border-red-300"
         data-testid="button-disqualify"
       >
         <X className="w-4 h-4 mr-1" />
