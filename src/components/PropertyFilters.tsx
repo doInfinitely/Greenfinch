@@ -14,6 +14,7 @@ export interface FilterState {
   heatingTypes: string[];
   organizationId: string | null;
   contactId: string | null;
+  enrichmentStatus: 'all' | 'researched' | 'not_researched';
   // Legacy fields for backwards compatibility
   minLotSqft: number | null;
   maxLotSqft: number | null;
@@ -29,6 +30,8 @@ interface PropertyFiltersProps {
   availableHeatingTypes?: string[];
 }
 
+const UNKNOWN_CATEGORY = 'Unknown / Unassigned';
+
 const DEFAULT_CATEGORIES = [
   'Healthcare',
   'Hospitality',
@@ -38,6 +41,7 @@ const DEFAULT_CATEGORIES = [
   'Public & Institutional',
   'Retail',
   'Special Purpose',
+  UNKNOWN_CATEGORY,
 ];
 
 const DEFAULT_BUILDING_CLASSES = ['A+', 'A', 'B', 'C', 'D'];
@@ -54,9 +58,12 @@ export const emptyFilters: FilterState = {
   heatingTypes: [],
   organizationId: null,
   contactId: null,
+  enrichmentStatus: 'all',
   minLotSqft: null,
   maxLotSqft: null,
 };
+
+export { UNKNOWN_CATEGORY };
 
 export default function PropertyFilters({
   filters,
@@ -221,7 +228,8 @@ export default function PropertyFilters({
     ((filters.acTypes?.length ?? 0) > 0 ? 1 : 0) +
     ((filters.heatingTypes?.length ?? 0) > 0 ? 1 : 0) +
     (filters.organizationId ? 1 : 0) +
-    (filters.contactId ? 1 : 0);
+    (filters.contactId ? 1 : 0) +
+    (filters.enrichmentStatus !== 'all' ? 1 : 0);
 
   const toggleSection = (id: string) => {
     setOpenSections(prev => {
@@ -364,6 +372,46 @@ export default function PropertyFilters({
             )}
           </div>
         )}
+      </div>
+
+      {/* Research Status Filter */}
+      <div className="border-b border-gray-100 pb-3">
+        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Research Status</label>
+        <div className="flex gap-2">
+          <button
+            onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'all' })}
+            className={`flex-1 px-3 py-1.5 text-sm rounded border transition-colors ${
+              filters.enrichmentStatus === 'all'
+                ? 'bg-green-100 border-green-500 text-green-700'
+                : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+            }`}
+            data-testid="button-enrichment-all"
+          >
+            All
+          </button>
+          <button
+            onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'researched' })}
+            className={`flex-1 px-3 py-1.5 text-sm rounded border transition-colors ${
+              filters.enrichmentStatus === 'researched'
+                ? 'bg-green-100 border-green-500 text-green-700'
+                : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+            }`}
+            data-testid="button-enrichment-researched"
+          >
+            Researched
+          </button>
+          <button
+            onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'not_researched' })}
+            className={`flex-1 px-3 py-1.5 text-sm rounded border transition-colors ${
+              filters.enrichmentStatus === 'not_researched'
+                ? 'bg-green-100 border-green-500 text-green-700'
+                : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+            }`}
+            data-testid="button-enrichment-not-researched"
+          >
+            Not Researched
+          </button>
+        </div>
       </div>
 
       {/* Size Filters */}
