@@ -29,33 +29,42 @@ export async function GET(request: NextRequest) {
       );
     }
     
-    const results = await db
-      .select({
-        propertyKey: properties.propertyKey,
-        address: sql<string>`COALESCE(${properties.validatedAddress}, ${properties.regridAddress}, 'Unknown Address')`,
-        city: properties.city,
-        zip: properties.zip,
-        commonName: properties.commonName,
-        category: properties.assetCategory,
-        subcategory: properties.assetSubcategory,
-        enrichmentStatus: properties.enrichmentStatus,
-        enriched: sql<boolean>`${properties.enrichmentStatus} = 'completed' OR ${properties.lastEnrichedAt} IS NOT NULL`,
-        primaryOwner: sql<string>`COALESCE(${properties.beneficialOwner}, ${properties.regridOwner})`,
-        lotSqft: properties.lotSqft,
-        buildingSqft: properties.buildingSqft,
-      })
-      .from(properties)
-      .where(whereClause)
-      .orderBy(
-        sql`CASE WHEN ${properties.commonName} IS NOT NULL THEN 0 ELSE 1 END`,
-        properties.commonName,
-        properties.regridAddress
-      )
-      .limit(5000);
+    // Run count and data queries in parallel
+    const [countResult, results] = await Promise.all([
+      db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(properties)
+        .where(whereClause),
+      db
+        .select({
+          propertyKey: properties.propertyKey,
+          address: sql<string>`COALESCE(${properties.validatedAddress}, ${properties.regridAddress}, 'Unknown Address')`,
+          city: properties.city,
+          zip: properties.zip,
+          commonName: properties.commonName,
+          category: properties.assetCategory,
+          subcategory: properties.assetSubcategory,
+          enrichmentStatus: properties.enrichmentStatus,
+          enriched: sql<boolean>`${properties.enrichmentStatus} = 'completed' OR ${properties.lastEnrichedAt} IS NOT NULL`,
+          primaryOwner: sql<string>`COALESCE(${properties.beneficialOwner}, ${properties.regridOwner})`,
+          lotSqft: properties.lotSqft,
+          buildingSqft: properties.buildingSqft,
+        })
+        .from(properties)
+        .where(whereClause)
+        .orderBy(
+          sql`CASE WHEN ${properties.commonName} IS NOT NULL THEN 0 ELSE 1 END`,
+          properties.commonName,
+          properties.regridAddress
+        )
+        .limit(5000)
+    ]);
+    
+    const total = countResult[0]?.count ?? results.length;
     
     return NextResponse.json({
       properties: results,
-      total: results.length,
+      total,
     });
   } catch (error) {
     console.error('Properties search error:', error);
