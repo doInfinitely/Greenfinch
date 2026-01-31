@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, UNKNOWN_BUILDING_CLASS } from '@/components/PropertyFilters';
+import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, UNKNOWN_BUILDING_CLASS, QuickFilterChips } from '@/components/PropertyFilters';
 import { normalizeCommonName } from '@/lib/normalization';
 
 interface Property {
@@ -37,6 +37,26 @@ const formatBuildingSqft = (sqft: number | null) => {
 };
 
 const PAGE_SIZE = 50;
+const FILTERS_STORAGE_KEY = 'greenfinch_property_filters';
+
+function loadFiltersFromStorage(): FilterState {
+  if (typeof window === 'undefined') return emptyFilters;
+  try {
+    const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return { ...emptyFilters, ...parsed };
+    }
+  } catch {}
+  return emptyFilters;
+}
+
+function saveFiltersToStorage(filters: FilterState) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
+  } catch {}
+}
 
 export default function ListPage() {
   const router = useRouter();
@@ -47,6 +67,19 @@ export default function ListPage() {
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [filters, setFilters] = useState<FilterState>(emptyFilters);
   const [currentPage, setCurrentPage] = useState(1);
+  const [filtersInitialized, setFiltersInitialized] = useState(false);
+
+  useEffect(() => {
+    const storedFilters = loadFiltersFromStorage();
+    setFilters(storedFilters);
+    setFiltersInitialized(true);
+  }, []);
+
+  useEffect(() => {
+    if (filtersInitialized) {
+      saveFiltersToStorage(filters);
+    }
+  }, [filters, filtersInitialized]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -153,6 +186,7 @@ export default function ListPage() {
             </div>
           </div>
         </div>
+        <QuickFilterChips filters={filters} onFiltersChange={setFilters} />
       </div>
 
       <div className="flex-1 overflow-auto">

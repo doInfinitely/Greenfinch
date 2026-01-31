@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import type { MapBounds } from '@/map/DashboardMap';
 import type { MapCanvasHandle } from '@/map/MapCanvas';
-import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY } from '@/components/PropertyFilters';
+import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, QuickFilterChips } from '@/components/PropertyFilters';
 import MapSearchBar from '@/components/MapSearchBar';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
@@ -63,6 +63,27 @@ function getZoomForType(type: string, hasPropertyKey: boolean): number {
   }
 }
 
+const FILTERS_STORAGE_KEY = 'greenfinch_property_filters';
+
+function loadFiltersFromStorage(): FilterState {
+  if (typeof window === 'undefined') return emptyFilters;
+  try {
+    const stored = localStorage.getItem(FILTERS_STORAGE_KEY);
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      return { ...emptyFilters, ...parsed };
+    }
+  } catch {}
+  return emptyFilters;
+}
+
+function saveFiltersToStorage(filters: FilterState) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters));
+  } catch {}
+}
+
 export default function MapPage() {
   const mapRef = useRef<MapCanvasHandle>(null);
   const [config, setConfig] = useState<{ mapboxToken: string; regridToken: string; regridTileUrl: string } | null>(null);
@@ -71,6 +92,19 @@ export default function MapPage() {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 32.8639, lon: -96.7784 });
   const [isLoading, setIsLoading] = useState(true);
   const [filters, setFilters] = useState<FilterState>(emptyFilters);
+  const [filtersInitialized, setFiltersInitialized] = useState(false);
+
+  useEffect(() => {
+    const storedFilters = loadFiltersFromStorage();
+    setFilters(storedFilters);
+    setFiltersInitialized(true);
+  }, []);
+
+  useEffect(() => {
+    if (filtersInitialized) {
+      saveFiltersToStorage(filters);
+    }
+  }, [filters, filtersInitialized]);
 
   useEffect(() => {
     Promise.all([
@@ -172,7 +206,12 @@ export default function MapPage() {
         />
         <div className="absolute top-3 left-3 right-14 md:right-auto z-10 flex flex-col gap-2">
           <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
-          <PropertyFilters filters={filters} onFiltersChange={setFilters} />
+          <div className="flex items-start gap-2">
+            <PropertyFilters filters={filters} onFiltersChange={setFilters} />
+          </div>
+          <div className="md:hidden">
+            <QuickFilterChips filters={filters} onFiltersChange={setFilters} />
+          </div>
         </div>
       </div>
 
