@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import PropertyFilters, { FilterState, emptyFilters } from '@/components/PropertyFilters';
+import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY } from '@/components/PropertyFilters';
 import { normalizeCommonName } from '@/lib/normalization';
 
 interface Property {
@@ -68,15 +68,33 @@ export default function ListPage() {
 
   const filteredProperties = useMemo(() => {
     return properties.filter((p) => {
+      // Lot size filter
       if (filters.minLotAcres) {
         const lotAcres = (p.lotSqft || 0) / 43560;
         if (lotAcres < filters.minLotAcres) return false;
       }
+      if (filters.maxLotAcres) {
+        const lotAcres = (p.lotSqft || 0) / 43560;
+        if (lotAcres > filters.maxLotAcres) return false;
+      }
+      
+      // Category filter - supports "Unknown / Unassigned" for null categories
       if ((filters.categories?.length ?? 0) > 0) {
-        if (!p.category || !filters.categories?.includes(p.category)) {
+        const hasUnknown = filters.categories?.includes(UNKNOWN_CATEGORY);
+        const matchesCategory = p.category && filters.categories?.includes(p.category);
+        const matchesUnknown = hasUnknown && !p.category;
+        if (!matchesCategory && !matchesUnknown) {
           return false;
         }
       }
+      
+      // Enrichment status filter
+      if (filters.enrichmentStatus === 'researched') {
+        if (!p.enriched && p.enrichmentStatus !== 'completed') return false;
+      } else if (filters.enrichmentStatus === 'not_researched') {
+        if (p.enriched || p.enrichmentStatus === 'completed') return false;
+      }
+      
       return true;
     });
   }, [properties, filters]);

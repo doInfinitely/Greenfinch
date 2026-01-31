@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
     
     let whereClause = and(
       eq(properties.isActive, true),
-      sql`${properties.assetCategory} IS NOT NULL AND ${properties.assetCategory} != 'Single-Family Residential'`
+      sql`(${properties.assetCategory} IS NULL OR ${properties.assetCategory} != 'Single-Family Residential')`
     );
     
     if (search && search.length > 0) {

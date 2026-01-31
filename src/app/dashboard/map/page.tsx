@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import type { MapBounds } from '@/map/DashboardMap';
 import type { MapCanvasHandle } from '@/map/MapCanvas';
-import PropertyFilters, { FilterState, emptyFilters } from '@/components/PropertyFilters';
+import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY } from '@/components/PropertyFilters';
 import MapSearchBar from '@/components/MapSearchBar';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
@@ -108,14 +108,28 @@ export default function MapPage() {
 
   const filteredProperties = useMemo(() => {
     return allProperties.filter((f) => {
+      // Lot size filter
       const lotAcres = f.properties.lotSqft / 43560;
       if (filters.minLotAcres && lotAcres < filters.minLotAcres) return false;
       if (filters.maxLotAcres && lotAcres > filters.maxLotAcres) return false;
+      
+      // Category filter - supports "Unknown / Unassigned" for null categories
       if (filters.categories.length > 0) {
-        if (!f.properties.category || !filters.categories.includes(f.properties.category)) {
+        const hasUnknown = filters.categories.includes(UNKNOWN_CATEGORY);
+        const matchesCategory = f.properties.category && filters.categories.includes(f.properties.category);
+        const matchesUnknown = hasUnknown && !f.properties.category;
+        if (!matchesCategory && !matchesUnknown) {
           return false;
         }
       }
+      
+      // Enrichment status filter
+      if (filters.enrichmentStatus === 'researched') {
+        if (!f.properties.enriched) return false;
+      } else if (filters.enrichmentStatus === 'not_researched') {
+        if (f.properties.enriched) return false;
+      }
+      
       return true;
     });
   }, [allProperties, filters]);
