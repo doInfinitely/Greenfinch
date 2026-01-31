@@ -106,15 +106,13 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
     <div className="flex flex-col h-full bg-white">
       <div className="p-4 border-b border-gray-200">
         <Link href="/" className="flex items-center gap-2">
-          <div className="w-8 h-8 relative flex-shrink-0">
-            <Image
-              src="/greenfinch-logo.png"
-              alt="Greenfinch"
-              fill
-              className="object-contain"
-              priority
-            />
-          </div>
+            <div className="w-8 h-8 relative flex-shrink-0 text-green-600">
+              <svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full">
+                <path d="M20 50 C20 30, 40 20, 60 30 C70 35, 80 50, 80 65 C80 80, 60 85, 40 75 C30 70, 20 60, 20 50 Z" fill="currentColor"/>
+                <path d="M60 30 L85 15 L75 40 Z" fill="currentColor"/>
+                <circle cx="45" cy="40" r="5" fill="white"/>
+              </svg>
+            </div>
           {!collapsed && (
             <span className="font-semibold text-lg text-foreground">greenfinch.ai</span>
           )}
