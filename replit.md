@@ -40,6 +40,7 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Clickable Records**: Contact and organization cards/rows are fully clickable with chevron indicators for mobile UX.
 - **Property Filters**: Collapsible filter panel with sections for size, category/subcategory, building class, HVAC types, and linked records.
 - **Mobile Responsiveness**: Pipeline board uses CSS snap scrolling with swipe hints on mobile. Filter selects use shadcn Select components for consistent styling. Property page action buttons use flex-wrap for mobile stacking.
+- **Dropdown/Overlay Backgrounds**: All dropdown menus, select menus, popovers, dialogs, and overlay elements MUST have explicit opaque backgrounds (e.g., `bg-popover`, `bg-card`, or `bg-white dark:bg-gray-900`). Never use transparent backgrounds for floating/overlay UI elements.
 
 ### Technical Implementations
 - **Property Classification**: Uses Texas PTAD state property type codes for classification of commercial and multifamily properties, excluding single-family, vacant land, and others.

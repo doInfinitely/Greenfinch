@@ -417,7 +417,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
           </span>
         </SelectValue>
       </SelectTrigger>
-      <SelectContent>
+      <SelectContent className="bg-popover border shadow-lg">
         {OPPORTUNITY_STAGES.map((stage) => (
           <SelectItem key={stage} value={stage}>
             <span className={`flex items-center gap-2 ${STATUS_COLORS[stage]} px-2 py-0.5 rounded`}>
@@ -503,7 +503,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
             <SelectTrigger className="mt-2" data-testid="select-owner">
               <SelectValue placeholder="Select a team member" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="bg-popover border shadow-lg">
               <SelectItem value="unassigned">Unassigned</SelectItem>
               {orgMembers.map((member) => (
                 <SelectItem key={member.id} value={member.id}>
