@@ -23,9 +23,9 @@ const BOARD_COLUMNS: PipelineStatus[] = ['new', 'qualified', 'attempted_contact'
 
 const COLUMN_STYLES: Record<PipelineStatus, { bg: string; accent: string; badge: string }> = {
   new: { bg: 'bg-slate-50', accent: 'bg-slate-400', badge: 'bg-slate-100 text-slate-700' },
-  qualified: { bg: 'bg-blue-50/50', accent: 'bg-blue-500', badge: 'bg-blue-100 text-blue-700' },
+  qualified: { bg: 'bg-green-50/50', accent: 'bg-green-500', badge: 'bg-green-100 text-green-700' },
   attempted_contact: { bg: 'bg-amber-50/50', accent: 'bg-amber-500', badge: 'bg-amber-100 text-amber-700' },
-  active_opportunity: { bg: 'bg-purple-50/50', accent: 'bg-purple-500', badge: 'bg-purple-100 text-purple-700' },
+  active_opportunity: { bg: 'bg-slate-50/50', accent: 'bg-slate-500', badge: 'bg-slate-100 text-slate-700' },
   won: { bg: 'bg-green-50/50', accent: 'bg-green-500', badge: 'bg-green-100 text-green-700' },
   lost: { bg: 'bg-gray-50', accent: 'bg-gray-400', badge: 'bg-gray-100 text-gray-600' },
   disqualified: { bg: 'bg-gray-50', accent: 'bg-gray-400', badge: 'bg-gray-100 text-gray-600' },
