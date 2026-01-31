@@ -151,13 +151,13 @@ export function QuickFilterChips({ filters, onFiltersChange }: QuickFilterChipsP
       {activeChips.map((chip) => (
         <span
           key={chip.key}
-          className="inline-flex items-center gap-1 px-2.5 py-1 text-sm bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300 rounded-full border border-green-200 dark:border-green-700"
+          className="inline-flex items-center gap-1 px-2.5 py-1 text-sm bg-primary/10 text-primary rounded-full border border-primary/30"
           data-testid={`chip-${chip.key}`}
         >
           {chip.label}
           <button
             onClick={chip.onRemove}
-            className="ml-0.5 p-0.5 rounded-full active:bg-green-200 dark:active:bg-green-700"
+            className="ml-0.5 p-0.5 rounded-full active:bg-primary/20"
             data-testid={`chip-remove-${chip.key}`}
             aria-label={`Remove ${chip.label} filter`}
           >
@@ -369,13 +369,13 @@ export default function PropertyFilters({
     <div className="flex items-center justify-between min-h-[44px]">
       <button
         onClick={() => toggleSection(id)}
-        className="flex-1 flex items-center justify-between text-sm font-medium text-gray-700 dark:text-gray-300 py-3"
+        className="flex-1 flex items-center justify-between text-sm font-medium text-foreground py-3"
         data-testid={`section-${id}`}
       >
         <span className="flex items-center gap-2">
           {title}
           {count !== undefined && count > 0 && (
-            <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 rounded">
+            <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-xs font-medium bg-primary/10 text-primary rounded">
               {count}
             </span>
           )}
@@ -392,7 +392,7 @@ export default function PropertyFilters({
       {onClear && count !== undefined && count > 0 && (
         <button
           onClick={(e) => { e.stopPropagation(); onClear(); }}
-          className="ml-2 px-2 py-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+          className="ml-2 px-2 py-1 text-xs text-muted-foreground hover-elevate"
           data-testid={`button-clear-${id}`}
         >
           Clear
@@ -405,11 +405,11 @@ export default function PropertyFilters({
     <div className="p-4 space-y-2 bg-background">
       {!isMobile && (
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-medium text-gray-900 dark:text-gray-100">Filter Properties</h3>
+          <h3 className="font-medium text-foreground">Filter Properties</h3>
           {activeFilterCount > 0 && (
             <button
               onClick={handleClearFilters}
-              className="text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              className="text-xs text-muted-foreground hover-elevate"
               data-testid="button-clear-filters"
             >
               Clear all
@@ -419,12 +419,12 @@ export default function PropertyFilters({
       )}
 
       {/* Organization Search - Top Level */}
-      <div className="border-b border-gray-100 dark:border-gray-800 pb-3">
-        <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2 font-medium">Organization</label>
+      <div className="border-b border-border pb-3">
+        <label className="block text-sm text-muted-foreground mb-2 font-medium">Organization</label>
         {selectedOrg ? (
-          <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 px-3 py-3 min-h-[44px] rounded-lg text-base">
-            <span className="text-green-800 dark:text-green-300 truncate">{selectedOrg.name}</span>
-            <button onClick={clearOrg} className="text-green-600 dark:text-green-400 ml-2 flex-shrink-0 p-1 min-w-[32px] min-h-[32px] flex items-center justify-center" data-testid="button-clear-org">
+          <div className="flex items-center justify-between bg-primary/10 border border-primary/30 px-3 py-3 min-h-[44px] rounded-lg text-base">
+            <span className="text-primary truncate">{selectedOrg.name}</span>
+            <button onClick={clearOrg} className="text-primary ml-2 flex-shrink-0 p-1 min-w-[32px] min-h-[32px] flex items-center justify-center" data-testid="button-clear-org">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -437,16 +437,16 @@ export default function PropertyFilters({
               value={orgSearch}
               onChange={(e) => setOrgSearch(e.target.value)}
               placeholder="Search organizations..."
-              className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+              className="w-full px-3 py-3 min-h-[44px] border border-input rounded-lg text-base bg-background text-foreground placeholder:text-muted-foreground"
               data-testid="input-org-search"
             />
             {orgResults.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+              <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
                 {orgResults.map((org) => (
                   <button
                     key={org.id}
                     onClick={() => selectOrg(org)}
-                    className="w-full text-left px-3 py-3 min-h-[44px] text-base text-gray-900 dark:text-gray-100 active:bg-gray-100 dark:active:bg-gray-700"
+                    className="w-full text-left px-3 py-3 min-h-[44px] text-base text-foreground active:bg-muted"
                     data-testid={`org-result-${org.id}`}
                   >
                     {org.name}
@@ -459,12 +459,12 @@ export default function PropertyFilters({
       </div>
 
       {/* Contact Search - Top Level */}
-      <div className="border-b border-gray-100 dark:border-gray-800 pb-3">
-        <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2 font-medium">Contact</label>
+      <div className="border-b border-border pb-3">
+        <label className="block text-sm text-muted-foreground mb-2 font-medium">Contact</label>
         {selectedContact ? (
-          <div className="flex items-center justify-between bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 px-3 py-3 min-h-[44px] rounded-lg text-base">
-            <span className="text-green-800 dark:text-green-300 truncate">{selectedContact.fullName}</span>
-            <button onClick={clearContact} className="text-green-600 dark:text-green-400 ml-2 flex-shrink-0 p-1 min-w-[32px] min-h-[32px] flex items-center justify-center" data-testid="button-clear-contact">
+          <div className="flex items-center justify-between bg-primary/10 border border-primary/30 px-3 py-3 min-h-[44px] rounded-lg text-base">
+            <span className="text-primary truncate">{selectedContact.fullName}</span>
+            <button onClick={clearContact} className="text-primary ml-2 flex-shrink-0 p-1 min-w-[32px] min-h-[32px] flex items-center justify-center" data-testid="button-clear-contact">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -477,16 +477,16 @@ export default function PropertyFilters({
               value={contactSearch}
               onChange={(e) => setContactSearch(e.target.value)}
               placeholder="Search contacts..."
-              className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+              className="w-full px-3 py-3 min-h-[44px] border border-input rounded-lg text-base bg-background text-foreground placeholder:text-muted-foreground"
               data-testid="input-contact-search"
             />
             {contactResults.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+              <div className="absolute z-10 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-48 overflow-y-auto">
                 {contactResults.map((contact) => (
                   <button
                     key={contact.id}
                     onClick={() => selectContact(contact)}
-                    className="w-full text-left px-3 py-3 min-h-[44px] text-base text-gray-900 dark:text-gray-100 active:bg-gray-100 dark:active:bg-gray-700"
+                    className="w-full text-left px-3 py-3 min-h-[44px] text-base text-foreground active:bg-muted"
                     data-testid={`contact-result-${contact.id}`}
                   >
                     {contact.fullName}
@@ -499,12 +499,12 @@ export default function PropertyFilters({
       </div>
 
       {/* Size Filters */}
-      <div className="border-b border-gray-100 dark:border-gray-800 pb-2">
+      <div className="border-b border-border pb-2">
         <SectionHeader id="size" title="Size" count={(filters.minLotAcres || filters.maxLotAcres ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0)} />
         {openSections.has('size') && (
           <div className="mt-2 space-y-4">
             <div>
-              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Lot Size (acres)</label>
+              <label className="block text-sm text-muted-foreground mb-2">Lot Size (acres)</label>
               <div className="flex gap-3">
                 <input
                   type="text"
@@ -512,7 +512,7 @@ export default function PropertyFilters({
                   value={localMinLotAcres}
                   onChange={(e) => handleAcresChange('minLotAcres', e.target.value, setLocalMinLotAcres)}
                   placeholder="Min"
-                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  className="w-full px-3 py-3 min-h-[44px] border border-input rounded-lg text-base bg-background text-foreground placeholder:text-muted-foreground"
                   data-testid="input-min-lot-acres"
                 />
                 <input
@@ -521,13 +521,13 @@ export default function PropertyFilters({
                   value={localMaxLotAcres}
                   onChange={(e) => handleAcresChange('maxLotAcres', e.target.value, setLocalMaxLotAcres)}
                   placeholder="Max"
-                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  className="w-full px-3 py-3 min-h-[44px] border border-input rounded-lg text-base bg-background text-foreground placeholder:text-muted-foreground"
                   data-testid="input-max-lot-acres"
                 />
               </div>
             </div>
             <div>
-              <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Net Building Sq Ft</label>
+              <label className="block text-sm text-muted-foreground mb-2">Net Building Sq Ft</label>
               <div className="flex gap-3">
                 <input
                   type="text"
@@ -535,7 +535,7 @@ export default function PropertyFilters({
                   value={localMinNetSqft}
                   onChange={(e) => handleNumberChange('minNetSqft', e.target.value, setLocalMinNetSqft)}
                   placeholder="Min"
-                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  className="w-full px-3 py-3 min-h-[44px] border border-input rounded-lg text-base bg-background text-foreground placeholder:text-muted-foreground"
                   data-testid="input-min-net-sqft"
                 />
                 <input
@@ -544,7 +544,7 @@ export default function PropertyFilters({
                   value={localMaxNetSqft}
                   onChange={(e) => handleNumberChange('maxNetSqft', e.target.value, setLocalMaxNetSqft)}
                   placeholder="Max"
-                  className="w-full px-3 py-3 min-h-[44px] border border-gray-300 dark:border-gray-700 rounded-lg text-base bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                  className="w-full px-3 py-3 min-h-[44px] border border-input rounded-lg text-base bg-background text-foreground placeholder:text-muted-foreground"
                   data-testid="input-max-net-sqft"
                 />
               </div>
@@ -554,7 +554,7 @@ export default function PropertyFilters({
       </div>
 
       {/* Category & Subcategory */}
-      <div className="border-b border-gray-100 dark:border-gray-800 pb-2">
+      <div className="border-b border-border pb-2">
         <SectionHeader 
           id="category" 
           title="Category" 
@@ -564,30 +564,30 @@ export default function PropertyFilters({
         {openSections.has('category') && (
           <div className="mt-2 space-y-1 max-h-60 overflow-y-auto">
             {availableCategories.map((cat) => (
-              <label key={cat} className="flex items-center gap-3 text-base cursor-pointer px-2 py-2.5 min-h-[44px] rounded-lg active:bg-gray-100 dark:active:bg-gray-800">
+              <label key={cat} className="flex items-center gap-3 text-base cursor-pointer px-2 py-2.5 min-h-[44px] rounded-lg active:bg-muted">
                 <input
                   type="checkbox"
                   checked={filters.categories?.includes(cat) ?? false}
                   onChange={() => handleArrayToggle('categories', cat)}
-                  className="w-5 h-5 text-green-600 rounded"
+                  className="w-5 h-5 text-primary rounded"
                   data-testid={`checkbox-category-${cat.toLowerCase().replace(/\s+/g, '-')}`}
                 />
-                <span className="text-gray-700 dark:text-gray-300">{cat}</span>
+                <span className="text-foreground">{cat}</span>
               </label>
             ))}
             {availableSubcategories.length > 0 && (
               <>
-                <div className="text-sm text-gray-500 dark:text-gray-400 mt-3 mb-1 px-2">Subcategories</div>
+                <div className="text-sm text-muted-foreground mt-3 mb-1 px-2">Subcategories</div>
                 {availableSubcategories.map((sub) => (
-                  <label key={sub} className="flex items-center gap-3 text-base cursor-pointer px-2 py-2.5 min-h-[44px] rounded-lg pl-6 active:bg-gray-100 dark:active:bg-gray-800">
+                  <label key={sub} className="flex items-center gap-3 text-base cursor-pointer px-2 py-2.5 min-h-[44px] rounded-lg pl-6 active:bg-muted">
                     <input
                       type="checkbox"
                       checked={filters.subcategories?.includes(sub) ?? false}
                       onChange={() => handleArrayToggle('subcategories', sub)}
-                      className="w-5 h-5 text-green-600 rounded"
+                      className="w-5 h-5 text-primary rounded"
                       data-testid={`checkbox-subcategory-${sub.toLowerCase().replace(/\s+/g, '-')}`}
                     />
-                    <span className="text-gray-600 dark:text-gray-400">{sub}</span>
+                    <span className="text-muted-foreground">{sub}</span>
                   </label>
                 ))}
               </>
@@ -597,7 +597,7 @@ export default function PropertyFilters({
       </div>
 
       {/* Building Class */}
-      <div className="border-b border-gray-100 dark:border-gray-800 pb-2">
+      <div className="border-b border-border pb-2">
         <SectionHeader 
           id="class" 
           title="Building Class" 
@@ -612,8 +612,8 @@ export default function PropertyFilters({
                 onClick={() => handleArrayToggle('buildingClasses', cls)}
                 className={`px-4 py-2 min-h-[44px] text-base rounded-full border transition-colors ${
                   filters.buildingClasses?.includes(cls)
-                    ? 'bg-green-100 dark:bg-green-900 border-green-500 text-green-700 dark:text-green-300'
-                    : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                    ? 'bg-primary/10 border-primary text-primary'
+                    : 'bg-card border-border text-muted-foreground'
                 }`}
                 data-testid={`button-class-${cls}`}
               >
@@ -626,7 +626,7 @@ export default function PropertyFilters({
 
       {/* HVAC */}
       {(availableAcTypes.length > 0 || availableHeatingTypes.length > 0) && (
-        <div className="border-b border-gray-100 dark:border-gray-800 pb-2">
+        <div className="border-b border-border pb-2">
           <SectionHeader 
             id="hvac" 
             title="HVAC" 
@@ -637,7 +637,7 @@ export default function PropertyFilters({
             <div className="mt-2 space-y-4">
               {availableAcTypes.length > 0 && (
                 <div>
-                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">AC Type</label>
+                  <label className="block text-sm text-muted-foreground mb-2">AC Type</label>
                   <div className="flex flex-wrap gap-2">
                     {availableAcTypes.slice(0, 6).map((type) => (
                       <button
@@ -645,8 +645,8 @@ export default function PropertyFilters({
                         onClick={() => handleArrayToggle('acTypes', type)}
                         className={`px-3 py-2 min-h-[40px] text-sm rounded-lg border transition-colors ${
                           filters.acTypes?.includes(type)
-                            ? 'bg-blue-100 dark:bg-blue-900 border-blue-400 text-blue-700 dark:text-blue-300'
-                            : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                            ? 'bg-blue-500/10 border-blue-500 text-blue-600 dark:text-blue-400'
+                            : 'bg-card border-border text-muted-foreground'
                         }`}
                         data-testid={`button-ac-${type.toLowerCase().replace(/\s+/g, '-')}`}
                       >
@@ -658,7 +658,7 @@ export default function PropertyFilters({
               )}
               {availableHeatingTypes.length > 0 && (
                 <div>
-                  <label className="block text-sm text-gray-600 dark:text-gray-400 mb-2">Heating Type</label>
+                  <label className="block text-sm text-muted-foreground mb-2">Heating Type</label>
                   <div className="flex flex-wrap gap-2">
                     {availableHeatingTypes.slice(0, 6).map((type) => (
                       <button
@@ -666,8 +666,8 @@ export default function PropertyFilters({
                         onClick={() => handleArrayToggle('heatingTypes', type)}
                         className={`px-3 py-2 min-h-[40px] text-sm rounded-lg border transition-colors ${
                           filters.heatingTypes?.includes(type)
-                            ? 'bg-orange-100 dark:bg-orange-900 border-orange-400 text-orange-700 dark:text-orange-300'
-                            : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                            ? 'bg-orange-500/10 border-orange-500 text-orange-600 dark:text-orange-400'
+                            : 'bg-card border-border text-muted-foreground'
                         }`}
                         data-testid={`button-heating-${type.toLowerCase().replace(/\s+/g, '-')}`}
                       >
@@ -683,7 +683,7 @@ export default function PropertyFilters({
       )}
 
       {/* Research Status */}
-      <div className="border-b border-gray-100 dark:border-gray-800 pb-2">
+      <div className="border-b border-border pb-2">
         <SectionHeader 
           id="research" 
           title="Research Status" 
@@ -696,8 +696,8 @@ export default function PropertyFilters({
               onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'all' })}
               className={`px-4 py-2 min-h-[44px] text-base rounded-full border transition-colors ${
                 filters.enrichmentStatus === 'all'
-                  ? 'bg-green-100 dark:bg-green-900 border-green-500 text-green-700 dark:text-green-300'
-                  : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                  ? 'bg-primary/10 border-primary text-primary'
+                  : 'bg-card border-border text-muted-foreground'
               }`}
               data-testid="button-enrichment-all"
             >
@@ -707,8 +707,8 @@ export default function PropertyFilters({
               onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'researched' })}
               className={`px-4 py-2 min-h-[44px] text-base rounded-full border transition-colors ${
                 filters.enrichmentStatus === 'researched'
-                  ? 'bg-green-100 dark:bg-green-900 border-green-500 text-green-700 dark:text-green-300'
-                  : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                  ? 'bg-primary/10 border-primary text-primary'
+                  : 'bg-card border-border text-muted-foreground'
               }`}
               data-testid="button-enrichment-researched"
             >
@@ -718,8 +718,8 @@ export default function PropertyFilters({
               onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'not_researched' })}
               className={`px-4 py-2 min-h-[44px] text-base rounded-full border transition-colors ${
                 filters.enrichmentStatus === 'not_researched'
-                  ? 'bg-green-100 dark:bg-green-900 border-green-500 text-green-700 dark:text-green-300'
-                  : 'bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300'
+                  ? 'bg-primary/10 border-primary text-primary'
+                  : 'bg-card border-border text-muted-foreground'
               }`}
               data-testid="button-enrichment-not-researched"
             >
@@ -739,8 +739,8 @@ export default function PropertyFilters({
         onClick={() => setIsOpen(!isOpen)}
         className={`flex items-center gap-2 px-3 min-h-[44px] border rounded-lg text-sm transition-colors ${
           activeFilterCount > 0
-            ? 'border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400'
-            : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+            ? 'border-primary bg-primary/10 text-primary'
+            : 'border-border bg-card text-foreground'
         }`}
         data-testid="button-open-filters"
         aria-label="Open filters"
@@ -751,13 +751,13 @@ export default function PropertyFilters({
         <span className="flex items-center gap-2">
           <span>Filters</span>
           {activeFilterCount > 0 && (
-            <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-medium bg-green-600 text-white rounded-full">
+            <span className="inline-flex items-center justify-center w-5 h-5 text-xs font-medium bg-primary text-primary-foreground rounded-full">
               {activeFilterCount}
             </span>
           )}
         </span>
         {filterSummary && (
-          <span className="hidden sm:inline text-xs text-gray-500 dark:text-gray-400 truncate max-w-[150px]">
+          <span className="hidden sm:inline text-xs text-muted-foreground truncate max-w-[150px]">
             {filterSummary}
           </span>
         )}
@@ -785,7 +785,7 @@ export default function PropertyFilters({
                   data-testid="button-close-filters-mobile"
                   aria-label="Close filters"
                 >
-                  <svg className="w-6 h-6 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-6 h-6 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                 </button>
@@ -797,17 +797,17 @@ export default function PropertyFilters({
               </div>
               
               {/* Sticky Footer */}
-              <div className="sticky bottom-0 z-10 flex items-center gap-3 px-4 py-4 border-t bg-background">
+              <div className="sticky bottom-0 z-10 flex items-center gap-3 px-4 py-4 border-t border-border bg-background">
                 <button
                   onClick={handleClearFilters}
-                  className="flex-1 min-h-[44px] px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-800 rounded-lg"
+                  className="flex-1 min-h-[44px] px-4 py-3 text-sm font-medium text-foreground bg-muted rounded-lg"
                   data-testid="button-clear-all-mobile"
                 >
                   Clear All
                 </button>
                 <button
                   onClick={() => setIsOpen(false)}
-                  className="flex-1 min-h-[44px] px-4 py-3 text-sm font-medium text-white bg-green-600 rounded-lg"
+                  className="flex-1 min-h-[44px] px-4 py-3 text-sm font-medium text-primary-foreground bg-primary rounded-lg"
                   data-testid="button-apply-filters-mobile"
                 >
                   Show Results
@@ -817,7 +817,7 @@ export default function PropertyFilters({
           </div>
 
           {/* Desktop: Dropdown */}
-          <div className="hidden md:block absolute top-full left-0 mt-2 w-80 bg-background border rounded-lg shadow-lg z-50 max-h-[70vh] overflow-y-auto">
+          <div className="hidden md:block absolute top-full left-0 mt-2 w-80 bg-card border border-border rounded-lg shadow-lg z-50 max-h-[70vh] overflow-y-auto">
             {filterContent(false)}
           </div>
         </>

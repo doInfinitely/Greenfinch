@@ -107,8 +107,8 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   });
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-white dark:bg-gray-900">
-      <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+    <div className="flex flex-col h-full bg-card text-card-foreground">
+      <div className="p-4 border-b border-border">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 relative flex-shrink-0">
             <Image
@@ -143,7 +143,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
                     onClick={() => setMobileOpen(false)}
                     className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors relative ${
                       isActive(item.href)
-                        ? 'bg-green-50 text-green-600 border-l-4 border-green-600 rounded-l-none'
+                        ? 'bg-primary/10 text-primary'
                         : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                     }`}
                     title={collapsed ? item.label : undefined}
@@ -159,20 +159,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         ))}
       </nav>
 
-      <div className="p-4 border-t border-gray-200 dark:border-gray-800 space-y-4">
-        <button
-          onClick={toggleTheme}
-          className="flex items-center gap-3 w-full px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          data-testid="button-toggle-theme"
-          title={collapsed ? (theme === 'dark' ? 'Light Mode' : 'Dark Mode') : undefined}
-        >
-          {theme === 'dark' ? (
-            <Sun className="w-4 h-4" />
-          ) : (
-            <Moon className="w-4 h-4" />
-          )}
-          {!collapsed && <span>{theme === 'dark' ? 'Light Mode' : 'Dark Mode'}</span>}
-        </button>
+      <div className="p-4 border-t border-border space-y-3">
         {isSignedIn && (
           <div className="flex items-center gap-2">
             <UserButton
@@ -185,7 +172,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
             />
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">
+                <p className="text-sm font-medium text-foreground truncate">
                   {user?.firstName || user?.primaryEmailAddress?.emailAddress?.split('@')[0]}
                 </p>
                 <p className="text-xs text-muted-foreground truncate">
@@ -200,16 +187,16 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   );
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-950">
+    <div className="flex h-screen bg-background">
       <aside
-        className={`hidden lg:flex flex-col border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 transition-all duration-300 relative ${
+        className={`hidden lg:flex flex-col border-r border-border bg-card transition-all duration-300 relative ${
           collapsed ? 'w-16' : 'w-64'
         }`}
       >
         <SidebarContent />
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute top-1/2 -right-3 transform -translate-y-1/2 w-6 h-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-full flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-700 shadow-sm z-10"
+          className="absolute top-1/2 -right-3 transform -translate-y-1/2 w-6 h-6 bg-card border border-border rounded-full flex items-center justify-center hover:bg-muted shadow-sm z-10 text-muted-foreground"
           data-testid="button-toggle-sidebar"
         >
           {collapsed ? (
@@ -229,24 +216,37 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           className="absolute inset-0 bg-black/50"
           onClick={() => setMobileOpen(false)}
         />
-        <aside className="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-gray-900 shadow-lg">
+        <aside className="absolute left-0 top-0 bottom-0 w-64 bg-card shadow-lg">
           <SidebarContent />
         </aside>
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center justify-between px-4 lg:hidden">
-          <button
+      <div className="flex-1 flex flex-col min-w-0 bg-background">
+        <header className="h-14 border-b border-border bg-card flex items-center justify-between px-4 lg:hidden">
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setMobileOpen(true)}
-            className="p-2"
             data-testid="button-mobile-menu"
           >
             <Menu className="w-5 h-5" />
-          </button>
-          <div className="w-10" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={toggleTheme}
+            data-testid="button-toggle-theme-mobile"
+            title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+          >
+            {theme === 'dark' ? (
+              <Sun className="w-4 h-4" />
+            ) : (
+              <Moon className="w-4 h-4" />
+            )}
+          </Button>
         </header>
 
-        <header className="h-14 border-b border-gray-200 bg-white hidden lg:flex items-center justify-between px-4">
+        <header className="h-14 border-b border-border bg-card hidden lg:flex items-center justify-between px-4">
           <div className="flex items-center gap-4">
             {isSignedIn && (
               <OrganizationSwitcher
@@ -262,6 +262,19 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           </div>
           <div className="flex items-center gap-4">
             <EnrichmentQueuePopover />
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={toggleTheme}
+              data-testid="button-toggle-theme-header"
+              title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+            >
+              {theme === 'dark' ? (
+                <Sun className="w-4 h-4" />
+              ) : (
+                <Moon className="w-4 h-4" />
+              )}
+            </Button>
           </div>
         </header>
 

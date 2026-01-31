@@ -23,11 +23,11 @@ export default function DashboardLayout({
 
   return (
     <AppSidebar>
-      <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-950">
-        <div className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-4 py-2">
+      <div className="h-full flex flex-col bg-background">
+        <div className="bg-card border-b border-border px-4 py-2">
           <div className="flex items-center">
             <div 
-              className="inline-flex items-center bg-gray-100 dark:bg-gray-800 rounded-full p-0.5"
+              className="inline-flex items-center bg-muted rounded-full p-0.5"
               role="tablist"
               data-testid="view-toggle"
             >
@@ -38,8 +38,8 @@ export default function DashboardLayout({
                 data-testid="toggle-map"
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full transition-all ${
                   isMapView
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground'
                 }`}
               >
                 <Map className="w-4 h-4" />
@@ -52,8 +52,8 @@ export default function DashboardLayout({
                 data-testid="toggle-list"
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full transition-all ${
                   !isMapView
-                    ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 shadow-sm'
-                    : 'text-gray-500 dark:text-gray-400'
+                    ? 'bg-card text-foreground shadow-sm'
+                    : 'text-muted-foreground'
                 }`}
               >
                 <List className="w-4 h-4" />
