@@ -36,13 +36,17 @@ const formatBuildingSqft = (sqft: number | null) => {
   return sqft.toString();
 };
 
+const PAGE_SIZE = 50;
+
 export default function ListPage() {
   const router = useRouter();
   const [properties, setProperties] = useState<Property[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [filters, setFilters] = useState<FilterState>(emptyFilters);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -61,10 +65,17 @@ export default function ListPage() {
       .then(r => r.json())
       .then(data => {
         setProperties(data.properties || []);
+        setTotalCount(data.total || 0);
         setIsLoading(false);
+        setCurrentPage(1);
       })
       .catch(() => setIsLoading(false));
   }, [debouncedQuery]);
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filters]);
 
   const filteredProperties = useMemo(() => {
     return properties.filter((p) => {
@@ -100,6 +111,13 @@ export default function ListPage() {
     });
   }, [properties, filters]);
 
+  // Paginate filtered results
+  const totalPages = Math.ceil(filteredProperties.length / PAGE_SIZE);
+  const paginatedProperties = filteredProperties.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE
+  );
+
   const handleRowClick = useCallback((propertyKey: string) => {
     router.push(`/property/${propertyKey}`);
   }, [router]);
@@ -110,11 +128,11 @@ export default function ListPage() {
         <div className="flex flex-col md:flex-row md:items-center gap-3 md:justify-between">
           <div className="flex items-center gap-2 flex-wrap">
             <h1 className="text-base md:text-lg font-semibold text-gray-900">
-              All Properties <span className="text-green-600 font-normal">({filteredProperties.length})</span>
+              Properties <span className="text-green-600 font-normal">({filteredProperties.length.toLocaleString()})</span>
             </h1>
-            {(filters.minLotAcres || filters.maxLotAcres || (filters.categories?.length ?? 0) > 0 || filters.enrichmentStatus !== 'all') && (
+            {filteredProperties.length !== totalCount && (
               <span className="text-sm text-gray-500">
-                of {properties.length} total
+                of {totalCount.toLocaleString()} total
               </span>
             )}
           </div>
@@ -165,7 +183,7 @@ export default function ListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {filteredProperties.map((p) => (
+                  {paginatedProperties.map((p) => (
                     <tr
                       key={p.propertyKey}
                       onClick={() => handleRowClick(p.propertyKey)}
@@ -220,7 +238,7 @@ export default function ListPage() {
             </div>
             
             <div className="md:hidden divide-y divide-gray-200">
-              {filteredProperties.map((p) => (
+              {paginatedProperties.map((p) => (
                 <button
                   key={p.propertyKey}
                   onClick={() => handleRowClick(p.propertyKey)}
@@ -254,6 +272,36 @@ export default function ListPage() {
                 </button>
               ))}
             </div>
+
+            {/* Pagination Controls */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-4 md:px-6 py-3 border-t border-gray-200 bg-white sticky bottom-0">
+                <div className="text-sm text-gray-500">
+                  Showing {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, filteredProperties.length)} of {filteredProperties.length.toLocaleString()}
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid="button-prev-page"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-sm text-gray-600">
+                    Page {currentPage} of {totalPages}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                    data-testid="button-next-page"
+                  >
+                    Next
+                  </button>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>

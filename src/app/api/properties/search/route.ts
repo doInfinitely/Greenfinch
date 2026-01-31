@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         properties.commonName,
         properties.regridAddress
       )
-      .limit(500);
+      .limit(5000);
     
     return NextResponse.json({
       properties: results,

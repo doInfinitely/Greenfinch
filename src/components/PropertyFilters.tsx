@@ -377,46 +377,6 @@ export default function PropertyFilters({
         )}
       </div>
 
-      {/* Research Status Filter */}
-      <div className="border-b border-gray-100 pb-3">
-        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Research Status</label>
-        <div className="flex gap-2">
-          <button
-            onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'all' })}
-            className={`flex-1 px-3 py-1.5 text-sm rounded border transition-colors ${
-              filters.enrichmentStatus === 'all'
-                ? 'bg-green-100 border-green-500 text-green-700'
-                : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
-            }`}
-            data-testid="button-enrichment-all"
-          >
-            All
-          </button>
-          <button
-            onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'researched' })}
-            className={`flex-1 px-3 py-1.5 text-sm rounded border transition-colors ${
-              filters.enrichmentStatus === 'researched'
-                ? 'bg-green-100 border-green-500 text-green-700'
-                : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
-            }`}
-            data-testid="button-enrichment-researched"
-          >
-            Researched
-          </button>
-          <button
-            onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'not_researched' })}
-            className={`flex-1 px-3 py-1.5 text-sm rounded border transition-colors ${
-              filters.enrichmentStatus === 'not_researched'
-                ? 'bg-green-100 border-green-500 text-green-700'
-                : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
-            }`}
-            data-testid="button-enrichment-not-researched"
-          >
-            Not Researched
-          </button>
-        </div>
-      </div>
-
       {/* Size Filters */}
       <div className="border-b border-gray-100 pb-2">
         <SectionHeader id="size" title="Size" count={(filters.minLotAcres || filters.maxLotAcres ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0)} />
@@ -598,6 +558,53 @@ export default function PropertyFilters({
           )}
         </div>
       )}
+
+      {/* Research Status */}
+      <div className="border-b border-gray-100 pb-2">
+        <SectionHeader 
+          id="research" 
+          title="Research Status" 
+          count={filters.enrichmentStatus !== 'all' ? 1 : 0}
+          onClear={() => onFiltersChange({ ...filters, enrichmentStatus: 'all' })}
+        />
+        {openSections.has('research') && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'all' })}
+              className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                filters.enrichmentStatus === 'all'
+                  ? 'bg-green-100 border-green-500 text-green-700'
+                  : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+              }`}
+              data-testid="button-enrichment-all"
+            >
+              All
+            </button>
+            <button
+              onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'researched' })}
+              className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                filters.enrichmentStatus === 'researched'
+                  ? 'bg-green-100 border-green-500 text-green-700'
+                  : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+              }`}
+              data-testid="button-enrichment-researched"
+            >
+              Researched
+            </button>
+            <button
+              onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'not_researched' })}
+              className={`px-3 py-1 text-sm rounded-full border transition-colors ${
+                filters.enrichmentStatus === 'not_researched'
+                  ? 'bg-green-100 border-green-500 text-green-700'
+                  : 'bg-white border-gray-300 text-gray-600 hover:border-gray-400'
+              }`}
+              data-testid="button-enrichment-not-researched"
+            >
+              Not Researched
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   );
 
