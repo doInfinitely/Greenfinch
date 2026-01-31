@@ -1,0 +1,75 @@
+2026-01-31T23:43:56Z info: Build: d5b89d83-29ff-4a47-b41f-e2eff7aef62b
+2026-01-31T23:43:56Z info: Running Security Scan
+2026-01-31T23:44:59Z info: Connecting to builder
+2026-01-31T23:45:00Z info: Builder connected
+2026-01-31T23:45:00Z info: Installing packages
+2026-01-31T23:45:01Z info: Starting Build
+
+> rest-express@1.0.0 build
+> tsx script/build.ts
+
+
+Building Next.js application...
+
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+
+▲ Next.js 16.1.2 (Turbopack)
+
+  Creating an optimized production build ...
+
+> Build error occurred
+
+Error: Turbopack build failed with 1 errors:
+./src/app/property/[id]/page.tsx:8:1
+Module not found: Can't resolve '@/components/ui/tooltip'
+   6 | import dynamic from 'next/dynamic';
+   7 | import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreVertical, List, Upload, User, UserCircle } from 'lucide-react';
+>  8 | import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   9 | import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+  10 | import {
+  11 |   DropdownMenu,
+
+Import map: aliased to relative './src/components/ui/tooltip' inside of [project]/
+
+
+Import traces:
+  Client Component Browser:
+    ./src/app/property/[id]/page.tsx [Client Component Browser]
+    ./src/app/property/[id]/page.tsx [Server Component]
+
+  Client Component SSR:
+    ./src/app/property/[id]/page.tsx [Client Component SSR]
+    ./src/app/property/[id]/page.tsx [Server Component]
+
+https://nextjs.org/docs/messages/module-not-found
+
+
+    at <unknown> (./src/app/property/[id]/page.tsx:8:1)
+    at <unknown> (https://nextjs.org/docs/messages/module-not-found)
+
+Error: Command failed: npx next build
+    at genericNodeError (node:internal/errors:984:15)
+    at wrappedFn (node:internal/errors:538:14)
+    at checkExecSyncError (node:child_process:891:11)
+    at execSync (node:child_process:963:15)
+    at buildAll (/home/runner/workspace/script/build.ts:10:3) {
+  status: 1,
+  signal: null,
+  output: [ null, null, null ],
+  pid: 87,
+  stdout: null,
+  stderr: null
+}
+
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.8.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.8.0
+npm notice To update run: npm install -g npm@11.8.0
+npm notice
+
