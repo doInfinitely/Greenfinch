@@ -108,7 +108,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 relative flex-shrink-0">
             <Image
-              src="/greenfinch-logo.png"
+              src="/greenfinch-logo-v2.png"
               alt="Greenfinch"
               fill
               className="object-contain"
