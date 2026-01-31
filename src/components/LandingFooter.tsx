@@ -13,10 +13,10 @@ export default function LandingFooter() {
             <div className="flex items-center space-x-2 mb-4">
               <div className="w-10 h-10 relative flex-shrink-0">
                 <Image
-                  src="/greenfinch-logo.jpg"
+                  src="/greenfinch-logo.png"
                   alt="greenfinch.ai"
                   fill
-                  className="object-contain rounded"
+                  className="object-contain"
                   priority
                 />
               </div>
