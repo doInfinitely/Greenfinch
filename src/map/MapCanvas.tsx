@@ -11,14 +11,12 @@ interface MapCanvasProps {
   properties: GeoJSON.Feature[];
   initialCenter?: { lat: number; lon: number };
   initialZoom?: number;
-  theme?: 'light' | 'dark';
   onBoundsChange?: (bounds: MapBounds, zoom: number) => void;
   onPropertyClick?: (propertyKey: string) => void;
 }
 
 export interface MapCanvasHandle {
   flyTo: (lat: number, lon: number, zoom?: number) => void;
-  setTheme: (theme: 'light' | 'dark') => void;
 }
 
 const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
@@ -28,7 +26,6 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
   properties,
   initialCenter,
   initialZoom,
-  theme = 'light',
   onBoundsChange,
   onPropertyClick,
 }, ref) => {
@@ -37,18 +34,15 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
   const callbacksRef = useRef({ onBoundsChange, onPropertyClick });
   const [mapError, setMapError] = useState<string | null>(null);
   
+  // Store initial values in refs to prevent re-initialization when parent re-renders
   const initialCenterRef = useRef(initialCenter);
   const initialZoomRef = useRef(initialZoom);
-  const initialThemeRef = useRef(theme);
 
   callbacksRef.current = { onBoundsChange, onPropertyClick };
 
   useImperativeHandle(ref, () => ({
     flyTo: (lat: number, lon: number, zoom: number = 16) => {
       mapRef.current?.flyTo(lat, lon, zoom);
-    },
-    setTheme: (newTheme: 'light' | 'dark') => {
-      mapRef.current?.setTheme(newTheme);
     },
   }));
 
@@ -63,7 +57,6 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
       regridTileUrl,
       initialCenter: initialCenterRef.current,
       initialZoom: initialZoomRef.current,
-      theme: initialThemeRef.current,
       onBoundsChange: (bounds, zoom) => {
         callbacksRef.current.onBoundsChange?.(bounds, zoom);
       },
@@ -96,11 +89,6 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
       features: properties,
     });
   }, [properties]);
-
-  useEffect(() => {
-    if (!mapRef.current) return;
-    mapRef.current.setTheme(theme);
-  }, [theme]);
 
   if (mapError) {
     return (

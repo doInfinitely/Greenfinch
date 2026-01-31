@@ -211,12 +211,12 @@ export default function MapSearchBar({ onSelect, mapCenter }: MapSearchBarProps)
           onKeyDown={handleKeyDown}
           onFocus={() => suggestions.length > 0 && setIsOpen(true)}
           placeholder="Search address, POI, neighborhood..."
-          className="w-full pl-10 pr-10 py-2.5 bg-white dark:bg-slate-800 border border-border rounded-lg shadow-sm text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+          className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-lg shadow-sm text-sm focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
         />
         {query && (
           <button
             onClick={handleClear}
-            className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground"
+            className="absolute inset-y-0 right-0 flex items-center pr-3 text-gray-400 hover:text-gray-600"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -226,15 +226,15 @@ export default function MapSearchBar({ onSelect, mapCenter }: MapSearchBarProps)
       </div>
 
       {isOpen && suggestions.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white dark:bg-slate-800 border border-border rounded-lg shadow-lg overflow-hidden max-h-96 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden max-h-96 overflow-y-auto">
           {suggestions.map((suggestion, index) => (
             <button
               key={`${suggestion.id || 'suggestion'}-${index}`}
               onClick={() => handleSelect(suggestion)}
               className={`w-full text-left px-3 py-2.5 flex items-start gap-3 transition-colors ${
                 index === highlightedIndex 
-                  ? 'bg-primary/10' 
-                  : 'active:bg-muted'
+                  ? 'bg-green-50' 
+                  : 'hover:bg-gray-50'
               }`}
             >
               <div className="text-gray-400 mt-0.5">

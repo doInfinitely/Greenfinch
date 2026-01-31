@@ -21,12 +21,9 @@ import {
   ChevronRight,
   Menu,
   X,
-  Moon,
-  Sun,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EnrichmentQueuePopover from '@/components/EnrichmentQueuePopover';
-import { useTheme } from '@/components/ThemeProvider';
 
 interface NavItem {
   href: string;
@@ -47,7 +44,6 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   const [mobileOpen, setMobileOpen] = useState(false);
   const { orgSlug, orgRole, isSignedIn } = useAuth();
   const { user } = useUser();
-  const { theme, toggleTheme } = useTheme();
 
   const isGreenfinchMember = orgSlug === 'greenfinch';
   const isOrgAdmin = orgRole === 'org:admin';
@@ -107,8 +103,8 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   });
 
   const SidebarContent = () => (
-    <div className="flex flex-col h-full bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100">
-      <div className="p-4 border-b border-slate-200 dark:border-slate-700">
+    <div className="flex flex-col h-full bg-white">
+      <div className="p-4 border-b border-gray-200">
         <Link href="/" className="flex items-center gap-2">
           <div className="w-8 h-8 relative flex-shrink-0">
             <Image
@@ -120,7 +116,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
             />
           </div>
           {!collapsed && (
-            <span className="font-semibold text-lg text-slate-900 dark:text-slate-100">greenfinch.ai</span>
+            <span className="font-semibold text-lg text-foreground">greenfinch.ai</span>
           )}
         </Link>
       </div>
@@ -130,7 +126,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           <div key={group.label} className="mb-6">
             {!collapsed && (
               <div className="px-4 mb-2">
-                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 tracking-wider">
+                <span className="text-xs font-semibold text-muted-foreground tracking-wider">
                   {group.label}
                 </span>
               </div>
@@ -143,8 +139,8 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
                     onClick={() => setMobileOpen(false)}
                     className={`flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors relative ${
                       isActive(item.href)
-                        ? 'bg-primary/10 text-primary'
-                        : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100'
+                        ? 'bg-green-50 text-green-600 border-l-4 border-green-600 rounded-l-none'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                     }`}
                     title={collapsed ? item.label : undefined}
                     data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
@@ -159,7 +155,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         ))}
       </nav>
 
-      <div className="p-4 border-t border-slate-200 dark:border-slate-700 space-y-3">
+      <div className="p-4 border-t border-gray-200 space-y-4">
         {isSignedIn && (
           <div className="flex items-center gap-2">
             <UserButton
@@ -172,10 +168,10 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
             />
             {!collapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                <p className="text-sm font-medium truncate">
                   {user?.firstName || user?.primaryEmailAddress?.emailAddress?.split('@')[0]}
                 </p>
-                <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+                <p className="text-xs text-muted-foreground truncate">
                   {user?.primaryEmailAddress?.emailAddress}
                 </p>
               </div>
@@ -187,16 +183,16 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
   );
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex h-screen bg-gray-50">
       <aside
-        className={`hidden lg:flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 transition-all duration-300 relative ${
+        className={`hidden lg:flex flex-col border-r border-gray-200 bg-white transition-all duration-300 relative ${
           collapsed ? 'w-16' : 'w-64'
         }`}
       >
         <SidebarContent />
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute top-1/2 -right-3 transform -translate-y-1/2 w-6 h-6 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-full flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 shadow-sm z-10 text-slate-500 dark:text-slate-400"
+          className="absolute top-1/2 -right-3 transform -translate-y-1/2 w-6 h-6 bg-white border border-gray-200 rounded-full flex items-center justify-center hover:bg-gray-100 shadow-sm z-10"
           data-testid="button-toggle-sidebar"
         >
           {collapsed ? (
@@ -208,7 +204,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
       </aside>
 
       <div
-        className={`fixed inset-0 z-50 lg:hidden transition-opacity ${
+        className={`fixed inset-0 z-40 lg:hidden transition-opacity ${
           mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
@@ -216,39 +212,24 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           className="absolute inset-0 bg-black/50"
           onClick={() => setMobileOpen(false)}
         />
-        <aside className="absolute left-0 top-0 bottom-0 w-64 bg-white dark:bg-slate-900 shadow-lg z-50">
+        <aside className="absolute left-0 top-0 bottom-0 w-64 bg-white shadow-lg">
           <SidebarContent />
         </aside>
       </div>
 
-      <div className="flex-1 flex flex-col min-w-0 bg-background">
-        <header className="h-14 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex items-center justify-between px-4 lg:hidden">
-          <Button
-            variant="ghost"
-            size="icon"
+      <div className="flex-1 flex flex-col min-w-0">
+        <header className="h-14 border-b border-gray-200 bg-white flex items-center justify-between px-4 lg:hidden">
+          <button
             onClick={() => setMobileOpen(true)}
+            className="p-2"
             data-testid="button-mobile-menu"
-            className="text-slate-700 dark:text-slate-200"
           >
             <Menu className="w-5 h-5" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={toggleTheme}
-            data-testid="button-toggle-theme-mobile"
-            title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-            className="text-slate-700 dark:text-slate-200"
-          >
-            {theme === 'dark' ? (
-              <Sun className="w-4 h-4" />
-            ) : (
-              <Moon className="w-4 h-4" />
-            )}
-          </Button>
+          </button>
+          <div className="w-10" />
         </header>
 
-        <header className="h-14 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 hidden lg:flex items-center justify-between px-4">
+        <header className="h-14 border-b border-gray-200 bg-white hidden lg:flex items-center justify-between px-4">
           <div className="flex items-center gap-4">
             {isSignedIn && (
               <OrganizationSwitcher
@@ -264,20 +245,6 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           </div>
           <div className="flex items-center gap-4">
             <EnrichmentQueuePopover />
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={toggleTheme}
-              data-testid="button-toggle-theme-header"
-              title={theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-              className="text-slate-700 dark:text-slate-200"
-            >
-              {theme === 'dark' ? (
-                <Sun className="w-4 h-4" />
-              ) : (
-                <Moon className="w-4 h-4" />
-              )}
-            </Button>
           </div>
         </header>
 

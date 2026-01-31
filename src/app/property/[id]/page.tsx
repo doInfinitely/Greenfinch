@@ -966,24 +966,6 @@ export default function PropertyDetailPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
                       <AdminOnly>
-                        {enrichmentStatus !== 'completed' && (
-                          <DropdownMenuItem 
-                            onClick={handleEnrichment}
-                            disabled={(() => {
-                              const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
-                              return queueStatus.isActive || queueStatus.status === 'failed';
-                            })()}
-                            data-testid="menu-item-research"
-                          >
-                            <Search className="w-4 h-4 mr-2" />
-                            {(() => {
-                              const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
-                              if (queueStatus.isActive) return 'Researching...';
-                              if (queueStatus.status === 'failed') return 'Failed';
-                              return 'Research Property';
-                            })()}
-                          </DropdownMenuItem>
-                        )}
                         <DropdownMenuItem 
                           onClick={() => setAssignDialogTrigger(prev => prev + 1)}
                           data-testid="menu-item-assign-owner"
