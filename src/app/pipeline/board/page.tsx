@@ -330,7 +330,7 @@ export default function PipelineBoard() {
                     <Users className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
                     <SelectValue placeholder="Filter" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-popover border shadow-lg">
                     <SelectItem value="mine">My Pipeline</SelectItem>
                     <SelectItem value="all">All Members</SelectItem>
                     <SelectItem value="unassigned">Unassigned</SelectItem>
