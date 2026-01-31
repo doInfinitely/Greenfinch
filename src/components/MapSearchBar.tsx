@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { useDebounceCallback } from '@/hooks/use-debounce';
 
 interface Suggestion {
   id: string;
@@ -26,7 +27,6 @@ export default function MapSearchBar({ onSelect, mapCenter }: MapSearchBarProps)
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
   const fetchSuggestions = useCallback(async (searchQuery: string) => {
     if (searchQuery.trim().length < 2) {
@@ -62,17 +62,12 @@ export default function MapSearchBar({ onSelect, mapCenter }: MapSearchBarProps)
     }
   }, [mapCenter]);
 
+  const debouncedFetchSuggestions = useDebounceCallback(fetchSuggestions, 300);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setQuery(value);
-
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-
-    debounceRef.current = setTimeout(() => {
-      fetchSuggestions(value);
-    }, 300);
+    debouncedFetchSuggestions(value);
   };
 
   const handleSelect = (suggestion: Suggestion) => {
@@ -126,14 +121,6 @@ export default function MapSearchBar({ onSelect, mapCenter }: MapSearchBarProps)
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
   }, []);
 
   const getTypeIcon = (type: string) => {

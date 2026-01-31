@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { useDebounce } from '@/hooks/use-debounce';
 
 export interface FilterState {
   minLotAcres: number | null;
@@ -99,6 +100,10 @@ export default function PropertyFilters({
   const [selectedContact, setSelectedContact] = useState<{id: string; fullName: string} | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
+  // Debounce organization and contact search inputs with 300ms delay
+  const debouncedOrgSearch = useDebounce(orgSearch, 300);
+  const debouncedContactSearch = useDebounce(contactSearch, 300);
+
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -128,30 +133,30 @@ export default function PropertyFilters({
   }, [isOpen]);
 
   useEffect(() => {
-    if (orgSearch.length < 2) {
+    if (debouncedOrgSearch.length < 2) {
       setOrgResults([]);
       return;
     }
     const controller = new AbortController();
-    fetch(`/api/organizations/search?q=${encodeURIComponent(orgSearch)}`, { signal: controller.signal })
+    fetch(`/api/organizations/search?q=${encodeURIComponent(debouncedOrgSearch)}`, { signal: controller.signal })
       .then(res => res.json())
       .then(data => setOrgResults(data.organizations || []))
       .catch(() => {});
     return () => controller.abort();
-  }, [orgSearch]);
+  }, [debouncedOrgSearch]);
 
   useEffect(() => {
-    if (contactSearch.length < 2) {
+    if (debouncedContactSearch.length < 2) {
       setContactResults([]);
       return;
     }
     const controller = new AbortController();
-    fetch(`/api/contacts/search?q=${encodeURIComponent(contactSearch)}`, { signal: controller.signal })
+    fetch(`/api/contacts/search?q=${encodeURIComponent(debouncedContactSearch)}`, { signal: controller.signal })
       .then(res => res.json())
       .then(data => setContactResults(data.contacts || []))
       .catch(() => {});
     return () => controller.abort();
-  }, [contactSearch]);
+  }, [debouncedContactSearch]);
 
   const handleAcresChange = (field: 'minLotAcres' | 'maxLotAcres', value: string, setter: (v: string) => void) => {
     setter(value);

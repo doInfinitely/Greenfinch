@@ -6,6 +6,24 @@ import { eq, ilike, or, sql, desc, asc, and, inArray } from 'drizzle-orm';
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
+interface CursorData {
+  id: string;
+  sortValue: any;
+}
+
+function encodeCursor(data: CursorData): string {
+  return Buffer.from(JSON.stringify(data)).toString('base64');
+}
+
+function decodeCursor(cursorStr: string): CursorData | null {
+  try {
+    const decoded = Buffer.from(cursorStr, 'base64').toString('utf-8');
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
@@ -13,12 +31,28 @@ export async function GET(request: NextRequest) {
     const emailStatus = searchParams.get('emailStatus');
     const title = searchParams.get('title');
     const organizationId = searchParams.get('organizationId');
+    const cursor = searchParams.get('cursor');
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(searchParams.get('limit') || String(DEFAULT_LIMIT), 10)));
     const sortBy = searchParams.get('sortBy') || 'fullName';
     const sortOrder = searchParams.get('sortOrder') || 'asc';
     
-    const offset = (page - 1) * limit;
+    // Determine if using cursor or offset pagination
+    const useCursor = !!cursor;
+    let offset = 0;
+    let decodedCursor: CursorData | null = null;
+
+    if (useCursor) {
+      decodedCursor = decodeCursor(cursor);
+      if (!decodedCursor) {
+        return NextResponse.json(
+          { error: 'Invalid cursor' },
+          { status: 400 }
+        );
+      }
+    } else {
+      offset = (page - 1) * limit;
+    }
 
     const conditions = [];
 
@@ -91,36 +125,86 @@ export async function GET(request: NextRequest) {
       .leftJoin(propertyCountSubquery, eq(contacts.id, propertyCountSubquery.contactId))
       .leftJoin(orgCountSubquery, eq(contacts.id, orgCountSubquery.contactId));
 
+    // Apply filter conditions
     if (conditions.length > 0) {
       baseQuery = baseQuery.where(and(...conditions)) as typeof baseQuery;
     }
 
-    let orderExpression;
+    // Determine sort column and expression
+    let sortColumn: any;
+    let orderExpression: any;
+    let isCountSort = false;
+
     if (sortBy === 'propertyCount') {
+      sortColumn = 'propertyCount';
+      isCountSort = true;
       orderExpression = sortOrder === 'desc' 
         ? sql`COALESCE(${propertyCountSubquery.count}, 0) DESC`
         : sql`COALESCE(${propertyCountSubquery.count}, 0) ASC`;
     } else if (sortBy === 'organizationCount') {
+      sortColumn = 'organizationCount';
+      isCountSort = true;
       orderExpression = sortOrder === 'desc'
         ? sql`COALESCE(${orgCountSubquery.count}, 0) DESC`
         : sql`COALESCE(${orgCountSubquery.count}, 0) ASC`;
     } else {
-      const orderColumn = sortBy === 'email' ? contacts.email : 
-                          sortBy === 'title' ? contacts.title :
-                          sortBy === 'employerName' ? contacts.employerName :
-                          sortBy === 'emailStatus' ? contacts.emailStatus :
-                          sortBy === 'createdAt' ? contacts.createdAt :
-                          contacts.fullName;
-      orderExpression = sortOrder === 'desc' ? desc(orderColumn) : asc(orderColumn);
+      if (sortBy === 'email') {
+        sortColumn = contacts.email;
+      } else if (sortBy === 'title') {
+        sortColumn = contacts.title;
+      } else if (sortBy === 'employerName') {
+        sortColumn = contacts.employerName;
+      } else if (sortBy === 'emailStatus') {
+        sortColumn = contacts.emailStatus;
+      } else if (sortBy === 'createdAt') {
+        sortColumn = contacts.createdAt;
+      } else {
+        sortColumn = contacts.fullName;
+      }
+      orderExpression = sortOrder === 'desc' ? desc(sortColumn) : asc(sortColumn);
     }
 
+    // Apply cursor condition if using cursor pagination
+    if (useCursor && decodedCursor) {
+      let cursorCondition;
+      if (isCountSort) {
+        const countExpr = sortColumn === 'propertyCount' ? propertyCountSubquery.count : orgCountSubquery.count;
+        if (sortOrder === 'asc') {
+          cursorCondition = sql`COALESCE(${countExpr}, 0) > ${decodedCursor.sortValue} 
+            OR (COALESCE(${countExpr}, 0) = ${decodedCursor.sortValue} AND ${contacts.id} > ${decodedCursor.id})`;
+        } else {
+          cursorCondition = sql`COALESCE(${countExpr}, 0) < ${decodedCursor.sortValue} 
+            OR (COALESCE(${countExpr}, 0) = ${decodedCursor.sortValue} AND ${contacts.id} < ${decodedCursor.id})`;
+        }
+      } else {
+        if (sortOrder === 'asc') {
+          cursorCondition = sql`${sortColumn} > ${decodedCursor.sortValue} OR (${sortColumn} = ${decodedCursor.sortValue} AND ${contacts.id} > ${decodedCursor.id})`;
+        } else {
+          cursorCondition = sql`${sortColumn} < ${decodedCursor.sortValue} OR (${sortColumn} = ${decodedCursor.sortValue} AND ${contacts.id} < ${decodedCursor.id})`;
+        }
+      }
+      baseQuery = baseQuery.where(cursorCondition) as typeof baseQuery;
+    }
+
+    // Fetch one extra to determine if there are more items
+    const fetchLimit = useCursor ? limit + 1 : limit;
+    
     const contactsList = await baseQuery
       .orderBy(orderExpression)
-      .limit(limit)
-      .offset(offset);
+      .limit(fetchLimit)
+      .offset(!useCursor ? offset : 0);
+
+    // Check if there are more items for cursor pagination
+    let hasMore = false;
+    let displayList = contactsList;
+    
+    if (useCursor && contactsList.length > limit) {
+      hasMore = true;
+      displayList = contactsList.slice(0, limit);
+    }
 
     // Batch fetch property relations for all contacts (fix N+1)
-    const contactIds = contactsList.map(c => c.id);
+    const contactIds = displayList.map(c => c.id);
     
     const allPropertyRelations = contactIds.length > 0 ? await db
       .select({
@@ -170,11 +254,41 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    const contactsWithRelations = contactsList.map((contact) => ({
+    const contactsWithRelations = displayList.map((contact) => ({
       ...contact,
       properties: (propsByContact.get(contact.id) || []).map(({ contactId, ...rest }) => rest),
       organizations: (orgsByContact.get(contact.id) || []).map(({ contactId, ...rest }) => rest),
     }));
+
+    // Generate next cursor if there are more items
+    let nextCursor: string | null = null;
+    if (hasMore && displayList.length > 0) {
+      const lastItem = displayList[displayList.length - 1];
+      let sortValue;
+
+      if (sortBy === 'propertyCount') {
+        sortValue = lastItem.propertyCount;
+      } else if (sortBy === 'organizationCount') {
+        sortValue = lastItem.organizationCount;
+      } else if (sortBy === 'email') {
+        sortValue = lastItem.email;
+      } else if (sortBy === 'title') {
+        sortValue = lastItem.title;
+      } else if (sortBy === 'employerName') {
+        sortValue = lastItem.employerName;
+      } else if (sortBy === 'emailStatus') {
+        sortValue = lastItem.emailStatus;
+      } else if (sortBy === 'createdAt') {
+        sortValue = lastItem.createdAt;
+      } else {
+        sortValue = lastItem.fullName;
+      }
+
+      nextCursor = encodeCursor({
+        id: lastItem.id,
+        sortValue,
+      });
+    }
 
     let countQuery = db.select({ count: sql<number>`count(*)::int` }).from(contacts);
     
@@ -200,6 +314,8 @@ export async function GET(request: NextRequest) {
         limit,
         total,
         totalPages: Math.ceil(total / limit),
+        hasMore,
+        nextCursor,
       },
       availableStatuses: statusesResult?.statuses || [],
       availableTitles: (titlesResult?.titles || []).slice(0, 50),

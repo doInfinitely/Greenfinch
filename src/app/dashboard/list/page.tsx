@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, UNKNOWN_BUILDING_CLASS } from '@/components/PropertyFilters';
 import { normalizeCommonName } from '@/lib/normalization';
+import { useDebounce } from '@/hooks/use-debounce';
 
 interface Property {
   propertyKey: string;
@@ -44,16 +45,11 @@ export default function ListPage() {
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [debouncedQuery, setDebouncedQuery] = useState('');
   const [filters, setFilters] = useState<FilterState>(emptyFilters);
   const [currentPage, setCurrentPage] = useState(1);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setDebouncedQuery(searchQuery);
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  // Debounce search query with 300ms delay
+  const debouncedQuery = useDebounce(searchQuery, 300);
 
   useEffect(() => {
     setIsLoading(true);
