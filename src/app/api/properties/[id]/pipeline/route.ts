@@ -220,19 +220,21 @@ export async function POST(
       
       // Automatically update isCurrentCustomer on both pipeline and property records based on status
       if (status === 'won') {
+        const updateObj = { isCurrentCustomer: true };
         await db.update(propertyPipeline)
-          .set({ isCurrentCustomer: true })
+          .set(updateObj)
           .where(eq(propertyPipeline.id, pipeline.id));
         await db.update(properties)
-          .set({ isCurrentCustomer: true })
+          .set(updateObj)
           .where(eq(properties.id, property.id));
       } else if (previousStatus === 'won') {
         // Changing from won to another status, mark as not a customer
+        const updateObj = { isCurrentCustomer: false };
         await db.update(propertyPipeline)
-          .set({ isCurrentCustomer: false })
+          .set(updateObj)
           .where(eq(propertyPipeline.id, pipeline.id));
         await db.update(properties)
-          .set({ isCurrentCustomer: false })
+          .set(updateObj)
           .where(eq(properties.id, property.id));
       }
     }
