@@ -366,12 +366,76 @@ export default function ContactsPage() {
   }, [selectedContacts, toast]);
 
   const handleFindEmails = useCallback(() => {
-    const selectedIds = Array.from(selectedContacts);
-    toast({
-      title: 'Email Lookup Started',
-      description: `Finding emails for ${selectedIds.length} selected contacts...`,
+    const selectedContactsList = contacts.filter(c => selectedContacts.has(c.id));
+    
+    const contactsNeedingEmail = selectedContactsList.filter(contact => {
+      const status = contact.emailValidationStatus || contact.emailStatus;
+      const hasValidEmail = status === 'valid' || status === 'Valid';
+      return !hasValidEmail;
     });
-  }, [selectedContacts, toast]);
+    
+    const skippedCount = selectedContactsList.length - contactsNeedingEmail.length;
+    
+    if (contactsNeedingEmail.length === 0) {
+      toast({
+        title: 'No Actions Needed',
+        description: `All ${selectedContactsList.length} selected contacts already have valid emails.`,
+      });
+      return;
+    }
+    
+    setBulkEmailConfirmation({
+      isOpen: true,
+      contactsToProcess: contactsNeedingEmail,
+      skippedCount,
+      isProcessing: false,
+    });
+  }, [selectedContacts, contacts, toast]);
+
+  const handleConfirmBulkEmail = useCallback(async () => {
+    const { contactsToProcess } = bulkEmailConfirmation;
+    
+    setBulkEmailConfirmation(prev => ({ ...prev, isProcessing: true }));
+    
+    for (const contact of contactsToProcess) {
+      startEnrichment({
+        type: 'contact_email',
+        entityId: contact.id,
+        entityName: `${contact.fullName || 'Contact'} - Email`,
+        apiEndpoint: `/api/contacts/${contact.id}/waterfall-email`,
+        pollForCompletion: {
+          checkEndpoint: `/api/contacts/${contact.id}`,
+          checkField: 'contact.enrichedAt',
+          compareMode: 'changed',
+          maxAttempts: 20,
+          intervalMs: 3000,
+        },
+      });
+    }
+    
+    toast({
+      title: 'Email Lookup Queued',
+      description: `Finding emails for ${contactsToProcess.length} contacts. Check the queue for progress.`,
+    });
+    
+    setBulkEmailConfirmation({
+      isOpen: false,
+      contactsToProcess: [],
+      skippedCount: 0,
+      isProcessing: false,
+    });
+    
+    setSelectedContacts(new Set());
+  }, [bulkEmailConfirmation, startEnrichment, toast]);
+
+  const handleCancelBulkEmail = useCallback(() => {
+    setBulkEmailConfirmation({
+      isOpen: false,
+      contactsToProcess: [],
+      skippedCount: 0,
+      isProcessing: false,
+    });
+  }, []);
 
   const handleAddToList = useCallback(() => {
     const selectedIds = Array.from(selectedContacts);
@@ -1027,6 +1091,57 @@ export default function ContactsPage() {
           </BulkActionBar>
         )}
       </main>
+      
+      <Dialog open={bulkEmailConfirmation.isOpen} onOpenChange={(open) => !open && handleCancelBulkEmail()}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-bulk-email-confirm">
+          <DialogHeader>
+            <DialogTitle>Confirm Email Lookup</DialogTitle>
+            <DialogDescription>
+              {bulkEmailConfirmation.skippedCount > 0 ? (
+                <>
+                  <span className="block mb-2">
+                    <strong>{bulkEmailConfirmation.contactsToProcess.length}</strong> contact{bulkEmailConfirmation.contactsToProcess.length !== 1 ? 's' : ''} will be queued for email lookup.
+                  </span>
+                  <span className="block text-amber-600">
+                    {bulkEmailConfirmation.skippedCount} contact{bulkEmailConfirmation.skippedCount !== 1 ? 's' : ''} skipped (already have valid emails).
+                  </span>
+                </>
+              ) : (
+                <span>
+                  <strong>{bulkEmailConfirmation.contactsToProcess.length}</strong> contact{bulkEmailConfirmation.contactsToProcess.length !== 1 ? 's' : ''} will be queued for email lookup.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={handleCancelBulkEmail}
+              disabled={bulkEmailConfirmation.isProcessing}
+              data-testid="button-cancel-bulk-email"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmBulkEmail}
+              disabled={bulkEmailConfirmation.isProcessing}
+              data-testid="button-confirm-bulk-email"
+            >
+              {bulkEmailConfirmation.isProcessing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Mail className="h-4 w-4 mr-2" />
+                  Find Emails
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
