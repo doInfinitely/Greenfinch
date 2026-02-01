@@ -9,6 +9,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { PIPELINE_STATUS_LABELS, type PipelineStatus } from '@/lib/schema';
 import { Loader2, Clock, Users, Check, X, Eye, EyeOff } from 'lucide-react';
+import { PipelineBoardSkeleton } from '@/components/PageSkeleton';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { normalizeCommonName } from '@/lib/normalization';
@@ -355,9 +356,7 @@ export default function PipelineBoard() {
         </div>
         
         {loading ? (
-          <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
+          <PipelineBoardSkeleton />
         ) : error ? (
           <div className="text-center py-20 text-destructive">{error}</div>
         ) : (

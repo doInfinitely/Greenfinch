@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { SignInButton } from '@clerk/nextjs';
+import { CardGridSkeleton } from '@/components/PageSkeleton';
 
 interface List {
   id: string;
@@ -211,9 +212,7 @@ export default function ListsPage() {
         )}
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600"></div>
-          </div>
+          <CardGridSkeleton cards={6} />
         ) : filteredLists.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
             <svg

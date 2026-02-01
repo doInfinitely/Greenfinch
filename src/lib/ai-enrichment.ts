@@ -390,7 +390,7 @@ TASK: Search the web to find:
 1. The beneficial owner (true owner behind any LLC/trust) and when they acquired the property
 2. The property management company (if third-party managed) and their specialty
 3. The property-specific website (NOT the management company website) - e.g., building website, apartment community site, shopping center site
-4. The property's main phone number (leasing office, main line)
+4. The property's main phone number
 
 Use the owner information above as a starting point for your research. The bizName and ownerName fields may contain LLCs, trusts, or holding companies - search to find the actual beneficial owner behind them.
 
@@ -496,12 +496,12 @@ ADDRESS: ${classification.canonicalAddress}
 MANAGEMENT COMPANY: ${managementInfo}
 OWNER: ${ownerInfo}
 
-TASK: Search the web to find 3-7 contacts who make property decisions for THIS SPECIFIC PROPERTY at THIS ADDRESS:
+TASK: Search the web to find 3-5 contacts who make property decisions for THIS SPECIFIC PROPERTY at THIS ADDRESS:
 - Property managers responsible for THIS specific location in ${property.city || 'Dallas'}, Texas
-- Facilities managers/directors, maintenance supervisors, and property operations staff for THIS specific location
-- Include leasing or owner contacts ONLY if directly connected to this property
+- Facilities managers/directors, maintenance supervisors, and property operations staff for THIS specific location in ${property.city || 'Dallas'}, Texas
+- Include leasig or owner contacts ONLY if directly connected to this property 
 
-CRITICAL: Only include organizations and contacts that are DIRECTLY involved with THIS property at THIS address.
+CRITICAL: Only include organizations and contacts that are DIRECTLY involved with THIS property at THIS address. Prioritize high-value property management and facilities management contacts.
 DO NOT include: organizations from other states/cities, condo unit owners, HOA board members, residential tenants, or companies with similar names but different locations.
 
 CONTACT INFORMATION TO CAPTURE:
@@ -674,7 +674,7 @@ export async function cleanupAISummary(rawSummary: string): Promise<string> {
   const prompt = `You are an editor polishing a research summary for greenfinch.ai, a commercial real estate prospecting tool.
 
 Edit the following research summary into a flowing, natural paragraph:
-1. Combine information into 2-4 sentences that read naturally as a cohesive paragraph
+1. Combine information into 3-4 sentences that read naturally as a cohesive paragraph
 2. Remove citation numbers like [1], [2], etc. - just integrate the information smoothly
 3. Remove any system references, error messages, or technical debug info
 4. Focus on key facts: property type, ownership, management, and notable features

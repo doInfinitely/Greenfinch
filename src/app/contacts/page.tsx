@@ -6,6 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
 import { ListPlus, Filter, Mail, Phone, Loader2 } from 'lucide-react';
+import { ContactCardSkeleton } from '@/components/PageSkeleton';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, LinkedInLink, hasAnyPhone, hasOnlyOfficeLine, hasHighQualityPhone } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useToast } from '@/hooks/use-toast';
@@ -903,9 +904,7 @@ export default function ContactsPage() {
         )}
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600"></div>
-          </div>
+          <ContactCardSkeleton count={12} />
         ) : contacts.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
             <svg

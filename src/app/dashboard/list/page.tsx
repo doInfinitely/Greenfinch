@@ -10,12 +10,15 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
 import { Sparkles, ListPlus, Users } from 'lucide-react';
+import { TableSkeleton } from '@/components/PageSkeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import BulkAddToListModal from '@/components/BulkAddToListModal';
+import { useEnrichment } from '@/hooks/use-enrichment';
 
 interface Property {
   propertyKey: string;
+  propertyId: string;
   address: string;
   city: string;
   state: string;
@@ -182,13 +185,14 @@ export default function ListPage() {
     router.push(`/property/${propertyKey}`);
   }, [router]);
 
-  const handleSelectProperty = useCallback((propertyKey: string, checked: boolean) => {
+  const handleSelectProperty = useCallback((propertyId: string | undefined, checked: boolean) => {
+    if (!propertyId) return;
     setSelectedProperties(prev => {
       const next = new Set(prev);
       if (checked) {
-        next.add(propertyKey);
+        next.add(propertyId);
       } else {
-        next.delete(propertyKey);
+        next.delete(propertyId);
       }
       return next;
     });
@@ -196,8 +200,8 @@ export default function ListPage() {
 
   const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
-      const allKeys = new Set(paginatedProperties.map(p => p.propertyKey));
-      setSelectedProperties(allKeys);
+      const allIds = new Set(paginatedProperties.map(p => p.propertyId).filter(Boolean));
+      setSelectedProperties(allIds);
     } else {
       setSelectedProperties(new Set());
     }
@@ -207,20 +211,48 @@ export default function ListPage() {
     setSelectedProperties(new Set());
   }, []);
 
+  const { startEnrichment } = useEnrichment();
+
   const handleRunAIResearch = useCallback(() => {
-    const selectedKeys = Array.from(selectedProperties);
+    const selectedIds = Array.from(selectedProperties);
+    const selectedProps = filteredProperties.filter(p => p.propertyId && selectedIds.includes(p.propertyId));
+    
+    if (selectedProps.length === 0) {
+      toast({
+        title: 'No Properties Selected',
+        description: 'Please select properties to enrich.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    for (const prop of selectedProps) {
+      startEnrichment({
+        type: 'property',
+        entityId: prop.propertyKey,
+        entityName: prop.commonName || prop.address,
+        apiEndpoint: '/api/enrich',
+        requestBody: {
+          propertyKey: prop.propertyKey,
+          storeResults: true,
+        },
+      });
+    }
+    
     toast({
       title: 'AI Research Started',
-      description: `Running AI research on ${selectedKeys.length} selected properties...`,
+      description: `Running AI research on ${selectedProps.length} selected properties...`,
     });
-  }, [selectedProperties, toast]);
+    
+    setSelectedProperties(new Set());
+  }, [selectedProperties, filteredProperties, startEnrichment, toast]);
 
   const handleAddToList = useCallback(() => {
     setShowAddToListModal(true);
   }, []);
 
-  const allSelected = paginatedProperties.length > 0 && paginatedProperties.every(p => selectedProperties.has(p.propertyKey));
-  const someSelected = paginatedProperties.some(p => selectedProperties.has(p.propertyKey));
+  const allSelected = paginatedProperties.length > 0 && paginatedProperties.every(p => selectedProperties.has(p.propertyId));
+  const someSelected = paginatedProperties.some(p => selectedProperties.has(p.propertyId));
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -232,17 +264,11 @@ export default function ListPage() {
                 Properties <span className="text-green-600 font-normal">({filteredProperties.length.toLocaleString()})</span>
               </h1>
             </div>
-            {properties.length > 0 && (
+            {properties.length > 0 && hasMore && (
               <div className="flex items-center gap-2 flex-wrap text-sm">
-                {hasMore ? (
-                  <span className="text-gray-600">
-                    Showing first {API_LIMIT} of {totalCount.toLocaleString()} properties
-                  </span>
-                ) : (
-                  <span className="text-gray-500">
-                    {filteredProperties.length !== totalCount && `of ${totalCount.toLocaleString()} total`}
-                  </span>
-                )}
+                <span className="text-gray-600">
+                  Showing first {API_LIMIT} of {totalCount.toLocaleString()} properties
+                </span>
               </div>
             )}
           </div>
@@ -267,9 +293,7 @@ export default function ListPage() {
 
       <div className="flex-1 overflow-auto">
         {isLoading ? (
-          <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600"></div>
-          </div>
+          <TableSkeleton rows={12} />
         ) : filteredProperties.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-gray-500">
             <svg className="w-12 h-12 mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -305,15 +329,15 @@ export default function ListPage() {
                   {paginatedProperties.map((p) => (
                     <tr
                       key={p.propertyKey}
-                      className={`hover:bg-gray-50 cursor-pointer transition-colors ${selectedProperties.has(p.propertyKey) ? 'bg-green-50' : ''}`}
+                      className={`hover:bg-gray-50 cursor-pointer transition-colors ${selectedProperties.has(p.propertyId) ? 'bg-green-50' : ''}`}
                       data-testid={`row-property-${p.propertyKey}`}
                     >
                       <td className="px-4 py-4">
                         <Checkbox
-                          checked={selectedProperties.has(p.propertyKey)}
+                          checked={selectedProperties.has(p.propertyId)}
                           onChange={(e) => {
                             e.stopPropagation();
-                            handleSelectProperty(p.propertyKey, e.target.checked);
+                            handleSelectProperty(p.propertyId, e.target.checked);
                           }}
                           onClick={(e) => e.stopPropagation()}
                           data-testid={`checkbox-property-${p.propertyKey}`}
@@ -410,12 +434,12 @@ export default function ListPage() {
               {paginatedProperties.map((p) => (
                 <div
                   key={p.propertyKey}
-                  className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-start gap-3 ${selectedProperties.has(p.propertyKey) ? 'bg-green-50' : ''}`}
+                  className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-start gap-3 ${selectedProperties.has(p.propertyId) ? 'bg-green-50' : ''}`}
                   data-testid={`card-property-${p.propertyKey}`}
                 >
                   <Checkbox
-                    checked={selectedProperties.has(p.propertyKey)}
-                    onChange={(e) => handleSelectProperty(p.propertyKey, e.target.checked)}
+                    checked={selectedProperties.has(p.propertyId)}
+                    onChange={(e) => handleSelectProperty(p.propertyId, e.target.checked)}
                     className="mt-1 flex-shrink-0"
                     data-testid={`checkbox-mobile-property-${p.propertyKey}`}
                     aria-label={`Select ${p.address}`}

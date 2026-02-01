@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { Filter } from 'lucide-react';
+import { TableSkeleton } from '@/components/PageSkeleton';
 
 interface Organization {
   id: string;
@@ -394,9 +395,7 @@ export default function OrganizationsPage() {
         )}
 
         {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600"></div>
-          </div>
+          <TableSkeleton rows={12} />
         ) : organizations.length === 0 ? (
           <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
             <svg
