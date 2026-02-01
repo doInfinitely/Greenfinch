@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { normalizeCommonName } from '@/lib/normalization';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -14,6 +14,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { useToast } from '@/hooks/use-toast';
 import BulkAddToListModal from '@/components/BulkAddToListModal';
 import { useEnrichment } from '@/hooks/use-enrichment';
+import PropertyFilters, { FilterState, parseFiltersFromParams, serializeFiltersToParams } from '@/components/PropertyFilters';
 
 interface Property {
   propertyKey: string;
@@ -81,22 +82,61 @@ interface PaginationInfo {
 
 export default function ListPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedProperties, setSelectedProperties] = useState<Set<string>>(new Set());
   const [showAddToListModal, setShowAddToListModal] = useState(false);
+  const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
 
   const debouncedQuery = useDebounce(searchQuery, 300);
 
+  const handleFiltersChange = useCallback((newFilters: FilterState) => {
+    setFilters(newFilters);
+    setCurrentPage(1);
+    const params = serializeFiltersToParams(newFilters);
+    const queryString = params.toString();
+    router.replace(`${pathname}${queryString ? `?${queryString}` : ''}`, { scroll: false });
+  }, [router, pathname]);
+
   const { data, isLoading, isFetching } = useQuery<{ properties: Property[]; pagination: PaginationInfo }>({
-    queryKey: ['/api/properties/search', debouncedQuery, currentPage],
+    queryKey: ['/api/properties/search', debouncedQuery, currentPage, filters],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('page', String(currentPage));
       params.set('limit', String(PAGE_SIZE));
       if (debouncedQuery) {
         params.set('q', debouncedQuery);
+      }
+      // Add filter params
+      if (filters.categories.length > 0) {
+        params.set('categories', filters.categories.join(','));
+      }
+      if (filters.subcategories.length > 0) {
+        params.set('subcategories', filters.subcategories.join(','));
+      }
+      if (filters.enrichmentStatus && filters.enrichmentStatus !== 'all') {
+        params.set('enrichmentStatus', filters.enrichmentStatus);
+      }
+      if (filters.customerStatus && filters.customerStatus !== 'all') {
+        params.set('customerStatus', filters.customerStatus);
+      }
+      if (filters.zipCode) {
+        params.set('zipCode', filters.zipCode);
+      }
+      if (filters.minLotAcres !== null) {
+        params.set('minLotAcres', String(filters.minLotAcres));
+      }
+      if (filters.maxLotAcres !== null) {
+        params.set('maxLotAcres', String(filters.maxLotAcres));
+      }
+      if (filters.minNetSqft !== null) {
+        params.set('minNetSqft', String(filters.minNetSqft));
+      }
+      if (filters.maxNetSqft !== null) {
+        params.set('maxNetSqft', String(filters.maxNetSqft));
       }
       const response = await fetch(`/api/properties/search?${params.toString()}`);
       return response.json();
@@ -205,6 +245,7 @@ export default function ListPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
             <div className="relative flex-1 min-w-[200px] md:flex-none">
               <input
                 type="text"

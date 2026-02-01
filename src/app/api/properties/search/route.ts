@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties, propertyPipeline, propertyContacts, propertyOrganizations, organizations } from '@/lib/schema';
-import { sql, ilike, or, and, eq, inArray } from 'drizzle-orm';
+import { sql, ilike, or, and, eq, inArray, isNotNull, isNull, gte, lte } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 1000;
+const SQFT_PER_ACRE = 43560;
 
 function validateLimit(value: string | null): number {
   if (!value) return DEFAULT_LIMIT;
@@ -30,15 +31,26 @@ export async function GET(request: NextRequest) {
     const page = validatePage(searchParams.get('page'));
     const offset = (page - 1) * limit;
     
-    let whereClause = and(
-      eq(properties.isActive, true),
-      sql`(${properties.assetCategory} IS NULL OR ${properties.assetCategory} != 'Single-Family Residential')`
-    );
+    // Filter parameters (matching geojson API)
+    const categories = searchParams.get('categories')?.split(',').filter(Boolean) || [];
+    const subcategories = searchParams.get('subcategories')?.split(',').filter(Boolean) || [];
+    const enrichmentStatus = searchParams.get('enrichmentStatus'); // 'researched' | 'not_researched' | null
+    const customerStatus = searchParams.get('customerStatus'); // 'customers' | 'prospects' | null
+    const zipCode = searchParams.get('zipCode');
+    const minLotAcres = searchParams.get('minLotAcres') ? parseFloat(searchParams.get('minLotAcres')!) : null;
+    const maxLotAcres = searchParams.get('maxLotAcres') ? parseFloat(searchParams.get('maxLotAcres')!) : null;
+    const minNetSqft = searchParams.get('minNetSqft') ? parseFloat(searchParams.get('minNetSqft')!) : null;
+    const maxNetSqft = searchParams.get('maxNetSqft') ? parseFloat(searchParams.get('maxNetSqft')!) : null;
     
+    const conditions: ReturnType<typeof eq>[] = [
+      eq(properties.isActive, true),
+      sql`(${properties.assetCategory} IS NULL OR ${properties.assetCategory} != 'Single-Family Residential')`,
+    ];
+    
+    // Text search
     if (search && search.length > 0) {
       const searchPattern = `%${search}%`;
-      whereClause = and(
-        whereClause,
+      conditions.push(
         or(
           ilike(properties.commonName, searchPattern),
           ilike(properties.regridAddress, searchPattern),
@@ -47,9 +59,73 @@ export async function GET(request: NextRequest) {
           ilike(properties.beneficialOwner, searchPattern),
           ilike(properties.city, searchPattern),
           ilike(properties.zip, searchPattern)
-        )
+        )!
       );
     }
+    
+    // Category filter (supports multiple categories including 'Unknown / Unassigned')
+    if (categories.length > 0) {
+      const hasUnknown = categories.includes('Unknown / Unassigned');
+      const regularCategories = categories.filter(c => c !== 'Unknown / Unassigned');
+      
+      if (hasUnknown && regularCategories.length > 0) {
+        conditions.push(or(
+          inArray(properties.assetCategory, regularCategories),
+          isNull(properties.assetCategory)
+        )!);
+      } else if (hasUnknown) {
+        conditions.push(isNull(properties.assetCategory));
+      } else {
+        conditions.push(inArray(properties.assetCategory, regularCategories));
+      }
+    }
+    
+    // Subcategory filter
+    if (subcategories.length > 0) {
+      conditions.push(inArray(properties.assetSubcategory, subcategories));
+    }
+    
+    // Enrichment status filter
+    if (enrichmentStatus === 'researched') {
+      conditions.push(isNotNull(properties.lastEnrichedAt));
+    } else if (enrichmentStatus === 'not_researched') {
+      conditions.push(isNull(properties.lastEnrichedAt));
+    }
+    
+    // Customer status filter
+    if (customerStatus === 'customers') {
+      conditions.push(eq(properties.isCurrentCustomer, true));
+    } else if (customerStatus === 'prospects') {
+      conditions.push(or(
+        eq(properties.isCurrentCustomer, false),
+        isNull(properties.isCurrentCustomer)
+      )!);
+    }
+    
+    // Zip code filter
+    if (zipCode) {
+      conditions.push(eq(properties.zip, zipCode));
+    }
+    
+    // Lot size filters (convert acres to sqft)
+    if (minLotAcres !== null) {
+      const minSqft = minLotAcres * SQFT_PER_ACRE;
+      conditions.push(gte(properties.lotSqft, minSqft));
+    }
+    if (maxLotAcres !== null) {
+      const maxSqft = maxLotAcres * SQFT_PER_ACRE;
+      conditions.push(lte(properties.lotSqft, maxSqft));
+    }
+    
+    // Building size filters
+    if (minNetSqft !== null) {
+      conditions.push(gte(properties.buildingSqft, minNetSqft));
+    }
+    if (maxNetSqft !== null) {
+      conditions.push(lte(properties.buildingSqft, maxNetSqft));
+    }
+    
+    const whereClause = and(...conditions);
     
     // Run count and data queries in parallel
     const [countResult, results] = await Promise.all([
