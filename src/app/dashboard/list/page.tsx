@@ -126,6 +126,9 @@ export default function ListPage() {
       if (filters.zipCode) {
         params.set('zipCode', filters.zipCode);
       }
+      if (filters.buildingClasses && filters.buildingClasses.length > 0) {
+        params.set('buildingClasses', filters.buildingClasses.join(','));
+      }
       if (filters.minLotAcres !== null) {
         params.set('minLotAcres', String(filters.minLotAcres));
       }
@@ -291,11 +294,11 @@ export default function ListPage() {
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contacts</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Orgs</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lot</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -343,55 +346,23 @@ export default function ListPage() {
                       </td>
                       <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
                         {p.category && (
-                          <span className="inline-block px-2 py-1 text-xs bg-green-100 text-green-700 rounded">
+                          <span className="inline-block px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded-md font-medium">
                             {p.category}
                           </span>
                         )}
                         {p.subcategory && (
-                          <p className="text-xs text-gray-500 mt-1">{p.subcategory}</p>
-                        )}
-                      </td>
-                      <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
-                        {p.contactCount > 0 ? (
-                          <div className="flex items-center gap-1 text-sm text-gray-600">
-                            <Users className="w-4 h-4" />
-                            <span>{p.contactCount}</span>
+                          <div className="mt-1">
+                            <span className="inline-block px-2 py-0.5 text-[10px] bg-gray-100 text-gray-600 rounded-md">
+                              {p.subcategory}
+                            </span>
                           </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">-</span>
                         )}
-                      </td>
-                      <td className="px-4 py-4" onClick={() => handleRowClick(p.propertyKey)}>
-                        {p.organizations.length > 0 ? (
-                          <div className="flex flex-wrap gap-1 max-w-[140px]">
-                            {p.organizations.slice(0, 2).map((org) => (
-                              <span
-                                key={org.id}
-                                className="inline-block px-2 py-0.5 text-xs bg-blue-50 text-blue-700 rounded truncate max-w-[100px]"
-                                title={org.name}
-                              >
-                                {org.name}
-                              </span>
-                            ))}
-                            {p.organizations.length > 2 && (
-                              <span className="text-xs text-gray-500">+{p.organizations.length - 2}</span>
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
-                        {formatLotSize(p.lotSqft)}
-                      </td>
-                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
-                        {p.city}, {p.zip}
                       </td>
                       <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
                         {(() => {
                           const status = getStatusDisplay(p);
                           return (
-                            <span className={`inline-block px-2 py-1 text-xs rounded ${status.className}`}>
+                            <span className={`inline-block px-2 py-1 text-xs rounded-md font-medium ${status.className}`}>
                               {status.label}
                             </span>
                           );

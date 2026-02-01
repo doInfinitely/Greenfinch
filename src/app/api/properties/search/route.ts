@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
     const enrichmentStatus = searchParams.get('enrichmentStatus'); // 'researched' | 'not_researched' | null
     const customerStatus = searchParams.get('customerStatus'); // 'customers' | 'prospects' | null
     const zipCode = searchParams.get('zipCode');
+    const buildingClasses = searchParams.get('buildingClasses')?.split(',').filter(Boolean) || [];
     const minLotAcres = searchParams.get('minLotAcres') ? parseFloat(searchParams.get('minLotAcres')!) : null;
     const maxLotAcres = searchParams.get('maxLotAcres') ? parseFloat(searchParams.get('maxLotAcres')!) : null;
     const minNetSqft = searchParams.get('minNetSqft') ? parseFloat(searchParams.get('minNetSqft')!) : null;
@@ -93,18 +94,38 @@ export async function GET(request: NextRequest) {
     }
     
     // Customer status filter
-    if (customerStatus === 'customers') {
-      conditions.push(eq(properties.isCurrentCustomer, true));
-    } else if (customerStatus === 'prospects') {
-      conditions.push(or(
-        eq(properties.isCurrentCustomer, false),
-        isNull(properties.isCurrentCustomer)
-      )!);
+    if (customerStatus && customerStatus !== 'all') {
+      if (customerStatus === 'prospect') {
+        conditions.push(sql`NOT EXISTS (
+          SELECT 1 FROM ${propertyPipeline} 
+          WHERE ${propertyPipeline.propertyId} = ${properties.id} 
+          AND ${propertyPipeline.clerkOrgId} = ${orgId}
+        )`);
+      } else if (customerStatus === 'won') {
+        conditions.push(sql`EXISTS (
+          SELECT 1 FROM ${propertyPipeline} 
+          WHERE ${propertyPipeline.propertyId} = ${properties.id} 
+          AND ${propertyPipeline.clerkOrgId} = ${orgId}
+          AND ${propertyPipeline.status} = 'won'
+        )`);
+      } else {
+        conditions.push(sql`EXISTS (
+          SELECT 1 FROM ${propertyPipeline} 
+          WHERE ${propertyPipeline.propertyId} = ${properties.id} 
+          AND ${propertyPipeline.clerkOrgId} = ${orgId}
+          AND ${propertyPipeline.status} = ${customerStatus}
+        )`);
+      }
     }
     
     // Zip code filter
     if (zipCode) {
       conditions.push(eq(properties.zip, zipCode));
+    }
+
+    // Building class filter
+    if (buildingClasses.length > 0) {
+      conditions.push(inArray(properties.propertyClass, buildingClasses));
     }
     
     // Lot size filters (convert acres to sqft)

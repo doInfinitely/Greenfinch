@@ -17,7 +17,7 @@ export interface FilterState {
   organizationId: string | null;
   contactId: string | null;
   enrichmentStatus: 'all' | 'researched' | 'not_researched';
-  customerStatus: 'all' | 'customers' | 'prospects';
+  customerStatus: string;
   zipCode: string | null;
   // Legacy fields for backwards compatibility
   minLotSqft: number | null;
@@ -108,7 +108,7 @@ export function parseFiltersFromParams(searchParams: URLSearchParams): FilterSta
   const organizationId = searchParams.get('organizationId');
   const contactId = searchParams.get('contactId');
   const enrichmentStatus = searchParams.get('enrichmentStatus') as 'all' | 'researched' | 'not_researched' | null;
-  const customerStatus = searchParams.get('customerStatus') as 'all' | 'customers' | 'prospects' | null;
+  const customerStatus = searchParams.get('customerStatus');
   const zipCode = searchParams.get('zipCode');
 
   const parsedMinLotAcres = minLotAcres ? parseFloat(minLotAcres) : null;
@@ -493,7 +493,48 @@ export default function PropertyFilters({
         </div>
       </div>
 
-      {/* Size Filters */}
+      <div className="border-b border-gray-100 pb-3">
+        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Customer Status</label>
+        <select
+          value={filters.customerStatus}
+          onChange={(e) => onFiltersChange({ ...filters, customerStatus: e.target.value })}
+          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white"
+          data-testid="select-customer-status"
+        >
+          <option value="all">All Statuses</option>
+          <option value="prospect">Prospect</option>
+          <option value="qualified">Qualified</option>
+          <option value="proposal">Proposal</option>
+          <option value="negotiation">Negotiation</option>
+          <option value="won">Won (Current Customer)</option>
+          <option value="lost">Lost</option>
+          <option value="disqualified">Disqualified</option>
+        </select>
+      </div>
+
+      {/* Building Class Filter */}
+      <div className="border-b border-gray-100 pb-2">
+        <SectionHeader 
+          id="buildingClass" 
+          title="Building Class" 
+          count={filters.buildingClasses?.length ?? 0}
+          onClear={() => handleClearArray('buildingClasses')}
+        />
+        {openSections.has('buildingClass') && (
+          <div className="mt-2 space-y-1">
+            {availableBuildingClasses.map((bc) => (
+              <label key={bc} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
+                <Checkbox
+                  checked={filters.buildingClasses?.includes(bc) ?? false}
+                  onChange={() => handleArrayToggle('buildingClasses', bc)}
+                  data-testid={`checkbox-building-class-${bc.toLowerCase().replace(/\+/g, '-plus')}`}
+                />
+                <span className="text-gray-700">{bc}</span>
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
       <div className="border-b border-gray-100 pb-2">
         <SectionHeader 
           id="size" 
