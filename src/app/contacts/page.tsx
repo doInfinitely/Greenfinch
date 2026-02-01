@@ -664,23 +664,28 @@ export default function ContactsPage() {
                           >
                             {contact.email ? (
                               <div className="flex items-center gap-1.5">
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    window.location.href = `mailto:${contact.email}`;
-                                  }}
-                                  className="text-sm text-green-600 hover:text-green-700 hover:underline cursor-pointer"
+                                <a
+                                  href={`mailto:${contact.email}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-sm text-green-600 underline"
+                                  data-testid={`link-email-${contact.id}`}
                                 >
                                   {contact.email}
-                                </span>
+                                </a>
                                 {contact.emailStatus?.toLowerCase() === 'valid' && (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" title="Verified" />
+                                  <span title="Verified" aria-label="Email verified" data-testid={`icon-email-valid-${contact.id}`}>
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                                  </span>
                                 )}
                                 {contact.emailStatus?.toLowerCase() === 'invalid' && (
-                                  <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" title="Invalid" />
+                                  <span title="Invalid" aria-label="Email invalid" data-testid={`icon-email-invalid-${contact.id}`}>
+                                    <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                                  </span>
                                 )}
                                 {(contact.emailStatus?.toLowerCase() === 'pending' || contact.emailStatus?.toLowerCase() === 'unverified') && (
-                                  <AlertCircle className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" title="Pending verification" />
+                                  <span title="Pending verification" aria-label="Email pending verification" data-testid={`icon-email-pending-${contact.id}`}>
+                                    <AlertCircle className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+                                  </span>
                                 )}
                               </div>
                             ) : (
@@ -700,15 +705,14 @@ export default function ContactsPage() {
                                 <div className="flex flex-col gap-0.5">
                                   {phones.map((p, idx) => (
                                     <div key={idx} className="flex items-center gap-1.5">
-                                      <span
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          window.location.href = `tel:${p.number}`;
-                                        }}
-                                        className="text-sm text-green-600 hover:text-green-700 hover:underline cursor-pointer"
+                                      <a
+                                        href={`tel:${p.number}`}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="text-sm text-green-600 underline"
+                                        data-testid={`link-phone-${contact.id}-${idx}`}
                                       >
                                         {p.number}
-                                      </span>
+                                      </a>
                                       <span className="text-xs text-gray-400">({p.label})</span>
                                     </div>
                                   ))}
@@ -763,7 +767,12 @@ export default function ContactsPage() {
                                 <Linkedin className="w-5 h-5" />
                               </a>
                             ) : (
-                              <span className="text-gray-300">
+                              <span 
+                                className="text-gray-300" 
+                                title="No LinkedIn profile"
+                                aria-label="No LinkedIn profile available"
+                                data-testid={`icon-linkedin-unavailable-${contact.id}`}
+                              >
                                 <Linkedin className="w-5 h-5" />
                               </span>
                             )}
