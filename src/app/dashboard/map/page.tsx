@@ -74,6 +74,7 @@ export default function MapPage() {
   const searchParams = useSearchParams();
   const { toast } = useToast();
   const [config, setConfig] = useState<{ mapboxToken: string; regridToken: string; regridTileUrl: string } | null>(null);
+  const [configLoading, setConfigLoading] = useState(true);
   const [allProperties, setAllProperties] = useState<PropertyFeature[]>([]);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 32.8639, lon: -96.7784 });
@@ -127,7 +128,8 @@ export default function MapPage() {
   useEffect(() => {
     fetch('/api/config').then(r => r.json()).then(configData => {
       setConfig({ mapboxToken: configData.mapboxToken, regridToken: configData.regridToken, regridTileUrl: configData.regridTileUrl });
-    }).catch(() => {});
+      setConfigLoading(false);
+    }).catch(() => setConfigLoading(false));
   }, []);
 
   // Fetch properties when filters change - applies all filters server-side
@@ -179,6 +181,14 @@ export default function MapPage() {
       return lat >= bounds.south && lat <= bounds.north && lng >= bounds.west && lng <= bounds.east;
     });
   }, [bounds, allProperties]);
+
+  if (configLoading) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-gray-50">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600"></div>
+      </div>
+    );
+  }
 
   if (!config?.mapboxToken) {
     return (
