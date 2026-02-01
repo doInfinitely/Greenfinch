@@ -320,7 +320,7 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
               ? { 
                   ...i, 
                   pollConfig: { ...i.pollConfig!, currentAttempt: newAttempt },
-                  message: `Checking for results... (${newAttempt}/${maxAttempts})`
+                  message: `Checking for results...`
                 }
               : i
           ));
