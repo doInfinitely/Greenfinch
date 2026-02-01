@@ -184,6 +184,7 @@ export const properties = pgTable('properties', {
   lastRegridUpdate: timestamp('last_regrid_update'),
   lastEnrichedAt: timestamp('last_enriched_at'),
   enrichmentStatus: text('enrichment_status').default('pending'),
+  isCurrentCustomer: boolean('is_current_customer').default(false),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
   isActive: boolean('is_active').default(true),
