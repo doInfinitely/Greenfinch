@@ -1,27 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
-import { eq, isNotNull, and, or, sql } from 'drizzle-orm';
+import { eq, isNotNull, and, or, sql, inArray, gte, lte, isNull } from 'drizzle-orm';
 import { normalizeCommonName } from '@/lib/normalization';
 
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 100;
-
-function validateLimit(value: string | null): number {
-  if (!value) return DEFAULT_LIMIT;
-  const parsed = parseInt(value, 10);
-  if (isNaN(parsed) || parsed < 1) return DEFAULT_LIMIT;
-  return Math.min(parsed, MAX_LIMIT);
-}
+const SQFT_PER_ACRE = 43560;
 
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
-    const category = searchParams.get('category');
-    const subcategory = searchParams.get('subcategory');
-    const enriched = searchParams.get('enriched');
+    
+    // Filter parameters
+    const categories = searchParams.get('categories')?.split(',').filter(Boolean) || [];
+    const subcategories = searchParams.get('subcategories')?.split(',').filter(Boolean) || [];
+    const enrichmentStatus = searchParams.get('enrichmentStatus'); // 'researched' | 'not_researched' | null
+    const customerStatus = searchParams.get('customerStatus'); // 'customers' | 'prospects' | null
     const zipCode = searchParams.get('zipCode');
-    const limit = validateLimit(searchParams.get('limit'));
+    const minLotAcres = searchParams.get('minLotAcres') ? parseFloat(searchParams.get('minLotAcres')!) : null;
+    const maxLotAcres = searchParams.get('maxLotAcres') ? parseFloat(searchParams.get('maxLotAcres')!) : null;
+    const minNetSqft = searchParams.get('minNetSqft') ? parseFloat(searchParams.get('minNetSqft')!) : null;
+    const maxNetSqft = searchParams.get('maxNetSqft') ? parseFloat(searchParams.get('maxNetSqft')!) : null;
+    
+    // Optional limit - if not provided, return all matching properties
+    const limitParam = searchParams.get('limit');
+    const limit = limitParam ? parseInt(limitParam, 10) : null;
 
     const conditions = [
       isNotNull(properties.lat),
@@ -30,55 +32,99 @@ export async function GET(request: NextRequest) {
       eq(properties.isParentProperty, true),
     ];
 
-    if (category) {
-      conditions.push(eq(properties.assetCategory, category));
+    // Category filter (supports multiple categories including 'Unknown / Unassigned')
+    if (categories.length > 0) {
+      const hasUnknown = categories.includes('Unknown / Unassigned');
+      const regularCategories = categories.filter(c => c !== 'Unknown / Unassigned');
+      
+      if (hasUnknown && regularCategories.length > 0) {
+        conditions.push(or(
+          inArray(properties.assetCategory, regularCategories),
+          isNull(properties.assetCategory)
+        )!);
+      } else if (hasUnknown) {
+        conditions.push(isNull(properties.assetCategory));
+      } else {
+        conditions.push(inArray(properties.assetCategory, regularCategories));
+      }
     }
-    if (subcategory) {
-      conditions.push(eq(properties.assetSubcategory, subcategory));
+    
+    // Subcategory filter
+    if (subcategories.length > 0) {
+      conditions.push(inArray(properties.assetSubcategory, subcategories));
     }
-    if (enriched === 'true') {
+    
+    // Enrichment status filter
+    if (enrichmentStatus === 'researched') {
       conditions.push(isNotNull(properties.lastEnrichedAt));
-    } else if (enriched === 'false') {
-      conditions.push(sql`${properties.lastEnrichedAt} IS NULL`);
+    } else if (enrichmentStatus === 'not_researched') {
+      conditions.push(isNull(properties.lastEnrichedAt));
     }
+    
+    // Customer status filter
+    if (customerStatus === 'customers') {
+      conditions.push(eq(properties.isCurrentCustomer, true));
+    } else if (customerStatus === 'prospects') {
+      conditions.push(or(
+        eq(properties.isCurrentCustomer, false),
+        isNull(properties.isCurrentCustomer)
+      )!);
+    }
+    
+    // Zip code filter
     if (zipCode) {
       conditions.push(eq(properties.zip, zipCode));
     }
+    
+    // Lot size filters (convert acres to sqft)
+    if (minLotAcres !== null) {
+      const minSqft = minLotAcres * SQFT_PER_ACRE;
+      conditions.push(gte(properties.lotSqft, minSqft));
+    }
+    if (maxLotAcres !== null) {
+      const maxSqft = maxLotAcres * SQFT_PER_ACRE;
+      conditions.push(lte(properties.lotSqft, maxSqft));
+    }
+    
+    // Building size filters
+    if (minNetSqft !== null) {
+      conditions.push(gte(properties.buildingSqft, minNetSqft));
+    }
+    if (maxNetSqft !== null) {
+      conditions.push(lte(properties.buildingSqft, maxNetSqft));
+    }
 
-    const [countResult, allProperties] = await Promise.all([
-      db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(properties)
-        .where(and(...conditions)),
-      db
-        .select({
-          propertyKey: properties.propertyKey,
-          regridAddress: properties.regridAddress,
-          validatedAddress: properties.validatedAddress,
-          city: properties.city,
-          zip: properties.zip,
-          lat: properties.lat,
-          lon: properties.lon,
-          regridOwner: properties.regridOwner,
-          commonName: properties.commonName,
-          dcadBizName: properties.dcadBizName,
-          assetCategory: properties.assetCategory,
-          assetSubcategory: properties.assetSubcategory,
-          operationalStatus: properties.operationalStatus,
-          lastEnrichedAt: properties.lastEnrichedAt,
-          lotSqft: properties.lotSqft,
-          buildingSqft: properties.buildingSqft,
-          propertyClass: properties.propertyClass,
-          sourceLlUuid: properties.sourceLlUuid,
-          isCurrentCustomer: sql<boolean>`coalesce("properties"."is_current_customer", false)`,
-        })
-        .from(properties)
-        .where(and(...conditions))
-        .limit(limit),
-    ]);
+    // Build query - with or without limit
+    const query = db
+      .select({
+        propertyKey: properties.propertyKey,
+        regridAddress: properties.regridAddress,
+        validatedAddress: properties.validatedAddress,
+        city: properties.city,
+        zip: properties.zip,
+        lat: properties.lat,
+        lon: properties.lon,
+        regridOwner: properties.regridOwner,
+        commonName: properties.commonName,
+        dcadBizName: properties.dcadBizName,
+        assetCategory: properties.assetCategory,
+        assetSubcategory: properties.assetSubcategory,
+        operationalStatus: properties.operationalStatus,
+        lastEnrichedAt: properties.lastEnrichedAt,
+        lotSqft: properties.lotSqft,
+        buildingSqft: properties.buildingSqft,
+        propertyClass: properties.propertyClass,
+        sourceLlUuid: properties.sourceLlUuid,
+        isCurrentCustomer: sql<boolean>`coalesce("properties"."is_current_customer", false)`,
+      })
+      .from(properties)
+      .where(and(...conditions));
 
-    const totalCount = countResult[0]?.count ?? 0;
-    const hasMore = totalCount > limit;
+    const allProperties = limit 
+      ? await query.limit(limit)
+      : await query;
+
+    const totalCount = allProperties.length;
 
     const features = allProperties
       .filter(p => p.lat && p.lon)
@@ -117,8 +163,6 @@ export async function GET(request: NextRequest) {
       type: 'FeatureCollection',
       features,
       totalCount,
-      hasMore,
-      limit,
     });
   } catch (error) {
     console.error('GeoJSON error:', error);

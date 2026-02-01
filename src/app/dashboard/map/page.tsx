@@ -5,7 +5,7 @@ import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import type { MapBounds } from '@/map/DashboardMap';
 import type { MapCanvasHandle } from '@/map/MapCanvas';
-import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, serializeFiltersToParams, parseFiltersFromParams } from '@/components/PropertyFilters';
+import PropertyFilters, { FilterState, serializeFiltersToParams, parseFiltersFromParams } from '@/components/PropertyFilters';
 import MapSearchBar from '@/components/MapSearchBar';
 import { useToast } from '@/hooks/use-toast';
 
@@ -80,6 +80,42 @@ export default function MapPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
 
+  // Build API URL with all active filters
+  const buildGeojsonUrl = useCallback((filterState: FilterState): string => {
+    const params = new URLSearchParams();
+    
+    if (filterState.categories.length > 0) {
+      params.set('categories', filterState.categories.join(','));
+    }
+    if (filterState.subcategories.length > 0) {
+      params.set('subcategories', filterState.subcategories.join(','));
+    }
+    if (filterState.enrichmentStatus !== 'all') {
+      params.set('enrichmentStatus', filterState.enrichmentStatus);
+    }
+    if (filterState.customerStatus !== 'all') {
+      params.set('customerStatus', filterState.customerStatus);
+    }
+    if (filterState.zipCode) {
+      params.set('zipCode', filterState.zipCode);
+    }
+    if (filterState.minLotAcres) {
+      params.set('minLotAcres', String(filterState.minLotAcres));
+    }
+    if (filterState.maxLotAcres) {
+      params.set('maxLotAcres', String(filterState.maxLotAcres));
+    }
+    if (filterState.minNetSqft) {
+      params.set('minNetSqft', String(filterState.minNetSqft));
+    }
+    if (filterState.maxNetSqft) {
+      params.set('maxNetSqft', String(filterState.maxNetSqft));
+    }
+    
+    const queryString = params.toString();
+    return `/api/properties/geojson${queryString ? `?${queryString}` : ''}`;
+  }, []);
+
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
     const params = serializeFiltersToParams(newFilters);
@@ -87,16 +123,25 @@ export default function MapPage() {
     router.replace(`${pathname}${queryString ? `?${queryString}` : ''}`, { scroll: false });
   }, [router, pathname]);
 
+  // Fetch config on mount
   useEffect(() => {
-    Promise.all([
-      fetch('/api/config').then(r => r.json()),
-      fetch('/api/properties/geojson?limit=100').then(r => r.json()),
-    ]).then(([configData, geoData]) => {
+    fetch('/api/config').then(r => r.json()).then(configData => {
       setConfig({ mapboxToken: configData.mapboxToken, regridToken: configData.regridToken, regridTileUrl: configData.regridTileUrl });
-      setAllProperties(geoData.features || []);
-      setIsLoading(false);
-    }).catch(() => setIsLoading(false));
+    }).catch(() => {});
   }, []);
+
+  // Fetch properties when filters change - applies all filters server-side
+  useEffect(() => {
+    setIsLoading(true);
+    const url = buildGeojsonUrl(filters);
+    fetch(url)
+      .then(r => r.json())
+      .then(geoData => {
+        setAllProperties(geoData.features || []);
+        setIsLoading(false);
+      })
+      .catch(() => setIsLoading(false));
+  }, [filters, buildGeojsonUrl]);
 
 
   const handleBoundsChange = useCallback((newBounds: MapBounds) => {
@@ -125,57 +170,15 @@ export default function MapPage() {
     }
   }, []);
 
-  const filteredProperties = useMemo(() => {
-    return allProperties.filter((f) => {
-      // Lot size filter
-      const lotAcres = f.properties.lotSqft / 43560;
-      if (filters.minLotAcres && lotAcres < filters.minLotAcres) return false;
-      if (filters.maxLotAcres && lotAcres > filters.maxLotAcres) return false;
-      
-      // Building sqft filter
-      if (filters.minNetSqft && (f.properties.buildingSqft || 0) < filters.minNetSqft) return false;
-      if (filters.maxNetSqft && (f.properties.buildingSqft || 0) > filters.maxNetSqft) return false;
-      
-      // Category filter - supports "Unknown / Unassigned" for null categories
-      if (filters.categories.length > 0) {
-        const hasUnknown = filters.categories.includes(UNKNOWN_CATEGORY);
-        const matchesCategory = f.properties.category && filters.categories.includes(f.properties.category);
-        const matchesUnknown = hasUnknown && !f.properties.category;
-        if (!matchesCategory && !matchesUnknown) {
-          return false;
-        }
-      }
-      
-      // Zip code filter
-      if (filters.zipCode) {
-        if (!f.properties.zip || !f.properties.zip.includes(filters.zipCode)) return false;
-      }
-      
-      // Enrichment status filter
-      if (filters.enrichmentStatus === 'researched') {
-        if (!f.properties.enriched) return false;
-      } else if (filters.enrichmentStatus === 'not_researched') {
-        if (f.properties.enriched) return false;
-      }
-      
-      // Customer status filter
-      if (filters.customerStatus === 'customers') {
-        if (!f.properties.isCurrentCustomer) return false;
-      } else if (filters.customerStatus === 'prospects') {
-        if (f.properties.isCurrentCustomer) return false;
-      }
-      
-      return true;
-    });
-  }, [allProperties, filters]);
-
+  // All filtering is done server-side - allProperties already contains only matching properties
+  // visibleProperties filters to what's in the current map bounds (for sidebar display)
   const visibleProperties = useMemo(() => {
-    if (!bounds || filteredProperties.length === 0) return [];
-    return filteredProperties.filter((f) => {
+    if (!bounds || allProperties.length === 0) return [];
+    return allProperties.filter((f) => {
       const [lng, lat] = f.geometry.coordinates;
       return lat >= bounds.south && lat <= bounds.north && lng >= bounds.west && lng <= bounds.east;
     });
-  }, [bounds, filteredProperties]);
+  }, [bounds, allProperties]);
 
   if (isLoading) {
     return (
@@ -201,7 +204,7 @@ export default function MapPage() {
           accessToken={config.mapboxToken}
           regridToken={config.regridToken}
           regridTileUrl={config.regridTileUrl}
-          properties={filteredProperties}
+          properties={allProperties}
           onBoundsChange={handleBoundsChange}
           onPropertyClick={handlePropertyClick}
         />
@@ -216,11 +219,10 @@ export default function MapPage() {
           <h2 className="font-semibold text-gray-900">
             Properties in View <span className="text-green-600 font-normal">({visibleProperties.length})</span>
           </h2>
-          {(filters.minLotAcres || filters.maxLotAcres || filters.categories.length > 0 || filters.organizationId || filters.contactId || filters.enrichmentStatus !== 'all' || filters.zipCode) && (
-            <p className="text-xs text-gray-500 mt-1">
-              Filtered from {allProperties.length} total
-            </p>
-          )}
+          <p className="text-xs text-gray-500 mt-1">
+            {allProperties.length} matching filters
+            {visibleProperties.length > 100 && ` (showing first 100)`}
+          </p>
         </div>
         <div className="flex-1 overflow-y-auto">
           {visibleProperties.length === 0 ? (
@@ -231,7 +233,7 @@ export default function MapPage() {
               <p>Pan or zoom to see properties</p>
             </div>
           ) : (
-            visibleProperties.map((f, idx) => (
+            visibleProperties.slice(0, 100).map((f, idx) => (
               <button
                 key={`property-${f.properties.propertyKey || idx}-${idx}`}
                 onClick={() => handlePropertyClick(f.properties.propertyKey)}
