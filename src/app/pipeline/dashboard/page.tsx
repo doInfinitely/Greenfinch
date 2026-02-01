@@ -499,7 +499,7 @@ export default function PipelineDashboard() {
                       {lists.map((list) => (
                         <Link
                           key={list.id}
-                          href={`/lists?id=${list.id}`}
+                          href={`/lists/${list.id}`}
                           className="flex items-center gap-3 p-3 border rounded-lg hover-elevate group"
                           data-testid={`list-item-${list.id}`}
                         >
