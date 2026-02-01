@@ -17,6 +17,18 @@ interface DashboardData {
   wonThisMonth: number;
   wonValue: number;
   conversionRate: number;
+  funnel?: {
+    qualifiedToAttempted: number;
+    attemptedToActive: number;
+    activeToWon: number;
+  };
+  counts?: {
+    qualified: number;
+    attemptedContact: number;
+    activeOpportunity: number;
+    won: number;
+    lost: number;
+  };
 }
 
 interface OrgMember {
@@ -68,6 +80,7 @@ export default function PipelineDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [ownerFilter, setOwnerFilter] = useState<string>('mine');
+  const [timeframe, setTimeframe] = useState<string>('month');
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
   const [activity, setActivity] = useState<ActivityData | null>(null);
   const [activityLoading, setActivityLoading] = useState(true);
@@ -105,7 +118,9 @@ export default function PipelineDashboard() {
   const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
+      setError(null);
       const params = new URLSearchParams();
+      params.set('timeframe', timeframe);
       if (isAdmin) {
         if (ownerFilter === 'all') {
           params.set('owner', 'all');
@@ -126,7 +141,7 @@ export default function PipelineDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [ownerFilter, isAdmin]);
+  }, [ownerFilter, timeframe, isAdmin]);
 
   useEffect(() => {
     fetchDashboardData();
@@ -139,34 +154,47 @@ export default function PipelineDashboard() {
           <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <h1 className="text-2xl font-bold text-gray-900">Pipeline Dashboard</h1>
             
-            {isAdmin && (
-              <div className="flex items-center gap-2">
-                <Users className="w-4 h-4 text-muted-foreground" />
-                <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-                  <SelectTrigger className="w-48" data-testid="select-owner-filter">
-                    <SelectValue placeholder="Filter by owner" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="mine">My Pipeline</SelectItem>
-                    <SelectItem value="all">All Team Members</SelectItem>
-                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {orgMembers.map((member) => (
-                      <SelectItem key={member.id} value={member.id}>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="w-5 h-5">
-                            <AvatarImage src={member.profileImageUrl} />
-                            <AvatarFallback className="text-xs">
-                              {member.displayName?.charAt(0) || '?'}
-                            </AvatarFallback>
-                          </Avatar>
-                          {member.displayName}
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Select value={timeframe} onValueChange={setTimeframe}>
+                <SelectTrigger className="w-32" data-testid="select-timeframe">
+                  <SelectValue placeholder="Timeframe" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="month">This Month</SelectItem>
+                  <SelectItem value="quarter">This Quarter</SelectItem>
+                  <SelectItem value="year">This Year</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {isAdmin && (
+                <div className="flex items-center gap-2">
+                  <Users className="w-4 h-4 text-muted-foreground" />
+                  <Select value={ownerFilter} onValueChange={setOwnerFilter}>
+                    <SelectTrigger className="w-48" data-testid="select-owner-filter">
+                      <SelectValue placeholder="Filter by owner" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mine">My Pipeline</SelectItem>
+                      <SelectItem value="all">All Team Members</SelectItem>
+                      <SelectItem value="unassigned">Unassigned</SelectItem>
+                      {orgMembers.map((member) => (
+                        <SelectItem key={member.id} value={member.id}>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="w-5 h-5">
+                              <AvatarImage src={member.profileImageUrl} />
+                              <AvatarFallback className="text-xs">
+                                {member.displayName?.charAt(0) || '?'}
+                              </AvatarFallback>
+                            </Avatar>
+                            {member.displayName}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
           </div>
           
           {loading ? (
@@ -225,7 +253,7 @@ export default function PipelineDashboard() {
                 
                 <Card data-testid="card-conversion-rate">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Conversion Rate</CardTitle>
+                    <CardTitle className="text-sm font-medium">Close Rate</CardTitle>
                     <BarChart3 className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
@@ -233,13 +261,49 @@ export default function PipelineDashboard() {
                       {data?.conversionRate || 0}%
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      Qualified to won
+                      Won / (Won + Lost)
                     </p>
                   </CardContent>
                 </Card>
               </div>
 
-              {(data?.activeOpportunities || 0) === 0 && (
+              {data?.funnel && (
+                <Card className="mb-6" data-testid="card-funnel-metrics">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base font-medium">Pipeline Funnel</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <span className="text-2xl font-bold text-blue-600" data-testid="text-qualified-to-attempted">
+                          {data.funnel.qualifiedToAttempted}%
+                        </span>
+                        <span className="text-xs text-muted-foreground text-center mt-1">
+                          Qualified → Attempted Contact
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <span className="text-2xl font-bold text-purple-600" data-testid="text-attempted-to-active">
+                          {data.funnel.attemptedToActive}%
+                        </span>
+                        <span className="text-xs text-muted-foreground text-center mt-1">
+                          Attempted → Active Opp
+                        </span>
+                      </div>
+                      <div className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
+                        <span className="text-2xl font-bold text-green-600" data-testid="text-active-to-won">
+                          {data.funnel.activeToWon}%
+                        </span>
+                        <span className="text-xs text-muted-foreground text-center mt-1">
+                          Active Opp → Won
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {(data?.activeOpportunities || 0) === 0 && !data?.counts?.won && !data?.counts?.lost && (
                 <div className="text-center py-12">
                   <p className="text-muted-foreground">
                     Start qualifying properties to see your pipeline analytics here.
