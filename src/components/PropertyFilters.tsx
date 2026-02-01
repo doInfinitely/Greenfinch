@@ -733,10 +733,10 @@ export default function PropertyFilters({
     <div className="relative" ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className={`flex items-center gap-2 px-3 py-2 border rounded-lg text-sm transition-colors ${
+        className={`flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-full transition-all ${
           activeFilterCount > 0
-            ? 'border-green-500 bg-green-50 text-green-700'
-            : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
+            ? 'bg-green-100 text-green-700 shadow-sm'
+            : 'bg-gray-100 text-gray-500 hover:text-gray-700 hover:bg-gray-200'
         }`}
         data-testid="button-open-filters"
         aria-label="Open filters"
