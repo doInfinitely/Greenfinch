@@ -226,7 +226,7 @@ export class DashboardMap {
           'source-layer': 'parcels',
           paint: {
             'line-color': '#22c55e', // Bright green (green-500)
-            'line-width': 1.5,
+            'line-width': 1,
           },
         });
       }
@@ -241,7 +241,7 @@ export class DashboardMap {
           source: 'properties',
           filter: ['has', 'point_count'],
           paint: {
-            'circle-color': '#16a34a', // Original green (green-600)
+            'circle-color': '#eab308', // Yellow (yellow-500) for better visibility
             'circle-radius': ['step', ['get', 'point_count'], 24, 50, 32, 200, 42],
           },
         });
@@ -269,7 +269,7 @@ export class DashboardMap {
           source: 'properties',
           filter: ['!', ['has', 'point_count']],
           paint: {
-            'circle-color': '#16a34a', // Original green (green-600)
+            'circle-color': '#eab308', // Yellow (yellow-500) for better visibility
             'circle-radius': 8,
             'circle-stroke-width': 2,
             'circle-stroke-color': '#ffffff',
