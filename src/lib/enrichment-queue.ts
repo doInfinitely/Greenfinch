@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import pLimit from 'p-limit';
 import { db } from './db';
 import { properties } from './schema';
-import { eq, or, isNull, inArray } from 'drizzle-orm';
+import { eq, or, and, isNull, inArray } from 'drizzle-orm';
 import { enrichAndStoreProperty } from './enrichment';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
@@ -408,11 +408,15 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
       });
       propertyKeysToEnrich = propertiesFromDb.map(p => p.propertyKey);
     } else if (options.onlyUnenriched) {
+      // Only enrich parent properties (not constituents like parking decks)
       const unenrichedProperties = await db.query.properties.findMany({
-        where: or(
-          isNull(properties.enrichmentStatus),
-          eq(properties.enrichmentStatus, 'pending'),
-          eq(properties.enrichmentStatus, 'enriched')
+        where: and(
+          eq(properties.isParentProperty, true),
+          or(
+            isNull(properties.enrichmentStatus),
+            eq(properties.enrichmentStatus, 'pending'),
+            eq(properties.enrichmentStatus, 'enriched')
+          )
         ),
         columns: { propertyKey: true },
         limit: batchLimit,

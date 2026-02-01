@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 
 interface Stats {
   totalProperties: number;
+  parentProperties: number;
   enrichedProperties: number;
   pendingProperties: number;
   totalContacts: number;
@@ -149,12 +150,18 @@ export default function AdminPage() {
           <p className="text-gray-600 mt-1">Manage data ingestion and enrichment</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
           <StatCard
             label="Total Properties"
             value={stats?.totalProperties}
             isLoading={isLoadingStats}
             color="blue"
+          />
+          <StatCard
+            label="Parent Properties"
+            value={stats?.parentProperties}
+            isLoading={isLoadingStats}
+            color="purple"
           />
           <StatCard
             label="Enriched"
@@ -172,7 +179,7 @@ export default function AdminPage() {
             label="Total Contacts"
             value={stats?.totalContacts}
             isLoading={isLoadingStats}
-            color="purple"
+            color="blue"
           />
           <StatCard
             label="Validated Emails"
@@ -259,11 +266,17 @@ export default function AdminPage() {
             <p className="text-sm text-gray-600 mb-2">
               Enrich properties with AI-powered data extraction
             </p>
-            {enrichmentStatus && (
-              <p className="text-xs text-gray-500 mb-4">
-                Max batch size: {enrichmentStatus.maxBatchSize}
-              </p>
-            )}
+            <div className="text-xs text-gray-500 mb-4 space-y-1">
+              {stats && (
+                <p>
+                  <span className="font-medium">{stats.parentProperties?.toLocaleString()}</span> parent properties available to enrich
+                  <span className="text-gray-400 ml-1">({stats.totalProperties?.toLocaleString()} total incl. constituents)</span>
+                </p>
+              )}
+              {enrichmentStatus && (
+                <p>Max batch size: {enrichmentStatus.maxBatchSize}</p>
+              )}
+            </div>
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-1">

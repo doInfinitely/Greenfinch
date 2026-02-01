@@ -48,8 +48,18 @@ export async function GET() {
       .from(contacts)
       .where(eq(contacts.emailValidationStatus, 'valid'));
 
+    // Parent properties (excludes constituent accounts like parking decks)
+    const [parentPropertiesResult] = await db
+      .select({ count: count() })
+      .from(properties)
+      .where(and(
+        eq(properties.isActive, true),
+        eq(properties.isParentProperty, true)
+      ));
+
     return NextResponse.json({
       totalProperties: totalPropertiesResult.count,
+      parentProperties: parentPropertiesResult.count,
       enrichedProperties: enrichedPropertiesResult.count,
       pendingProperties: pendingPropertiesResult.count,
       totalContacts: totalContactsResult.count,

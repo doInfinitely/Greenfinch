@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Loader2, MoreVertical, List, Upload, User, UserCircle, Sparkles, Phone } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Loader2, MoreVertical, ListPlus, Upload, User, UserCircle, Sparkles, Phone } from 'lucide-react';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -992,7 +992,7 @@ export default function PropertyDetailPage() {
                     disabled={!userId}
                     data-testid="button-add-to-list"
                   >
-                    <List className="w-4 h-4" />
+                    <ListPlus className="w-4 h-4" />
                   </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
@@ -1010,14 +1010,6 @@ export default function PropertyDetailPage() {
                           Assign Owner
                         </DropdownMenuItem>
                       </AdminOnly>
-                      <DropdownMenuItem 
-                        onClick={handleAddToList}
-                        disabled={!userId}
-                        data-testid="menu-item-add-to-list"
-                      >
-                        <List className="w-4 h-4 mr-2" />
-                        Add to List
-                      </DropdownMenuItem>
                       <DropdownMenuItem 
                         disabled
                         className="opacity-50"
