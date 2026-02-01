@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties, propertyNotes, propertyActivity, users, notifications } from '@/lib/schema';
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, inArray } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { getSession } from '@/lib/auth';
 
@@ -132,11 +132,18 @@ export async function POST(
     });
 
     if (Array.isArray(mentionedUserIds) && mentionedUserIds.length > 0) {
+      const validUserIds = await db
+        .select({ id: users.id })
+        .from(users)
+        .where(inArray(users.id, mentionedUserIds));
+      
+      const validIds = new Set(validUserIds.map(u => u.id));
+      
       const senderName = [session.user.firstName, session.user.lastName].filter(Boolean).join(' ') || 'Someone';
       const addressPreview = property.regridAddress || 'a property';
       
       for (const userId of mentionedUserIds) {
-        if (userId !== session.user.id) {
+        if (userId !== session.user.id && validIds.has(userId)) {
           await db.insert(notifications).values({
             clerkOrgId: authData.orgId,
             recipientUserId: userId,

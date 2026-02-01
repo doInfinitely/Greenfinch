@@ -372,7 +372,7 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
               Follow-up
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-56 p-2 bg-popover" align="end" data-testid="popover-followup-options">
+          <PopoverContent className="w-56 p-2 bg-white dark:bg-gray-900 border shadow-lg" align="end" data-testid="popover-followup-options">
             <div className="space-y-1">
               <Button 
                 variant="ghost" 
@@ -406,7 +406,7 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
                     Custom date...
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64 p-3 bg-popover" align="start">
+                <PopoverContent className="w-64 p-3 bg-white dark:bg-gray-900 border shadow-lg" align="start">
                   <div className="space-y-3">
                     <label className="text-sm font-medium">Select date</label>
                     <Input
@@ -449,8 +449,8 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
                 </div>
                 <Button 
                   variant="ghost" 
-                  size="icon" 
-                  className="h-7 w-7 flex-shrink-0"
+                  size="sm" 
+                  className="flex-shrink-0 px-2"
                   onClick={() => completeAction(action.id)}
                   data-testid={`button-complete-action-${action.id}`}
                 >
@@ -474,7 +474,7 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
             />
             {showMentionList && filteredTeam.length > 0 && (
               <div 
-                className="absolute z-50 left-0 mt-1 w-64 bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto"
+                className="absolute z-50 left-0 mt-1 w-64 bg-white dark:bg-gray-900 border rounded-md shadow-lg max-h-48 overflow-y-auto"
                 data-testid="mention-list"
               >
                 {filteredTeam.slice(0, 5).map((member, idx) => (
