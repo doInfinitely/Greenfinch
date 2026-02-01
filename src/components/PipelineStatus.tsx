@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { ChevronDown, DollarSign, Check, X, TrendingUp, TrendingDown, AlertCircle, User, UserPlus } from 'lucide-react';
+import { ChevronDown, DollarSign, Check, X, TrendingUp, TrendingDown, AlertCircle, User, UserPlus, Clock } from 'lucide-react';
 import { useAuth } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -54,13 +54,13 @@ const STATUS_COLORS: Record<PipelineStatusType, string> = {
 };
 
 const STATUS_ICONS: Record<PipelineStatusType, React.ReactNode> = {
-  new: null,
+  new: <UserPlus className="w-4 h-4" />,
   qualified: <Check className="w-4 h-4" />,
-  attempted_contact: <TrendingUp className="w-4 h-4" />,
+  attempted_contact: <Clock className="w-4 h-4" />,
   active_opportunity: <TrendingUp className="w-4 h-4" />,
   won: <Check className="w-4 h-4" />,
-  lost: <X className="w-4 h-4" />,
-  disqualified: <AlertCircle className="w-4 h-4" />,
+  lost: <TrendingDown className="w-4 h-4" />,
+  disqualified: <X className="w-4 h-4" />,
 };
 
 const PIPELINE_PROGRESSION: PipelineStatusType[] = [
