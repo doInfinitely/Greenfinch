@@ -1,11 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Trash2, Mail, Phone, MoreHorizontal, ChevronRight, Loader2 } from 'lucide-react';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
@@ -70,12 +72,8 @@ export default function ListDetailPage() {
   const params = useParams();
   const id = params?.id as string;
   const { toast } = useToast();
-  const [list, setList] = useState<ListDetail | null>(null);
-  const [items, setItems] = useState<ListItem[]>([]);
-  const [propertyDetails, setPropertyDetails] = useState<Record<string, PropertyInfo>>({});
-  const [contactDetails, setContactDetails] = useState<Record<string, ContactInfo>>({});
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  
   const [removingItem, setRemovingItem] = useState<string | null>(null);
   const [selectedItems, setSelectedItems] = useState<Set<string>>(new Set());
   const [isResearchingAll, setIsResearchingAll] = useState(false);
@@ -83,77 +81,56 @@ export default function ListDetailPage() {
   const [isFindingPhones, setIsFindingPhones] = useState(false);
   const [isRemovingBulk, setIsRemovingBulk] = useState(false);
 
-  useEffect(() => {
-    fetchList();
-  }, [id]);
-
-  const fetchList = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
+  // Fetch list metadata
+  const { data: listData, isLoading: isListLoading, error: listError } = useQuery({
+    queryKey: ['/api/lists', id],
+    queryFn: async () => {
       const response = await fetch(`/api/lists/${id}`);
       if (!response.ok) {
         if (response.status === 404) {
-          setError('List not found');
-        } else {
-          setError('Failed to load list');
+          throw new Error('List not found');
         }
-        return;
+        throw new Error('Failed to load list');
       }
-      const data = await response.json();
-      setList(data.list);
-      setItems(data.items || []);
-      
-      if (data.items && data.items.length > 0) {
-        if (data.list.listType === 'properties') {
-          fetchPropertyDetails(data.items);
-        } else if (data.list.listType === 'contacts') {
-          fetchContactDetails(data.items);
-        }
-      }
-    } catch (err) {
-      setError('Failed to load list');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      return response.json();
+    },
+    enabled: !!id,
+    staleTime: 30000, // Cache for 30 seconds
+  });
 
-  const fetchPropertyDetails = async (listItems: ListItem[]) => {
-    const details: Record<string, PropertyInfo> = {};
-    for (const item of listItems) {
-      try {
-        const res = await fetch(`/api/properties/${item.itemId}`);
-        if (res.ok) {
-          const data = await res.json();
-          details[item.itemId] = data.property;
-        }
-      } catch {
-        // Property might not exist
+  // Fetch list items with embedded details (single batched request)
+  const { data: itemsData, isLoading: isItemsLoading } = useQuery({
+    queryKey: ['/api/lists', id, 'items'],
+    queryFn: async () => {
+      const response = await fetch(`/api/lists/${id}/items`);
+      if (!response.ok) {
+        throw new Error('Failed to load list items');
       }
-    }
-    setPropertyDetails(details);
-  };
+      return response.json();
+    },
+    enabled: !!id && !!listData?.list,
+    staleTime: 30000,
+  });
 
-  const fetchContactDetails = async (listItems: ListItem[]) => {
-    const details: Record<string, ContactInfo> = {};
-    try {
-      const res = await fetch('/api/contacts?limit=1000');
-      if (res.ok) {
-        const data = await res.json();
-        const contactsById: Record<string, ContactInfo> = {};
-        for (const contact of data.contacts || []) {
-          contactsById[contact.id] = contact;
-        }
-        for (const item of listItems) {
-          if (contactsById[item.itemId]) {
-            details[item.itemId] = contactsById[item.itemId];
-          }
-        }
-      }
-    } catch {
-      // Contacts might not load
-    }
-    setContactDetails(details);
+  // Derived state from queries
+  const list = listData?.list as ListDetail | undefined;
+  const items = useMemo(() => (itemsData?.items || []) as ListItem[], [itemsData]);
+  const propertyDetails = useMemo(() => 
+    (list?.listType === 'properties' ? (itemsData?.details || {}) : {}) as Record<string, PropertyInfo>,
+    [itemsData, list?.listType]
+  );
+  const contactDetails = useMemo(() => 
+    (list?.listType === 'contacts' ? (itemsData?.details || {}) : {}) as Record<string, ContactInfo>,
+    [itemsData, list?.listType]
+  );
+
+  const isLoading = isListLoading || (!!listData && isItemsLoading);
+  const error = listError?.message || null;
+
+  // Helper to refetch list data
+  const refetchListItems = () => {
+    queryClient.invalidateQueries({ queryKey: ['/api/lists', id, 'items'] });
+    queryClient.invalidateQueries({ queryKey: ['/api/lists', id] });
   };
 
   const handleRemoveItem = async (itemId: string) => {
@@ -165,15 +142,12 @@ export default function ListDetailPage() {
 
       if (!response.ok) throw new Error('Failed to remove item');
 
-      setItems(items.filter(item => item.itemId !== itemId));
-      if (list) {
-        setList({ ...list, itemCount: list.itemCount - 1 });
-      }
       setSelectedItems(prev => {
         const next = new Set(prev);
         next.delete(itemId);
         return next;
       });
+      refetchListItems();
       toast({
         title: 'Item removed',
         description: 'The item has been removed from the list.',
@@ -207,12 +181,9 @@ export default function ListDetailPage() {
       }
     }
     
-    setItems(items.filter(item => !selectedItems.has(item.itemId)));
-    if (list) {
-      setList({ ...list, itemCount: list.itemCount - successCount });
-    }
     setSelectedItems(new Set());
     setIsRemovingBulk(false);
+    refetchListItems();
     
     toast({
       title: 'Items removed',
@@ -276,8 +247,8 @@ export default function ListDetailPage() {
         title: 'Research started',
         description: `${queuedCount} propert${queuedCount !== 1 ? 'ies' : 'y'} queued for research.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
       });
-      // Refresh property details after a delay
-      setTimeout(() => fetchPropertyDetails(items), 5000);
+      // Refresh list items after a delay
+      setTimeout(() => refetchListItems(), 5000);
     } else if (errorCount > 0) {
       toast({
         title: 'Research failed',
@@ -322,8 +293,8 @@ export default function ListDetailPage() {
       description: `Searching for emails for ${queuedCount} contact${queuedCount !== 1 ? 's' : ''}.`,
     });
     
-    // Refresh contact details after a delay
-    setTimeout(() => fetchContactDetails(items), 5000);
+    // Refresh list items after a delay
+    setTimeout(() => refetchListItems(), 5000);
   };
 
   const handleFindPhones = async () => {
@@ -365,8 +336,8 @@ export default function ListDetailPage() {
       description: `Searching for phones for ${queuedCount} contact${queuedCount !== 1 ? 's' : ''}.`,
     });
     
-    // Refresh contact details after a delay
-    setTimeout(() => fetchContactDetails(items), 5000);
+    // Refresh list items after a delay
+    setTimeout(() => refetchListItems(), 5000);
   };
 
   const toggleSelectAll = () => {
@@ -431,10 +402,70 @@ export default function ListDetailPage() {
     return !hasDirectPhone;
   }).length;
 
+  // Table skeleton loading component
+  const TableSkeleton = () => (
+    <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+      <table className="min-w-full divide-y divide-gray-200">
+        <thead className="bg-gray-50">
+          <tr>
+            <th className="px-4 py-3 w-10"><Skeleton className="h-4 w-4" /></th>
+            <th className="px-4 py-3"><Skeleton className="h-4 w-32" /></th>
+            <th className="px-4 py-3 hidden sm:table-cell"><Skeleton className="h-4 w-24" /></th>
+            <th className="px-4 py-3 hidden md:table-cell"><Skeleton className="h-4 w-20" /></th>
+            <th className="px-4 py-3 hidden lg:table-cell"><Skeleton className="h-4 w-16" /></th>
+            <th className="px-4 py-3 w-10"></th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-200">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <tr key={i} className="animate-pulse">
+              <td className="px-4 py-3"><Skeleton className="h-4 w-4" /></td>
+              <td className="px-4 py-3">
+                <div className="flex flex-col gap-1">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-3 w-32" />
+                </div>
+              </td>
+              <td className="px-4 py-3 hidden sm:table-cell"><Skeleton className="h-4 w-24" /></td>
+              <td className="px-4 py-3 hidden md:table-cell"><Skeleton className="h-4 w-20" /></td>
+              <td className="px-4 py-3 hidden lg:table-cell"><Skeleton className="h-5 w-16 rounded-full" /></td>
+              <td className="px-4 py-3"><Skeleton className="h-6 w-6 rounded" /></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600"></div>
+      <div className="min-h-screen bg-gray-50">
+        <header className="bg-white border-b border-gray-200 px-4 sm:px-6 py-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 max-w-6xl mx-auto">
+            <div className="flex items-center space-x-2 sm:space-x-4">
+              <Link href="/lists" className="flex items-center space-x-2 text-gray-600 hover:text-gray-900 flex-shrink-0">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                <span>My Lists</span>
+              </Link>
+              <span className="text-gray-300 hidden sm:inline">/</span>
+              <Skeleton className="h-5 w-32" />
+            </div>
+            <Skeleton className="h-6 w-20 rounded-full" />
+          </div>
+        </header>
+        <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+          <div className="bg-white rounded-lg border border-gray-200 mb-6 p-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <Skeleton className="h-6 w-48 mb-2" />
+                <Skeleton className="h-4 w-32" />
+              </div>
+            </div>
+          </div>
+          <TableSkeleton />
+        </main>
       </div>
     );
   }
