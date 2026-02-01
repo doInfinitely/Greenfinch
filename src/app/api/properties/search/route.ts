@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties, propertyPipeline, propertyContacts, propertyOrganizations, organizations } from '@/lib/schema';
-import { sql, ilike, or, and, eq, inArray, isNotNull, isNull, gte, lte } from 'drizzle-orm';
+import { sql, ilike, or, and, eq, inArray, isNotNull, isNull, gte, lte, type SQL } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 
 const DEFAULT_LIMIT = 20;
@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
     const categories = searchParams.get('categories')?.split(',').filter(Boolean) || [];
     const subcategories = searchParams.get('subcategories')?.split(',').filter(Boolean) || [];
     const enrichmentStatus = searchParams.get('enrichmentStatus'); // 'researched' | 'not_researched' | null
-    const customerStatus = searchParams.get('customerStatus'); // 'customers' | 'prospects' | null
+    const customerStatuses = searchParams.get('customerStatuses')?.split(',').filter(Boolean) || [];
     const zipCode = searchParams.get('zipCode');
     const buildingClasses = searchParams.get('buildingClasses')?.split(',').filter(Boolean) || [];
     const minLotAcres = searchParams.get('minLotAcres') ? parseFloat(searchParams.get('minLotAcres')!) : null;
@@ -93,28 +93,30 @@ export async function GET(request: NextRequest) {
       conditions.push(isNull(properties.lastEnrichedAt));
     }
     
-    // Customer status filter
-    if (customerStatus && customerStatus !== 'all') {
-      if (customerStatus === 'prospect') {
-        conditions.push(sql`NOT EXISTS (
+    // Pipeline status filter (multi-select)
+    if (customerStatuses.length > 0) {
+      const statusConditions: SQL[] = [];
+      
+      if (customerStatuses.includes('prospect')) {
+        statusConditions.push(sql`NOT EXISTS (
           SELECT 1 FROM ${propertyPipeline} 
           WHERE ${propertyPipeline.propertyId} = ${properties.id} 
           AND ${propertyPipeline.clerkOrgId} = ${orgId}
         )`);
-      } else if (customerStatus === 'won') {
-        conditions.push(sql`EXISTS (
+      }
+      
+      const pipelineStatuses = customerStatuses.filter(s => s !== 'prospect');
+      if (pipelineStatuses.length > 0) {
+        statusConditions.push(sql`EXISTS (
           SELECT 1 FROM ${propertyPipeline} 
           WHERE ${propertyPipeline.propertyId} = ${properties.id} 
           AND ${propertyPipeline.clerkOrgId} = ${orgId}
-          AND ${propertyPipeline.status} = 'won'
+          AND ${propertyPipeline.status} IN (${sql.join(pipelineStatuses.map(s => sql`${s}`), sql`, `)})
         )`);
-      } else {
-        conditions.push(sql`EXISTS (
-          SELECT 1 FROM ${propertyPipeline} 
-          WHERE ${propertyPipeline.propertyId} = ${properties.id} 
-          AND ${propertyPipeline.clerkOrgId} = ${orgId}
-          AND ${propertyPipeline.status} = ${customerStatus}
-        )`);
+      }
+      
+      if (statusConditions.length > 0) {
+        conditions.push(or(...statusConditions)!);
       }
     }
     

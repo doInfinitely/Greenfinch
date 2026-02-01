@@ -94,8 +94,8 @@ export default function MapPage() {
     if (filterState.enrichmentStatus !== 'all') {
       params.set('enrichmentStatus', filterState.enrichmentStatus);
     }
-    if (filterState.customerStatus !== 'all') {
-      params.set('customerStatus', filterState.customerStatus);
+    if (filterState.customerStatuses && filterState.customerStatuses.length > 0) {
+      params.set('customerStatuses', filterState.customerStatuses.join(','));
     }
     if (filterState.zipCode) {
       params.set('zipCode', filterState.zipCode);

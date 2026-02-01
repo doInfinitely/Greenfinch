@@ -17,7 +17,7 @@ export interface FilterState {
   organizationId: string | null;
   contactId: string | null;
   enrichmentStatus: 'all' | 'researched' | 'not_researched';
-  customerStatus: string;
+  customerStatuses: string[];
   zipCode: string | null;
   // Legacy fields for backwards compatibility
   minLotSqft: number | null;
@@ -66,7 +66,7 @@ export const emptyFilters: FilterState = {
   organizationId: null,
   contactId: null,
   enrichmentStatus: 'all',
-  customerStatus: 'all',
+  customerStatuses: [],
   zipCode: null,
   minLotSqft: null,
   maxLotSqft: null,
@@ -89,7 +89,7 @@ export function serializeFiltersToParams(filters: FilterState): URLSearchParams 
   if (filters.organizationId) params.set('organizationId', filters.organizationId);
   if (filters.contactId) params.set('contactId', filters.contactId);
   if (filters.enrichmentStatus !== 'all') params.set('enrichmentStatus', filters.enrichmentStatus);
-  if (filters.customerStatus !== 'all') params.set('customerStatus', filters.customerStatus);
+  if (filters.customerStatuses.length > 0) params.set('customerStatuses', filters.customerStatuses.join(','));
   if (filters.zipCode) params.set('zipCode', filters.zipCode);
   
   return params;
@@ -108,7 +108,7 @@ export function parseFiltersFromParams(searchParams: URLSearchParams): FilterSta
   const organizationId = searchParams.get('organizationId');
   const contactId = searchParams.get('contactId');
   const enrichmentStatus = searchParams.get('enrichmentStatus') as 'all' | 'researched' | 'not_researched' | null;
-  const customerStatus = searchParams.get('customerStatus');
+  const customerStatuses = searchParams.get('customerStatuses');
   const zipCode = searchParams.get('zipCode');
 
   const parsedMinLotAcres = minLotAcres ? parseFloat(minLotAcres) : null;
@@ -127,7 +127,7 @@ export function parseFiltersFromParams(searchParams: URLSearchParams): FilterSta
     organizationId: organizationId || null,
     contactId: contactId || null,
     enrichmentStatus: enrichmentStatus || 'all',
-    customerStatus: customerStatus || 'all',
+    customerStatuses: customerStatuses ? customerStatuses.split(',') : [],
     zipCode: zipCode || null,
     minLotSqft: parsedMinLotAcres ? Math.round(parsedMinLotAcres * 43560) : null,
     maxLotSqft: parsedMaxLotAcres ? Math.round(parsedMaxLotAcres * 43560) : null,
@@ -321,7 +321,7 @@ export default function PropertyFilters({
     (filters.organizationId ? 1 : 0) +
     (filters.contactId ? 1 : 0) +
     (filters.enrichmentStatus !== 'all' ? 1 : 0) +
-    (filters.customerStatus !== 'all' ? 1 : 0) +
+    ((filters.customerStatuses?.length ?? 0) > 0 ? 1 : 0) +
     (filters.zipCode ? 1 : 0);
 
   const toggleSection = (id: string) => {
@@ -493,21 +493,28 @@ export default function PropertyFilters({
         </div>
       </div>
 
-      <div className="border-b border-gray-100 pb-3">
-        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Customer Status</label>
-        <select
-          value={filters.customerStatus}
-          onChange={(e) => onFiltersChange({ ...filters, customerStatus: e.target.value })}
-          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white"
-          data-testid="select-customer-status"
-        >
-          <option value="all">All Statuses</option>
-          <option value="prospect">Prospect</option>
-          <option value="qualified">Qualified</option>
-          <option value="proposal">Proposal</option>
-          <option value="negotiation">Negotiation</option>
-          <option value="won">Won (Current Customer)</option>
-        </select>
+      {/* Pipeline Status Filter */}
+      <div className="border-b border-gray-100 pb-2">
+        <SectionHeader 
+          id="pipelineStatus" 
+          title="Pipeline Status" 
+          count={filters.customerStatuses?.length ?? 0}
+          onClear={() => handleClearArray('customerStatuses')}
+        />
+        {openSections.has('pipelineStatus') && (
+          <div className="mt-2 space-y-1">
+            {['prospect', 'qualified', 'proposal', 'negotiation', 'won'].map((status) => (
+              <label key={status} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
+                <Checkbox
+                  checked={filters.customerStatuses?.includes(status) ?? false}
+                  onChange={() => handleArrayToggle('customerStatuses', status)}
+                  data-testid={`checkbox-status-${status}`}
+                />
+                <span className="text-gray-700 capitalize">{status === 'won' ? 'Won (Customer)' : status}</span>
+              </label>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Building Class Filter */}
@@ -776,52 +783,6 @@ export default function PropertyFilters({
         )}
       </div>
 
-      {/* Customer Status */}
-      <div className="border-b border-gray-100 pb-2">
-        <SectionHeader 
-          id="customer" 
-          title="Customer Status" 
-          count={filters.customerStatus !== 'all' ? 1 : 0}
-          onClear={() => onFiltersChange({ ...filters, customerStatus: 'all' })}
-        />
-        {openSections.has('customer') && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              onClick={() => onFiltersChange({ ...filters, customerStatus: 'all' })}
-              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
-                filters.customerStatus === 'all'
-                  ? 'bg-green-100 border-green-500 text-green-700'
-                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
-              }`}
-              data-testid="button-customer-all"
-            >
-              All
-            </button>
-            <button
-              onClick={() => onFiltersChange({ ...filters, customerStatus: 'customers' })}
-              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
-                filters.customerStatus === 'customers'
-                  ? 'bg-green-100 border-green-500 text-green-700'
-                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
-              }`}
-              data-testid="button-customer-customers"
-            >
-              Customers
-            </button>
-            <button
-              onClick={() => onFiltersChange({ ...filters, customerStatus: 'prospects' })}
-              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
-                filters.customerStatus === 'prospects'
-                  ? 'bg-green-100 border-green-500 text-green-700'
-                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
-              }`}
-              data-testid="button-customer-prospects"
-            >
-              Prospects
-            </button>
-          </div>
-        )}
-      </div>
     </div>
   );
 

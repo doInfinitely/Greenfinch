@@ -120,8 +120,8 @@ export default function ListPage() {
       if (filters.enrichmentStatus && filters.enrichmentStatus !== 'all') {
         params.set('enrichmentStatus', filters.enrichmentStatus);
       }
-      if (filters.customerStatus && filters.customerStatus !== 'all') {
-        params.set('customerStatus', filters.customerStatus);
+      if (filters.customerStatuses && filters.customerStatuses.length > 0) {
+        params.set('customerStatuses', filters.customerStatuses.join(','));
       }
       if (filters.zipCode) {
         params.set('zipCode', filters.zipCode);

@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     const categories = searchParams.get('categories')?.split(',').filter(Boolean) || [];
     const subcategories = searchParams.get('subcategories')?.split(',').filter(Boolean) || [];
     const enrichmentStatus = searchParams.get('enrichmentStatus'); // 'researched' | 'not_researched' | null
-    const customerStatus = searchParams.get('customerStatus'); // 'customers' | 'prospects' | null
+    const customerStatuses = searchParams.get('customerStatuses')?.split(',').filter(Boolean) || [];
     const zipCode = searchParams.get('zipCode');
     const buildingClasses = searchParams.get('buildingClasses')?.split(',').filter(Boolean) || [];
     const minLotAcres = searchParams.get('minLotAcres') ? parseFloat(searchParams.get('minLotAcres')!) : null;
@@ -62,14 +62,18 @@ export async function GET(request: NextRequest) {
       conditions.push(isNull(properties.lastEnrichedAt));
     }
     
-    // Customer status filter
-    if (customerStatus === 'customers') {
-      conditions.push(eq(properties.isCurrentCustomer, true));
-    } else if (customerStatus === 'prospects') {
-      conditions.push(or(
-        eq(properties.isCurrentCustomer, false),
-        isNull(properties.isCurrentCustomer)
-      )!);
+    // Pipeline status filter (multi-select, simplified for GeoJSON performance)
+    if (customerStatuses.length > 0) {
+      // For GeoJSON we use the isCurrentCustomer flag for basic filtering
+      if (customerStatuses.includes('won') && !customerStatuses.includes('prospect')) {
+        conditions.push(eq(properties.isCurrentCustomer, true));
+      } else if (customerStatuses.includes('prospect') && !customerStatuses.includes('won')) {
+        conditions.push(or(
+          eq(properties.isCurrentCustomer, false),
+          isNull(properties.isCurrentCustomer)
+        )!);
+      }
+      // If both or other statuses are included, we don't filter (show all)
     }
     
     // Zip code filter
@@ -80,15 +84,6 @@ export async function GET(request: NextRequest) {
     // Building class filter
     if (buildingClasses.length > 0) {
       conditions.push(inArray(properties.propertyClass, buildingClasses));
-    }
-
-    // Customer status filter
-    if (customerStatus && customerStatus !== 'all') {
-      if (customerStatus === 'customers' || customerStatus === 'won') {
-        conditions.push(eq(properties.isCurrentCustomer, true));
-      } else if (customerStatus === 'prospect') {
-        conditions.push(isNull(properties.isCurrentCustomer));
-      }
     }
     
     // Lot size filters (convert acres to sqft)
