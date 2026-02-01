@@ -232,7 +232,6 @@ export default function MapPage() {
           </h2>
           <p className="text-xs text-gray-500 mt-1">
             {allProperties.length} matching filters
-            {visibleProperties.length > 100 && ` (showing first 100)`}
           </p>
         </div>
         <div className="flex-1 overflow-y-auto">
