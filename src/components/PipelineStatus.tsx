@@ -568,7 +568,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   if (inline) {
     return (
       <>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           {isNewProperty && qualificationButtons}
           {isDisqualified && disqualifiedIndicator}
           {isQualified && opportunityStageSelector}
