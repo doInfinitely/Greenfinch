@@ -18,6 +18,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface PropertyRelation {
   propertyId: string;
@@ -86,6 +93,21 @@ interface BulkConfirmation {
   isProcessing: boolean;
 }
 
+interface UserList {
+  id: string;
+  listName: string;
+  listType: string;
+  itemCount: number;
+}
+
+interface AddToListState {
+  isOpen: boolean;
+  isLoading: boolean;
+  isAdding: boolean;
+  lists: UserList[];
+  selectedListId: string | null;
+}
+
 export default function ContactsPage() {
   const { toast } = useToast();
   const { startEnrichment } = useEnrichment();
@@ -129,6 +151,13 @@ export default function ContactsPage() {
     contactsToProcess: [],
     skippedCount: 0,
     isProcessing: false,
+  });
+  const [addToListState, setAddToListState] = useState<AddToListState>({
+    isOpen: false,
+    isLoading: false,
+    isAdding: false,
+    lists: [],
+    selectedListId: null,
   });
 
   const activeFilterCount = 
@@ -507,13 +536,111 @@ export default function ContactsPage() {
     });
   }, []);
 
-  const handleAddToList = useCallback(() => {
-    const selectedIds = Array.from(selectedContacts);
-    toast({
-      title: 'Add to List',
-      description: `Adding ${selectedIds.length} contacts to list...`,
-    });
+  const handleAddToList = useCallback(async () => {
+    if (selectedContacts.size === 0) return;
+    
+    setAddToListState(prev => ({ ...prev, isOpen: true, isLoading: true, selectedListId: null }));
+    
+    try {
+      const response = await fetch('/api/lists');
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch lists');
+      }
+      
+      // Filter to only show contact lists
+      const contactLists = (data.lists || []).filter((list: UserList) => list.listType === 'contacts');
+      
+      setAddToListState(prev => ({
+        ...prev,
+        isLoading: false,
+        lists: contactLists,
+      }));
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch lists. Please try again.',
+        variant: 'destructive',
+      });
+      setAddToListState(prev => ({ ...prev, isOpen: false, isLoading: false }));
+    }
   }, [selectedContacts, toast]);
+
+  const handleConfirmAddToList = useCallback(async () => {
+    const { selectedListId, lists } = addToListState;
+    if (!selectedListId) return;
+    
+    const selectedList = lists.find(l => l.id === selectedListId);
+    const contactIds = Array.from(selectedContacts);
+    
+    setAddToListState(prev => ({ ...prev, isAdding: true }));
+    
+    let successCount = 0;
+    let skipCount = 0;
+    let errorCount = 0;
+    
+    for (const contactId of contactIds) {
+      try {
+        const response = await fetch(`/api/lists/${selectedListId}/items`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itemId: contactId }),
+        });
+        
+        if (response.ok) {
+          successCount++;
+        } else if (response.status === 409) {
+          skipCount++;
+        } else {
+          errorCount++;
+        }
+      } catch (error) {
+        console.error('Failed to add contact to list:', error);
+        errorCount++;
+      }
+    }
+    
+    if (errorCount === contactIds.length) {
+      toast({
+        title: 'Error',
+        description: 'Failed to add contacts to list. Please try again.',
+        variant: 'destructive',
+      });
+    } else {
+      let description = `Added ${successCount} contact${successCount !== 1 ? 's' : ''} to "${selectedList?.listName}".`;
+      if (skipCount > 0) {
+        description += ` ${skipCount} already in list.`;
+      }
+      if (errorCount > 0) {
+        description += ` ${errorCount} failed.`;
+      }
+      toast({
+        title: 'Added to List',
+        description,
+      });
+    }
+    
+    setAddToListState({
+      isOpen: false,
+      isLoading: false,
+      isAdding: false,
+      lists: [],
+      selectedListId: null,
+    });
+    
+    setSelectedContacts(new Set());
+  }, [addToListState, selectedContacts, toast]);
+
+  const handleCancelAddToList = useCallback(() => {
+    setAddToListState({
+      isOpen: false,
+      isLoading: false,
+      isAdding: false,
+      lists: [],
+      selectedListId: null,
+    });
+  }, []);
 
   const allSelected = contacts.length > 0 && contacts.every(c => selectedContacts.has(c.id));
   const someSelected = contacts.some(c => selectedContacts.has(c.id));
@@ -1257,6 +1384,71 @@ export default function ContactsPage() {
                 <>
                   <Phone className="h-4 w-4 mr-2" />
                   Find Phones
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={addToListState.isOpen} onOpenChange={(open) => !open && !addToListState.isAdding && !addToListState.isLoading && handleCancelAddToList()}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-add-to-list">
+          <DialogHeader>
+            <DialogTitle>Add to List</DialogTitle>
+            <DialogDescription>
+              Select a list to add {selectedContacts.size} contact{selectedContacts.size !== 1 ? 's' : ''} to.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {addToListState.isLoading ? (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : addToListState.lists.length === 0 ? (
+            <div className="py-6 text-center text-muted-foreground">
+              No contact lists found. Create a list first in My Lists.
+            </div>
+          ) : (
+            <Select
+              value={addToListState.selectedListId || ''}
+              onValueChange={(value) => setAddToListState(prev => ({ ...prev, selectedListId: value }))}
+            >
+              <SelectTrigger className="w-full" data-testid="select-list">
+                <SelectValue placeholder="Select a list..." />
+              </SelectTrigger>
+              <SelectContent>
+                {addToListState.lists.map((list) => (
+                  <SelectItem key={list.id} value={list.id} data-testid={`list-option-${list.id}`}>
+                    {list.listName} ({list.itemCount} contacts)
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+          
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={handleCancelAddToList}
+              disabled={addToListState.isAdding || addToListState.isLoading}
+              data-testid="button-cancel-add-to-list"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmAddToList}
+              disabled={addToListState.isAdding || !addToListState.selectedListId || addToListState.lists.length === 0}
+              data-testid="button-confirm-add-to-list"
+            >
+              {addToListState.isAdding ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Adding...
+                </>
+              ) : (
+                <>
+                  <ListPlus className="h-4 w-4 mr-2" />
+                  Add to List
                 </>
               )}
             </Button>

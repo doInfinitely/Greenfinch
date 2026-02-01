@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AlertTriangle, Flag, Check, X, ExternalLink, Mail, Phone, CheckCircle, HelpCircle, XCircle, Search, Loader2 } from 'lucide-react';
@@ -250,6 +250,9 @@ export default function ContactDetailPage() {
     }
   }, [enrichmentItems, contactId, fetchContact]);
 
+  // Track which contact ID we've already tried to fetch a photo for
+  const photoFetchAttemptedRef = useRef<string | null>(null);
+  
   // Auto-fetch profile photo if contact has LinkedIn URL but no photo
   useEffect(() => {
     let isMounted = true;
@@ -267,8 +270,9 @@ export default function ContactDetailPage() {
       return;
     }
     
-    // Auto-fetch if we have a LinkedIn URL but no photo, and not already loading
-    if (contact.linkedinUrl && !contact.photoUrl && !isLoadingPhoto) {
+    // Auto-fetch if we have a LinkedIn URL but no photo, and haven't already tried for this contact
+    if (contact.linkedinUrl && !contact.photoUrl && photoFetchAttemptedRef.current !== contact.id) {
+      photoFetchAttemptedRef.current = contact.id;
       setIsLoadingPhoto(true);
       
       fetch(`/api/contacts/${contact.id}/profile-photo`)
