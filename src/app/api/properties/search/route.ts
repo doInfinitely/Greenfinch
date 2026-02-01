@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { properties, propertyPipeline } from '@/lib/schema';
-import { sql, ilike, or, and, eq } from 'drizzle-orm';
+import { properties, propertyPipeline, propertyContacts, propertyOrganizations, organizations } from '@/lib/schema';
+import { sql, ilike, or, and, eq, inArray } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 
 const DEFAULT_LIMIT = 100;
@@ -74,45 +74,89 @@ export async function GET(request: NextRequest) {
         .limit(limit + 1)
     ]);
     
+    // Get property IDs for batch queries
+    const propertyIds = results.map(r => r.propertyId).filter(Boolean) as string[];
+    
     // Get pipeline statuses and customer status for the org if authenticated
     let pipelineMap: Record<string, { status: string; isCurrentCustomer: boolean }> = {};
-    if (orgId && results.length > 0) {
-      const propertyIds = results.map(r => r.propertyId).filter(Boolean) as string[];
-      if (propertyIds.length > 0) {
-        const pipelineResults = await db
-          .select({
-            propertyId: propertyPipeline.propertyId,
-            status: propertyPipeline.status,
-            isCurrentCustomer: propertyPipeline.isCurrentCustomer,
-          })
-          .from(propertyPipeline)
-          .where(and(
-            eq(propertyPipeline.clerkOrgId, orgId),
-            sql`${propertyPipeline.propertyId} = ANY(${propertyIds})`
-          ));
-        
-        pipelineMap = Object.fromEntries(
-          pipelineResults.map(p => [p.propertyId, { 
-            status: p.status, 
-            isCurrentCustomer: p.isCurrentCustomer ?? false 
-          }])
-        );
+    if (orgId && propertyIds.length > 0) {
+      const pipelineResults = await db
+        .select({
+          propertyId: propertyPipeline.propertyId,
+          status: propertyPipeline.status,
+          isCurrentCustomer: propertyPipeline.isCurrentCustomer,
+        })
+        .from(propertyPipeline)
+        .where(and(
+          eq(propertyPipeline.clerkOrgId, orgId),
+          sql`${propertyPipeline.propertyId} = ANY(${propertyIds})`
+        ));
+      
+      pipelineMap = Object.fromEntries(
+        pipelineResults.map(p => [p.propertyId, { 
+          status: p.status, 
+          isCurrentCustomer: p.isCurrentCustomer ?? false 
+        }])
+      );
+    }
+    
+    // Get contact counts and organizations for properties
+    
+    let contactCountMap: Record<string, number> = {};
+    let organizationsMap: Record<string, Array<{ id: string; name: string }>> = {};
+    
+    if (propertyIds.length > 0) {
+      // Get contact counts
+      const contactCounts = await db
+        .select({
+          propertyId: propertyContacts.propertyId,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(propertyContacts)
+        .where(inArray(propertyContacts.propertyId, propertyIds))
+        .groupBy(propertyContacts.propertyId);
+      
+      contactCountMap = Object.fromEntries(
+        contactCounts.map(c => [c.propertyId, c.count])
+      );
+      
+      // Get organizations
+      const orgResults = await db
+        .select({
+          propertyId: propertyOrganizations.propertyId,
+          orgId: organizations.id,
+          orgName: organizations.name,
+        })
+        .from(propertyOrganizations)
+        .innerJoin(organizations, eq(propertyOrganizations.orgId, organizations.id))
+        .where(inArray(propertyOrganizations.propertyId, propertyIds));
+      
+      for (const org of orgResults) {
+        if (!org.propertyId) continue;
+        if (!organizationsMap[org.propertyId]) {
+          organizationsMap[org.propertyId] = [];
+        }
+        if (org.orgId && org.orgName) {
+          organizationsMap[org.propertyId].push({ id: org.orgId, name: org.orgName });
+        }
       }
     }
     
-    // Add pipeline status and customer status to results
-    const resultsWithPipeline = results.map(r => {
+    // Add pipeline status, customer status, contact count, and organizations to results
+    const resultsWithExtras = results.map(r => {
       const pipelineData = r.propertyId ? pipelineMap[r.propertyId] : null;
       return {
         ...r,
         pipelineStatus: pipelineData?.status || null,
         isCurrentCustomer: pipelineData?.isCurrentCustomer ?? false,
+        contactCount: r.propertyId ? (contactCountMap[r.propertyId] || 0) : 0,
+        organizations: r.propertyId ? (organizationsMap[r.propertyId] || []) : [],
       };
     });
     
     const total = countResult[0]?.count ?? results.length;
-    const hasMore = resultsWithPipeline.length > limit;
-    const properties_slice = resultsWithPipeline.slice(0, limit);
+    const hasMore = resultsWithExtras.length > limit;
+    const properties_slice = resultsWithExtras.slice(0, limit);
     
     return NextResponse.json({
       properties: properties_slice,

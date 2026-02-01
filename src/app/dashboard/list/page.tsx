@@ -9,8 +9,10 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
-import { Sparkles, ListPlus } from 'lucide-react';
+import { Sparkles, ListPlus, Users } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
+import BulkAddToListModal from '@/components/BulkAddToListModal';
 
 interface Property {
   propertyKey: string;
@@ -28,6 +30,8 @@ interface Property {
   buildingSqft: number | null;
   pipelineStatus: string | null;
   isCurrentCustomer: boolean;
+  contactCount: number;
+  organizations: Array<{ id: string; name: string }>;
 }
 
 const PIPELINE_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
@@ -77,6 +81,7 @@ export default function ListPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedProperties, setSelectedProperties] = useState<Set<string>>(new Set());
   const [loadAll, setLoadAll] = useState(false);
+  const [showAddToListModal, setShowAddToListModal] = useState(false);
 
   const debouncedQuery = useDebounce(searchQuery, 300);
 
@@ -205,12 +210,8 @@ export default function ListPage() {
   }, [selectedProperties, toast]);
 
   const handleAddToList = useCallback(() => {
-    const selectedKeys = Array.from(selectedProperties);
-    toast({
-      title: 'Add to List',
-      description: `Adding ${selectedKeys.length} properties to list...`,
-    });
-  }, [selectedProperties, toast]);
+    setShowAddToListModal(true);
+  }, []);
 
   const allSelected = paginatedProperties.length > 0 && paginatedProperties.every(p => selectedProperties.has(p.propertyKey));
   const someSelected = paginatedProperties.some(p => selectedProperties.has(p.propertyKey));
@@ -287,11 +288,11 @@ export default function ListPage() {
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lot Size</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Bldg Size</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Owner</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contacts</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Orgs</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lot</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -314,14 +315,28 @@ export default function ListPage() {
                         />
                       </td>
                       <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
-                        {p.commonName ? (
-                          <>
-                            <p className="font-medium text-gray-900">{normalizeCommonName(p.commonName)}</p>
-                            <p className="text-sm text-gray-500">{p.address}</p>
-                          </>
-                        ) : (
-                          <p className="font-medium text-gray-900">{p.address}</p>
-                        )}
+                        <div className="flex items-start gap-1.5">
+                          {p.enriched && (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Sparkles className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p>Researched with AI</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )}
+                          <div className="min-w-0">
+                            {p.commonName ? (
+                              <>
+                                <p className="font-medium text-gray-900">{normalizeCommonName(p.commonName)}</p>
+                                <p className="text-sm text-gray-500">{p.address}</p>
+                              </>
+                            ) : (
+                              <p className="font-medium text-gray-900">{p.address}</p>
+                            )}
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
                         {p.category && (
@@ -333,17 +348,41 @@ export default function ListPage() {
                           <p className="text-xs text-gray-500 mt-1">{p.subcategory}</p>
                         )}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
+                      <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
+                        {p.contactCount > 0 ? (
+                          <div className="flex items-center gap-1 text-sm text-gray-600">
+                            <Users className="w-4 h-4" />
+                            <span>{p.contactCount}</span>
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4" onClick={() => handleRowClick(p.propertyKey)}>
+                        {p.organizations.length > 0 ? (
+                          <div className="flex flex-wrap gap-1 max-w-[140px]">
+                            {p.organizations.slice(0, 2).map((org) => (
+                              <span
+                                key={org.id}
+                                className="inline-block px-2 py-0.5 text-xs bg-blue-50 text-blue-700 rounded truncate max-w-[100px]"
+                                title={org.name}
+                              >
+                                {org.name}
+                              </span>
+                            ))}
+                            {p.organizations.length > 2 && (
+                              <span className="text-xs text-gray-500">+{p.organizations.length - 2}</span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
                         {formatLotSize(p.lotSqft)}
                       </td>
-                      <td className="px-6 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
-                        {formatBuildingSqft(p.buildingSqft)}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
+                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
                         {p.city}, {p.zip}
-                      </td>
-                      <td className="px-6 py-4 text-sm text-gray-600 max-w-xs truncate" onClick={() => handleRowClick(p.propertyKey)}>
-                        {p.primaryOwner || '-'}
                       </td>
                       <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
                         {(() => {
@@ -485,6 +524,13 @@ export default function ListPage() {
           Add to List
         </Button>
       </BulkActionBar>
+
+      <BulkAddToListModal
+        isOpen={showAddToListModal}
+        onClose={() => setShowAddToListModal(false)}
+        itemIds={Array.from(selectedProperties)}
+        itemType="properties"
+      />
     </div>
   );
 }

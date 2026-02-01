@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreVertical, List, Upload, User, UserCircle } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreVertical, List, Upload, User, UserCircle, Sparkles } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -971,7 +971,6 @@ export default function PropertyDetailPage() {
                   )}
                   
                   <div className="flex flex-wrap items-center gap-2 mt-3">
-                    {enrichmentStatus !== 'pending' && <EnrichmentStatusBadge status={enrichmentStatus} />}
                     {enrichedProperty?.assetCategory && (() => {
                       const colors = CATEGORY_COLORS[enrichedProperty.assetCategory] || DEFAULT_CATEGORY_COLORS;
                       return (
@@ -1012,26 +1011,41 @@ export default function PropertyDetailPage() {
                     </TooltipProvider>
                   )}
                   
-                  {/* Research button moved to header */}
+                  {/* Research button or sparkle icon for completed */}
                   {(() => {
                     const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
                     const isEnrichmentActive = queueStatus.isActive;
                     const enrichmentHasFailed = queueStatus.status === 'failed';
                     const isResearchComplete = enrichmentStatus === 'completed';
                     
+                    if (isResearchComplete) {
+                      return (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="flex items-center justify-center w-8 h-8" role="img" aria-label="Researched with AI" data-testid="icon-researched">
+                                <Sparkles className="w-5 h-5 text-purple-500" />
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent className="bg-popover border shadow-lg">
+                              <p>Researched with AI</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      );
+                    }
+                    
                     return (
                       <AdminOnly>
                         <Button
-                          variant={isResearchComplete ? "default" : "outline"}
+                          variant="outline"
                           size="sm"
-                          onClick={isResearchComplete ? undefined : handleEnrichment}
-                          disabled={isEnrichmentActive || enrichmentHasFailed || isResearchComplete}
+                          onClick={handleEnrichment}
+                          disabled={isEnrichmentActive || enrichmentHasFailed}
                           className={
-                            isResearchComplete 
-                              ? 'bg-purple-600 text-white border-purple-600 cursor-default'
-                              : enrichmentHasFailed 
-                                ? 'text-gray-500 border-gray-300' 
-                                : 'border-purple-500 text-purple-700 dark:text-purple-400'
+                            enrichmentHasFailed 
+                              ? 'text-gray-500 border-gray-300' 
+                              : 'border-purple-500 text-purple-700 dark:text-purple-400'
                           }
                           title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'}` : undefined}
                           data-testid="button-find-decision-makers"
@@ -1043,7 +1057,7 @@ export default function PropertyDetailPage() {
                           ) : (
                             <GreenfinchAgentIcon className="w-4 h-4 mr-1" />
                           )}
-                          {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : isResearchComplete ? 'Researched' : 'Research'}
+                          {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : 'Research'}
                         </Button>
                       </AdminOnly>
                     );
