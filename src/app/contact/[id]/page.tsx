@@ -622,7 +622,7 @@ export default function ContactDetailPage() {
                           data-testid="avatar-image"
                         />
                       )}
-                      <AvatarFallback className="bg-primary text-primary-foreground text-2xl font-semibold" data-testid="avatar-fallback">
+                      <AvatarFallback className="bg-green-100 text-green-700 text-2xl font-semibold" data-testid="avatar-fallback">
                         {contact.fullName
                           ? contact.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
                           : '?'}
