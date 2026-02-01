@@ -25,7 +25,28 @@ interface Property {
   enriched: boolean;
   lotSqft: number | null;
   buildingSqft: number | null;
+  pipelineStatus: string | null;
+  isCurrentCustomer: boolean;
 }
+
+const PIPELINE_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  qualified: { label: 'Qualified', className: 'bg-green-100 text-green-700' },
+  disqualified: { label: 'Disqualified', className: 'bg-gray-100 text-gray-500' },
+  proposal: { label: 'Proposal', className: 'bg-blue-100 text-blue-700' },
+  negotiation: { label: 'Negotiation', className: 'bg-yellow-100 text-yellow-700' },
+  won: { label: 'Won', className: 'bg-purple-100 text-purple-700' },
+  lost: { label: 'Lost', className: 'bg-red-100 text-red-700' },
+};
+
+const getStatusDisplay = (p: Property): { label: string; className: string } => {
+  if (p.isCurrentCustomer) {
+    return { label: 'Customer', className: 'bg-purple-100 text-purple-700' };
+  }
+  if (p.pipelineStatus && PIPELINE_STATUS_CONFIG[p.pipelineStatus]) {
+    return PIPELINE_STATUS_CONFIG[p.pipelineStatus];
+  }
+  return { label: 'Prospect', className: 'bg-gray-100 text-gray-600' };
+};
 
 const formatLotSize = (sqft: number | null) => {
   if (!sqft) return '-';
@@ -338,13 +359,14 @@ export default function ListPage() {
                         {p.primaryOwner || '-'}
                       </td>
                       <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
-                        <span className={`inline-block px-2 py-1 text-xs rounded ${
-                          p.enrichmentStatus === 'completed' 
-                            ? 'bg-green-100 text-green-700' 
-                            : 'bg-gray-100 text-gray-600'
-                        }`}>
-                          {p.enrichmentStatus === 'completed' ? 'Enriched' : 'Pending'}
-                        </span>
+                        {(() => {
+                          const status = getStatusDisplay(p);
+                          return (
+                            <span className={`inline-block px-2 py-1 text-xs rounded ${status.className}`}>
+                              {status.label}
+                            </span>
+                          );
+                        })()}
                       </td>
                     </tr>
                   ))}
@@ -383,11 +405,14 @@ export default function ListPage() {
                         <p className="text-xs text-gray-500 mt-0.5">{p.city}, {p.zip}</p>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
-                        {p.category && (
-                          <span className="inline-block px-2 py-0.5 text-xs bg-green-100 text-green-700 rounded">
-                            {p.category}
-                          </span>
-                        )}
+                        {(() => {
+                          const status = getStatusDisplay(p);
+                          return (
+                            <span className={`inline-block px-2 py-0.5 text-xs rounded ${status.className}`}>
+                              {status.label}
+                            </span>
+                          );
+                        })()}
                         <span className="text-xs text-gray-500">{formatLotSize(p.lotSqft)}</span>
                       </div>
                     </div>

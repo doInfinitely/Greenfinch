@@ -217,6 +217,20 @@ export async function POST(
         newValue: status,
         metadata: dealValue ? { dealValue } : null,
       });
+      
+      // Automatically update isCurrentCustomer on pipeline record based on status
+      if (status === 'won') {
+        await db
+          .update(propertyPipeline)
+          .set({ isCurrentCustomer: true })
+          .where(eq(propertyPipeline.id, pipeline.id));
+      } else if (previousStatus === 'won') {
+        // Changing from won to another status, mark as not a customer
+        await db
+          .update(propertyPipeline)
+          .set({ isCurrentCustomer: false })
+          .where(eq(propertyPipeline.id, pipeline.id));
+      }
     }
 
     if (dealValue && previousDealValue !== dealValue) {

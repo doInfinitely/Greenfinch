@@ -180,9 +180,6 @@ export const properties = pgTable('properties', {
   constituentAccountNums: json('constituent_account_nums'),
   constituentCount: integer('constituent_count').default(0),
   
-  // Customer status
-  isCurrentCustomer: boolean('is_current_customer').default(false),
-  
   // Timestamps
   lastRegridUpdate: timestamp('last_regrid_update'),
   lastEnrichedAt: timestamp('last_enriched_at'),
@@ -632,6 +629,9 @@ export const propertyPipeline = pgTable('property_pipeline', {
   
   // Deal value (required when qualifying, must be > 1)
   dealValue: integer('deal_value'),
+  
+  // Current customer flag - separate from won status, auto-set when won
+  isCurrentCustomer: boolean('is_current_customer').default(false),
   
   // Last status change
   statusChangedAt: timestamp('status_changed_at').defaultNow(),

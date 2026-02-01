@@ -25,6 +25,7 @@ import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import PipelineStatus from '@/components/PipelineStatus';
+import CustomerToggle from '@/components/CustomerToggle';
 import PropertyNotes from '@/components/PropertyNotes';
 import PropertyActivity from '@/components/PropertyActivity';
 import { normalizeCommonName, toTitleCase } from '@/lib/normalization';
@@ -1095,9 +1096,11 @@ export default function PropertyDetailPage() {
                 </div>
               </div>
               
-              {/* Action row: Qualify/Disqualify buttons */}
+              {/* Action row: Qualify/Disqualify buttons and Customer toggle */}
               <div className="flex flex-wrap items-center gap-2 mb-6">
                 <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls hideOwnerDisplay triggerAssignDialog={assignDialogTrigger} />
+                <div className="border-l border-gray-200 dark:border-gray-700 h-6 mx-1" />
+                <CustomerToggle propertyId={property.propertyKey} />
               </div>
 
               {enrichmentMessage && enrichmentStatus !== 'pending' && (

@@ -63,7 +63,6 @@ export async function GET(request: NextRequest) {
           primaryOwner: sql<string>`COALESCE(${properties.beneficialOwner}, ${properties.regridOwner})`,
           lotSqft: properties.lotSqft,
           buildingSqft: properties.buildingSqft,
-          isCurrentCustomer: properties.isCurrentCustomer,
         })
         .from(properties)
         .where(whereClause)
@@ -75,8 +74,8 @@ export async function GET(request: NextRequest) {
         .limit(limit + 1)
     ]);
     
-    // Get pipeline statuses for the org if authenticated
-    let pipelineMap: Record<string, string> = {};
+    // Get pipeline statuses and customer status for the org if authenticated
+    let pipelineMap: Record<string, { status: string; isCurrentCustomer: boolean }> = {};
     if (orgId && results.length > 0) {
       const propertyIds = results.map(r => r.propertyId).filter(Boolean) as string[];
       if (propertyIds.length > 0) {
@@ -84,6 +83,7 @@ export async function GET(request: NextRequest) {
           .select({
             propertyId: propertyPipeline.propertyId,
             status: propertyPipeline.status,
+            isCurrentCustomer: propertyPipeline.isCurrentCustomer,
           })
           .from(propertyPipeline)
           .where(and(
@@ -92,16 +92,23 @@ export async function GET(request: NextRequest) {
           ));
         
         pipelineMap = Object.fromEntries(
-          pipelineResults.map(p => [p.propertyId, p.status])
+          pipelineResults.map(p => [p.propertyId, { 
+            status: p.status, 
+            isCurrentCustomer: p.isCurrentCustomer ?? false 
+          }])
         );
       }
     }
     
-    // Add pipeline status to results
-    const resultsWithPipeline = results.map(r => ({
-      ...r,
-      pipelineStatus: r.propertyId ? pipelineMap[r.propertyId] || null : null,
-    }));
+    // Add pipeline status and customer status to results
+    const resultsWithPipeline = results.map(r => {
+      const pipelineData = r.propertyId ? pipelineMap[r.propertyId] : null;
+      return {
+        ...r,
+        pipelineStatus: pipelineData?.status || null,
+        isCurrentCustomer: pipelineData?.isCurrentCustomer ?? false,
+      };
+    });
     
     const total = countResult[0]?.count ?? results.length;
     const hasMore = resultsWithPipeline.length > limit;
