@@ -10,6 +10,12 @@ interface CustomerToggleProps {
   onToggle?: (isCustomer: boolean) => void;
 }
 
+interface SearchResult {
+  properties: Array<{ propertyKey: string; isCurrentCustomer: boolean; [key: string]: unknown }>;
+  total: number;
+  hasMore: boolean;
+}
+
 export default function CustomerToggle({ propertyId, onToggle }: CustomerToggleProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -31,10 +37,45 @@ export default function CustomerToggle({ propertyId, onToggle }: CustomerToggleP
       }
       return response.json();
     },
+    onMutate: async (isCurrentCustomer: boolean) => {
+      await queryClient.cancelQueries({ queryKey: ['/api/properties', propertyId, 'customer'] });
+      
+      const previousCustomerData = queryClient.getQueryData<{ isCurrentCustomer: boolean }>(
+        ['/api/properties', propertyId, 'customer']
+      );
+      
+      queryClient.setQueryData(['/api/properties', propertyId, 'customer'], { isCurrentCustomer });
+      
+      queryClient.setQueriesData<SearchResult>(
+        { queryKey: ['/api/properties/search'], exact: false },
+        (old) => {
+          if (!old) return old;
+          return {
+            ...old,
+            properties: old.properties.map((p) =>
+              p.propertyKey === propertyId ? { ...p, isCurrentCustomer } : p
+            ),
+          };
+        }
+      );
+      
+      return { previousCustomerData };
+    },
+    onError: (_, __, context) => {
+      if (context?.previousCustomerData) {
+        queryClient.setQueryData(
+          ['/api/properties', propertyId, 'customer'],
+          context.previousCustomerData
+        );
+      }
+      queryClient.invalidateQueries({ queryKey: ['/api/properties/search'], exact: false });
+      toast({
+        title: 'Error',
+        description: 'Failed to update customer status. Please try again.',
+        variant: 'destructive',
+      });
+    },
     onSuccess: (_, isCurrentCustomer) => {
-      queryClient.invalidateQueries({ queryKey: ['/api/properties', propertyId, 'customer'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/properties/search'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/properties', propertyId, 'pipeline'] });
       onToggle?.(isCurrentCustomer);
       toast({
         title: isCurrentCustomer ? 'Marked as Customer' : 'Removed Customer Status',
@@ -43,12 +84,9 @@ export default function CustomerToggle({ propertyId, onToggle }: CustomerToggleP
           : 'This property is no longer marked as a customer.',
       });
     },
-    onError: () => {
-      toast({
-        title: 'Error',
-        description: 'Failed to update customer status. Please try again.',
-        variant: 'destructive',
-      });
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/properties', propertyId, 'customer'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/properties', propertyId, 'pipeline'] });
     },
   });
 

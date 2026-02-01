@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useQuery } from '@tanstack/react-query';
 import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, UNKNOWN_BUILDING_CLASS, serializeFiltersToParams, parseFiltersFromParams } from '@/components/PropertyFilters';
 import { normalizeCommonName } from '@/lib/normalization';
 import { useDebounce } from '@/hooks/use-debounce';
@@ -71,17 +72,30 @@ export default function ListPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { toast } = useToast();
-  const [properties, setProperties] = useState<Property[]>([]);
-  const [totalCount, setTotalCount] = useState(0);
-  const [hasMore, setHasMore] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedProperties, setSelectedProperties] = useState<Set<string>>(new Set());
+  const [loadAll, setLoadAll] = useState(false);
 
   const debouncedQuery = useDebounce(searchQuery, 300);
+
+  const { data, isLoading, isFetching } = useQuery<{ properties: Property[]; total: number; hasMore: boolean }>({
+    queryKey: ['/api/properties/search', debouncedQuery, loadAll ? 'all' : 'initial'],
+    queryFn: async () => {
+      const limit = loadAll ? 10000 : API_LIMIT;
+      const url = debouncedQuery
+        ? `/api/properties/search?q=${encodeURIComponent(debouncedQuery)}&limit=${limit}`
+        : `/api/properties/search?limit=${limit}`;
+      const response = await fetch(url);
+      return response.json();
+    },
+    staleTime: 30000,
+  });
+
+  const properties = data?.properties || [];
+  const totalCount = data?.total || 0;
+  const hasMore = data?.hasMore || false;
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
     setFilters(newFilters);
@@ -91,46 +105,19 @@ export default function ListPage() {
   }, [router, pathname]);
 
   useEffect(() => {
-    setIsLoading(true);
-    const url = debouncedQuery
-      ? `/api/properties/search?q=${encodeURIComponent(debouncedQuery)}&limit=${API_LIMIT}`
-      : `/api/properties/search?limit=${API_LIMIT}`;
-    
-    fetch(url)
-      .then(r => r.json())
-      .then(data => {
-        setProperties(data.properties || []);
-        setTotalCount(data.total || 0);
-        setHasMore(data.hasMore || false);
-        setIsLoading(false);
-        setCurrentPage(1);
-        setSelectedProperties(new Set());
-      })
-      .catch(() => setIsLoading(false));
+    setCurrentPage(1);
+    setSelectedProperties(new Set());
+    setLoadAll(false);
   }, [debouncedQuery]);
 
   useEffect(() => {
     setCurrentPage(1);
+    setLoadAll(false);
   }, [filters]);
 
-  const handleLoadMore = useCallback(async () => {
-    setIsLoadingMore(true);
-    try {
-      const url = debouncedQuery
-        ? `/api/properties/search?q=${encodeURIComponent(debouncedQuery)}&limit=${totalCount}`
-        : `/api/properties/search?limit=${totalCount}`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
-      setProperties(data.properties || []);
-      setTotalCount(data.total || 0);
-      setHasMore(data.hasMore || false);
-    } catch (error) {
-      console.error('Error loading more properties:', error);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }, [debouncedQuery, totalCount]);
+  const handleLoadMore = useCallback(() => {
+    setLoadAll(true);
+  }, []);
 
   const filteredProperties = useMemo(() => {
     return properties.filter((p) => {
@@ -433,11 +420,11 @@ export default function ListPage() {
                     </div>
                     <button
                       onClick={handleLoadMore}
-                      disabled={isLoadingMore}
+                      disabled={isFetching}
                       className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       data-testid="button-load-more-all"
                     >
-                      {isLoadingMore ? 'Loading more...' : 'Load More'}
+                      {isFetching ? 'Loading more...' : 'Load More'}
                     </button>
                   </div>
                 ) : totalPages > 1 ? (
