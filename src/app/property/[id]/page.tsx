@@ -1122,7 +1122,7 @@ export default function PropertyDetailPage() {
                 {property.calculatedBuildingClass && (
                   <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4" data-testid="stat-building-class">
                     <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Building Class</p>
-                    <Badge variant="outline" className={`text-base px-3 py-1 ${
+                    <Badge variant="outline" className={
                       property.calculatedBuildingClass === 'A+' || property.calculatedBuildingClass === 'A' 
                         ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800' :
                       property.calculatedBuildingClass === 'B' 
@@ -1130,7 +1130,7 @@ export default function PropertyDetailPage() {
                       property.calculatedBuildingClass === 'C' 
                         ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border-amber-200 dark:border-amber-800' :
                       'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
-                    }`} data-testid="badge-building-class">
+                    } data-testid="badge-building-class">
                       Class {property.calculatedBuildingClass}
                     </Badge>
                   </div>

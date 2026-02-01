@@ -338,13 +338,12 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
 
   // For NEW prospects: show qualify/disqualify buttons
   const qualificationButtons = (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <Button
         variant="outline"
         size="sm"
         onClick={() => updateStatus('qualified')}
         disabled={updating}
-        className="border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950"
         data-testid="button-qualify"
       >
         <Check className="w-4 h-4 mr-1" />
@@ -355,7 +354,6 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         size="sm"
         onClick={() => updateStatus('disqualified')}
         disabled={updating}
-        className="border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-900"
         data-testid="button-disqualify"
       >
         <X className="w-4 h-4 mr-1" />
@@ -433,9 +431,9 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   );
 
   const dealValueDisplay = dealValue && dealValue > 0 ? (
-    <Badge variant="outline" className="text-sm px-3 py-1 bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200" data-testid="badge-deal-value">
-      <DollarSign className="w-4 h-4 mr-1" />
-      <span className="font-semibold">{formatCurrency(dealValue)}</span>
+    <Badge variant="secondary" data-testid="badge-deal-value">
+      <DollarSign className="w-3 h-3 mr-1" />
+      <span className="font-medium">{formatCurrency(dealValue)}</span>
     </Badge>
   ) : null;
 
