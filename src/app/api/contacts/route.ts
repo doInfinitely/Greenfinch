@@ -91,7 +91,7 @@ export async function GET(request: NextRequest) {
 
     // Filter by contact info availability
     if (hasValidEmail) {
-      conditions.push(eq(contacts.emailStatus, 'valid'));
+      conditions.push(eq(contacts.emailValidationStatus, 'valid'));
     }
 
     if (hasPhone) {
@@ -155,6 +155,7 @@ export async function GET(request: NextRequest) {
         title: contacts.title,
         employerName: contacts.employerName,
         emailStatus: contacts.emailStatus,
+        emailValidationStatus: contacts.emailValidationStatus,
         linkedinUrl: contacts.linkedinUrl,
         source: contacts.source,
         createdAt: contacts.createdAt,

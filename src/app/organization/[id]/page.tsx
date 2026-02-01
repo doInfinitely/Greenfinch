@@ -39,6 +39,7 @@ interface ContactRelation {
   phone: string | null;
   title: string | null;
   emailStatus: string | null;
+  emailValidationStatus: string | null;
   linkedinUrl: string | null;
   isCurrent: boolean | null;
   contactTitle: string | null;
@@ -648,7 +649,7 @@ export default function OrganizationDetailPage() {
                       <div className="ml-4 flex items-center gap-1.5">
                         <EmailStatusIcon 
                           hasEmail={!!contact.email} 
-                          status={contact.emailStatus}
+                          status={contact.emailValidationStatus || contact.emailStatus}
                           size="sm"
                         />
                         <PhoneStatusIcon 

@@ -39,6 +39,7 @@ interface Contact {
   title: string | null;
   employerName: string | null;
   emailStatus: string | null;
+  emailValidationStatus: string | null;
   linkedinUrl: string | null;
   source: string | null;
   createdAt: string;
@@ -756,7 +757,7 @@ export default function ContactsPage() {
                               <div className="flex items-center gap-1 flex-shrink-0" data-testid={`contact-status-icons-${contact.id}`}>
                                 <EmailStatusIcon 
                                   hasEmail={!!contact.email} 
-                                  status={contact.emailStatus}
+                                  status={contact.emailValidationStatus || contact.emailStatus}
                                   size="sm"
                                 />
                                 <PhoneStatusIcon 

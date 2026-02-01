@@ -51,6 +51,7 @@ export async function GET(
         phone: contacts.phone,
         title: contacts.title,
         emailStatus: contacts.emailStatus,
+        emailValidationStatus: contacts.emailValidationStatus,
         linkedinUrl: contacts.linkedinUrl,
         isCurrent: contactOrganizations.isCurrent,
         contactTitle: contactOrganizations.title,
