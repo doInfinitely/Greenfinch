@@ -51,19 +51,19 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
 
   const navGroups: NavGroup[] = [
     {
+      label: 'PIPELINE',
+      items: [
+        { href: '/pipeline/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
+        { href: '/pipeline/board', label: 'Pipeline Board', icon: <Kanban className="w-4 h-4" /> },
+      ],
+    },
+    {
       label: 'PROSPECTING',
       items: [
         { href: '/dashboard/map', label: 'Properties', icon: <MapPin className="w-4 h-4" /> },
         { href: '/organizations', label: 'Organizations', icon: <Building2 className="w-4 h-4" /> },
         { href: '/contacts', label: 'Contacts', icon: <Users className="w-4 h-4" /> },
         { href: '/lists', label: 'My Lists', icon: <List className="w-4 h-4" /> },
-      ],
-    },
-    {
-      label: 'PIPELINE',
-      items: [
-        { href: '/pipeline/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
-        { href: '/pipeline/board', label: 'Pipeline Board', icon: <Kanban className="w-4 h-4" /> },
       ],
     },
     {

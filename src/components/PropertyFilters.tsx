@@ -507,8 +507,6 @@ export default function PropertyFilters({
           <option value="proposal">Proposal</option>
           <option value="negotiation">Negotiation</option>
           <option value="won">Won (Current Customer)</option>
-          <option value="lost">Lost</option>
-          <option value="disqualified">Disqualified</option>
         </select>
       </div>
 
