@@ -5,10 +5,19 @@ import Link from 'next/link';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
-import { ListPlus, Filter, Mail, Phone } from 'lucide-react';
+import { ListPlus, Filter, Mail, Phone, Loader2 } from 'lucide-react';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, LinkedInLink, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useToast } from '@/hooks/use-toast';
+import { useEnrichment } from '@/hooks/use-enrichment';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface PropertyRelation {
   propertyId: string;
@@ -70,8 +79,16 @@ interface PaginationInfo {
   totalPages: number;
 }
 
+interface BulkEmailConfirmation {
+  isOpen: boolean;
+  contactsToProcess: Contact[];
+  skippedCount: number;
+  isProcessing: boolean;
+}
+
 export default function ContactsPage() {
   const { toast } = useToast();
+  const { startEnrichment } = useEnrichment();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +118,12 @@ export default function ContactsPage() {
   const [hasValidEmail, setHasValidEmail] = useState(false);
   const [hasPhone, setHasPhone] = useState(false);
   const [hasLinkedIn, setHasLinkedIn] = useState(false);
+  const [bulkEmailConfirmation, setBulkEmailConfirmation] = useState<BulkEmailConfirmation>({
+    isOpen: false,
+    contactsToProcess: [],
+    skippedCount: 0,
+    isProcessing: false,
+  });
 
   const activeFilterCount = 
     (titleFilter !== 'all' ? 1 : 0) +
