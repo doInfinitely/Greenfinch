@@ -63,6 +63,11 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Database Performance**: Indexes on properties.zip, properties.assetSubcategory, properties.enrichmentStatus, and composite indexes on contactOrganizations for relationship lookups. N+1 queries fixed via batch fetching with inArray() in contacts and analytics APIs.
 - **Organization Domain Enrichment**: Automates enrichment for organizations using Hunter.io and EnrichLayer, including parent company discovery and industry classification.
 - **AI Enrichment Rules**: Employs `gemini-3-flash-preview` with search grounding for property enrichment, excluding condo/HOA and focusing on management companies and developers. Building and lot square footage are calculated with source tracking and precedence rules.
+- **Notifications System**: In-app notification system supporting @ mentions in notes and follow-up action reminders.
+  - **@ Mentions**: Users can @mention team members in property notes. Mentioned users receive in-app notifications.
+  - **Follow-up Actions**: Schedule follow-ups for properties with quick options (tomorrow 9am, next week 9am) or custom dates.
+  - **Notification Bell**: Located in property page header near the Research button. Shows unread count with real-time polling (60s).
+  - **Notification Types**: `mention` (when mentioned in notes), `action_due` (reminder for due actions), `action_assigned` (when assigned a follow-up by another user).
 
 ## External Dependencies
 - **Snowflake**: For Regrid parcel data access and ingestion.
