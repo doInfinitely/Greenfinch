@@ -76,7 +76,6 @@ export default function ContactsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [emailStatusFilter, setEmailStatusFilter] = useState('all');
   const [titleFilter, setTitleFilter] = useState('all');
   const [sortBy, setSortBy] = useState('propertyCount');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
@@ -86,7 +85,6 @@ export default function ContactsPage() {
     total: 0,
     totalPages: 0,
   });
-  const [availableStatuses, setAvailableStatuses] = useState<string[]>([]);
   const [availableTitles, setAvailableTitles] = useState<string[]>([]);
   const [expandedContact, setExpandedContact] = useState<string | null>(null);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -105,7 +103,6 @@ export default function ContactsPage() {
   const [hasLinkedIn, setHasLinkedIn] = useState(false);
 
   const activeFilterCount = 
-    (emailStatusFilter !== 'all' ? 1 : 0) +
     (titleFilter !== 'all' ? 1 : 0) +
     (organizationFilter ? 1 : 0) +
     (propertyCountFilter !== 'all' ? 1 : 0) +
@@ -114,7 +111,6 @@ export default function ContactsPage() {
     (hasLinkedIn ? 1 : 0);
 
   const clearAllFilters = () => {
-    setEmailStatusFilter('all');
     setTitleFilter('all');
     setOrganizationFilter(null);
     setOrgSearchQuery('');
@@ -134,7 +130,6 @@ export default function ContactsPage() {
       params.set('sortBy', sortBy);
       params.set('sortOrder', sortOrder);
       if (searchQuery) params.set('q', searchQuery);
-      if (emailStatusFilter && emailStatusFilter !== 'all') params.set('emailStatus', emailStatusFilter);
       if (titleFilter && titleFilter !== 'all') params.set('title', titleFilter);
       if (organizationFilter) params.set('organizationId', organizationFilter.id);
       if (propertyCountFilter !== 'all') params.set('propertyCount', propertyCountFilter);
@@ -151,9 +146,6 @@ export default function ContactsPage() {
 
       setContacts(data.contacts || []);
       setPagination(data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 });
-      if (data.availableStatuses) {
-        setAvailableStatuses(data.availableStatuses);
-      }
       if (data.availableTitles) {
         setAvailableTitles(data.availableTitles);
       }
@@ -163,7 +155,7 @@ export default function ContactsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, emailStatusFilter, titleFilter, organizationFilter, sortBy, sortOrder, propertyCountFilter, hasValidEmail, hasPhone, hasLinkedIn]);
+  }, [searchQuery, titleFilter, organizationFilter, sortBy, sortOrder, propertyCountFilter, hasValidEmail, hasPhone, hasLinkedIn]);
 
   const searchOrganizations = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -395,21 +387,6 @@ export default function ContactsPage() {
             Clear all
           </button>
         )}
-      </div>
-
-      <div>
-        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Email Status</label>
-        <select
-          value={emailStatusFilter}
-          onChange={(e) => setEmailStatusFilter(e.target.value)}
-          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white"
-          data-testid="select-email-status"
-        >
-          <option value="all">All Email Status</option>
-          {availableStatuses.map((status) => (
-            <option key={status} value={status}>{status}</option>
-          ))}
-        </select>
       </div>
 
       <div>
