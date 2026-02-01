@@ -51,6 +51,12 @@ export class DashboardMap {
       : [-96.7784, 32.8639];
     this.currentStyle = LIGHT_STYLE;
 
+    // Dallas metro bounds - same as main map
+    const DALLAS_BOUNDS: [[number, number], [number, number]] = [
+      [-97.6, 32.4],
+      [-96.3, 33.2],
+    ];
+
     try {
       this.map = new mapboxgl.Map({
         container: this.config.container,
@@ -58,6 +64,8 @@ export class DashboardMap {
         center: initialCenter,
         zoom: initialZoom,
         attributionControl: false,
+        minZoom: 9,
+        maxBounds: DALLAS_BOUNDS,
       });
     } catch (error) {
       this.initError = error instanceof Error ? error.message : 'Map initialization failed';
