@@ -180,14 +180,6 @@ export default function MapPage() {
     });
   }, [bounds, allProperties]);
 
-  if (isLoading) {
-    return (
-      <div className="w-full h-full flex items-center justify-center bg-gray-50">
-        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600"></div>
-      </div>
-    );
-  }
-
   if (!config?.mapboxToken) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-gray-50">
@@ -199,19 +191,28 @@ export default function MapPage() {
   return (
     <div className="flex h-full relative">
       <div className="flex-1 relative">
-        <MapCanvas
-          ref={mapRef}
-          accessToken={config.mapboxToken}
-          regridToken={config.regridToken}
-          regridTileUrl={config.regridTileUrl}
-          properties={allProperties}
-          onBoundsChange={handleBoundsChange}
-          onPropertyClick={handlePropertyClick}
-        />
+        <div className={isLoading ? "opacity-50 pointer-events-none" : ""}>
+          <MapCanvas
+            ref={mapRef}
+            accessToken={config.mapboxToken}
+            regridToken={config.regridToken}
+            regridTileUrl={config.regridTileUrl}
+            properties={allProperties}
+            onBoundsChange={handleBoundsChange}
+            onPropertyClick={handlePropertyClick}
+          />
+        </div>
         <div className="absolute top-3 left-3 right-14 md:right-auto z-10 flex flex-col gap-2">
           <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
           <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
         </div>
+        {isLoading && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/20 pointer-events-none">
+            <div className="bg-white p-3 rounded-full shadow-lg border border-gray-100">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="hidden md:flex md:w-80 bg-white border-l border-gray-200 flex-col">
