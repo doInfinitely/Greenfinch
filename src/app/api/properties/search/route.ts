@@ -4,8 +4,8 @@ import { properties, propertyPipeline, propertyContacts, propertyOrganizations, 
 import { sql, ilike, or, and, eq, inArray } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 100;
+const DEFAULT_LIMIT = 20;
+const MAX_LIMIT = 1000;
 
 function validateLimit(value: string | null): number {
   if (!value) return DEFAULT_LIMIT;
@@ -14,12 +14,21 @@ function validateLimit(value: string | null): number {
   return Math.min(parsed, MAX_LIMIT);
 }
 
+function validatePage(value: string | null): number {
+  if (!value) return 1;
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed) || parsed < 1) return 1;
+  return parsed;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { orgId } = await auth();
     const { searchParams } = new URL(request.url);
     const search = (searchParams.get('q') || searchParams.get('search'))?.trim();
     const limit = validateLimit(searchParams.get('limit'));
+    const page = validatePage(searchParams.get('page'));
+    const offset = (page - 1) * limit;
     
     let whereClause = and(
       eq(properties.isActive, true),
@@ -71,7 +80,8 @@ export async function GET(request: NextRequest) {
           properties.commonName,
           properties.regridAddress
         )
-        .limit(limit + 1)
+        .limit(limit)
+        .offset(offset)
     ]);
     
     // Get property IDs for batch queries
@@ -155,14 +165,16 @@ export async function GET(request: NextRequest) {
     });
     
     const total = countResult[0]?.count ?? results.length;
-    const hasMore = resultsWithExtras.length > limit;
-    const properties_slice = resultsWithExtras.slice(0, limit);
+    const totalPages = Math.ceil(total / limit);
     
     return NextResponse.json({
-      properties: properties_slice,
-      total,
-      hasMore,
-      limit,
+      properties: resultsWithExtras,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
     });
   } catch (error) {
     console.error('Properties search error:', error);

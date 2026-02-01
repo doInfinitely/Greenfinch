@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
-import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+import { useState, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import PropertyFilters, { FilterState, emptyFilters, UNKNOWN_CATEGORY, UNKNOWN_BUILDING_CLASS, serializeFiltersToParams, parseFiltersFromParams } from '@/components/PropertyFilters';
 import { normalizeCommonName } from '@/lib/normalization';
 import { useDebounce } from '@/hooks/use-debounce';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -71,115 +70,55 @@ const formatBuildingSqft = (sqft: number | null) => {
   return sqft.toString();
 };
 
-const PAGE_SIZE = 50;
-const API_LIMIT = 100;
+const PAGE_SIZE = 20;
+
+interface PaginationInfo {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+}
 
 export default function ListPage() {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedProperties, setSelectedProperties] = useState<Set<string>>(new Set());
-  const [loadAll, setLoadAll] = useState(false);
   const [showAddToListModal, setShowAddToListModal] = useState(false);
 
   const debouncedQuery = useDebounce(searchQuery, 300);
 
-  const { data, isLoading, isFetching } = useQuery<{ properties: Property[]; total: number; hasMore: boolean }>({
-    queryKey: ['/api/properties/search', debouncedQuery, loadAll ? 'all' : 'initial'],
+  const { data, isLoading, isFetching } = useQuery<{ properties: Property[]; pagination: PaginationInfo }>({
+    queryKey: ['/api/properties/search', debouncedQuery, currentPage],
     queryFn: async () => {
-      const limit = loadAll ? 10000 : API_LIMIT;
-      const url = debouncedQuery
-        ? `/api/properties/search?q=${encodeURIComponent(debouncedQuery)}&limit=${limit}`
-        : `/api/properties/search?limit=${limit}`;
-      const response = await fetch(url);
+      const params = new URLSearchParams();
+      params.set('page', String(currentPage));
+      params.set('limit', String(PAGE_SIZE));
+      if (debouncedQuery) {
+        params.set('q', debouncedQuery);
+      }
+      const response = await fetch(`/api/properties/search?${params.toString()}`);
       return response.json();
     },
     staleTime: 30000,
   });
 
   const properties = data?.properties || [];
-  const totalCount = data?.total || 0;
-  const hasMore = data?.hasMore || false;
-
-  const handleFiltersChange = useCallback((newFilters: FilterState) => {
-    setFilters(newFilters);
-    const params = serializeFiltersToParams(newFilters);
-    const queryString = params.toString();
-    router.replace(`${pathname}${queryString ? `?${queryString}` : ''}`, { scroll: false });
-  }, [router, pathname]);
+  const pagination = data?.pagination || { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
 
   useEffect(() => {
     setCurrentPage(1);
     setSelectedProperties(new Set());
-    setLoadAll(false);
   }, [debouncedQuery]);
 
-  useEffect(() => {
-    setCurrentPage(1);
-    setLoadAll(false);
-  }, [filters]);
 
-  const handleLoadMore = useCallback(() => {
-    setLoadAll(true);
-  }, []);
-
-  const filteredProperties = useMemo(() => {
-    return properties.filter((p) => {
-      if (filters.minLotAcres) {
-        const lotAcres = (p.lotSqft || 0) / 43560;
-        if (lotAcres < filters.minLotAcres) return false;
-      }
-      if (filters.maxLotAcres) {
-        const lotAcres = (p.lotSqft || 0) / 43560;
-        if (lotAcres > filters.maxLotAcres) return false;
-      }
-      
-      if (filters.minNetSqft) {
-        if ((p.buildingSqft || 0) < filters.minNetSqft) return false;
-      }
-      if (filters.maxNetSqft) {
-        if ((p.buildingSqft || 0) > filters.maxNetSqft) return false;
-      }
-      
-      if ((filters.categories?.length ?? 0) > 0) {
-        const hasUnknown = filters.categories?.includes(UNKNOWN_CATEGORY);
-        const matchesCategory = p.category && filters.categories?.includes(p.category);
-        const matchesUnknown = hasUnknown && !p.category;
-        if (!matchesCategory && !matchesUnknown) {
-          return false;
-        }
-      }
-      
-      if (filters.zipCode) {
-        if (!p.zip || !p.zip.includes(filters.zipCode)) return false;
-      }
-      
-      const isEnriched = p.enriched || p.enrichmentStatus === 'completed';
-      if (filters.enrichmentStatus === 'researched') {
-        if (!isEnriched) return false;
-      } else if (filters.enrichmentStatus === 'not_researched') {
-        if (isEnriched) return false;
-      }
-      
-      if (filters.customerStatus === 'customers') {
-        if (!p.isCurrentCustomer) return false;
-      } else if (filters.customerStatus === 'prospects') {
-        if (p.isCurrentCustomer) return false;
-      }
-      
-      return true;
-    });
-  }, [properties, filters]);
-
-  const totalPages = Math.ceil(filteredProperties.length / PAGE_SIZE);
-  const paginatedProperties = filteredProperties.slice(
-    (currentPage - 1) * PAGE_SIZE,
-    currentPage * PAGE_SIZE
-  );
+  const handlePageChange = useCallback((newPage: number) => {
+    if (newPage >= 1 && newPage <= pagination.totalPages) {
+      setCurrentPage(newPage);
+      setSelectedProperties(new Set());
+    }
+  }, [pagination.totalPages]);
 
   const handleRowClick = useCallback((propertyKey: string) => {
     router.push(`/property/${propertyKey}`);
@@ -200,12 +139,12 @@ export default function ListPage() {
 
   const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
-      const allIds = new Set(paginatedProperties.map(p => p.propertyId).filter(Boolean));
+      const allIds = new Set(properties.map(p => p.propertyId).filter(Boolean));
       setSelectedProperties(allIds);
     } else {
       setSelectedProperties(new Set());
     }
-  }, [paginatedProperties]);
+  }, [properties]);
 
   const handleDeselectAll = useCallback(() => {
     setSelectedProperties(new Set());
@@ -215,7 +154,7 @@ export default function ListPage() {
 
   const handleRunAIResearch = useCallback(() => {
     const selectedIds = Array.from(selectedProperties);
-    const selectedProps = filteredProperties.filter(p => p.propertyId && selectedIds.includes(p.propertyId));
+    const selectedProps = properties.filter(p => p.propertyId && selectedIds.includes(p.propertyId));
     
     if (selectedProps.length === 0) {
       toast({
@@ -245,14 +184,14 @@ export default function ListPage() {
     });
     
     setSelectedProperties(new Set());
-  }, [selectedProperties, filteredProperties, startEnrichment, toast]);
+  }, [selectedProperties, properties, startEnrichment, toast]);
 
   const handleAddToList = useCallback(() => {
     setShowAddToListModal(true);
   }, []);
 
-  const allSelected = paginatedProperties.length > 0 && paginatedProperties.every(p => selectedProperties.has(p.propertyId));
-  const someSelected = paginatedProperties.some(p => selectedProperties.has(p.propertyId));
+  const allSelected = properties.length > 0 && properties.every(p => selectedProperties.has(p.propertyId));
+  const someSelected = properties.some(p => selectedProperties.has(p.propertyId));
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -261,19 +200,11 @@ export default function ListPage() {
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h1 className="text-base md:text-lg font-semibold text-gray-900">
-                Properties <span className="text-green-600 font-normal">({filteredProperties.length.toLocaleString()})</span>
+                Properties <span className="text-green-600 font-normal">({pagination.total.toLocaleString()})</span>
               </h1>
             </div>
-            {properties.length > 0 && hasMore && (
-              <div className="flex items-center gap-2 flex-wrap text-sm">
-                <span className="text-gray-600">
-                  Showing first {properties.length.toLocaleString()} of {totalCount.toLocaleString()} properties
-                </span>
-              </div>
-            )}
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
             <div className="relative flex-1 min-w-[200px] md:flex-none">
               <input
                 type="text"
@@ -294,7 +225,7 @@ export default function ListPage() {
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <TableSkeleton rows={12} />
-        ) : filteredProperties.length === 0 ? (
+        ) : properties.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-gray-500">
             <svg className="w-12 h-12 mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -313,7 +244,8 @@ export default function ListPage() {
                         indeterminate={someSelected && !allSelected}
                         onChange={(e) => handleSelectAll(e.target.checked)}
                         data-testid="checkbox-select-all-properties"
-                        aria-label="Select all properties"
+                        aria-label="Select all properties on this page"
+                        title="Select all on this page"
                       />
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
@@ -326,7 +258,7 @@ export default function ListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {paginatedProperties.map((p) => (
+                  {properties.map((p: Property) => (
                     <tr
                       key={p.propertyKey}
                       className={`hover:bg-gray-50 cursor-pointer transition-colors ${selectedProperties.has(p.propertyId) ? 'bg-green-50' : ''}`}
@@ -431,7 +363,7 @@ export default function ListPage() {
             </div>
             
             <div className="md:hidden divide-y divide-gray-200">
-              {paginatedProperties.map((p) => (
+              {properties.map((p: Property) => (
                 <div
                   key={p.propertyKey}
                   className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-start gap-3 ${selectedProperties.has(p.propertyId) ? 'bg-green-50' : ''}`}
@@ -480,50 +412,62 @@ export default function ListPage() {
               ))}
             </div>
 
-            {(hasMore || totalPages > 1) && (
+            {pagination.totalPages > 1 && (
               <div className="px-4 md:px-6 py-3 border-t border-gray-200 bg-white sticky bottom-0">
-                {hasMore ? (
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div className="text-sm text-gray-600">
-                      Showing first {filteredProperties.length.toLocaleString()} of {totalCount.toLocaleString()} properties
-                    </div>
-                    <button
-                      onClick={handleLoadMore}
-                      disabled={isFetching}
-                      className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      data-testid="button-load-more-all"
+                <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+                  <div className="text-sm text-gray-500">
+                    Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
+                    {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
+                    {pagination.total.toLocaleString()} properties
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(pagination.page - 1)}
+                      disabled={pagination.page === 1 || isFetching}
+                      data-testid="button-prev-page"
                     >
-                      {isFetching ? 'Loading more...' : 'Load More'}
-                    </button>
-                  </div>
-                ) : totalPages > 1 ? (
-                  <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <div className="text-sm text-gray-500">
-                      Showing {((currentPage - 1) * PAGE_SIZE) + 1}-{Math.min(currentPage * PAGE_SIZE, filteredProperties.length)} of {filteredProperties.length.toLocaleString()}
+                      Previous
+                    </Button>
+                    <div className="flex items-center space-x-1">
+                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                        let pageNum: number;
+                        if (pagination.totalPages <= 5) {
+                          pageNum = i + 1;
+                        } else if (pagination.page <= 3) {
+                          pageNum = i + 1;
+                        } else if (pagination.page >= pagination.totalPages - 2) {
+                          pageNum = pagination.totalPages - 4 + i;
+                        } else {
+                          pageNum = pagination.page - 2 + i;
+                        }
+                        return (
+                          <Button
+                            key={pageNum}
+                            variant={pagination.page === pageNum ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handlePageChange(pageNum)}
+                            disabled={isFetching}
+                            className={pagination.page === pageNum ? 'bg-green-600 hover:bg-green-700' : ''}
+                            data-testid={`button-page-${pageNum}`}
+                          >
+                            {pageNum}
+                          </Button>
+                        );
+                      })}
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                        disabled={currentPage === 1}
-                        className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        data-testid="button-prev-page"
-                      >
-                        Previous
-                      </button>
-                      <span className="text-sm text-gray-600">
-                        Page {currentPage} of {totalPages}
-                      </span>
-                      <button
-                        onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
-                        disabled={currentPage === totalPages}
-                        className="px-3 py-1.5 text-sm border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        data-testid="button-next-page"
-                      >
-                        Next
-                      </button>
-                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePageChange(pagination.page + 1)}
+                      disabled={pagination.page === pagination.totalPages || isFetching}
+                      data-testid="button-next-page"
+                    >
+                      Next
+                    </Button>
                   </div>
-                ) : null}
+                </div>
               </div>
             )}
           </>
