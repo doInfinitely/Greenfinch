@@ -33,6 +33,7 @@ interface PropertyFeature {
     enriched: boolean;
     lotSqft: number;
     buildingSqft: number;
+    isCurrentCustomer: boolean;
   };
 }
 
@@ -155,6 +156,13 @@ export default function MapPage() {
         if (!f.properties.enriched) return false;
       } else if (filters.enrichmentStatus === 'not_researched') {
         if (f.properties.enriched) return false;
+      }
+      
+      // Customer status filter
+      if (filters.customerStatus === 'customers') {
+        if (!f.properties.isCurrentCustomer) return false;
+      } else if (filters.customerStatus === 'prospects') {
+        if (f.properties.isCurrentCustomer) return false;
       }
       
       return true;

@@ -41,6 +41,7 @@ interface PipelineStatusProps {
   hideOwnerControls?: boolean;
   hideOwnerDisplay?: boolean; // Completely hide owner avatar/name (for when shown elsewhere)
   triggerAssignDialog?: number; // Increment to open dialog from parent
+  isCustomer?: boolean; // Hide qualify/disqualify buttons when property is an existing customer
 }
 
 const STATUS_COLORS: Record<PipelineStatusType, string> = {
@@ -87,7 +88,7 @@ interface OrgMember {
   profileImageUrl: string;
 }
 
-export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false, hideOwnerControls = false, hideOwnerDisplay = false, triggerAssignDialog = 0 }: PipelineStatusProps) {
+export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false, hideOwnerControls = false, hideOwnerDisplay = false, triggerAssignDialog = 0, isCustomer = false }: PipelineStatusProps) {
   const { orgRole } = useAuth();
   const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
   
@@ -569,8 +570,8 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     return (
       <>
         <div className="flex items-center gap-2 flex-wrap">
-          {isNewProperty && qualificationButtons}
-          {isDisqualified && disqualifiedIndicator}
+          {isNewProperty && !isCustomer && qualificationButtons}
+          {isDisqualified && !isCustomer && disqualifiedIndicator}
           {isQualified && opportunityStageSelector}
           {isQualified && editDealValueButton}
           {isQualified && !hideOwnerDisplay && ownerDisplay}
@@ -640,16 +641,16 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          {/* For NEW prospects: show qualify/disqualify buttons */}
-          {isNewProperty && (
+          {/* For NEW prospects: show qualify/disqualify buttons (hidden for customers) */}
+          {isNewProperty && !isCustomer && (
             <div className="flex flex-col gap-3">
               <p className="text-sm text-muted-foreground">This property is a new prospect. Qualify or disqualify it to continue.</p>
               {qualificationButtons}
             </div>
           )}
 
-          {/* For DISQUALIFIED: show indicator with requalify option */}
-          {isDisqualified && (
+          {/* For DISQUALIFIED: show indicator with requalify option (hidden for customers) */}
+          {isDisqualified && !isCustomer && (
             <div className="flex flex-col gap-3">
               {disqualifiedIndicator}
               <p className="text-sm text-muted-foreground">This property has been disqualified. Click above to requalify if needed.</p>

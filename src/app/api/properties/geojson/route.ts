@@ -70,6 +70,7 @@ export async function GET(request: NextRequest) {
           buildingSqft: properties.buildingSqft,
           propertyClass: properties.propertyClass,
           sourceLlUuid: properties.sourceLlUuid,
+          isCurrentCustomer: properties.isCurrentCustomer,
         })
         .from(properties)
         .where(and(...conditions))
@@ -107,6 +108,7 @@ export async function GET(request: NextRequest) {
             lotSqft: p.lotSqft || 0,
             buildingSqft: p.buildingSqft || 0,
             llUuid: p.sourceLlUuid || '',
+            isCurrentCustomer: p.isCurrentCustomer || false,
           },
         };
       });

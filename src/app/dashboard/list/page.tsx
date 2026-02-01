@@ -162,6 +162,12 @@ export default function ListPage() {
         if (isEnriched) return false;
       }
       
+      if (filters.customerStatus === 'customers') {
+        if (!p.isCurrentCustomer) return false;
+      } else if (filters.customerStatus === 'prospects') {
+        if (p.isCurrentCustomer) return false;
+      }
+      
       return true;
     });
   }, [properties, filters]);

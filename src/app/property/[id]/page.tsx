@@ -387,6 +387,7 @@ export default function PropertyDetailPage() {
   const [enrichmentMessage, setEnrichmentMessage] = useState<string>('');
   const [showAddToListModal, setShowAddToListModal] = useState(false);
   const [assignDialogTrigger, setAssignDialogTrigger] = useState(0);
+  const [isCurrentCustomer, setIsCurrentCustomer] = useState(false);
   const { startEnrichment } = useEnrichment();
   const { getEnrichmentStatus } = useEnrichmentQueue();
   
@@ -479,6 +480,15 @@ export default function PropertyDetailPage() {
     };
     fetchUser();
   }, []);
+
+  // Fetch customer status
+  useEffect(() => {
+    if (!propertyId) return;
+    fetch(`/api/properties/${propertyId}/customer`)
+      .then(res => res.json())
+      .then(data => setIsCurrentCustomer(data.isCurrentCustomer ?? false))
+      .catch(err => console.error('Failed to fetch customer status:', err));
+  }, [propertyId]);
 
   useEffect(() => {
     fetch('/api/config')
@@ -1112,9 +1122,9 @@ export default function PropertyDetailPage() {
               
               {/* Action row: Qualify/Disqualify buttons and Customer toggle */}
               <div className="flex flex-wrap items-center gap-2 mb-6">
-                <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls hideOwnerDisplay triggerAssignDialog={assignDialogTrigger} />
+                <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls hideOwnerDisplay triggerAssignDialog={assignDialogTrigger} isCustomer={isCurrentCustomer} />
                 <div className="border-l border-gray-200 dark:border-gray-700 h-6 mx-1" />
-                <CustomerToggle propertyId={property.propertyKey} />
+                <CustomerToggle propertyId={property.propertyKey} onToggle={setIsCurrentCustomer} />
               </div>
 
               {enrichmentMessage && enrichmentStatus !== 'pending' && (
