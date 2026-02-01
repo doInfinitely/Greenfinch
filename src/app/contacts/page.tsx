@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
-import { Phone, Mail, ListPlus, Filter } from 'lucide-react';
+import { Phone, Mail, ListPlus, Filter, Linkedin, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 interface PropertyRelation {
@@ -210,11 +210,27 @@ export default function ContactsPage() {
     }
   }, [isFilterOpen]);
 
+  const formatPhoneLabel = (label: string | null): string => {
+    if (!label) return '';
+    const labelMap: Record<string, string> = {
+      'direct_work': 'Direct',
+      'office': 'Office',
+      'mobile': 'Mobile',
+      'personal': 'Personal',
+      'work': 'Work',
+      'home': 'Home',
+      'main': 'Main',
+      'fax': 'Fax',
+    };
+    const lower = label.toLowerCase();
+    return labelMap[lower] || label.charAt(0).toUpperCase() + label.slice(1).replace(/_/g, ' ');
+  };
+
   const getPhoneNumbers = (contact: Contact): { number: string; label: string }[] => {
     const phones: { number: string; label: string }[] = [];
     
     if (contact.phone) {
-      phones.push({ number: contact.phone, label: contact.phoneLabel || 'Primary' });
+      phones.push({ number: contact.phone, label: formatPhoneLabel(contact.phoneLabel) || '' });
     }
     if (contact.enrichmentPhoneWork && contact.enrichmentPhoneWork !== contact.phone) {
       phones.push({ number: contact.enrichmentPhoneWork, label: 'Work' });
@@ -223,7 +239,7 @@ export default function ContactsPage() {
       phones.push({ number: contact.enrichmentPhonePersonal, label: 'Personal' });
     }
     if (contact.aiPhone && contact.aiPhone !== contact.phone && contact.aiPhone !== contact.enrichmentPhoneWork && contact.aiPhone !== contact.enrichmentPhonePersonal) {
-      phones.push({ number: contact.aiPhone, label: contact.aiPhoneLabel || 'AI' });
+      phones.push({ number: contact.aiPhone, label: formatPhoneLabel(contact.aiPhoneLabel) || '' });
     }
     
     return phones;
@@ -605,19 +621,13 @@ export default function ContactsPage() {
                         Employer <SortIcon column="employerName" />
                       </th>
                       <th
-                        onClick={() => handleSort('emailStatus')}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                      >
-                        Email Status <SortIcon column="emailStatus" />
-                      </th>
-                      <th
                         onClick={() => handleSort('propertyCount')}
                         className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       >
                         Associations <SortIcon column="propertyCount" />
                       </th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
+                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                        
                       </th>
                     </tr>
                   </thead>
@@ -653,15 +663,26 @@ export default function ContactsPage() {
                             onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
                           >
                             {contact.email ? (
-                              <span
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  window.location.href = `mailto:${contact.email}`;
-                                }}
-                                className="text-sm text-green-600 hover:text-green-700 hover:underline cursor-pointer"
-                              >
-                                {contact.email}
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    window.location.href = `mailto:${contact.email}`;
+                                  }}
+                                  className="text-sm text-green-600 hover:text-green-700 hover:underline cursor-pointer"
+                                >
+                                  {contact.email}
+                                </span>
+                                {contact.emailStatus?.toLowerCase() === 'valid' && (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" title="Verified" />
+                                )}
+                                {contact.emailStatus?.toLowerCase() === 'invalid' && (
+                                  <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" title="Invalid" />
+                                )}
+                                {(contact.emailStatus?.toLowerCase() === 'pending' || contact.emailStatus?.toLowerCase() === 'unverified') && (
+                                  <AlertCircle className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" title="Pending verification" />
+                                )}
+                              </div>
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
                             )}
@@ -719,18 +740,6 @@ export default function ContactsPage() {
                             className="px-6 py-4 whitespace-nowrap"
                             onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
                           >
-                            {contact.emailStatus ? (
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getEmailStatusColor(contact.emailStatus)}`}>
-                                {contact.emailStatus}
-                              </span>
-                            ) : (
-                              <span className="text-sm text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td 
-                            className="px-6 py-4 whitespace-nowrap"
-                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
-                          >
                             <div className="flex items-center gap-2">
                               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
                                 {contact.propertyCount} prop
@@ -740,29 +749,29 @@ export default function ContactsPage() {
                               </span>
                             </div>
                           </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setExpandedContact(expandedContact === contact.id ? null : contact.id);
-                              }}
-                              className="text-gray-500 hover:text-gray-700"
-                            >
-                              {expandedContact === contact.id ? (
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
-                                </svg>
-                              ) : (
-                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                </svg>
-                              )}
-                            </button>
+                          <td className="px-4 py-4 whitespace-nowrap text-center">
+                            {contact.linkedinUrl ? (
+                              <a
+                                href={contact.linkedinUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-[#0A66C2] hover:text-[#004182] transition-colors"
+                                title="View LinkedIn profile"
+                                data-testid={`link-linkedin-${contact.id}`}
+                              >
+                                <Linkedin className="w-5 h-5" />
+                              </a>
+                            ) : (
+                              <span className="text-gray-300">
+                                <Linkedin className="w-5 h-5" />
+                              </span>
+                            )}
                           </td>
                         </tr>
                         {expandedContact === contact.id && (
                           <tr>
-                            <td colSpan={9} className="px-6 py-4 bg-gray-50">
+                            <td colSpan={8} className="px-6 py-4 bg-gray-50">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {contact.properties.length > 0 && (
                                   <div>
