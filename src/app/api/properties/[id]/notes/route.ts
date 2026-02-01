@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { properties, propertyNotes, propertyActivity, users, notifications } from '@/lib/schema';
-import { eq, and, desc, inArray } from 'drizzle-orm';
+import { properties, propertyNotes, propertyActivity, users } from '@/lib/schema';
+import { eq, and, desc } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { getSession } from '@/lib/auth';
 
@@ -96,7 +96,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { content, mentionedUserIds } = body;
+    const { content } = body;
 
     if (!content || typeof content !== 'string' || content.trim().length === 0) {
       return NextResponse.json({ error: 'Note content is required' }, { status: 400 });
@@ -104,7 +104,7 @@ export async function POST(
 
     const isUuid = UUID_REGEX.test(id);
     const [property] = await db
-      .select({ id: properties.id, regridAddress: properties.regridAddress })
+      .select({ id: properties.id })
       .from(properties)
       .where(isUuid ? eq(properties.id, id) : eq(properties.propertyKey, id))
       .limit(1);
@@ -130,33 +130,6 @@ export async function POST(
       activityType: 'note_added',
       newValue: content.trim().substring(0, 100),
     });
-
-    if (Array.isArray(mentionedUserIds) && mentionedUserIds.length > 0) {
-      const validUserIds = await db
-        .select({ id: users.id })
-        .from(users)
-        .where(inArray(users.id, mentionedUserIds));
-      
-      const validIds = new Set(validUserIds.map(u => u.id));
-      
-      const senderName = [session.user.firstName, session.user.lastName].filter(Boolean).join(' ') || 'Someone';
-      const addressPreview = property.regridAddress || 'a property';
-      
-      for (const userId of mentionedUserIds) {
-        if (userId !== session.user.id && validIds.has(userId)) {
-          await db.insert(notifications).values({
-            clerkOrgId: authData.orgId,
-            recipientUserId: userId,
-            senderUserId: session.user.id,
-            type: 'mention',
-            propertyId: property.id,
-            noteId: note.id,
-            title: `${senderName} mentioned you`,
-            message: `In a note on ${addressPreview}: "${content.trim().substring(0, 100)}${content.length > 100 ? '...' : ''}"`,
-          });
-        }
-      }
-    }
 
     return NextResponse.json({
       note: {
