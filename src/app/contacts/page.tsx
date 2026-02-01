@@ -53,6 +53,14 @@ interface Organization {
   domain: string | null;
 }
 
+const PROPERTY_COUNT_BUCKETS = [
+  { value: 'all', label: 'All' },
+  { value: '1', label: '1' },
+  { value: '2-5', label: '2-5' },
+  { value: '6-10', label: '6-10' },
+  { value: '10+', label: '10+' },
+];
+
 interface PaginationInfo {
   page: number;
   limit: number;
@@ -68,8 +76,8 @@ export default function ContactsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [emailStatusFilter, setEmailStatusFilter] = useState('all');
   const [titleFilter, setTitleFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('fullName');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [sortBy, setSortBy] = useState('propertyCount');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
     limit: 20,
@@ -89,17 +97,29 @@ export default function ContactsPage() {
   const [selectedContacts, setSelectedContacts] = useState<Set<string>>(new Set());
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
+  const [propertyCountFilter, setPropertyCountFilter] = useState('all');
+  const [hasValidEmail, setHasValidEmail] = useState(false);
+  const [hasPhone, setHasPhone] = useState(false);
+  const [hasLinkedIn, setHasLinkedIn] = useState(false);
 
   const activeFilterCount = 
     (emailStatusFilter !== 'all' ? 1 : 0) +
     (titleFilter !== 'all' ? 1 : 0) +
-    (organizationFilter ? 1 : 0);
+    (organizationFilter ? 1 : 0) +
+    (propertyCountFilter !== 'all' ? 1 : 0) +
+    (hasValidEmail ? 1 : 0) +
+    (hasPhone ? 1 : 0) +
+    (hasLinkedIn ? 1 : 0);
 
   const clearAllFilters = () => {
     setEmailStatusFilter('all');
     setTitleFilter('all');
     setOrganizationFilter(null);
     setOrgSearchQuery('');
+    setPropertyCountFilter('all');
+    setHasValidEmail(false);
+    setHasPhone(false);
+    setHasLinkedIn(false);
   };
 
   const fetchContacts = useCallback(async (page = 1) => {
@@ -115,6 +135,10 @@ export default function ContactsPage() {
       if (emailStatusFilter && emailStatusFilter !== 'all') params.set('emailStatus', emailStatusFilter);
       if (titleFilter && titleFilter !== 'all') params.set('title', titleFilter);
       if (organizationFilter) params.set('organizationId', organizationFilter.id);
+      if (propertyCountFilter !== 'all') params.set('propertyCount', propertyCountFilter);
+      if (hasValidEmail) params.set('hasValidEmail', 'true');
+      if (hasPhone) params.set('hasPhone', 'true');
+      if (hasLinkedIn) params.set('hasLinkedIn', 'true');
 
       const response = await fetch(`/api/contacts?${params.toString()}`);
       const data = await response.json();
@@ -137,7 +161,7 @@ export default function ContactsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, emailStatusFilter, titleFilter, organizationFilter, sortBy, sortOrder]);
+  }, [searchQuery, emailStatusFilter, titleFilter, organizationFilter, sortBy, sortOrder, propertyCountFilter, hasValidEmail, hasPhone, hasLinkedIn]);
 
   const searchOrganizations = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -457,6 +481,68 @@ export default function ContactsPage() {
           </div>
         )}
       </div>
+
+      <div>
+        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Properties</label>
+        <div className="flex flex-wrap gap-1.5">
+          {PROPERTY_COUNT_BUCKETS.map((bucket) => (
+            <button
+              key={bucket.value}
+              onClick={() => setPropertyCountFilter(bucket.value)}
+              className={`px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+                propertyCountFilter === bucket.value
+                  ? 'bg-green-100 border-green-300 text-green-800'
+                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+              }`}
+              data-testid={`filter-property-count-${bucket.value}`}
+            >
+              {bucket.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Contact Info Available</label>
+        <div className="flex flex-wrap gap-1.5">
+          <button
+            onClick={() => setHasValidEmail(!hasValidEmail)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+              hasValidEmail
+                ? 'bg-green-100 border-green-300 text-green-800'
+                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+            data-testid="filter-has-valid-email"
+          >
+            <Mail className="w-3.5 h-3.5" />
+            Valid Email
+          </button>
+          <button
+            onClick={() => setHasPhone(!hasPhone)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+              hasPhone
+                ? 'bg-green-100 border-green-300 text-green-800'
+                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+            data-testid="filter-has-phone"
+          >
+            <Phone className="w-3.5 h-3.5" />
+            Phone
+          </button>
+          <button
+            onClick={() => setHasLinkedIn(!hasLinkedIn)}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-full border transition-colors ${
+              hasLinkedIn
+                ? 'bg-green-100 border-green-300 text-green-800'
+                : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'
+            }`}
+            data-testid="filter-has-linkedin"
+          >
+            <img src={linkedinLogo.src} alt="" className="w-3.5 h-3.5" />
+            LinkedIn
+          </button>
+        </div>
+      </div>
     </div>
   );
 
@@ -621,12 +707,6 @@ export default function ContactsPage() {
                       >
                         Employer <SortIcon column="employerName" />
                       </th>
-                      <th
-                        onClick={() => handleSort('propertyCount')}
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                      >
-                        Links <SortIcon column="propertyCount" />
-                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -785,23 +865,10 @@ export default function ContactsPage() {
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
-                          <td 
-                            className="px-4 py-3 whitespace-nowrap"
-                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
-                          >
-                            <div className="flex items-center gap-1">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                {contact.propertyCount}p
-                              </span>
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                {contact.organizationCount}o
-                              </span>
-                            </div>
-                          </td>
                         </tr>
                         {expandedContact === contact.id && (
                           <tr>
-                            <td colSpan={7} className="px-4 py-3 bg-gray-50">
+                            <td colSpan={6} className="px-4 py-3 bg-gray-50">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {contact.properties.length > 0 && (
                                   <div>

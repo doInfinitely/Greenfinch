@@ -31,6 +31,10 @@ export async function GET(request: NextRequest) {
     const emailStatus = searchParams.get('emailStatus');
     const title = searchParams.get('title');
     const organizationId = searchParams.get('organizationId');
+    const propertyCount = searchParams.get('propertyCount');
+    const hasValidEmail = searchParams.get('hasValidEmail') === 'true';
+    const hasPhone = searchParams.get('hasPhone') === 'true';
+    const hasLinkedIn = searchParams.get('hasLinkedIn') === 'true';
     const cursor = searchParams.get('cursor');
     const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
     const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(searchParams.get('limit') || String(DEFAULT_LIMIT), 10)));
@@ -85,6 +89,40 @@ export async function GET(request: NextRequest) {
       conditions.push(sql`${contacts.id} IN (${contactIdsInOrg})`);
     }
 
+    // Filter by contact info availability
+    if (hasValidEmail) {
+      conditions.push(eq(contacts.emailStatus, 'valid'));
+    }
+
+    if (hasPhone) {
+      conditions.push(
+        or(
+          sql`${contacts.phone} IS NOT NULL AND ${contacts.phone} != ''`,
+          sql`${contacts.aiPhone} IS NOT NULL AND ${contacts.aiPhone} != ''`,
+          sql`${contacts.enrichmentPhoneWork} IS NOT NULL AND ${contacts.enrichmentPhoneWork} != ''`,
+          sql`${contacts.enrichmentPhonePersonal} IS NOT NULL AND ${contacts.enrichmentPhonePersonal} != ''`
+        )
+      );
+    }
+
+    if (hasLinkedIn) {
+      conditions.push(sql`${contacts.linkedinUrl} IS NOT NULL AND ${contacts.linkedinUrl} != ''`);
+    }
+
+    // Property count filter will be applied after subquery join
+    let propertyCountCondition: any = null;
+    if (propertyCount && propertyCount !== 'all') {
+      if (propertyCount === '1') {
+        propertyCountCondition = sql`COALESCE(property_counts.property_count, 0) = 1`;
+      } else if (propertyCount === '2-5') {
+        propertyCountCondition = sql`COALESCE(property_counts.property_count, 0) >= 2 AND COALESCE(property_counts.property_count, 0) <= 5`;
+      } else if (propertyCount === '6-10') {
+        propertyCountCondition = sql`COALESCE(property_counts.property_count, 0) >= 6 AND COALESCE(property_counts.property_count, 0) <= 10`;
+      } else if (propertyCount === '10+') {
+        propertyCountCondition = sql`COALESCE(property_counts.property_count, 0) > 10`;
+      }
+    }
+
     const propertyCountSubquery = db
       .select({
         contactId: propertyContacts.contactId,
@@ -128,8 +166,12 @@ export async function GET(request: NextRequest) {
       .leftJoin(orgCountSubquery, eq(contacts.id, orgCountSubquery.contactId));
 
     // Apply filter conditions
-    if (conditions.length > 0) {
-      baseQuery = baseQuery.where(and(...conditions)) as typeof baseQuery;
+    const allConditions = [...conditions];
+    if (propertyCountCondition) {
+      allConditions.push(propertyCountCondition);
+    }
+    if (allConditions.length > 0) {
+      baseQuery = baseQuery.where(and(...allConditions)) as typeof baseQuery;
     }
 
     // Determine sort column and expression
@@ -292,10 +334,34 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    let countQuery = db.select({ count: sql<number>`count(*)::int` }).from(contacts);
-    
-    if (conditions.length > 0) {
-      countQuery = countQuery.where(and(...conditions)) as typeof countQuery;
+    // Build count query with proper JOINs for property count filter
+    let countQuery;
+    if (propertyCountCondition) {
+      // Need to include the JOIN for property count filtering
+      const countSubquery = db
+        .select({
+          contactId: propertyContacts.contactId,
+          count: sql<number>`count(*)::int`.as('property_count'),
+        })
+        .from(propertyContacts)
+        .groupBy(propertyContacts.contactId)
+        .as('property_counts');
+      
+      let countQueryWithJoin = db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(contacts)
+        .leftJoin(countSubquery, eq(contacts.id, countSubquery.contactId));
+      
+      if (allConditions.length > 0) {
+        countQueryWithJoin = countQueryWithJoin.where(and(...allConditions)) as typeof countQueryWithJoin;
+      }
+      countQuery = countQueryWithJoin;
+    } else {
+      let simpleCountQuery = db.select({ count: sql<number>`count(*)::int` }).from(contacts);
+      if (conditions.length > 0) {
+        simpleCountQuery = simpleCountQuery.where(and(...conditions)) as typeof simpleCountQuery;
+      }
+      countQuery = simpleCountQuery;
     }
 
     const [totalResult] = await countQuery;
