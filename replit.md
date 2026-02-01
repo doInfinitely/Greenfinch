@@ -66,7 +66,7 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Notifications System**: In-app notification system supporting @ mentions in notes and follow-up action reminders.
   - **@ Mentions**: Users can @mention team members in property notes. Mentioned users receive in-app notifications.
   - **Follow-up Actions**: Schedule follow-ups for properties with quick options (tomorrow 9am, next week 9am) or custom dates.
-  - **Notification Bell**: Located in property page header near the Research button. Shows unread count with real-time polling (60s).
+  - **Notification Bell**: Located in the global app header (next to enrichment queue). Shows unread count with real-time polling (60s). Accessible from any page.
   - **Notification Types**: `mention` (when mentioned in notes), `action_due` (reminder for due actions), `action_assigned` (when assigned a follow-up by another user).
 
 ## External Dependencies

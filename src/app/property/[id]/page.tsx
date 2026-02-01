@@ -27,7 +27,6 @@ import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import PipelineStatus from '@/components/PipelineStatus';
 import PropertyNotes from '@/components/PropertyNotes';
 import PropertyActivity from '@/components/PropertyActivity';
-import NotificationBell from '@/components/NotificationBell';
 import { normalizeCommonName, toTitleCase } from '@/lib/normalization';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
@@ -1048,8 +1047,6 @@ export default function PropertyDetailPage() {
                       </AdminOnly>
                     );
                   })()}
-                  
-                  <NotificationBell />
                   
                   <Button
                     variant="outline"

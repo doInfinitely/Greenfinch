@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EnrichmentQueuePopover from '@/components/EnrichmentQueuePopover';
+import NotificationBell from '@/components/NotificationBell';
 
 interface NavItem {
   href: string;
@@ -226,7 +227,10 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           >
             <Menu className="w-5 h-5" />
           </button>
-          <EnrichmentQueuePopover />
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <EnrichmentQueuePopover />
+          </div>
         </header>
 
         <header className="h-14 border-b border-gray-200 bg-white hidden lg:flex items-center justify-between px-4">
@@ -243,7 +247,8 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
               />
             )}
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            <NotificationBell />
             <EnrichmentQueuePopover />
           </div>
         </header>
