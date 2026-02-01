@@ -441,7 +441,8 @@ export default function ContactsPage() {
                 {orgSearchResults.map((org) => (
                   <button
                     key={org.id}
-                    onClick={() => {
+                    onMouseDown={(e) => {
+                      e.preventDefault();
                       setOrganizationFilter(org);
                       setOrgSearchQuery('');
                       setShowOrgDropdown(false);
