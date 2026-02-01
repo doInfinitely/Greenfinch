@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
 import { ListPlus, Filter, Mail, Phone } from 'lucide-react';
-import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
+import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, LinkedInLink, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useToast } from '@/hooks/use-toast';
 
@@ -718,18 +718,7 @@ export default function ContactsPage() {
                                   <span className="text-sm font-medium text-gray-900 truncate">
                                     {contact.fullName || 'Unknown'}
                                   </span>
-                                  {contact.linkedinUrl && (
-                                    <a
-                                      href={contact.linkedinUrl}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={(e) => e.stopPropagation()}
-                                      title="View LinkedIn profile"
-                                      data-testid={`link-linkedin-${contact.id}`}
-                                    >
-                                      <img src={linkedinLogo.src} alt="LinkedIn" className="w-4 h-4 rounded-sm" />
-                                    </a>
-                                  )}
+                                  <LinkedInLink linkedinUrl={contact.linkedinUrl} size="sm" />
                                 </div>
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0" data-testid={`contact-status-icons-${contact.id}`}>
@@ -745,7 +734,6 @@ export default function ContactsPage() {
                                 />
                                 <LinkedInStatusIcon 
                                   hasLinkedIn={!!contact.linkedinUrl}
-                                  linkedinUrl={contact.linkedinUrl}
                                   size="sm"
                                 />
                               </div>

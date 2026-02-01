@@ -10,8 +10,7 @@ import { BulkActionBar } from '@/components/BulkActionBar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Trash2, Mail, Phone, MoreHorizontal, ChevronRight, Loader2 } from 'lucide-react';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
-import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
-import linkedinLogo from '@/assets/linkedin-logo.png';
+import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, LinkedInLink, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import Image from 'next/image';
 import {
   DropdownMenu,
@@ -729,9 +728,12 @@ export default function ListDetailPage() {
                                 className="group flex items-center gap-2"
                               >
                                 <div className="flex flex-col min-w-0">
-                                  <span className="text-gray-900 font-medium group-hover:text-green-600 truncate">
-                                    {contactDetail.fullName || 'Unknown'}
-                                  </span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-gray-900 font-medium group-hover:text-green-600 truncate">
+                                      {contactDetail.fullName || 'Unknown'}
+                                    </span>
+                                    <LinkedInLink linkedinUrl={contactDetail.linkedinUrl} size="sm" />
+                                  </div>
                                   {contactDetail.title && (
                                     <span className="text-xs text-gray-500 truncate">{contactDetail.title}</span>
                                   )}
@@ -757,7 +759,6 @@ export default function ListDetailPage() {
                                 />
                                 <LinkedInStatusIcon
                                   hasLinkedIn={!!contactDetail.linkedinUrl}
-                                  linkedinUrl={contactDetail.linkedinUrl}
                                   size="sm"
                                 />
                               </div>

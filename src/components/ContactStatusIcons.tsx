@@ -1,6 +1,6 @@
 'use client';
 
-import { Mail, Phone, CheckCircle, HelpCircle, XCircle, AlertTriangle } from 'lucide-react';
+import { Mail, Phone, CheckCircle, HelpCircle, XCircle, AlertTriangle, Linkedin } from 'lucide-react';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 
 interface EmailStatusIconProps {
@@ -17,10 +17,7 @@ interface PhoneStatusIconProps {
 
 interface LinkedInStatusIconProps {
   hasLinkedIn: boolean;
-  confidence?: number | null;
-  linkedinUrl?: string | null;
   size?: 'sm' | 'md';
-  asLink?: boolean;
 }
 
 interface ContactInfoData {
@@ -147,64 +144,52 @@ export function PhoneStatusIcon({ hasPhone, isOfficeOnly = false, size = 'md' }:
   );
 }
 
-export function LinkedInStatusIcon({ hasLinkedIn, confidence, linkedinUrl, size = 'md', asLink = false }: LinkedInStatusIconProps) {
+export function LinkedInStatusIcon({ hasLinkedIn, size = 'md' }: LinkedInStatusIconProps) {
   const sizes = ICON_SIZES[size];
-  const logoSize = size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4';
   
   if (!hasLinkedIn) {
     return (
-      <span title="No LinkedIn" className="inline-flex items-center opacity-40" aria-label="No LinkedIn profile">
-        <img src={linkedinLogo.src} alt="" className={`${logoSize} grayscale`} />
-      </span>
-    );
-  }
-  
-  const content = (
-    <img 
-      src={linkedinLogo.src} 
-      alt="LinkedIn" 
-      className={logoSize}
-    />
-  );
-  
-  if (asLink && linkedinUrl) {
-    return (
-      <a
-        href={linkedinUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={(e) => e.stopPropagation()}
-        className="inline-flex items-center hover:opacity-80 transition-opacity"
-        title="View LinkedIn profile"
-        aria-label="View LinkedIn profile"
-      >
-        {content}
-      </a>
-    );
-  }
-  
-  const isValidated = confidence !== null && confidence !== undefined && confidence >= 0.7;
-  
-  if (isValidated) {
-    return (
-      <span title={`LinkedIn validated (${Math.round((confidence || 0) * 100)}% confidence)`} className="inline-flex items-center" aria-label="LinkedIn validated">
-        {content}
-      </span>
-    );
-  }
-  
-  if (confidence !== null && confidence !== undefined && confidence < 0.7) {
-    return (
-      <span title={`LinkedIn needs review (${Math.round(confidence * 100)}% confidence)`} className="inline-flex items-center opacity-70" aria-label="LinkedIn needs review">
-        {content}
+      <span title="No LinkedIn" className="inline-flex items-center text-gray-400" aria-label="No LinkedIn profile">
+        <Linkedin className={sizes.icon} />
       </span>
     );
   }
   
   return (
-    <span title="LinkedIn profile available" className="inline-flex items-center" aria-label="LinkedIn available">
-      {content}
+    <span title="LinkedIn profile available" className="inline-flex items-center text-green-600" aria-label="LinkedIn available">
+      <Linkedin className={sizes.icon} />
     </span>
+  );
+}
+
+interface LinkedInLinkProps {
+  linkedinUrl: string | null | undefined;
+  size?: 'sm' | 'md';
+}
+
+export function LinkedInLink({ linkedinUrl, size = 'sm' }: LinkedInLinkProps) {
+  const logoSize = size === 'sm' ? 'w-3.5 h-3.5' : 'w-4 h-4';
+  
+  if (!linkedinUrl) {
+    return null;
+  }
+  
+  return (
+    <a
+      href={linkedinUrl}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className="inline-flex items-center hover:opacity-80 transition-opacity"
+      title="View LinkedIn profile"
+      aria-label="View LinkedIn profile"
+    >
+      <img 
+        src={linkedinLogo.src} 
+        alt="LinkedIn" 
+        className={logoSize}
+      />
+    </a>
   );
 }
 
@@ -232,10 +217,9 @@ export function hasOnlyOfficeLine(contact: ContactInfoData): boolean {
 interface ContactStatusSummaryProps {
   contact: ContactInfoData;
   size?: 'sm' | 'md';
-  showLinkedInAsLink?: boolean;
 }
 
-export function ContactStatusSummary({ contact, size = 'md', showLinkedInAsLink = false }: ContactStatusSummaryProps) {
+export function ContactStatusSummary({ contact, size = 'md' }: ContactStatusSummaryProps) {
   const hasPhone = hasAnyPhone(contact);
   const isOfficeOnly = hasOnlyOfficeLine(contact);
   const emailStatus = contact.emailValidationStatus || contact.emailStatus;
@@ -254,10 +238,7 @@ export function ContactStatusSummary({ contact, size = 'md', showLinkedInAsLink 
       />
       <LinkedInStatusIcon 
         hasLinkedIn={!!contact.linkedinUrl}
-        confidence={contact.linkedinConfidence}
-        linkedinUrl={contact.linkedinUrl}
         size={size}
-        asLink={showLinkedInAsLink}
       />
     </div>
   );

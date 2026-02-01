@@ -658,9 +658,7 @@ export default function OrganizationDetailPage() {
                         />
                         <LinkedInStatusIcon 
                           hasLinkedIn={!!contact.linkedinUrl}
-                          linkedinUrl={contact.linkedinUrl}
                           size="sm"
-                          asLink={true}
                         />
                       </div>
                     </div>

@@ -277,7 +277,7 @@ function ContactInfoIcons({ contact }: { contact: Contact }) {
     <div className="flex items-center gap-2" data-testid={`contact-info-icons-${contact.id}`}>
       <EmailStatusIcon hasEmail={!!contact.email} status={contact.emailValidationStatus} />
       <PhoneStatusIcon hasPhone={hasAnyPhone(contact)} isOfficeOnly={hasOnlyOfficeLine(contact)} />
-      <LinkedInStatusIcon hasLinkedIn={!!contact.linkedinUrl} linkedinUrl={contact.linkedinUrl} />
+      <LinkedInStatusIcon hasLinkedIn={!!contact.linkedinUrl} />
     </div>
   );
 }
