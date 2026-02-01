@@ -2,7 +2,7 @@ import mapboxgl from 'mapbox-gl';
 import { normalizeCommonName } from '@/lib/normalization';
 
 const LIGHT_STYLE = 'mapbox://styles/mapbox/light-v11';
-const SATELLITE_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
+const SATELLITE_RASTER_URL = 'mapbox://mapbox.satellite';
 
 export interface MapBounds {
   north: number;
@@ -32,11 +32,9 @@ export class DashboardMap {
   private hoveredParcelId: string | number | null = null;
   private currentStyle: string = LIGHT_STYLE;
   private styleReady = false;
-  private pendingStyleSwitch: string | null = null;
   private isAnimating = false;
   private initError: string | null = null;
   private handlersRegistered = false; // Track if handlers were registered
-  private styleSwitchPending = false; // Prevent multiple style switches
   private resizeObserver: ResizeObserver | null = null; // Track container size changes
 
   constructor(config: DashboardMapConfig) {
@@ -51,13 +49,12 @@ export class DashboardMap {
     const initialCenter: [number, number] = this.config.initialCenter
       ? [this.config.initialCenter.lon, this.config.initialCenter.lat]
       : [-96.7784, 32.8639];
-    const initialStyle = initialZoom >= 14 ? SATELLITE_STYLE : LIGHT_STYLE;
-    this.currentStyle = initialStyle;
+    this.currentStyle = LIGHT_STYLE;
 
     try {
       this.map = new mapboxgl.Map({
         container: this.config.container,
-        style: initialStyle,
+        style: LIGHT_STYLE,
         center: initialCenter,
         zoom: initialZoom,
         attributionControl: false,
@@ -122,70 +119,8 @@ export class DashboardMap {
       this.updateLayerVisibility();
     });
     
-    // Check style switch on idle (after user stops interacting) instead of on every zoom
-    this.map.on('idle', () => {
-      if (this.isDestroyed || !this.map || !this.styleReady) return;
-      this.checkStyleSwitch();
-    });
   }
 
-  private checkStyleSwitch() {
-    if (!this.map || !this.styleReady || this.styleSwitchPending) return;
-    
-    // Don't switch styles during animations - it interrupts flyTo
-    if (this.isAnimating) return;
-
-    const zoom = this.map.getZoom();
-    const shouldBeSatellite = zoom >= 15;
-    const needsSatellite = shouldBeSatellite && this.currentStyle !== SATELLITE_STYLE;
-    const needsLight = !shouldBeSatellite && this.currentStyle !== LIGHT_STYLE;
-
-    if (needsSatellite || needsLight) {
-      this.styleSwitchPending = true;
-      // Delay style switch to avoid interrupting user interaction
-      setTimeout(() => {
-        this.styleSwitchPending = false;
-        if (!this.map || !this.styleReady || this.isAnimating) return;
-        
-        const currentZoom = this.map.getZoom();
-        if (currentZoom >= 15 && this.currentStyle !== SATELLITE_STYLE) {
-          this.switchStyle(SATELLITE_STYLE);
-        } else if (currentZoom < 15 && this.currentStyle !== LIGHT_STYLE) {
-          this.switchStyle(LIGHT_STYLE);
-        }
-      }, 500);
-    }
-  }
-
-  private switchStyle(newStyle: string) {
-    if (!this.map || this.currentStyle === newStyle) return;
-
-    // Mark as not ready during switch
-    this.styleReady = false;
-    this.currentStyle = newStyle;
-
-    // Store state
-    const center = this.map.getCenter();
-    const zoom = this.map.getZoom();
-    const bearing = this.map.getBearing();
-    const pitch = this.map.getPitch();
-    const dataToRestore = this.currentData;
-
-    this.map.setStyle(newStyle);
-
-    this.map.once('style.load', () => {
-      if (!this.map || this.isDestroyed) return;
-
-      // Restore position
-      this.map.jumpTo({ center, zoom, bearing, pitch });
-
-      // Restore data
-      this.currentData = dataToRestore;
-
-      // Re-setup everything
-      this.onStyleReady();
-    });
-  }
 
   private onStyleReady() {
     if (!this.map) return;
@@ -209,6 +144,15 @@ export class DashboardMap {
 
   private addSources() {
     if (!this.map) return;
+
+    // Satellite raster source for zoom >= 15
+    if (!this.map.getSource('satellite')) {
+      this.map.addSource('satellite', {
+        type: 'raster',
+        url: SATELLITE_RASTER_URL,
+        tileSize: 256,
+      });
+    }
 
     // Property points source
     if (!this.map.getSource('properties')) {
@@ -239,7 +183,22 @@ export class DashboardMap {
   private addLayers() {
     if (!this.map) return;
 
-    // Add parcel layers first (below markers)
+    // Add satellite layer first (below everything else)
+    if (this.map.getSource('satellite') && !this.map.getLayer('satellite-layer')) {
+      this.map.addLayer({
+        id: 'satellite-layer',
+        type: 'raster',
+        source: 'satellite',
+        layout: {
+          visibility: 'none', // Hidden by default, shown when zoom >= 15
+        },
+        paint: {
+          'raster-opacity': 1,
+        },
+      });
+    }
+
+    // Add parcel layers (above satellite, below markers)
     if ((this.config.regridToken || this.config.regridTileUrl) && this.map.getSource('regrid')) {
       if (!this.map.getLayer('parcels-fill')) {
         this.map.addLayer({
@@ -538,6 +497,7 @@ export class DashboardMap {
     const zoom = this.map.getZoom();
     const showParcels = zoom >= 15;
     const showClusters = zoom < 15;
+    const showSatellite = zoom >= 15;
 
     const setVisibility = (layerId: string, visible: boolean) => {
       if (this.map?.getLayer(layerId)) {
@@ -545,6 +505,7 @@ export class DashboardMap {
       }
     };
 
+    setVisibility('satellite-layer', showSatellite);
     setVisibility('clusters', showClusters);
     setVisibility('cluster-count', showClusters);
     setVisibility('property-points', showParcels);
@@ -586,11 +547,9 @@ export class DashboardMap {
       duration: 1500,
     });
     
-    // Re-enable style switching after animation completes
+    // Re-enable after animation completes
     this.map.once('moveend', () => {
       this.isAnimating = false;
-      // Check if we need to switch styles after animation
-      this.checkStyleSwitch();
     });
   }
 
