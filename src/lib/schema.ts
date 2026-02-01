@@ -180,6 +180,9 @@ export const properties = pgTable('properties', {
   constituentAccountNums: json('constituent_account_nums'),
   constituentCount: integer('constituent_count').default(0),
   
+  // Customer status
+  isCurrentCustomer: boolean('is_current_customer').default(false),
+  
   // Timestamps
   lastRegridUpdate: timestamp('last_regrid_update'),
   lastEnrichedAt: timestamp('last_enriched_at'),
