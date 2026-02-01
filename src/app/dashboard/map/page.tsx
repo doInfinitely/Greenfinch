@@ -201,7 +201,7 @@ export default function MapPage() {
   return (
     <div className="flex h-full relative">
       <div className="flex-1 relative">
-        <div className={isLoading ? "opacity-50 pointer-events-none" : ""}>
+        <div className={`w-full h-full ${isLoading ? "opacity-50 pointer-events-none" : ""}`}>
           <MapCanvas
             ref={mapRef}
             accessToken={config.mapboxToken}
