@@ -70,7 +70,7 @@ export async function GET(request: NextRequest) {
           buildingSqft: properties.buildingSqft,
           propertyClass: properties.propertyClass,
           sourceLlUuid: properties.sourceLlUuid,
-          isCurrentCustomer: properties.isCurrentCustomer,
+          isCurrentCustomer: sql<boolean>`coalesce("properties"."is_current_customer", false)`,
         })
         .from(properties)
         .where(and(...conditions))
