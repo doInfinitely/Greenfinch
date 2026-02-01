@@ -707,6 +707,70 @@ export const contactLinkedinFlags = pgTable('contact_linkedin_flags', {
   contactFlagIdx: index('idx_contact_linkedin_flags').on(table.contactId),
 }));
 
+// Notifications - for @ mentions and action reminders
+export const notifications = pgTable('notifications', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clerkOrgId: text('clerk_org_id').notNull(),
+  
+  // Who receives the notification
+  recipientUserId: uuid('recipient_user_id').references(() => users.id).notNull(),
+  
+  // Who triggered the notification (optional for system notifications)
+  senderUserId: uuid('sender_user_id').references(() => users.id),
+  
+  // Notification type
+  type: text('type').notNull(), // 'mention', 'action_due', 'action_assigned'
+  
+  // Related entities (optional)
+  propertyId: uuid('property_id').references(() => properties.id),
+  noteId: uuid('note_id').references(() => propertyNotes.id),
+  actionId: uuid('action_id'), // Self-reference handled separately
+  
+  // Content
+  title: text('title').notNull(),
+  message: text('message'),
+  
+  // Status
+  isRead: boolean('is_read').default(false),
+  readAt: timestamp('read_at'),
+  
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  recipientIdx: index('idx_notifications_recipient').on(table.recipientUserId, table.isRead),
+  orgIdx: index('idx_notifications_org').on(table.clerkOrgId),
+  createdAtIdx: index('idx_notifications_created').on(table.createdAt),
+}));
+
+// Follow-up actions - tasks/reminders for opportunities
+export const propertyActions = pgTable('property_actions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  propertyId: uuid('property_id').references(() => properties.id).notNull(),
+  clerkOrgId: text('clerk_org_id').notNull(),
+  
+  // Who created and who is assigned
+  createdByUserId: uuid('created_by_user_id').references(() => users.id).notNull(),
+  assignedToUserId: uuid('assigned_to_user_id').references(() => users.id).notNull(),
+  
+  // Action details
+  actionType: text('action_type').notNull(), // 'follow_up', 'call', 'email', 'meeting', 'other'
+  description: text('description'),
+  
+  // Due date
+  dueAt: timestamp('due_at').notNull(),
+  
+  // Status
+  status: text('status').default('pending'), // 'pending', 'completed', 'cancelled'
+  completedAt: timestamp('completed_at'),
+  
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  propertyIdx: index('idx_property_actions_property').on(table.propertyId),
+  assignedIdx: index('idx_property_actions_assigned').on(table.assignedToUserId, table.status),
+  dueAtIdx: index('idx_property_actions_due').on(table.dueAt),
+  orgIdx: index('idx_property_actions_org').on(table.clerkOrgId),
+}));
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
@@ -728,3 +792,7 @@ export type PropertyNote = typeof propertyNotes.$inferSelect;
 export type InsertPropertyNote = typeof propertyNotes.$inferInsert;
 export type PropertyActivity = typeof propertyActivity.$inferSelect;
 export type InsertPropertyActivity = typeof propertyActivity.$inferInsert;
+export type Notification = typeof notifications.$inferSelect;
+export type InsertNotification = typeof notifications.$inferInsert;
+export type PropertyAction = typeof propertyActions.$inferSelect;
+export type InsertPropertyAction = typeof propertyActions.$inferInsert;
