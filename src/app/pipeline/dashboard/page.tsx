@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { BarChart3, DollarSign, TrendingUp, Target, Loader2, Users, Calendar, MessageSquare, ChevronRight, Clock, AlertCircle } from 'lucide-react';
+import { BarChart3, DollarSign, TrendingUp, Target, Loader2, Users, Calendar, MessageSquare, ChevronRight, Clock, AlertCircle, List, Building2, User } from 'lucide-react';
 import { formatDistanceToNow, isPast, isToday, isTomorrow } from 'date-fns';
 
 interface DashboardData {
@@ -65,6 +65,14 @@ interface ActivityData {
   recentMentions: RecentMention[];
 }
 
+interface UserList {
+  id: string;
+  listName: string | null;
+  listType: string | null;
+  createdAt: string;
+  itemCount: number;
+}
+
 function formatCurrency(value: number): string {
   if (value >= 1000000) {
     return `$${(value / 1000000).toFixed(1)}M`;
@@ -84,6 +92,8 @@ export default function PipelineDashboard() {
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
   const [activity, setActivity] = useState<ActivityData | null>(null);
   const [activityLoading, setActivityLoading] = useState(true);
+  const [lists, setLists] = useState<UserList[]>([]);
+  const [listsLoading, setListsLoading] = useState(true);
   const { membership } = useOrganization();
   
   const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:super_admin';
@@ -113,6 +123,27 @@ export default function PipelineDashboard() {
       }
     }
     fetchActivity();
+  }, []);
+
+  useEffect(() => {
+    async function fetchLists() {
+      try {
+        setListsLoading(true);
+        const res = await fetch('/api/lists');
+        if (res.ok) {
+          const data = await res.json();
+          const sortedLists = (data.lists || [])
+            .sort((a: UserList, b: UserList) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+            .slice(0, 5);
+          setLists(sortedLists);
+        }
+      } catch (err) {
+        console.error('Failed to fetch lists:', err);
+      } finally {
+        setListsLoading(false);
+      }
+    }
+    fetchLists();
   }, []);
 
   const fetchDashboardData = useCallback(async () => {
@@ -441,6 +472,61 @@ export default function PipelineDashboard() {
                   </CardContent>
                 </Card>
               </div>
+
+              <Card className="mt-6" data-testid="card-recent-lists">
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 gap-2">
+                  <CardTitle className="text-base font-medium flex items-center gap-2">
+                    <List className="w-4 h-4 text-purple-500" />
+                    Recent Lists
+                  </CardTitle>
+                  <Link href="/lists" className="text-xs text-blue-600 hover:underline">
+                    View all
+                  </Link>
+                </CardHeader>
+                <CardContent className="pt-0">
+                  {listsLoading ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : lists.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <List className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                      <p className="text-sm">No lists yet</p>
+                      <p className="text-xs mt-1">Create lists to organize your properties and contacts</p>
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {lists.map((list) => (
+                        <Link
+                          key={list.id}
+                          href={`/lists?id=${list.id}`}
+                          className="flex items-center gap-3 p-3 border rounded-lg hover-elevate group"
+                          data-testid={`list-item-${list.id}`}
+                        >
+                          <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                            list.listType === 'properties' ? 'bg-blue-100' : 'bg-purple-100'
+                          }`}>
+                            {list.listType === 'properties' ? (
+                              <Building2 className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <User className="w-4 h-4 text-purple-600" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">
+                              {list.listName || 'Untitled List'}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {list.itemCount} {list.listType === 'properties' ? 'properties' : 'contacts'}
+                            </p>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </Link>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
             </>
           )}
         </div>
