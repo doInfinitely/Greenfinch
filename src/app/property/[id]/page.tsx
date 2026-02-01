@@ -925,7 +925,7 @@ export default function PropertyDetailPage() {
                             </AvatarFallback>
                           </Avatar>
                         </TooltipTrigger>
-                        <TooltipContent className="bg-popover border shadow-lg">
+                        <TooltipContent className="z-[100] bg-white dark:bg-gray-900 border border-border px-3 py-1.5 text-sm text-popover-foreground shadow-md">
                           <p>Owner: {pipelineOwner.displayName}</p>
                         </TooltipContent>
                       </Tooltip>
@@ -948,7 +948,7 @@ export default function PropertyDetailPage() {
                                 <Sparkles className="w-5 h-5 text-purple-500" />
                               </span>
                             </TooltipTrigger>
-                            <TooltipContent className="bg-popover border shadow-lg">
+                            <TooltipContent className="z-[100] bg-white dark:bg-gray-900 border border-border px-3 py-1.5 text-sm text-popover-foreground shadow-md">
                               <p>Researched with AI</p>
                             </TooltipContent>
                           </Tooltip>

@@ -65,6 +65,7 @@ export async function POST(
           .update(propertyPipeline)
           .set({ 
             isCurrentCustomer,
+            status: isCurrentCustomer ? 'new' : existingPipeline.status,
             updatedAt: new Date(),
           })
           .where(eq(propertyPipeline.id, existingPipeline.id));

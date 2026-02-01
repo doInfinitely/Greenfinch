@@ -304,6 +304,10 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     }).format(value);
   }
 
+  if (isCustomer) {
+    return null;
+  }
+
   if (loading) {
     if (inline) {
       return (
