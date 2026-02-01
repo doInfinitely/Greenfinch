@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreVertical, List, Upload, User, UserCircle } from 'lucide-react';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -992,19 +992,21 @@ export default function PropertyDetailPage() {
                 <div className="flex-shrink-0 flex items-center gap-2">
                   {/* Owner avatar with tooltip */}
                   {pipelineOwner && (
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Avatar className="w-8 h-8 cursor-default" data-testid="avatar-pipeline-owner">
-                          <AvatarImage src={pipelineOwner.profileImageUrl || ''} />
-                          <AvatarFallback className="text-xs bg-green-100 text-green-700">
-                            {pipelineOwner.displayName?.charAt(0) || '?'}
-                          </AvatarFallback>
-                        </Avatar>
-                      </TooltipTrigger>
-                      <TooltipContent className="bg-popover border shadow-lg">
-                        <p>Owner: {pipelineOwner.displayName}</p>
-                      </TooltipContent>
-                    </Tooltip>
+                    <TooltipProvider>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <Avatar className="w-8 h-8 cursor-default" data-testid="avatar-pipeline-owner">
+                            <AvatarImage src={pipelineOwner.profileImageUrl || ''} />
+                            <AvatarFallback className="text-xs bg-green-100 text-green-700">
+                              {pipelineOwner.displayName?.charAt(0) || '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                        </TooltipTrigger>
+                        <TooltipContent className="bg-popover border shadow-lg">
+                          <p>Owner: {pipelineOwner.displayName}</p>
+                        </TooltipContent>
+                      </Tooltip>
+                    </TooltipProvider>
                   )}
                   
                   {/* Research button moved to header */}
