@@ -139,7 +139,7 @@ export default function PropertyFilters({
   availableHeatingTypes = [],
 }: PropertyFiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [openSections, setOpenSections] = useState<Set<string>>(new Set(['size']));
+  const [openSections, setOpenSections] = useState<Set<string>>(new Set());
   const [localMinLotAcres, setLocalMinLotAcres] = useState<string>(
     filters.minLotAcres ? String(filters.minLotAcres) : ''
   );
@@ -564,7 +564,7 @@ export default function PropertyFilters({
           onClear={() => handleClearArray('categories', 'subcategories')}
         />
         {openSections.has('category') && (
-          <div className="mt-2 space-y-1 max-h-48 overflow-y-auto">
+          <div className="mt-2 space-y-1">
             {availableCategories.map((cat) => (
               <label key={cat} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
                 <Checkbox
@@ -813,12 +813,12 @@ export default function PropertyFilters({
           </div>
 
           {/* Desktop: Dropdown */}
-          <div className="hidden md:block absolute top-full left-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[70vh] overflow-hidden flex flex-col">
+          <div className="hidden md:block absolute top-full left-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[70vh] flex flex-col">
             <div className="flex-1 overflow-y-auto">
               {filterContent}
             </div>
-            {/* Desktop Footer */}
-            <div className="border-t border-gray-200 bg-white px-4 py-3 flex gap-2">
+            {/* Desktop Footer - sticky at bottom */}
+            <div className="sticky bottom-0 border-t border-gray-200 bg-white px-4 py-3 flex gap-2 flex-shrink-0">
               <button
                 onClick={() => setIsOpen(false)}
                 className="flex-1 px-4 py-2.5 text-sm font-medium bg-green-600 text-white rounded-lg active:bg-green-700"
