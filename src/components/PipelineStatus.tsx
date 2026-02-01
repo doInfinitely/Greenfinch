@@ -411,9 +411,9 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         }
       }}
     >
-      <SelectTrigger className="w-[180px]" data-testid="select-opportunity-stage">
+      <SelectTrigger className="w-[200px] h-10" data-testid="select-opportunity-stage">
         <SelectValue>
-          <span className={`flex items-center gap-2 ${STATUS_COLORS[currentStatus]} px-2 py-0.5 rounded`}>
+          <span className={`flex items-center gap-2 ${STATUS_COLORS[currentStatus]} px-2.5 py-1 rounded`}>
             {STATUS_ICONS[currentStatus]}
             {PIPELINE_STATUS_LABELS[currentStatus]}
           </span>
