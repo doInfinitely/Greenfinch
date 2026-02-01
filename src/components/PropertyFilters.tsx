@@ -866,8 +866,8 @@ export default function PropertyFilters({
           </div>
 
           {/* Desktop: Dropdown */}
-          <div className="hidden md:block absolute top-full left-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[70vh] flex flex-col">
-            <div className="flex-1 overflow-y-auto">
+          <div className="hidden md:block absolute top-full left-0 mt-2 w-80 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-[70vh] overflow-y-auto">
+            <div>
               {filterContent}
             </div>
             {/* Desktop Footer - sticky at bottom */}
