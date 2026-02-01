@@ -344,7 +344,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         size="sm"
         onClick={() => updateStatus('qualified')}
         disabled={updating}
-        className="border-green-300 text-green-700 dark:border-green-700 dark:text-green-400"
+        className="border-green-300 text-green-700 dark:border-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/50"
         data-testid="button-qualify"
       >
         <Check className="w-4 h-4 mr-1" />
@@ -355,7 +355,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         size="sm"
         onClick={() => updateStatus('disqualified')}
         disabled={updating}
-        className="border-gray-300 text-gray-600 dark:border-gray-600 dark:text-gray-400"
+        className="border-red-300 text-red-600 dark:border-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50"
         data-testid="button-disqualify"
       >
         <X className="w-4 h-4 mr-1" />
