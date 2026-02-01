@@ -226,11 +226,15 @@ export default function PropertyFilters({
   }, [debouncedContactSearch]);
 
   useEffect(() => {
-    onFiltersChange({
-      ...filters,
-      zipCode: debouncedZipCode.trim() || null,
-    });
-  }, [debouncedZipCode]);
+    const newZipCode = debouncedZipCode.trim() || null;
+    // Only update if value actually changed to prevent re-render loops
+    if (newZipCode !== filters.zipCode) {
+      onFiltersChange({
+        ...filters,
+        zipCode: newZipCode,
+      });
+    }
+  }, [debouncedZipCode, filters.zipCode]);
 
   const handleAcresChange = (field: 'minLotAcres' | 'maxLotAcres', value: string, setter: (v: string) => void) => {
     setter(value);
