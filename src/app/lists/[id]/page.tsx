@@ -6,7 +6,8 @@ import Link from 'next/link';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
-import { Trash2, Search, Mail, Phone, MoreHorizontal, ChevronRight } from 'lucide-react';
+import { Trash2, Mail, Phone, MoreHorizontal, ChevronRight, Loader2 } from 'lucide-react';
+import { GreenfinchAgentIcon } from '@/components/icons/GreenfinchAgentIcon';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import Image from 'next/image';
@@ -36,6 +37,7 @@ interface ListItem {
 interface PropertyInfo {
   id: string;
   propertyKey?: string;
+  address?: string;
   validatedAddress?: string;
   regridAddress?: string;
   city?: string;
@@ -504,10 +506,14 @@ export default function ListDetailPage() {
                   disabled={isResearchingAll || unresearchedCount === 0}
                   size="sm"
                   variant="outline"
-                  className="gap-2"
+                  className="gap-2 border-purple-500 text-purple-700 dark:text-purple-400"
                   data-testid="button-research-all"
                 >
-                  <Search className="h-4 w-4" />
+                  {isResearchingAll ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <GreenfinchAgentIcon className="h-4 w-4" />
+                  )}
                   {isResearchingAll ? 'Researching...' : `Research All${unresearchedCount > 0 ? ` (${unresearchedCount})` : ''}`}
                 </Button>
               )}
@@ -578,7 +584,7 @@ export default function ListDetailPage() {
                   <th className="px-4 py-3 text-left w-10">
                     <Checkbox
                       checked={selectedItems.size === items.length && items.length > 0}
-                      onCheckedChange={toggleSelectAll}
+                      onChange={toggleSelectAll}
                       data-testid="checkbox-select-all"
                     />
                   </th>
@@ -630,7 +636,7 @@ export default function ListDetailPage() {
                       <td className="px-4 py-3">
                         <Checkbox
                           checked={isSelected}
-                          onCheckedChange={() => toggleSelectItem(item.itemId)}
+                          onChange={() => toggleSelectItem(item.itemId)}
                           data-testid={`checkbox-item-${item.itemId}`}
                         />
                       </td>
@@ -649,7 +655,7 @@ export default function ListDetailPage() {
                                     </span>
                                   )}
                                   <span className="text-green-600 group-hover:text-green-700 group-hover:underline font-medium truncate">
-                                    {propDetail.validatedAddress || propDetail.regridAddress || 'Unknown Address'}
+                                    {propDetail.address || propDetail.validatedAddress || propDetail.regridAddress || 'Unknown Address'}
                                   </span>
                                 </div>
                                 <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
