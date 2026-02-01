@@ -133,10 +133,12 @@ function QueueItem({ item, onRemove }: { item: EnrichmentQueueItem; onRemove: ()
 export default function EnrichmentQueuePopover() {
   const [isOpen, setIsOpen] = useState(false);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [justCompleted, setJustCompleted] = useState(false);
   const { items, activeCount, removeItem, clearCompleted } = useEnrichmentQueue();
   const { celebrate, setOriginRef } = useCelebration();
   const buttonRef = useRef<HTMLButtonElement>(null);
   const prevCompletedCountRef = useRef(0);
+  const prevActiveCountRef = useRef(0);
   
   const hasItems = items.length > 0;
   const hasCompletedItems = items.some(item => item.status === 'completed' || item.status === 'failed');
@@ -163,6 +165,7 @@ export default function EnrichmentQueuePopover() {
       if (isHydrated) {
         isInitialMount.current = false;
         prevCompletedCountRef.current = completedCount;
+        prevActiveCountRef.current = activeCount;
       }
       return;
     }
@@ -170,8 +173,16 @@ export default function EnrichmentQueuePopover() {
     if (completedCount > prevCompletedCountRef.current) {
       celebrate();
     }
+    
+    // Trigger justCompleted animation when all items finish (activeCount goes from >0 to 0)
+    if (prevActiveCountRef.current > 0 && activeCount === 0 && hasItems) {
+      setJustCompleted(true);
+      setTimeout(() => setJustCompleted(false), 2000);
+    }
+    
     prevCompletedCountRef.current = completedCount;
-  }, [completedCount, celebrate, isHydrated]);
+    prevActiveCountRef.current = activeCount;
+  }, [completedCount, activeCount, celebrate, isHydrated, hasItems]);
   
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
@@ -182,7 +193,7 @@ export default function EnrichmentQueuePopover() {
           title="greenfinch.ai"
           data-testid="button-greenfinch-agent"
         >
-          <GreenfinchAgentIcon size={20} />
+          <GreenfinchAgentIcon size={20} isActive={activeCount > 0} justCompleted={justCompleted} />
           {activeCount > 0 && (
             <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-green-500 text-white text-xs font-medium rounded-full flex items-center justify-center" data-testid="badge-active-enrichments">
               {activeCount}
