@@ -748,13 +748,17 @@ export default function ListDetailPage() {
                                 <EmailStatusIcon
                                   hasEmail={!!contactDetail.email}
                                   status={contactDetail.emailValidationStatus || contactDetail.emailStatus}
+                                  size="sm"
                                 />
                                 <PhoneStatusIcon
                                   hasPhone={contactHasPhone(contactDetail)}
                                   isOfficeOnly={contactHasOnlyOfficeLine(contactDetail)}
+                                  size="sm"
                                 />
                                 <LinkedInStatusIcon
                                   hasLinkedIn={!!contactDetail.linkedinUrl}
+                                  linkedinUrl={contactDetail.linkedinUrl}
+                                  size="sm"
                                 />
                               </div>
                             )}
