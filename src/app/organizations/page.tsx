@@ -463,7 +463,7 @@ export default function OrganizationsPage() {
                         Contacts <SortIcon column="contactCount" />
                       </th>
                       <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Actions
+                        
                       </th>
                     </tr>
                   </thead>
@@ -524,16 +524,7 @@ export default function OrganizationsPage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                          <span
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              window.location.href = `/dashboard?org=${org.id}`;
-                            }}
-                            className="text-gray-500 hover:text-gray-700 cursor-pointer"
-                          >
-                            Map
-                          </span>
-                          <svg className="w-4 h-4 inline-block ml-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 inline-block text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                           </svg>
                         </td>
