@@ -19,7 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft } from 'lucide-react';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
-import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
+import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS, ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
 import AddToListModal from '@/components/AddToListModal';
 import StreetView from '@/components/StreetView';
 import { AdminOnly } from '@/components/PermissionGate';
@@ -149,13 +149,6 @@ interface Organization {
 
 type EnrichmentStatusType = 'not_enriched' | 'pending' | 'completed' | 'failed';
 
-const ROLE_LABELS: Record<string, string> = {
-  owner: 'Owner',
-  property_manager: 'Property Manager',
-  facilities_manager: 'Facilities Manager',
-  leasing: 'Leasing',
-  other: 'Other',
-};
 
 // Priority order for contact sorting (lower = higher priority)
 const ROLE_PRIORITY: Record<string, number> = {
@@ -174,13 +167,6 @@ function sortContactsByRelevance(contacts: Contact[]): Contact[] {
   });
 }
 
-const ROLE_COLORS: Record<string, string> = {
-  owner: 'bg-purple-100 text-purple-700',
-  property_manager: 'bg-blue-100 text-blue-700',
-  facilities_manager: 'bg-orange-100 text-orange-700',
-  leasing: 'bg-teal-100 text-teal-700',
-  other: 'bg-gray-100 text-gray-700',
-};
 
 
 // Low confidence marker - only shows for items under 70% confidence
@@ -1089,6 +1075,63 @@ export default function PropertyDetailPage() {
               </div>
             </div>
 
+            {enrichmentStatus === 'completed' && enrichedProperty && (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">About This Property</h2>
+                
+                <div className="space-y-4">
+                  {enrichedProperty.lastEnrichedAt && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                      </svg>
+                      <span className="text-gray-500">Data last refreshed:</span>
+                      <span className="text-gray-900">{new Date(enrichedProperty.lastEnrichedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                    </div>
+                  )}
+
+                  {(enrichedProperty.propertyWebsite || enrichedProperty.propertyPhone) && (
+                    <div className="flex flex-wrap gap-3">
+                      {enrichedProperty.propertyWebsite && (
+                        <a
+                          href={enrichedProperty.propertyWebsite.startsWith('http') ? enrichedProperty.propertyWebsite : `https://${enrichedProperty.propertyWebsite}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
+                          data-testid="link-property-website"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
+                          </svg>
+                          Property Website
+                        </a>
+                      )}
+                      {enrichedProperty.propertyPhone && (
+                        <a
+                          href={`tel:${enrichedProperty.propertyPhone.replace(/[^\d+]/g, '')}`}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
+                          data-testid="link-property-phone"
+                        >
+                          <Phone className="w-4 h-4" />
+                          {enrichedProperty.propertyPhone}
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                  {enrichedProperty.aiRationale && (
+                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
+                      <p className="text-sm font-medium text-gray-700 mb-2">AI Research Summary</p>
+                      <SummaryWithSources 
+                        summary={enrichedProperty.aiRationale} 
+                        sources={enrichedProperty.enrichmentSources} 
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Ownership & Management</h2>
               
@@ -1358,63 +1401,6 @@ export default function PropertyDetailPage() {
                       </div>
                     </a>
                   ))}
-                </div>
-              </div>
-            )}
-
-            {enrichmentStatus === 'completed' && enrichedProperty && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">About This Property</h2>
-                
-                <div className="space-y-4">
-                  {enrichedProperty.lastEnrichedAt && (
-                    <div className="flex items-center gap-2 text-sm">
-                      <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                      <span className="text-gray-500">Data last refreshed:</span>
-                      <span className="text-gray-900">{new Date(enrichedProperty.lastEnrichedAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                    </div>
-                  )}
-
-                  {(enrichedProperty.propertyWebsite || enrichedProperty.propertyPhone) && (
-                    <div className="flex flex-wrap gap-3">
-                      {enrichedProperty.propertyWebsite && (
-                        <a
-                          href={enrichedProperty.propertyWebsite.startsWith('http') ? enrichedProperty.propertyWebsite : `https://${enrichedProperty.propertyWebsite}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition-colors"
-                          data-testid="link-property-website"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
-                          </svg>
-                          Property Website
-                        </a>
-                      )}
-                      {enrichedProperty.propertyPhone && (
-                        <a
-                          href={`tel:${enrichedProperty.propertyPhone.replace(/[^\d+]/g, '')}`}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition-colors"
-                          data-testid="link-property-phone"
-                        >
-                          <Phone className="w-4 h-4" />
-                          {enrichedProperty.propertyPhone}
-                        </a>
-                      )}
-                    </div>
-                  )}
-
-                  {enrichedProperty.aiRationale && (
-                    <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                      <p className="text-sm font-medium text-gray-700 mb-2">AI Research Summary</p>
-                      <SummaryWithSources 
-                        summary={enrichedProperty.aiRationale} 
-                        sources={enrichedProperty.enrichmentSources} 
-                      />
-                    </div>
-                  )}
                 </div>
               </div>
             )}

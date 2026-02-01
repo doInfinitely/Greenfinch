@@ -73,3 +73,45 @@ export const CONCURRENCY = {
 const mvpZipEnv = process.env.MVP_ZIP || '75225';
 export const MVP_ZIP_CODES = mvpZipEnv.split(',').map(z => z.trim()).filter(z => z.length > 0);
 export const MVP_ZIP_CODE = MVP_ZIP_CODES[0];
+
+// Role labels for displaying snake_case role names in Title Case
+export const ROLE_LABELS: Record<string, string> = {
+  owner: 'Owner',
+  beneficial_owner: 'Beneficial Owner',
+  property_manager: 'Property Manager',
+  facilities_manager: 'Facilities Manager',
+  asset_manager: 'Asset Manager',
+  leasing: 'Leasing',
+  leasing_agent: 'Leasing Agent',
+  developer: 'Developer',
+  investor: 'Investor',
+  broker: 'Broker',
+  tenant: 'Tenant',
+  facilities: 'Facilities',
+  other: 'Other',
+};
+
+// Role-specific colors for badges and tags
+export const ROLE_COLORS: Record<string, string> = {
+  owner: 'bg-purple-100 text-purple-700',
+  beneficial_owner: 'bg-purple-100 text-purple-700',
+  property_manager: 'bg-blue-100 text-blue-700',
+  facilities_manager: 'bg-orange-100 text-orange-700',
+  asset_manager: 'bg-indigo-100 text-indigo-700',
+  facilities: 'bg-orange-100 text-orange-700',
+  leasing: 'bg-emerald-100 text-emerald-700',
+  leasing_agent: 'bg-emerald-100 text-emerald-700',
+  developer: 'bg-cyan-100 text-cyan-700',
+  investor: 'bg-amber-100 text-amber-700',
+  broker: 'bg-teal-100 text-teal-700',
+  tenant: 'bg-gray-100 text-gray-700',
+  other: 'bg-gray-100 text-gray-600',
+};
+
+// Helper function to format role label with fallback
+export function formatRoleLabel(role: string): string {
+  return role.split(',').map(r => {
+    const trimmed = r.trim();
+    return ROLE_LABELS[trimmed] || trimmed.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  }).join(', ');
+}

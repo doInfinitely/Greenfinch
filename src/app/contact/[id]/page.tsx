@@ -20,6 +20,7 @@ import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import { formatPhoneNumber } from '@/lib/phone-format';
+import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
 
 interface LinkedInSearchResult {
   name: string;
@@ -104,25 +105,6 @@ const CONTACT_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
   general: { label: 'Office Line', color: 'bg-blue-100 text-blue-700' },
 };
 
-const ROLE_LABELS: Record<string, string> = {
-  owner: 'Owner',
-  property_manager: 'Property Manager',
-  asset_manager: 'Asset Manager',
-  facilities: 'Facilities',
-  facilities_manager: 'Facilities Manager',
-  leasing: 'Leasing',
-  other: 'Other',
-};
-
-const ROLE_COLORS: Record<string, string> = {
-  owner: 'bg-purple-100 text-purple-700',
-  property_manager: 'bg-blue-100 text-blue-700',
-  asset_manager: 'bg-indigo-100 text-indigo-700',
-  facilities: 'bg-orange-100 text-orange-700',
-  facilities_manager: 'bg-orange-100 text-orange-700',
-  leasing: 'bg-teal-100 text-teal-700',
-  other: 'bg-gray-100 text-gray-700',
-};
 
 const ORG_TYPE_COLORS: Record<string, string> = {
   owner: 'bg-purple-100 text-purple-700',

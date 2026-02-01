@@ -18,6 +18,7 @@ import {
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import { ROLE_LABELS, ROLE_COLORS, formatRoleLabel } from '@/lib/constants';
 
 interface PropertyRelation {
   id: string;
@@ -103,28 +104,6 @@ const ORG_TYPE_COLORS: Record<string, string> = {
   developer: 'bg-orange-100 text-orange-700',
   other: 'bg-gray-100 text-gray-700',
 };
-
-const ROLE_COLORS: Record<string, string> = {
-  owner: 'bg-purple-100 text-purple-700',
-  property_manager: 'bg-blue-100 text-blue-700',
-  facilities_manager: 'bg-indigo-100 text-indigo-700',
-  leasing: 'bg-teal-100 text-teal-700',
-  other: 'bg-gray-100 text-gray-700',
-};
-
-const ROLE_LABELS: Record<string, string> = {
-  owner: 'Owner',
-  property_manager: 'Property Manager',
-  facilities_manager: 'Facilities Manager',
-  leasing: 'Leasing',
-  developer: 'Developer',
-  beneficial_owner: 'Beneficial Owner',
-  other: 'Other',
-};
-
-function formatRoleLabel(role: string): string {
-  return role.split(',').map(r => ROLE_LABELS[r.trim()] || r.trim().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())).join(', ');
-}
 
 function getEmailStatusColor(status: string | null): string {
   switch (status?.toLowerCase()) {
