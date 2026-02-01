@@ -1694,7 +1694,7 @@ export default function PropertyDetailPage() {
           </div>
 
           <div className="lg:col-span-1">
-            <div className="sticky top-20 space-y-4">
+            <div className="space-y-4">
               <PropertyNotes propertyId={property.propertyKey} />
               
               <PropertyActivity propertyId={property.propertyKey} />
