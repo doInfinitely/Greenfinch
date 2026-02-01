@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
-import { Phone, Mail, ListPlus, Filter, Linkedin, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { Phone, Mail, ListPlus, Filter, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useToast } from '@/hooks/use-toast';
 
 interface PropertyRelation {
@@ -595,39 +596,36 @@ export default function ContactsPage() {
                       </th>
                       <th
                         onClick={() => handleSort('fullName')}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       >
-                        Name <SortIcon column="fullName" />
+                        Contact <SortIcon column="fullName" />
                       </th>
                       <th
                         onClick={() => handleSort('email')}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       >
                         Email <SortIcon column="email" />
                       </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Phone
                       </th>
                       <th
                         onClick={() => handleSort('title')}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       >
                         Title <SortIcon column="title" />
                       </th>
                       <th
                         onClick={() => handleSort('employerName')}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       >
                         Employer <SortIcon column="employerName" />
                       </th>
                       <th
                         onClick={() => handleSort('propertyCount')}
-                        className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       >
-                        Associations <SortIcon column="propertyCount" />
-                      </th>
-                      <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
-                        
+                        Links <SortIcon column="propertyCount" />
                       </th>
                     </tr>
                   </thead>
@@ -651,49 +649,96 @@ export default function ContactsPage() {
                             />
                           </td>
                           <td 
-                            className="px-6 py-4 whitespace-nowrap"
+                            className="px-4 py-3"
                             onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
                           >
-                            <span className="text-sm font-medium text-gray-900">
-                              {contact.fullName || 'Unknown'}
-                            </span>
-                          </td>
-                          <td 
-                            className="px-6 py-4 whitespace-nowrap"
-                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
-                          >
-                            {contact.email ? (
-                              <div className="flex items-center gap-1.5">
-                                <a
-                                  href={`mailto:${contact.email}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="text-sm text-green-600 underline"
-                                  data-testid={`link-email-${contact.id}`}
-                                >
-                                  {contact.email}
-                                </a>
-                                {contact.emailStatus?.toLowerCase() === 'valid' && (
-                                  <span title="Verified" aria-label="Email verified" data-testid={`icon-email-valid-${contact.id}`}>
-                                    <CheckCircle2 className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                            <div className="flex items-center gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium text-gray-900 truncate">
+                                    {contact.fullName || 'Unknown'}
+                                  </span>
+                                  {contact.linkedinUrl && (
+                                    <a
+                                      href={contact.linkedinUrl}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={(e) => e.stopPropagation()}
+                                      title="View LinkedIn profile"
+                                      data-testid={`link-linkedin-${contact.id}`}
+                                    >
+                                      <img src={linkedinLogo.src} alt="LinkedIn" className="w-4 h-4 rounded-sm" />
+                                    </a>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {contact.email && contact.emailStatus?.toLowerCase() === 'valid' && (
+                                  <span title="Email verified" data-testid={`icon-email-status-${contact.id}`}>
+                                    <Mail className="w-3.5 h-3.5 text-green-500" />
                                   </span>
                                 )}
-                                {contact.emailStatus?.toLowerCase() === 'invalid' && (
-                                  <span title="Invalid" aria-label="Email invalid" data-testid={`icon-email-invalid-${contact.id}`}>
-                                    <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                                {contact.email && contact.emailStatus?.toLowerCase() === 'invalid' && (
+                                  <span title="Email invalid" data-testid={`icon-email-status-${contact.id}`}>
+                                    <Mail className="w-3.5 h-3.5 text-red-500" />
                                   </span>
                                 )}
-                                {(contact.emailStatus?.toLowerCase() === 'pending' || contact.emailStatus?.toLowerCase() === 'unverified') && (
-                                  <span title="Pending verification" aria-label="Email pending verification" data-testid={`icon-email-pending-${contact.id}`}>
-                                    <AlertCircle className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+                                {contact.email && (contact.emailStatus?.toLowerCase() === 'pending' || contact.emailStatus?.toLowerCase() === 'unverified' || !contact.emailStatus) && (
+                                  <span title="Email pending verification" data-testid={`icon-email-status-${contact.id}`}>
+                                    <Mail className="w-3.5 h-3.5 text-yellow-500" />
+                                  </span>
+                                )}
+                                {!contact.email && (
+                                  <span title="No email" data-testid={`icon-email-none-${contact.id}`}>
+                                    <Mail className="w-3.5 h-3.5 text-gray-300" />
+                                  </span>
+                                )}
+                                {(() => {
+                                  const phones = getPhoneNumbers(contact);
+                                  if (phones.length > 0) {
+                                    return (
+                                      <span title="Has phone" data-testid={`icon-phone-status-${contact.id}`}>
+                                        <Phone className="w-3.5 h-3.5 text-green-500" />
+                                      </span>
+                                    );
+                                  }
+                                  return (
+                                    <span title="No phone" data-testid={`icon-phone-none-${contact.id}`}>
+                                      <Phone className="w-3.5 h-3.5 text-gray-300" />
+                                    </span>
+                                  );
+                                })()}
+                                {contact.linkedinUrl ? (
+                                  <span title="Has LinkedIn" data-testid={`icon-linkedin-status-${contact.id}`}>
+                                    <img src={linkedinLogo.src} alt="" className="w-3.5 h-3.5 rounded-sm opacity-100" />
+                                  </span>
+                                ) : (
+                                  <span title="No LinkedIn" data-testid={`icon-linkedin-none-${contact.id}`}>
+                                    <img src={linkedinLogo.src} alt="" className="w-3.5 h-3.5 rounded-sm opacity-30" />
                                   </span>
                                 )}
                               </div>
+                            </div>
+                          </td>
+                          <td 
+                            className="px-4 py-3 whitespace-nowrap"
+                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                          >
+                            {contact.email ? (
+                              <a
+                                href={`mailto:${contact.email}`}
+                                onClick={(e) => e.stopPropagation()}
+                                className="text-sm text-green-600 underline"
+                                data-testid={`link-email-${contact.id}`}
+                              >
+                                {contact.email}
+                              </a>
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
                           <td 
-                            className="px-6 py-4"
+                            className="px-4 py-3"
                             onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
                           >
                             {(() => {
@@ -704,7 +749,7 @@ export default function ContactsPage() {
                               return (
                                 <div className="flex flex-col gap-0.5">
                                   {phones.map((p, idx) => (
-                                    <div key={idx} className="flex items-center gap-1.5">
+                                    <div key={idx} className="flex items-center gap-1">
                                       <a
                                         href={`tel:${p.number}`}
                                         onClick={(e) => e.stopPropagation()}
@@ -721,66 +766,42 @@ export default function ContactsPage() {
                             })()}
                           </td>
                           <td 
-                            className="px-6 py-4 whitespace-nowrap"
+                            className="px-4 py-3 whitespace-nowrap"
                             onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
                           >
                             {contact.title ? (
-                              <span className="text-sm text-gray-900">{contact.title}</span>
+                              <span className="text-sm text-gray-900 truncate max-w-[200px] block">{contact.title}</span>
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
                           <td 
-                            className="px-6 py-4 whitespace-nowrap"
+                            className="px-4 py-3 whitespace-nowrap"
                             onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
                           >
                             {contact.employerName ? (
-                              <span className="text-sm text-gray-900">{contact.employerName}</span>
+                              <span className="text-sm text-gray-900 truncate max-w-[180px] block">{contact.employerName}</span>
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
                           <td 
-                            className="px-6 py-4 whitespace-nowrap"
+                            className="px-4 py-3 whitespace-nowrap"
                             onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
                           >
-                            <div className="flex items-center gap-2">
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                                {contact.propertyCount} prop
+                            <div className="flex items-center gap-1">
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                {contact.propertyCount}p
                               </span>
-                              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                                {contact.organizationCount} org
+                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                                {contact.organizationCount}o
                               </span>
                             </div>
-                          </td>
-                          <td className="px-4 py-4 whitespace-nowrap text-center">
-                            {contact.linkedinUrl ? (
-                              <a
-                                href={contact.linkedinUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-[#0A66C2] hover:text-[#004182] transition-colors"
-                                title="View LinkedIn profile"
-                                data-testid={`link-linkedin-${contact.id}`}
-                              >
-                                <Linkedin className="w-5 h-5" />
-                              </a>
-                            ) : (
-                              <span 
-                                className="text-gray-300" 
-                                title="No LinkedIn profile"
-                                aria-label="No LinkedIn profile available"
-                                data-testid={`icon-linkedin-unavailable-${contact.id}`}
-                              >
-                                <Linkedin className="w-5 h-5" />
-                              </span>
-                            )}
                           </td>
                         </tr>
                         {expandedContact === contact.id && (
                           <tr>
-                            <td colSpan={8} className="px-6 py-4 bg-gray-50">
+                            <td colSpan={7} className="px-4 py-3 bg-gray-50">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {contact.properties.length > 0 && (
                                   <div>
