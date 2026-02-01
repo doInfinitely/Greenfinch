@@ -109,6 +109,20 @@ const ROLE_COLORS: Record<string, string> = {
   other: 'bg-gray-100 text-gray-700',
 };
 
+const ROLE_LABELS: Record<string, string> = {
+  owner: 'Owner',
+  property_manager: 'Property Manager',
+  facilities_manager: 'Facilities Manager',
+  leasing: 'Leasing',
+  developer: 'Developer',
+  beneficial_owner: 'Beneficial Owner',
+  other: 'Other',
+};
+
+function formatRoleLabel(role: string): string {
+  return role.split(',').map(r => ROLE_LABELS[r.trim()] || r.trim().replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())).join(', ');
+}
+
 function getEmailStatusColor(status: string | null): string {
   switch (status?.toLowerCase()) {
     case 'valid':
@@ -579,7 +593,7 @@ export default function OrganizationDetailPage() {
                       <div className="ml-4 flex flex-col items-end gap-1">
                         {property.role && (
                           <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[property.role.split(',')[0].trim()] || ROLE_COLORS.other}`}>
-                            {property.role}
+                            {formatRoleLabel(property.role)}
                           </span>
                         )}
                         {property.assetCategory && (
