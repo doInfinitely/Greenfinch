@@ -1600,7 +1600,7 @@ export default function PropertyDetailPage() {
                       onClick={handleEnrichment}
                       className="text-sm text-green-600 hover:text-green-700"
                     >
-                      Click "Research with Greenfinch Agent" to discover contacts
+                      Click "Research" to discover contacts
                     </button>
                   </AdminOnly>
                 </div>
