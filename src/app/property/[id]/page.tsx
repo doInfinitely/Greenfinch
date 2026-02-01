@@ -4,7 +4,9 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Loader2, MoreVertical, List, Upload, User, UserCircle, Sparkles } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Loader2, MoreVertical, List, Upload, User, UserCircle, Sparkles } from 'lucide-react';
+import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -269,104 +271,13 @@ function EnrichmentStatusBadge({ status }: { status: EnrichmentStatusType }) {
   );
 }
 
-// Validation status icon for email
-function EmailValidationIcon({ hasEmail, status }: { hasEmail: boolean; status: Contact['emailValidationStatus'] }) {
-  if (!hasEmail) {
-    return (
-      <span title="No email" className="inline-flex items-center text-gray-400">
-        <span className="relative">
-          <Mail className="w-4 h-4" />
-          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
-        </span>
-      </span>
-    );
-  }
-  
-  if (status === 'valid') {
-    return (
-      <span title="Email validated" className="inline-flex items-center text-green-600">
-        <span className="relative">
-          <Mail className="w-4 h-4" />
-          <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
-        </span>
-      </span>
-    );
-  }
-  
-  if (status === 'pending') {
-    return (
-      <span title="Validating email..." className="inline-flex items-center text-amber-500">
-        <span className="relative">
-          <Mail className="w-4 h-4" />
-          <div className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 border border-amber-500 border-t-transparent rounded-full animate-spin bg-white" />
-        </span>
-      </span>
-    );
-  }
-  
-  return (
-    <span title="Email not validated" className="inline-flex items-center text-amber-500">
-      <span className="relative">
-        <Mail className="w-4 h-4" />
-        <HelpCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-amber-500 bg-white rounded-full" />
-      </span>
-    </span>
-  );
-}
-
-// Validation status icon for phone
-function PhoneValidationIcon({ hasPhone }: { hasPhone: boolean }) {
-  if (!hasPhone) {
-    return (
-      <span title="No phone" className="inline-flex items-center text-gray-400">
-        <span className="relative">
-          <Phone className="w-4 h-4" />
-          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
-        </span>
-      </span>
-    );
-  }
-  
-  return (
-    <span title="Phone available" className="inline-flex items-center text-green-600">
-      <span className="relative">
-        <Phone className="w-4 h-4" />
-        <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
-      </span>
-    </span>
-  );
-}
-
-// Validation status icon for LinkedIn
-function LinkedInValidationIcon({ hasLinkedIn }: { hasLinkedIn: boolean }) {
-  if (!hasLinkedIn) {
-    return (
-      <span title="No LinkedIn" className="inline-flex items-center text-gray-400">
-        <span className="relative">
-          <Linkedin className="w-4 h-4" />
-          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
-        </span>
-      </span>
-    );
-  }
-  
-  return (
-    <span title="LinkedIn available" className="inline-flex items-center text-green-600">
-      <span className="relative">
-        <Linkedin className="w-4 h-4" />
-        <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
-      </span>
-    </span>
-  );
-}
-
 // Contact info summary with validation icons
 function ContactInfoIcons({ contact }: { contact: Contact }) {
   return (
     <div className="flex items-center gap-2" data-testid={`contact-info-icons-${contact.id}`}>
-      <EmailValidationIcon hasEmail={!!contact.email} status={contact.emailValidationStatus} />
-      <PhoneValidationIcon hasPhone={!!contact.phone} />
-      <LinkedInValidationIcon hasLinkedIn={!!contact.linkedinUrl} />
+      <EmailStatusIcon hasEmail={!!contact.email} status={contact.emailValidationStatus} />
+      <PhoneStatusIcon hasPhone={hasAnyPhone(contact)} isOfficeOnly={hasOnlyOfficeLine(contact)} />
+      <LinkedInStatusIcon hasLinkedIn={!!contact.linkedinUrl} linkedinUrl={contact.linkedinUrl} />
     </div>
   );
 }
@@ -1579,11 +1490,11 @@ export default function PropertyDetailPage() {
                                 href={contact.linkedinUrl}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="inline-flex items-center text-blue-600 hover:text-blue-700"
+                                className="inline-flex items-center hover:opacity-80 transition-opacity"
                                 title="View LinkedIn Profile"
                                 onClick={(e) => e.stopPropagation()}
                               >
-                                <Linkedin className="w-4 h-4" />
+                                <img src={linkedinLogo.src} alt="LinkedIn" className="w-4 h-4" />
                               </a>
                             )}
                             

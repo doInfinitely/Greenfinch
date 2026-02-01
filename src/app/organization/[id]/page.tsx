@@ -8,6 +8,8 @@ import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import { Loader2, XCircle, MoreVertical, FileJson, Users, Building2 } from 'lucide-react';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
+import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -345,13 +347,11 @@ export default function OrganizationDetailPage() {
                     href={linkedinUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-700"
+                    className="hover:opacity-80 transition-opacity"
                     title="LinkedIn"
                     data-testid="link-org-linkedin"
                   >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
-                    </svg>
+                    <img src={linkedinLogo.src} alt="LinkedIn" className="w-4 h-4" />
                   </a>
                 )}
                 {twitterUrl && (
@@ -645,25 +645,22 @@ export default function OrganizationDetailPage() {
                           </p>
                         )}
                       </div>
-                      <div className="ml-4 flex flex-col items-end gap-1">
-                        {contact.emailStatus && (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getEmailStatusColor(contact.emailStatus)}`}>
-                            {contact.emailStatus}
-                          </span>
-                        )}
-                        {contact.linkedinUrl && (
-                          <a
-                            href={contact.linkedinUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="text-blue-600 hover:text-blue-700"
-                          >
-                            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/>
-                            </svg>
-                          </a>
-                        )}
+                      <div className="ml-4 flex items-center gap-1.5">
+                        <EmailStatusIcon 
+                          hasEmail={!!contact.email} 
+                          status={contact.emailStatus}
+                          size="sm"
+                        />
+                        <PhoneStatusIcon 
+                          hasPhone={!!contact.phone}
+                          size="sm"
+                        />
+                        <LinkedInStatusIcon 
+                          hasLinkedIn={!!contact.linkedinUrl}
+                          linkedinUrl={contact.linkedinUrl}
+                          size="sm"
+                          asLink={true}
+                        />
                       </div>
                     </div>
                   </Link>

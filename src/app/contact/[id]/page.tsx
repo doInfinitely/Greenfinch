@@ -3,7 +3,17 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertTriangle, Flag, Check, X, ExternalLink, Mail, Phone, Linkedin, CheckCircle, HelpCircle, XCircle, Search, Loader2 } from 'lucide-react';
+import { AlertTriangle, Flag, Check, X, ExternalLink, Mail, Phone, CheckCircle, HelpCircle, XCircle, Search, Loader2 } from 'lucide-react';
+// Note: Linkedin icon replaced with canonical logo image
+import { 
+  EmailStatusIcon as SharedEmailStatusIcon, 
+  PhoneStatusIcon as SharedPhoneStatusIcon, 
+  LinkedInStatusIcon as SharedLinkedInStatusIcon,
+  hasAnyPhone as sharedHasAnyPhone, 
+  hasOnlyOfficeLine as sharedHasOnlyOfficeLine,
+  ContactStatusSummary
+} from '@/components/ContactStatusIcons';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { AdminOnly } from '@/components/PermissionGate';
@@ -134,143 +144,6 @@ function LowConfidenceMarker({ confidence }: { confidence: number | null | undef
   );
 }
 
-// Validation status icon for email - shows whether email exists and is validated
-function EmailValidationIcon({ hasEmail, status }: { hasEmail: boolean; status: string | null }) {
-  if (!hasEmail) {
-    // No email - X icon
-    return (
-      <span title="No email" className="inline-flex items-center text-gray-400">
-        <span className="relative">
-          <Mail className="w-4 h-4" />
-          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
-        </span>
-      </span>
-    );
-  }
-  
-  const normalizedStatus = status?.toLowerCase();
-  
-  if (normalizedStatus === 'valid') {
-    // Validated email - checkmark
-    return (
-      <span title="Email validated" className="inline-flex items-center text-green-600">
-        <span className="relative">
-          <Mail className="w-4 h-4" />
-          <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
-        </span>
-      </span>
-    );
-  }
-  
-  if (normalizedStatus === 'catch-all' || normalizedStatus === 'catchall') {
-    // Catch-all email - amber warning, treated as "unsure"
-    return (
-      <span title="Catch-all domain - email may not reach intended recipient" className="inline-flex items-center text-amber-500">
-        <span className="relative">
-          <Mail className="w-4 h-4" />
-          <AlertTriangle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-amber-500 bg-white rounded-full" />
-        </span>
-      </span>
-    );
-  }
-  
-  if (normalizedStatus === 'pending') {
-    // Email validation in progress - spinner
-    return (
-      <span title="Validating email..." className="inline-flex items-center text-amber-500">
-        <span className="relative">
-          <Mail className="w-4 h-4" />
-          <div className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 border border-amber-500 border-t-transparent rounded-full animate-spin bg-white" />
-        </span>
-      </span>
-    );
-  }
-  
-  // Has email but not validated - question mark
-  return (
-    <span title="Email not validated" className="inline-flex items-center text-amber-500">
-      <span className="relative">
-        <Mail className="w-4 h-4" />
-        <HelpCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-amber-500 bg-white rounded-full" />
-      </span>
-    </span>
-  );
-}
-
-// Validation status icon for phone - shows quality indicator
-function PhoneValidationIcon({ hasPhone, isOfficeOnly = false }: { hasPhone: boolean; isOfficeOnly?: boolean }) {
-  if (!hasPhone) {
-    return (
-      <span title="No phone" className="inline-flex items-center text-gray-400">
-        <span className="relative">
-          <Phone className="w-4 h-4" />
-          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
-        </span>
-      </span>
-    );
-  }
-  
-  // Office line only - show yellow/amber warning (not high quality)
-  if (isOfficeOnly) {
-    return (
-      <span title="Office line only - no direct or mobile number" className="inline-flex items-center text-amber-500">
-        <span className="relative">
-          <Phone className="w-4 h-4" />
-          <HelpCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-amber-500 bg-white rounded-full" />
-        </span>
-      </span>
-    );
-  }
-  
-  // Has direct/mobile phone - show checkmark (high quality)
-  return (
-    <span title="Direct or mobile phone available" className="inline-flex items-center text-green-600">
-      <span className="relative">
-        <Phone className="w-4 h-4" />
-        <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
-      </span>
-    </span>
-  );
-}
-
-// Validation status icon for LinkedIn
-function LinkedInValidationIcon({ hasLinkedIn, confidence }: { hasLinkedIn: boolean; confidence: number | null }) {
-  if (!hasLinkedIn) {
-    return (
-      <span title="No LinkedIn" className="inline-flex items-center text-gray-400">
-        <span className="relative">
-          <Linkedin className="w-4 h-4" />
-          <XCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-gray-400 bg-white rounded-full" />
-        </span>
-      </span>
-    );
-  }
-  
-  // High confidence (>= 0.7) or any LinkedIn URL present
-  const isValidated = confidence !== null && confidence >= 0.7;
-  
-  if (isValidated) {
-    return (
-      <span title={`LinkedIn validated (${Math.round((confidence || 0) * 100)}% confidence)`} className="inline-flex items-center text-green-600">
-        <span className="relative">
-          <Linkedin className="w-4 h-4" />
-          <CheckCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-green-600 bg-white rounded-full" />
-        </span>
-      </span>
-    );
-  }
-  
-  // Has LinkedIn but low confidence
-  return (
-    <span title={`LinkedIn needs review (${Math.round((confidence || 0) * 100)}% confidence)`} className="inline-flex items-center text-amber-500">
-      <span className="relative">
-        <Linkedin className="w-4 h-4" />
-        <HelpCircle className="w-2.5 h-2.5 absolute -bottom-0.5 -right-0.5 text-amber-500 bg-white rounded-full" />
-      </span>
-    </span>
-  );
-}
-
 // Helper to check if contact has a high-quality phone (mobile or direct)
 function hasHighQualityPhone(contact: Contact): boolean {
   // Check if any phone is mobile or direct (not just office)
@@ -295,24 +168,21 @@ function hasOnlyOfficeLine(contact: Contact): boolean {
 
 // Contact info summary row with validation icons
 function ContactInfoSummary({ contact }: { contact: Contact }) {
-  const hasPhone = !!(contact.phone || contact.normalizedPhone || contact.enrichmentPhoneWork || contact.enrichmentPhonePersonal || contact.aiPhone);
-  const isOfficeOnly = hasOnlyOfficeLine(contact);
-  
   return (
-    <div className="flex items-center gap-3" data-testid="contact-info-summary">
-      <EmailValidationIcon 
-        hasEmail={!!contact.email} 
-        status={contact.emailValidationStatus} 
-      />
-      <PhoneValidationIcon 
-        hasPhone={hasPhone}
-        isOfficeOnly={isOfficeOnly}
-      />
-      <LinkedInValidationIcon 
-        hasLinkedIn={!!contact.linkedinUrl} 
-        confidence={contact.linkedinConfidence} 
-      />
-    </div>
+    <ContactStatusSummary 
+      contact={{
+        email: contact.email,
+        emailValidationStatus: contact.emailValidationStatus,
+        phone: contact.phone,
+        aiPhone: contact.aiPhone,
+        enrichmentPhoneWork: contact.enrichmentPhoneWork,
+        enrichmentPhonePersonal: contact.enrichmentPhonePersonal,
+        phoneLabel: contact.phoneLabel,
+        aiPhoneLabel: contact.aiPhoneLabel,
+        linkedinUrl: contact.linkedinUrl,
+        linkedinConfidence: contact.linkedinConfidence,
+      }}
+    />
   );
 }
 
@@ -640,11 +510,11 @@ export default function ContactDetailPage() {
                       href={contact.linkedinUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-[#0A66C2] hover:text-[#004182] transition-colors"
+                      className="hover:opacity-80 transition-opacity"
                       title="View LinkedIn Profile"
                       data-testid="link-linkedin-header"
                     >
-                      <Linkedin className="w-5 h-5" />
+                      <img src={linkedinLogo.src} alt="LinkedIn" className="w-5 h-5" />
                     </a>
                   )}
                   {contact.contactType && CONTACT_TYPE_CONFIG[contact.contactType] && (
@@ -795,7 +665,7 @@ export default function ContactDetailPage() {
                 <div>
                   <label className="block text-sm font-medium text-gray-500 mb-1">Email</label>
                   <div className="flex items-center gap-2">
-                    <EmailValidationIcon hasEmail={!!contact.email} status={contact.emailValidationStatus} />
+                    <SharedEmailStatusIcon hasEmail={!!contact.email} status={contact.emailValidationStatus} />
                     {contact.email ? (
                       <a href={`mailto:${contact.email}`} className="text-green-600 hover:text-green-700 hover:underline">
                         {contact.email}
@@ -812,7 +682,7 @@ export default function ContactDetailPage() {
                     {/* Primary phone */}
                     {(contact.phone || contact.normalizedPhone) && (
                       <div className="flex items-center gap-2">
-                        <PhoneValidationIcon hasPhone={true} isOfficeOnly={contact.phoneLabel === 'office'} />
+                        <SharedPhoneStatusIcon hasPhone={true} isOfficeOnly={contact.phoneLabel === 'office'} />
                         <a href={`tel:${contact.normalizedPhone || contact.phone}`} className="text-gray-900 hover:text-green-600">
                           {formatPhoneNumber(contact.phone || contact.normalizedPhone)}
                         </a>
@@ -826,7 +696,7 @@ export default function ContactDetailPage() {
                     {/* Work phone from enrichment */}
                     {contact.enrichmentPhoneWork && contact.enrichmentPhoneWork !== contact.phone && (
                       <div className="flex items-center gap-2">
-                        <PhoneValidationIcon hasPhone={true} />
+                        <SharedPhoneStatusIcon hasPhone={true} />
                         <a href={`tel:${contact.enrichmentPhoneWork}`} className="text-gray-900 hover:text-green-600">
                           {formatPhoneNumber(contact.enrichmentPhoneWork)}
                         </a>
@@ -838,7 +708,7 @@ export default function ContactDetailPage() {
                     {/* Personal/mobile phone from enrichment */}
                     {contact.enrichmentPhonePersonal && contact.enrichmentPhonePersonal !== contact.phone && (
                       <div className="flex items-center gap-2">
-                        <PhoneValidationIcon hasPhone={true} />
+                        <SharedPhoneStatusIcon hasPhone={true} />
                         <a href={`tel:${contact.enrichmentPhonePersonal}`} className="text-gray-900 hover:text-green-600">
                           {formatPhoneNumber(contact.enrichmentPhonePersonal)}
                         </a>
@@ -850,7 +720,7 @@ export default function ContactDetailPage() {
                     {/* AI-discovered phone */}
                     {contact.aiPhone && contact.aiPhone !== contact.phone && contact.aiPhone !== contact.enrichmentPhoneWork && contact.aiPhone !== contact.enrichmentPhonePersonal && (
                       <div className="flex items-center gap-2">
-                        <PhoneValidationIcon hasPhone={true} />
+                        <SharedPhoneStatusIcon hasPhone={true} />
                         <a href={`tel:${contact.aiPhone}`} className="text-gray-900 hover:text-green-600">
                           {formatPhoneNumber(contact.aiPhone)}
                         </a>
@@ -868,7 +738,7 @@ export default function ContactDetailPage() {
                     {/* No phones */}
                     {!contact.phone && !contact.normalizedPhone && !contact.enrichmentPhoneWork && !contact.enrichmentPhonePersonal && !contact.aiPhone && (
                       <div className="flex items-center gap-2">
-                        <PhoneValidationIcon hasPhone={false} />
+                        <SharedPhoneStatusIcon hasPhone={false} />
                         <span className="text-gray-400">—</span>
                       </div>
                     )}

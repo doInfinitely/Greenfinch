@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
-import { Phone, Mail, ListPlus, Filter, CheckCircle2, XCircle, AlertCircle } from 'lucide-react';
+import { ListPlus, Filter, Mail, Phone } from 'lucide-react';
+import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useToast } from '@/hooks/use-toast';
 
@@ -752,51 +753,22 @@ export default function ContactsPage() {
                                   )}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1 flex-shrink-0">
-                                {contact.email && contact.emailStatus?.toLowerCase() === 'valid' && (
-                                  <span title="Email verified" data-testid={`icon-email-status-${contact.id}`}>
-                                    <Mail className="w-3.5 h-3.5 text-green-500" />
-                                  </span>
-                                )}
-                                {contact.email && contact.emailStatus?.toLowerCase() === 'invalid' && (
-                                  <span title="Email invalid" data-testid={`icon-email-status-${contact.id}`}>
-                                    <Mail className="w-3.5 h-3.5 text-red-500" />
-                                  </span>
-                                )}
-                                {contact.email && (contact.emailStatus?.toLowerCase() === 'pending' || contact.emailStatus?.toLowerCase() === 'unverified' || !contact.emailStatus) && (
-                                  <span title="Email pending verification" data-testid={`icon-email-status-${contact.id}`}>
-                                    <Mail className="w-3.5 h-3.5 text-yellow-500" />
-                                  </span>
-                                )}
-                                {!contact.email && (
-                                  <span title="No email" data-testid={`icon-email-none-${contact.id}`}>
-                                    <Mail className="w-3.5 h-3.5 text-gray-300" />
-                                  </span>
-                                )}
-                                {(() => {
-                                  const phones = getPhoneNumbers(contact);
-                                  if (phones.length > 0) {
-                                    return (
-                                      <span title="Has phone" data-testid={`icon-phone-status-${contact.id}`}>
-                                        <Phone className="w-3.5 h-3.5 text-green-500" />
-                                      </span>
-                                    );
-                                  }
-                                  return (
-                                    <span title="No phone" data-testid={`icon-phone-none-${contact.id}`}>
-                                      <Phone className="w-3.5 h-3.5 text-gray-300" />
-                                    </span>
-                                  );
-                                })()}
-                                {contact.linkedinUrl ? (
-                                  <span title="Has LinkedIn" data-testid={`icon-linkedin-status-${contact.id}`}>
-                                    <img src={linkedinLogo.src} alt="" className="w-3.5 h-3.5 rounded-sm opacity-100" />
-                                  </span>
-                                ) : (
-                                  <span title="No LinkedIn" data-testid={`icon-linkedin-none-${contact.id}`}>
-                                    <img src={linkedinLogo.src} alt="" className="w-3.5 h-3.5 rounded-sm opacity-30" />
-                                  </span>
-                                )}
+                              <div className="flex items-center gap-1 flex-shrink-0" data-testid={`contact-status-icons-${contact.id}`}>
+                                <EmailStatusIcon 
+                                  hasEmail={!!contact.email} 
+                                  status={contact.emailStatus}
+                                  size="sm"
+                                />
+                                <PhoneStatusIcon 
+                                  hasPhone={hasAnyPhone(contact)}
+                                  isOfficeOnly={hasOnlyOfficeLine(contact)}
+                                  size="sm"
+                                />
+                                <LinkedInStatusIcon 
+                                  hasLinkedIn={!!contact.linkedinUrl}
+                                  linkedinUrl={contact.linkedinUrl}
+                                  size="sm"
+                                />
                               </div>
                             </div>
                           </td>
