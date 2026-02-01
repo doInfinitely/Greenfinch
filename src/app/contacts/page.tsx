@@ -369,8 +369,8 @@ export default function ContactsPage() {
     const selectedContactsList = contacts.filter(c => selectedContacts.has(c.id));
     
     const contactsNeedingEmail = selectedContactsList.filter(contact => {
-      const status = contact.emailValidationStatus || contact.emailStatus;
-      const hasValidEmail = status === 'valid' || status === 'Valid';
+      const status = (contact.emailValidationStatus || contact.emailStatus || '').toLowerCase();
+      const hasValidEmail = contact.email && status === 'valid';
       return !hasValidEmail;
     });
     
@@ -398,6 +398,7 @@ export default function ContactsPage() {
     setBulkEmailConfirmation(prev => ({ ...prev, isProcessing: true }));
     
     for (const contact of contactsToProcess) {
+      const currentStatus = (contact.emailValidationStatus || contact.emailStatus || '').toLowerCase();
       startEnrichment({
         type: 'contact_email',
         entityId: contact.id,
@@ -405,8 +406,9 @@ export default function ContactsPage() {
         apiEndpoint: `/api/contacts/${contact.id}/waterfall-email`,
         pollForCompletion: {
           checkEndpoint: `/api/contacts/${contact.id}`,
-          checkField: 'contact.enrichedAt',
-          compareMode: 'changed',
+          checkField: 'contact.emailValidationStatus',
+          originalValue: currentStatus,
+          compareMode: 'valid_status',
           maxAttempts: 20,
           intervalMs: 3000,
         },
@@ -1092,7 +1094,7 @@ export default function ContactsPage() {
         )}
       </main>
       
-      <Dialog open={bulkEmailConfirmation.isOpen} onOpenChange={(open) => !open && handleCancelBulkEmail()}>
+      <Dialog open={bulkEmailConfirmation.isOpen} onOpenChange={(open) => !open && !bulkEmailConfirmation.isProcessing && handleCancelBulkEmail()}>
         <DialogContent className="sm:max-w-md" data-testid="dialog-bulk-email-confirm">
           <DialogHeader>
             <DialogTitle>Confirm Email Lookup</DialogTitle>
