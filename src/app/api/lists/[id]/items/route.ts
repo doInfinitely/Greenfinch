@@ -51,8 +51,12 @@ export async function GET(
       return NextResponse.json({ items: [], details: {} });
     }
 
-    const itemIds = items.map(item => item.itemId);
+    const itemIds = items.map(item => item.itemId).filter((id): id is string => id !== null);
     const details: Record<string, unknown> = {};
+
+    if (itemIds.length === 0) {
+      return NextResponse.json({ items, details });
+    }
 
     if (list.listType === 'properties') {
       // Batch fetch all properties

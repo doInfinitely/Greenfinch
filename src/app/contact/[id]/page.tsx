@@ -188,6 +188,7 @@ export default function ContactDetailPage() {
   const [isFindingEmail, setIsFindingEmail] = useState(false);
   const [phoneMessage, setPhoneMessage] = useState<string | null>(null);
   const [emailMessage, setEmailMessage] = useState<string | null>(null);
+  const [linkedInMessage, setLinkedInMessage] = useState<string | null>(null);
 
   const fetchContact = useCallback(async () => {
     if (!contactId) return;

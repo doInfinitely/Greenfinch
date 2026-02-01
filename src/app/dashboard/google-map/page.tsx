@@ -42,7 +42,24 @@ export default function GoogleMapPage() {
   const [allProperties, setAllProperties] = useState<PropertyFeature[]>([]);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [filters, setFilters] = useState<FilterState>({ minLotAcres: null, categories: [] });
+  const [filters, setFilters] = useState<FilterState>({
+    minLotAcres: null,
+    maxLotAcres: null,
+    minNetSqft: null,
+    maxNetSqft: null,
+    categories: [],
+    subcategories: [],
+    buildingClasses: [],
+    acTypes: [],
+    heatingTypes: [],
+    organizationId: null,
+    contactId: null,
+    enrichmentStatus: 'all',
+    customerStatuses: [],
+    zipCode: null,
+    minLotSqft: null,
+    maxLotSqft: null,
+  });
 
   useEffect(() => {
     Promise.all([
