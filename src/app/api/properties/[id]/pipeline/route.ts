@@ -217,26 +217,24 @@ export async function POST(
         newValue: status,
         metadata: dealValue ? { dealValue } : null,
       });
-      
-      // Automatically update isCurrentCustomer on both pipeline and property records based on status
-      if (status === 'won') {
-        const updateObj = { isCurrentCustomer: true };
-        await db.update(propertyPipeline)
-          .set(updateObj)
-          .where(eq(propertyPipeline.id, pipeline.id));
-        await db.update(properties)
-          .set(updateObj)
-          .where(eq(properties.id, property.id));
-      } else if (previousStatus === 'won') {
-        // Changing from won to another status, mark as not a customer
-        const updateObj = { isCurrentCustomer: false };
-        await db.update(propertyPipeline)
-          .set(updateObj)
-          .where(eq(propertyPipeline.id, pipeline.id));
-        await db.update(properties)
-          .set(updateObj)
-          .where(eq(properties.id, property.id));
-      }
+    }
+    
+    // Always sync isCurrentCustomer with "won" status (handles both new transitions and existing data)
+    if (status === 'won') {
+      await db.update(propertyPipeline)
+        .set({ isCurrentCustomer: true })
+        .where(eq(propertyPipeline.id, pipeline.id));
+      await db.update(properties)
+        .set({ isCurrentCustomer: true })
+        .where(eq(properties.id, property.id));
+    } else if (previousStatus === 'won' && status !== 'won') {
+      // Changing from won to another status, mark as not a customer
+      await db.update(propertyPipeline)
+        .set({ isCurrentCustomer: false })
+        .where(eq(propertyPipeline.id, pipeline.id));
+      await db.update(properties)
+        .set({ isCurrentCustomer: false })
+        .where(eq(properties.id, property.id));
     }
 
     if (dealValue && previousDealValue !== dealValue) {
