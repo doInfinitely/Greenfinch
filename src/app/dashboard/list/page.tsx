@@ -267,7 +267,7 @@ export default function ListPage() {
             {properties.length > 0 && hasMore && (
               <div className="flex items-center gap-2 flex-wrap text-sm">
                 <span className="text-gray-600">
-                  Showing first {API_LIMIT} of {totalCount.toLocaleString()} properties
+                  Showing first {properties.length.toLocaleString()} of {totalCount.toLocaleString()} properties
                 </span>
               </div>
             )}
