@@ -6,7 +6,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
 import { ListPlus, Filter, Mail, Phone, Loader2 } from 'lucide-react';
-import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, LinkedInLink, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
+import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, LinkedInLink, hasAnyPhone, hasOnlyOfficeLine, hasHighQualityPhone } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useToast } from '@/hooks/use-toast';
 import { useEnrichment } from '@/hooks/use-enrichment';
@@ -79,7 +79,7 @@ interface PaginationInfo {
   totalPages: number;
 }
 
-interface BulkEmailConfirmation {
+interface BulkConfirmation {
   isOpen: boolean;
   contactsToProcess: Contact[];
   skippedCount: number;
@@ -118,7 +118,13 @@ export default function ContactsPage() {
   const [hasValidEmail, setHasValidEmail] = useState(false);
   const [hasPhone, setHasPhone] = useState(false);
   const [hasLinkedIn, setHasLinkedIn] = useState(false);
-  const [bulkEmailConfirmation, setBulkEmailConfirmation] = useState<BulkEmailConfirmation>({
+  const [bulkEmailConfirmation, setBulkEmailConfirmation] = useState<BulkConfirmation>({
+    isOpen: false,
+    contactsToProcess: [],
+    skippedCount: 0,
+    isProcessing: false,
+  });
+  const [bulkPhoneConfirmation, setBulkPhoneConfirmation] = useState<BulkConfirmation>({
     isOpen: false,
     contactsToProcess: [],
     skippedCount: 0,
@@ -358,12 +364,29 @@ export default function ContactsPage() {
   }, []);
 
   const handleFindPhones = useCallback(() => {
-    const selectedIds = Array.from(selectedContacts);
-    toast({
-      title: 'Phone Lookup Started',
-      description: `Finding phone numbers for ${selectedIds.length} selected contacts...`,
+    const selectedContactsList = contacts.filter(c => selectedContacts.has(c.id));
+    
+    const contactsNeedingPhone = selectedContactsList.filter(contact => {
+      return !hasHighQualityPhone(contact);
     });
-  }, [selectedContacts, toast]);
+    
+    const skippedCount = selectedContactsList.length - contactsNeedingPhone.length;
+    
+    if (contactsNeedingPhone.length === 0) {
+      toast({
+        title: 'No Actions Needed',
+        description: `All ${selectedContactsList.length} selected contacts already have direct phone numbers.`,
+      });
+      return;
+    }
+    
+    setBulkPhoneConfirmation({
+      isOpen: true,
+      contactsToProcess: contactsNeedingPhone,
+      skippedCount,
+      isProcessing: false,
+    });
+  }, [selectedContacts, contacts, toast]);
 
   const handleFindEmails = useCallback(() => {
     const selectedContactsList = contacts.filter(c => selectedContacts.has(c.id));
@@ -432,6 +455,51 @@ export default function ContactsPage() {
 
   const handleCancelBulkEmail = useCallback(() => {
     setBulkEmailConfirmation({
+      isOpen: false,
+      contactsToProcess: [],
+      skippedCount: 0,
+      isProcessing: false,
+    });
+  }, []);
+
+  const handleConfirmBulkPhone = useCallback(async () => {
+    const { contactsToProcess } = bulkPhoneConfirmation;
+    
+    setBulkPhoneConfirmation(prev => ({ ...prev, isProcessing: true }));
+    
+    for (const contact of contactsToProcess) {
+      startEnrichment({
+        type: 'contact_phone',
+        entityId: contact.id,
+        entityName: `${contact.fullName || 'Contact'} - Phone`,
+        apiEndpoint: `/api/contacts/${contact.id}/waterfall-phone`,
+        pollForCompletion: {
+          checkEndpoint: `/api/contacts/${contact.id}`,
+          checkField: 'contact.enrichedAt',
+          compareMode: 'changed',
+          maxAttempts: 20,
+          intervalMs: 3000,
+        },
+      });
+    }
+    
+    toast({
+      title: 'Phone Lookup Queued',
+      description: `Finding phone numbers for ${contactsToProcess.length} contacts. Check the queue for progress.`,
+    });
+    
+    setBulkPhoneConfirmation({
+      isOpen: false,
+      contactsToProcess: [],
+      skippedCount: 0,
+      isProcessing: false,
+    });
+    
+    setSelectedContacts(new Set());
+  }, [bulkPhoneConfirmation, startEnrichment, toast]);
+
+  const handleCancelBulkPhone = useCallback(() => {
+    setBulkPhoneConfirmation({
       isOpen: false,
       contactsToProcess: [],
       skippedCount: 0,
@@ -1138,6 +1206,57 @@ export default function ContactsPage() {
                 <>
                   <Mail className="h-4 w-4 mr-2" />
                   Find Emails
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={bulkPhoneConfirmation.isOpen} onOpenChange={(open) => !open && !bulkPhoneConfirmation.isProcessing && handleCancelBulkPhone()}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-bulk-phone-confirm">
+          <DialogHeader>
+            <DialogTitle>Confirm Phone Lookup</DialogTitle>
+            <DialogDescription>
+              {bulkPhoneConfirmation.skippedCount > 0 ? (
+                <>
+                  <span className="block mb-2">
+                    <strong>{bulkPhoneConfirmation.contactsToProcess.length}</strong> contact{bulkPhoneConfirmation.contactsToProcess.length !== 1 ? 's' : ''} will be queued for phone lookup.
+                  </span>
+                  <span className="block text-amber-600">
+                    {bulkPhoneConfirmation.skippedCount} contact{bulkPhoneConfirmation.skippedCount !== 1 ? 's' : ''} skipped (already have direct phone numbers).
+                  </span>
+                </>
+              ) : (
+                <span>
+                  <strong>{bulkPhoneConfirmation.contactsToProcess.length}</strong> contact{bulkPhoneConfirmation.contactsToProcess.length !== 1 ? 's' : ''} will be queued for phone lookup.
+                </span>
+              )}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={handleCancelBulkPhone}
+              disabled={bulkPhoneConfirmation.isProcessing}
+              data-testid="button-cancel-bulk-phone"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleConfirmBulkPhone}
+              disabled={bulkPhoneConfirmation.isProcessing}
+              data-testid="button-confirm-bulk-phone"
+            >
+              {bulkPhoneConfirmation.isProcessing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <Phone className="h-4 w-4 mr-2" />
+                  Find Phones
                 </>
               )}
             </Button>
