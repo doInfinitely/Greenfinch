@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { ChevronDown, DollarSign, Check, X, TrendingUp, TrendingDown, AlertCircle, User, UserPlus } from 'lucide-react';
 import { useAuth } from '@clerk/nextjs';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -432,10 +433,10 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   );
 
   const dealValueDisplay = dealValue && dealValue > 0 ? (
-    <div className="flex items-center gap-1 text-sm text-muted-foreground">
-      <DollarSign className="w-4 h-4" />
-      <span className="font-medium">{formatCurrency(dealValue)}</span>
-    </div>
+    <Badge variant="outline" className="text-sm px-3 py-1 bg-green-50 dark:bg-green-900/30 border-green-200 dark:border-green-800 text-green-800 dark:text-green-200" data-testid="badge-deal-value">
+      <DollarSign className="w-4 h-4 mr-1" />
+      <span className="font-semibold">{formatCurrency(dealValue)}</span>
+    </Badge>
   ) : null;
 
   const ownerDisplay = pipeline?.owner ? (
@@ -548,8 +549,8 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   // Editable deal value button for inline mode
   const editDealValueButton = dealValue && dealValue > 0 ? (
     <Button
-      variant="ghost"
-      size="sm"
+      variant="outline"
+      size="default"
       onClick={() => {
         setDealValueInput(dealValue.toString());
         setPendingStatus(currentStatus);
@@ -557,7 +558,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
       }}
       disabled={updating}
       data-testid="button-edit-deal-value-inline"
-      title="Edit deal value"
+      title="Click to edit deal value"
     >
       <DollarSign className="w-4 h-4 mr-1" />
       <span className="font-medium">{formatCurrency(dealValue)}</span>

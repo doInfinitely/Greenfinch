@@ -100,6 +100,8 @@ export async function GET(
         enrichmentStatus: dbProperty.enrichmentStatus,
         lastEnrichedAt: dbProperty.lastEnrichedAt,
         rawParcelsJson: dbProperty.rawParcelsJson,
+        calculatedBuildingClass: dbProperty.calculatedBuildingClass,
+        buildingClassRationale: dbProperty.buildingClassRationale,
       },
       contacts: propertyContactRows.map(row => ({
         ...row.contact,

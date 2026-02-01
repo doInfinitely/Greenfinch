@@ -14,6 +14,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { ArrowLeft } from 'lucide-react';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
@@ -50,6 +51,7 @@ interface Property {
   yearBuilt: number | null;
   numFloors: number | null;
   buildingSqft: number | null;
+  calculatedBuildingClass: string | null;
   totalParval: number;
   totalImprovval: number;
   landval: number;
@@ -1104,23 +1106,39 @@ export default function PropertyDetailPage() {
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-                <div className="bg-green-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 mb-1">Lot Size</p>
-                  <p className="text-xl font-semibold text-green-700">
+              <div className={`grid grid-cols-1 gap-4 mb-6 ${property.calculatedBuildingClass ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4" data-testid="stat-lot-size">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Lot Size</p>
+                  <p className="text-xl font-semibold text-gray-800 dark:text-gray-100" data-testid="text-lot-size-value">
                     {property.lotAcres && property.lotAcres > 0 ? `${formatLotSize(property.lotAcres)} acres` : 'N/A'}
                   </p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 mb-1">Year Built</p>
-                  <p className="text-xl font-semibold text-gray-800">
-                    {property.yearBuilt || 'N/A'}
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4" data-testid="stat-building-area">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Building Area</p>
+                  <p className="text-xl font-semibold text-gray-800 dark:text-gray-100" data-testid="text-building-area-value">
+                    {property.buildingSqft && property.buildingSqft > 0 ? `${formatBuildingSqft(property.buildingSqft)} sq ft` : 'N/A'}
                   </p>
                 </div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <p className="text-sm text-gray-600 mb-1">Leasable Area</p>
-                  <p className="text-xl font-semibold text-gray-800">
-                    {property.buildingSqft && property.buildingSqft > 0 ? `${formatBuildingSqft(property.buildingSqft)} sq ft` : 'N/A'}
+                {property.calculatedBuildingClass && (
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4" data-testid="stat-building-class">
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Building Class</p>
+                    <Badge variant="outline" className={`text-base px-3 py-1 ${
+                      property.calculatedBuildingClass === 'A+' || property.calculatedBuildingClass === 'A' 
+                        ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-800 dark:text-emerald-200 border-emerald-200 dark:border-emerald-800' :
+                      property.calculatedBuildingClass === 'B' 
+                        ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-800' :
+                      property.calculatedBuildingClass === 'C' 
+                        ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-200 border-amber-200 dark:border-amber-800' :
+                      'bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 border-gray-300 dark:border-gray-600'
+                    }`} data-testid="badge-building-class">
+                      Class {property.calculatedBuildingClass}
+                    </Badge>
+                  </div>
+                )}
+                <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4" data-testid="stat-year-built">
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Year Built</p>
+                  <p className="text-xl font-semibold text-gray-800 dark:text-gray-100" data-testid="text-year-built-value">
+                    {property.yearBuilt || 'N/A'}
                   </p>
                 </div>
               </div>
