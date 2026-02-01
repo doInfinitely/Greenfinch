@@ -47,11 +47,13 @@ const PIPELINE_STATUS_CONFIG: Record<string, { label: string; className: string 
 };
 
 const getStatusDisplay = (p: Property): { label: string; className: string } => {
-  if (p.isCurrentCustomer) {
-    return { label: 'Customer', className: 'bg-purple-100 text-purple-700' };
-  }
+  // Prioritize pipeline status over isCurrentCustomer for consistency with filters
   if (p.pipelineStatus && PIPELINE_STATUS_CONFIG[p.pipelineStatus]) {
     return PIPELINE_STATUS_CONFIG[p.pipelineStatus];
+  }
+  // Fallback: isCurrentCustomer without a pipeline entry shows as Customer
+  if (p.isCurrentCustomer) {
+    return { label: 'Customer', className: 'bg-purple-100 text-purple-700' };
   }
   return { label: 'Prospect', className: 'bg-gray-100 text-gray-600' };
 };
