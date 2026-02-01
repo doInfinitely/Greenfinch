@@ -241,7 +241,7 @@ export class DashboardMap {
           source: 'properties',
           filter: ['has', 'point_count'],
           paint: {
-            'circle-color': '#eab308', // Yellow (yellow-500) for better visibility
+            'circle-color': '#16a34a', // Green (green-600)
             'circle-radius': ['step', ['get', 'point_count'], 24, 50, 32, 200, 42],
           },
         });
@@ -269,10 +269,10 @@ export class DashboardMap {
           source: 'properties',
           filter: ['!', ['has', 'point_count']],
           paint: {
-            'circle-color': '#eab308', // Yellow (yellow-500) for better visibility
+            'circle-color': '#16a34a', // Green (green-600)
             'circle-radius': 8,
             'circle-stroke-width': 2,
-            'circle-stroke-color': '#ffffff',
+            'circle-stroke-color': '#facc15', // Yellow border for visibility
           },
         });
       }
