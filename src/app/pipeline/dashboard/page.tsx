@@ -2,11 +2,14 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useOrganization } from '@clerk/nextjs';
+import Link from 'next/link';
 import AppSidebar from '@/components/AppSidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { BarChart3, DollarSign, TrendingUp, Target, Loader2, Users } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { BarChart3, DollarSign, TrendingUp, Target, Loader2, Users, Calendar, MessageSquare, ChevronRight, Clock, AlertCircle } from 'lucide-react';
+import { formatDistanceToNow, isPast, isToday, isTomorrow } from 'date-fns';
 
 interface DashboardData {
   totalPipelineValue: number;
@@ -21,6 +24,33 @@ interface OrgMember {
   displayName: string;
   email: string;
   profileImageUrl: string;
+}
+
+interface PendingAction {
+  id: string;
+  propertyId: string;
+  actionType: string;
+  description: string | null;
+  dueAt: string;
+  status: string;
+  propertyAddress: string | null;
+  createdBy: { firstName: string; lastName: string } | null;
+}
+
+interface RecentMention {
+  id: string;
+  title: string;
+  message: string | null;
+  isRead: boolean;
+  createdAt: string;
+  propertyId: string | null;
+  propertyAddress: string | null;
+  sender: { firstName: string; lastName: string; profileImage: string | null } | null;
+}
+
+interface ActivityData {
+  pendingActions: PendingAction[];
+  recentMentions: RecentMention[];
 }
 
 function formatCurrency(value: number): string {
@@ -39,6 +69,8 @@ export default function PipelineDashboard() {
   const [error, setError] = useState<string | null>(null);
   const [ownerFilter, setOwnerFilter] = useState<string>('mine');
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
+  const [activity, setActivity] = useState<ActivityData | null>(null);
+  const [activityLoading, setActivityLoading] = useState(true);
   const { membership } = useOrganization();
   
   const isAdmin = membership?.role === 'org:admin' || membership?.role === 'org:super_admin';
@@ -51,6 +83,24 @@ export default function PipelineDashboard() {
         .catch(console.error);
     }
   }, [isAdmin]);
+
+  useEffect(() => {
+    async function fetchActivity() {
+      try {
+        setActivityLoading(true);
+        const res = await fetch('/api/pipeline/activity?limit=5');
+        if (res.ok) {
+          const data = await res.json();
+          setActivity(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch activity:', err);
+      } finally {
+        setActivityLoading(false);
+      }
+    }
+    fetchActivity();
+  }, []);
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -196,6 +246,137 @@ export default function PipelineDashboard() {
                   </p>
                 </div>
               )}
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card data-testid="card-pending-tasks">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 gap-2">
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-orange-500" />
+                      Pending Tasks
+                    </CardTitle>
+                    {(activity?.pendingActions?.length || 0) > 0 && (
+                      <Badge variant="secondary" className="text-xs">
+                        {activity?.pendingActions?.length}
+                      </Badge>
+                    )}
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    {activityLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : !activity?.pendingActions?.length ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Clock className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">No pending tasks</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {activity.pendingActions.map((action) => {
+                          const dueDate = new Date(action.dueAt);
+                          const isOverdue = isPast(dueDate) && !isToday(dueDate);
+                          const isDueToday = isToday(dueDate);
+                          const isDueTomorrow = isTomorrow(dueDate);
+                          
+                          return (
+                            <Link
+                              key={action.id}
+                              href={`/property/${action.propertyId}`}
+                              className="flex items-center gap-3 p-3 -mx-3 rounded-md hover-elevate group"
+                              data-testid={`task-item-${action.id}`}
+                            >
+                              <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center ${
+                                isOverdue ? 'bg-red-100' : isDueToday ? 'bg-orange-100' : 'bg-gray-100'
+                              }`}>
+                                {isOverdue ? (
+                                  <AlertCircle className="w-4 h-4 text-red-600" />
+                                ) : (
+                                  <Calendar className="w-4 h-4 text-orange-600" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium truncate">
+                                  {action.description || 'Follow-up'}
+                                </p>
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {action.propertyAddress || 'Unknown property'}
+                                </p>
+                              </div>
+                              <div className="flex-shrink-0 text-right">
+                                <Badge 
+                                  variant={isOverdue ? 'destructive' : isDueToday ? 'default' : 'secondary'}
+                                  className="text-xs"
+                                >
+                                  {isOverdue ? 'Overdue' : isDueToday ? 'Today' : isDueTomorrow ? 'Tomorrow' : formatDistanceToNow(dueDate, { addSuffix: true })}
+                                </Badge>
+                              </div>
+                              <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </Link>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card data-testid="card-recent-mentions">
+                  <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 gap-2">
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                      <MessageSquare className="w-4 h-4 text-blue-500" />
+                      Recent Mentions
+                    </CardTitle>
+                    {(activity?.recentMentions?.filter(m => !m.isRead)?.length || 0) > 0 && (
+                      <Badge variant="destructive" className="text-xs">
+                        {activity?.recentMentions?.filter(m => !m.isRead)?.length} new
+                      </Badge>
+                    )}
+                  </CardHeader>
+                  <CardContent className="pt-0">
+                    {activityLoading ? (
+                      <div className="flex items-center justify-center py-8">
+                        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                      </div>
+                    ) : !activity?.recentMentions?.length ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                        <p className="text-sm">No recent mentions</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        {activity.recentMentions.map((mention) => (
+                          <Link
+                            key={mention.id}
+                            href={mention.propertyId ? `/property/${mention.propertyId}` : '#'}
+                            className={`flex items-center gap-3 p-3 -mx-3 rounded-md hover-elevate group ${!mention.isRead ? 'bg-blue-50 dark:bg-blue-950/20' : ''}`}
+                            data-testid={`mention-item-${mention.id}`}
+                          >
+                            <Avatar className="w-8 h-8 flex-shrink-0">
+                              <AvatarImage src={mention.sender?.profileImage || ''} />
+                              <AvatarFallback className="text-xs bg-blue-100 text-blue-700">
+                                {mention.sender?.firstName?.charAt(0) || '?'}
+                              </AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium truncate">
+                                {mention.sender?.firstName} {mention.sender?.lastName}
+                              </p>
+                              <p className="text-xs text-muted-foreground truncate">
+                                {mention.propertyAddress || 'mentioned you'}
+                              </p>
+                            </div>
+                            <div className="flex-shrink-0 text-right">
+                              <span className="text-xs text-muted-foreground">
+                                {formatDistanceToNow(new Date(mention.createdAt), { addSuffix: true })}
+                              </span>
+                            </div>
+                            <ChevronRight className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                          </Link>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </>
           )}
         </div>
