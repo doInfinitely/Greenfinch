@@ -509,7 +509,7 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
           ? { 
               ...item, 
               pollConfig: { ...item.pollConfig, currentAttempt: attemptCount },
-              message: `Waiting for results... (${attemptCount}/${maxAttempts})`,
+              message: `Waiting for results...`,
               progress: Math.min(pollProgress, 80)
             }
           : item
