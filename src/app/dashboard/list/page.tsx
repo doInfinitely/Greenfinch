@@ -11,6 +11,7 @@ import { BulkActionBar } from '@/components/BulkActionBar';
 import { Sparkles, ListPlus, Users } from 'lucide-react';
 import { TableSkeleton } from '@/components/PageSkeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
 import { useToast } from '@/hooks/use-toast';
 import BulkAddToListModal from '@/components/BulkAddToListModal';
 import { useEnrichment } from '@/hooks/use-enrichment';
@@ -347,18 +348,24 @@ export default function ListPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
-                        {p.category && (
-                          <span className="inline-block px-2 py-1 text-xs bg-purple-100 text-purple-700 rounded-md font-medium">
-                            {p.category}
-                          </span>
-                        )}
-                        {p.subcategory && (
-                          <div className="mt-1">
-                            <span className="inline-block px-2 py-0.5 text-[10px] bg-gray-100 text-gray-600 rounded-md">
-                              {p.subcategory}
+                        {p.category && (() => {
+                          const colors = CATEGORY_COLORS[p.category] ?? DEFAULT_CATEGORY_COLORS;
+                          return (
+                            <span className={`inline-block px-2 py-1 text-xs ${colors.bg} ${colors.text} rounded-md font-medium`}>
+                              {p.category}
                             </span>
-                          </div>
-                        )}
+                          );
+                        })()}
+                        {p.subcategory && p.category && (() => {
+                          const colors = CATEGORY_COLORS[p.category] ?? DEFAULT_CATEGORY_COLORS;
+                          return (
+                            <div className="mt-1">
+                              <span className={`inline-block px-2 py-0.5 text-[10px] ${colors.subBg} ${colors.subText} rounded-md`}>
+                                {p.subcategory}
+                              </span>
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
                         {(() => {

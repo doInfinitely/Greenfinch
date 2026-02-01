@@ -8,6 +8,7 @@ import type { MapCanvasHandle } from '@/map/MapCanvas';
 import PropertyFilters, { FilterState, serializeFiltersToParams, parseFiltersFromParams } from '@/components/PropertyFilters';
 import MapSearchBar from '@/components/MapSearchBar';
 import { useToast } from '@/hooks/use-toast';
+import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
   ssr: false,
@@ -259,16 +260,22 @@ export default function MapPage() {
                   <p className="font-medium text-gray-900 truncate">{f.properties.address}</p>
                 )}
                 <div className="flex flex-col gap-1 mt-1">
-                  {f.properties.category && (
-                    <span className="inline-block px-2 py-0.5 text-[10px] bg-purple-100 text-purple-700 rounded self-start font-medium">
-                      {f.properties.category}
-                    </span>
-                  )}
-                  {f.properties.subcategory && (
-                    <span className="inline-block px-2 py-0.5 text-[10px] bg-gray-100 text-gray-600 rounded self-start">
-                      {f.properties.subcategory}
-                    </span>
-                  )}
+                  {f.properties.category && (() => {
+                    const colors = CATEGORY_COLORS[f.properties.category] ?? DEFAULT_CATEGORY_COLORS;
+                    return (
+                      <span className={`inline-block px-2 py-0.5 text-[10px] ${colors.bg} ${colors.text} rounded self-start font-medium`}>
+                        {f.properties.category}
+                      </span>
+                    );
+                  })()}
+                  {f.properties.subcategory && f.properties.category && (() => {
+                    const colors = CATEGORY_COLORS[f.properties.category] ?? DEFAULT_CATEGORY_COLORS;
+                    return (
+                      <span className={`inline-block px-2 py-0.5 text-[10px] ${colors.subBg} ${colors.subText} rounded self-start`}>
+                        {f.properties.subcategory}
+                      </span>
+                    );
+                  })()}
                   {f.properties.lotSqft > 0 && (
                     <span className="text-[10px] text-gray-500">
                       {(f.properties.lotSqft / 43560).toFixed(1)} ac
