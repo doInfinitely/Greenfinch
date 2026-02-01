@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
         .from(propertyPipeline)
         .where(and(
           eq(propertyPipeline.clerkOrgId, orgId),
-          sql`${propertyPipeline.propertyId} = ANY(${propertyIds})`
+          inArray(propertyPipeline.propertyId, propertyIds)
         ));
       
       pipelineMap = Object.fromEntries(
