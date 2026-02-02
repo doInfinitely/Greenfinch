@@ -43,7 +43,7 @@ export async function GET(
       .innerJoin(properties, eq(propertyOrganizations.propertyId, properties.id))
       .where(eq(propertyOrganizations.orgId, id));
 
-    const contactRelations = await db
+    const contactRelationsRaw = await db
       .select({
         id: contacts.id,
         fullName: contacts.fullName,
@@ -64,6 +64,15 @@ export async function GET(
       .from(contactOrganizations)
       .innerJoin(contacts, eq(contactOrganizations.contactId, contacts.id))
       .where(eq(contactOrganizations.orgId, id));
+
+    // Deduplicate contacts by ID (a contact may have multiple relationships with the same org)
+    const contactsMap = new Map<string, typeof contactRelationsRaw[0]>();
+    for (const contact of contactRelationsRaw) {
+      if (!contactsMap.has(contact.id)) {
+        contactsMap.set(contact.id, contact);
+      }
+    }
+    const contactRelations = Array.from(contactsMap.values());
 
     return NextResponse.json({
       organization: org,

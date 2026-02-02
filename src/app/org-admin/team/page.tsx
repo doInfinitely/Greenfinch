@@ -92,9 +92,17 @@ export default function TeamManagement() {
   const [inviting, setInviting] = useState(false);
   const [activeTab, setActiveTab] = useState<'members' | 'invitations'>('members');
 
+  // Reset state and refetch when organization changes
   useEffect(() => {
+    // Reset state when org changes
+    setMembers([]);
+    setInvitations([]);
+    setLoading(true);
+    
     if (isAdmin && organization?.id) {
       fetchTeamData();
+    } else if (!organization?.id) {
+      setLoading(false);
     }
   }, [isAdmin, organization?.id]);
 
