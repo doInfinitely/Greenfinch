@@ -109,6 +109,11 @@ export async function POST(
       updateData.photoUrl = result.profilePicture;
     }
 
+    // Save location (city, state) from enrichment if available and contact doesn't have it
+    if (result.location && !contact.location) {
+      updateData.location = result.location;
+    }
+
     const [updatedContact] = await db
       .update(contacts)
       .set(updateData)

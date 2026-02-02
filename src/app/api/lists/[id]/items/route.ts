@@ -22,7 +22,7 @@ export async function GET(
       return NextResponse.json({ error: 'Invalid list ID format' }, { status: 400 });
     }
 
-    // Get list with ownership check
+    // Get list with ownership check - filter by userId in SQL to prevent enumeration attacks
     const [list] = await db
       .select({
         id: userLists.id,
