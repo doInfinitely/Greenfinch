@@ -119,6 +119,9 @@ export default function MapPage() {
     if (filterState.contactId) {
       params.set('contactId', filterState.contactId);
     }
+    if (filterState.buildingClasses && filterState.buildingClasses.length > 0) {
+      params.set('buildingClasses', filterState.buildingClasses.join(','));
+    }
     
     const queryString = params.toString();
     return `/api/properties/geojson${queryString ? `?${queryString}` : ''}`;
