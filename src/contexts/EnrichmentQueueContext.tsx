@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { useQueryClient } from '@tanstack/react-query';
 
 export type EnrichmentItemType = 'property' | 'contact' | 'organization' | 'contact_phone' | 'contact_email';
 export type EnrichmentStatus = 'pending' | 'processing' | 'polling' | 'completed' | 'failed';
@@ -78,6 +79,7 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<EnrichmentQueueItem[]>([]);
   const [isHydrated, setIsHydrated] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const pollingIntervals = useRef<Map<string, NodeJS.Timeout>>(new Map());
   // Track which items have already fired completion to prevent duplicate toasts (race condition guard)
   const completedItemsRef = useRef<Set<string>>(new Set());
@@ -226,8 +228,12 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
         title: 'Research Complete',
         description: `Greenfinch has finished researching ${toastName}.`,
       });
+      
+      // Invalidate queries to refresh contact/property lists immediately
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/properties'] });
     }
-  }, [toast]);
+  }, [toast, queryClient]);
 
   const markFailedInternal = useCallback((id: string, error: string, entityName?: string) => {
     // Synchronous guard using ref to prevent race condition (reuse completedItemsRef for terminal states)
@@ -268,13 +274,24 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
     
     // Show toast OUTSIDE of setItems to avoid React batching issues
     if (shouldShowToast) {
+      // Use friendlier messaging for common error types
+      const isEmailNotFound = error.toLowerCase().includes('no match') || 
+                              error.toLowerCase().includes('not found') ||
+                              error.toLowerCase().includes('no email');
+      
       toast({
-        title: 'Research Failed',
-        description: `Greenfinch couldn't complete research for ${toastName}: ${error}`,
-        variant: 'destructive',
+        title: isEmailNotFound ? 'No Results Found' : 'Research Issue',
+        description: isEmailNotFound 
+          ? `We weren't able to find an email address for ${toastName}.`
+          : `We encountered an issue researching ${toastName}. Please try again later.`,
+        variant: 'default',
       });
+      
+      // Still invalidate queries in case partial data was saved
+      queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/properties'] });
     }
-  }, [toast]);
+  }, [toast, queryClient]);
 
   // Resume polling for items that have pollConfig (after navigation within same session)
   useEffect(() => {

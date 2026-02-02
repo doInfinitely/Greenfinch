@@ -157,6 +157,7 @@ export async function GET(request: NextRequest) {
         emailStatus: contacts.emailStatus,
         emailValidationStatus: contacts.emailValidationStatus,
         linkedinUrl: contacts.linkedinUrl,
+        location: contacts.location,
         source: contacts.source,
         createdAt: contacts.createdAt,
         propertyCount: sql<number>`COALESCE(${propertyCountSubquery.count}, 0)`.as('property_count'),

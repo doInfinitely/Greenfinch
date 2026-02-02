@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Search, Plus, User, Mail, Phone, Linkedin, Loader2, ArrowLeft, Check, X } from 'lucide-react';
+import { Search, Plus, User, Mail, Phone, MapPin, Linkedin, Loader2, ArrowLeft, Check, X } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -43,6 +43,7 @@ interface EnrichedContact {
   email?: string;
   phone?: string;
   title?: string;
+  location?: string;
   linkedinUrl?: string;
   photoUrl?: string;
 }
@@ -77,6 +78,7 @@ export default function AddContactModal({
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
+  const [location, setLocation] = useState('');
   const [linkedinUrl, setLinkedinUrl] = useState('');
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -115,6 +117,7 @@ export default function AddContactModal({
     setLastName('');
     setEmail('');
     setPhone('');
+    setLocation('');
     setLinkedinUrl('');
     setIsSubmitting(false);
     setError(null);
@@ -199,6 +202,7 @@ export default function AddContactModal({
         setLastName(data.lastName || '');
         setEmail(data.email || seedEmail || '');
         setPhone(data.phone || '');
+        setLocation(data.location || '');
         setLinkedinUrl(data.linkedinUrl || seedLinkedin || '');
         toast({
           title: 'Contact Found',
@@ -285,6 +289,7 @@ export default function AddContactModal({
           lastName,
           email: email || undefined,
           phone: phone || undefined,
+          location: location || undefined,
           linkedinUrl: linkedinUrl || undefined,
           role: selectedRole,
         }),
@@ -536,7 +541,12 @@ export default function AddContactModal({
       </div>
       
       {seedError && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 text-sm rounded-lg">
+        <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm rounded-lg flex items-center gap-2">
+          <span className="flex-shrink-0">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </span>
           {seedError}
         </div>
       )}
@@ -635,6 +645,20 @@ export default function AddContactModal({
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
           data-testid="input-phone"
+        />
+      </div>
+      
+      <div className="space-y-2">
+        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+          <MapPin className="w-4 h-4" />
+          Location
+        </label>
+        <Input
+          type="text"
+          placeholder="Dallas, TX"
+          value={location}
+          onChange={(e) => setLocation(e.target.value)}
+          data-testid="input-location"
         />
       </div>
       

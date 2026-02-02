@@ -58,6 +58,7 @@ interface Contact {
   emailStatus: string | null;
   emailValidationStatus: string | null;
   linkedinUrl: string | null;
+  location: string | null;
   source: string | null;
   createdAt: string;
   propertyCount: number;
@@ -970,6 +971,9 @@ export default function ContactsPage() {
                       >
                         Employer <SortIcon column="employerName" />
                       </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Location
+                      </th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -1087,10 +1091,20 @@ export default function ContactsPage() {
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
+                          <td 
+                            className="px-4 py-3 whitespace-nowrap"
+                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                          >
+                            {contact.location ? (
+                              <span className="text-sm text-gray-600 truncate max-w-[150px] block">{contact.location}</span>
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
                         </tr>
                         {expandedContact === contact.id && (
                           <tr>
-                            <td colSpan={6} className="px-4 py-3 bg-gray-50">
+                            <td colSpan={7} className="px-4 py-3 bg-gray-50">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {contact.properties.length > 0 && (
                                   <div>

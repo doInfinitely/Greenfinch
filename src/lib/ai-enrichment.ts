@@ -79,6 +79,7 @@ export interface DiscoveredContact {
   phone: string | null;
   phoneLabel: 'direct_work' | 'office' | 'personal' | 'mobile' | null;
   phoneConfidence: number | null;
+  location: string | null; // City, State format (e.g., "Dallas, TX")
   role: string;
   roleConfidence: number;
   priorityRank: number;
@@ -510,10 +511,17 @@ CONTACT INFORMATION TO CAPTURE:
   - "direct_work": Person's direct work phone number
   - "office": Property or company office line
   - "personal": Personal/cell phone (only if publicly listed for business purposes)
+- Location: City and state where the contact works (e.g., "Dallas, TX"). Must support that the person is directly associated with THIS property.
+
+VALIDATION REQUIREMENTS:
+- Confirm the name field contains a proper first and last name (not a company name or title)
+- Confirm the title field is a job title, not a name or company
+- Confirm the location supports that this person works at or near THIS property
+- Only include contacts with a title AND location that demonstrate direct association with the property
 
 Return JSON:
 {
-  "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","email":"found@email.com or null","phone":"+1-555-123-4567 or null","phone_label":"direct_work|office|personal|null","phone_confidence":0.0-1.0,"role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8,"contact_type":"individual|general"}],
+  "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","email":"found@email.com or null","phone":"+1-555-123-4567 or null","phone_label":"direct_work|office|personal|null","phone_confidence":0.0-1.0,"location":"City, ST or null","role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8,"contact_type":"individual|general"}],
   "organizations":[{"name":"Org name","domain":"domain.com","org_type":"owner|management|tenant|developer","roles":["property_manager","owner"]}],
   "summary":"2-3 sentences describing the key decision-makers (property manager, facilities director, owner contact if available), their organization, specific roles and responsibilities at this property, and any notable decision-making authority or specializations they bring."
 }
@@ -565,6 +573,7 @@ contact_type values:
       phone: c.phone && c.phone !== 'null' ? c.phone : null,
       phoneLabel: c.phone_label && c.phone_label !== 'null' ? c.phone_label : null,
       phoneConfidence: c.phone_confidence ?? null,
+      location: c.location && c.location !== 'null' ? c.location : null,
       role: c.role || 'other',
       roleConfidence: c.role_confidence ?? 0.5,
       priorityRank: c.priority_rank ?? 10,

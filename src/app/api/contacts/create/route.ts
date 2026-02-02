@@ -13,13 +13,14 @@ interface CreateContactBody {
   fullName?: string;
   title?: string;
   phone?: string;
+  location?: string;
   role: string;
 }
 
 export async function POST(request: NextRequest) {
   try {
     const body: CreateContactBody = await request.json();
-    const { propertyId, email, linkedinUrl, firstName, lastName, fullName, title, phone, role } = body;
+    const { propertyId, email, linkedinUrl, firstName, lastName, fullName, title, phone, location, role } = body;
 
     if (!propertyId) {
       return NextResponse.json(
@@ -141,6 +142,7 @@ export async function POST(request: NextRequest) {
         linkedinUrl,
         title,
         phone,
+        location,
         source: 'manual',
         contactType: 'individual',
       })

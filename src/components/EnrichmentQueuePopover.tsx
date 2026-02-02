@@ -63,7 +63,14 @@ function QueueItem({ item, onRemove }: { item: EnrichmentQueueItem; onRemove: ()
             <CheckCircle className="w-4 h-4 text-green-600" />
           )}
           {item.status === 'failed' && (
-            <XCircle className="w-4 h-4 text-red-500" />
+            (() => {
+              const isNotFound = item.error?.toLowerCase().includes('no match') || 
+                                 item.error?.toLowerCase().includes('not found') ||
+                                 item.error?.toLowerCase().includes('no email');
+              return isNotFound 
+                ? <XCircle className="w-4 h-4 text-amber-500" />
+                : <XCircle className="w-4 h-4 text-red-500" />;
+            })()
           )}
         </div>
         
@@ -91,9 +98,19 @@ function QueueItem({ item, onRemove }: { item: EnrichmentQueueItem; onRemove: ()
           )}
           
           {item.error && (
-            <p className="text-xs text-red-500 mt-1 truncate">
-              {item.error}
-            </p>
+            (() => {
+              const isNotFound = item.error?.toLowerCase().includes('no match') || 
+                                 item.error?.toLowerCase().includes('not found') ||
+                                 item.error?.toLowerCase().includes('no email');
+              const friendlyMessage = isNotFound 
+                ? `We weren't able to find an email address for this person`
+                : item.error;
+              return (
+                <p className={`text-xs mt-1 truncate ${isNotFound ? 'text-amber-600' : 'text-red-500'}`}>
+                  {friendlyMessage}
+                </p>
+              );
+            })()
           )}
         </div>
         
