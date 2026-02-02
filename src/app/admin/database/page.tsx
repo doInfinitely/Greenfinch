@@ -833,10 +833,10 @@ export default function DatabaseAdminPage() {
                     </p>
                     <div className="flex flex-wrap gap-2">
                       {ingestionZipCodes.map((zip) => (
-                        <div key={zip} className="inline-flex items-center gap-1 bg-secondary text-secondary-foreground rounded-md px-2.5 py-0.5 text-sm font-medium">
+                        <div key={zip} className="inline-flex items-center gap-1 bg-secondary text-secondary-foreground rounded-md pl-2.5 pr-1 py-0.5 text-sm font-medium">
                           <span data-testid={`text-zip-${zip}`}>{zip}</span>
                           <Button
-                            size="sm"
+                            size="icon"
                             variant="ghost"
                             onClick={() => removeZipCode(zip)}
                             data-testid={`button-remove-zip-${zip}`}
