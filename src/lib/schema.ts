@@ -824,3 +824,16 @@ export const adminAuditLog = pgTable('admin_audit_log', {
 
 export type AdminAuditLog = typeof adminAuditLog.$inferSelect;
 export type InsertAdminAuditLog = typeof adminAuditLog.$inferInsert;
+
+// Ingestion settings for configurable ZIP codes and limits
+export const ingestionSettings = pgTable('ingestion_settings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  key: text('key').notNull().unique(), // 'zip_codes', 'default_limit', etc.
+  value: json('value').notNull(), // JSON value for flexibility
+  description: text('description'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+  updatedByUserId: uuid('updated_by_user_id').references(() => users.id),
+});
+
+export type IngestionSettings = typeof ingestionSettings.$inferSelect;
+export type InsertIngestionSettings = typeof ingestionSettings.$inferInsert;
