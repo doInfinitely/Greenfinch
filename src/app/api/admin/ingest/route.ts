@@ -15,10 +15,17 @@ async function getIngestionSettings(): Promise<{ zipCodes: string[]; limit: numb
       settingsMap[setting.key] = setting.value;
     }
     
-    return {
-      zipCodes: (settingsMap.zip_codes as string[]) || DEFAULT_ZIP_CODES,
-      limit: (settingsMap.default_limit as number) || DEFAULT_LIMIT,
-    };
+    const storedZipCodes = settingsMap.zip_codes as string[] | undefined;
+    const storedLimit = settingsMap.default_limit as number | undefined;
+    
+    const zipCodes = Array.isArray(storedZipCodes) && storedZipCodes.length > 0 
+      ? storedZipCodes 
+      : DEFAULT_ZIP_CODES;
+    const limit = typeof storedLimit === 'number' && storedLimit >= 1 && storedLimit <= 10000
+      ? storedLimit
+      : DEFAULT_LIMIT;
+    
+    return { zipCodes, limit };
   } catch (error) {
     console.error('[Ingest] Failed to fetch settings, using defaults:', error);
     return { zipCodes: DEFAULT_ZIP_CODES, limit: DEFAULT_LIMIT };
@@ -47,8 +54,36 @@ export async function POST(request: NextRequest) {
 
     const dbSettings = await getIngestionSettings();
     
-    const configuredZipCodes = body.zipCodes || dbSettings.zipCodes;
-    const configuredLimit = body.limit || dbSettings.limit;
+    let configuredZipCodes = dbSettings.zipCodes;
+    let configuredLimit = dbSettings.limit;
+    
+    if (body.zipCodes !== undefined) {
+      if (!Array.isArray(body.zipCodes) || body.zipCodes.length === 0) {
+        return NextResponse.json(
+          { error: 'zipCodes must be a non-empty array of 5-digit strings' },
+          { status: 400 }
+        );
+      }
+      const validZips = body.zipCodes.filter(z => typeof z === 'string' && /^\d{5}$/.test(z));
+      if (validZips.length === 0) {
+        return NextResponse.json(
+          { error: 'zipCodes must contain at least one valid 5-digit ZIP code' },
+          { status: 400 }
+        );
+      }
+      configuredZipCodes = validZips;
+    }
+    
+    if (body.limit !== undefined) {
+      const parsedLimit = typeof body.limit === 'number' ? body.limit : parseInt(String(body.limit));
+      if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 10000) {
+        return NextResponse.json(
+          { error: 'limit must be a number between 1 and 10000' },
+          { status: 400 }
+        );
+      }
+      configuredLimit = parsedLimit;
+    }
 
     if (body.mode !== undefined && body.mode !== 'count' && body.mode !== 'mvp' && body.mode !== 'multi-zip') {
       return NextResponse.json(

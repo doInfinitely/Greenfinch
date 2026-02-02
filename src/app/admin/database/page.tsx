@@ -26,7 +26,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Database, Play, Download, Trash2, RefreshCw, History, Eye, AlertTriangle } from 'lucide-react';
+import { Database, Play, Download, Trash2, RefreshCw, History, Eye, AlertTriangle, Settings, Plus, X } from 'lucide-react';
 
 interface TableInfo {
   name: string;
@@ -85,6 +85,12 @@ export default function DatabaseAdminPage() {
   const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
   const [clearAllPreview, setClearAllPreview] = useState<{ tableCounts: { table: string; count: number }[]; totalRows: number } | null>(null);
   const [isClearingAll, setIsClearingAll] = useState(false);
+
+  const [ingestionZipCodes, setIngestionZipCodes] = useState<string[]>(['75225']);
+  const [ingestionLimit, setIngestionLimit] = useState<number>(500);
+  const [newZipCode, setNewZipCode] = useState('');
+  const [isLoadingIngestionSettings, setIsLoadingIngestionSettings] = useState(false);
+  const [isSavingIngestionSettings, setIsSavingIngestionSettings] = useState(false);
 
   const fetchTables = useCallback(async () => {
     setIsLoadingTables(true);
@@ -255,6 +261,90 @@ export default function DatabaseAdminPage() {
     }
   };
 
+  const fetchIngestionSettings = useCallback(async () => {
+    setIsLoadingIngestionSettings(true);
+    try {
+      const response = await fetch('/api/admin/ingestion-settings', { credentials: 'include' });
+      if (!response.ok) throw new Error('Failed to fetch ingestion settings');
+      const data = await response.json();
+      setIngestionZipCodes(data.zipCodes || ['75225']);
+      setIngestionLimit(data.defaultLimit || 500);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to fetch ingestion settings',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingIngestionSettings(false);
+    }
+  }, [toast]);
+
+  const saveIngestionSettings = async () => {
+    setIsSavingIngestionSettings(true);
+    try {
+      const response = await fetch('/api/admin/ingestion-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          zipCodes: ingestionZipCodes,
+          defaultLimit: ingestionLimit,
+        }),
+      });
+
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Failed to save settings');
+
+      toast({
+        title: 'Settings Saved',
+        description: `Ingestion will use ${data.zipCodes.length} ZIP code(s) with limit ${data.defaultLimit}`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to save settings',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSavingIngestionSettings(false);
+    }
+  };
+
+  const addZipCode = () => {
+    const trimmed = newZipCode.trim();
+    if (!/^\d{5}$/.test(trimmed)) {
+      toast({
+        title: 'Invalid ZIP Code',
+        description: 'Please enter a valid 5-digit ZIP code',
+        variant: 'destructive',
+      });
+      return;
+    }
+    if (ingestionZipCodes.includes(trimmed)) {
+      toast({
+        title: 'Duplicate',
+        description: 'This ZIP code is already in the list',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIngestionZipCodes([...ingestionZipCodes, trimmed]);
+    setNewZipCode('');
+  };
+
+  const removeZipCode = (zip: string) => {
+    if (ingestionZipCodes.length === 1) {
+      toast({
+        title: 'Cannot Remove',
+        description: 'At least one ZIP code is required',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setIngestionZipCodes(ingestionZipCodes.filter(z => z !== zip));
+  };
+
   const handlePrepareClearAll = async () => {
     try {
       const response = await fetch('/api/admin/database', {
@@ -382,6 +472,10 @@ export default function DatabaseAdminPage() {
           <TabsTrigger value="audit" onClick={() => fetchAuditLogs()} data-testid="tab-audit">
             <History className="h-4 w-4 mr-2" />
             Audit Log
+          </TabsTrigger>
+          <TabsTrigger value="ingestion" onClick={() => fetchIngestionSettings()} data-testid="tab-ingestion">
+            <Settings className="h-4 w-4 mr-2" />
+            Ingestion Settings
           </TabsTrigger>
         </TabsList>
 
@@ -702,6 +796,116 @@ export default function DatabaseAdminPage() {
                     </Table>
                   </div>
                 </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ingestion" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Ingestion Settings</CardTitle>
+                  <CardDescription>Configure ZIP codes and limits for property data ingestion</CardDescription>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={fetchIngestionSettings}
+                  disabled={isLoadingIngestionSettings}
+                  data-testid="button-refresh-ingestion-settings"
+                >
+                  <RefreshCw className={`h-4 w-4 mr-2 ${isLoadingIngestionSettings ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {isLoadingIngestionSettings ? (
+                <div className="text-center py-8 text-gray-500">Loading settings...</div>
+              ) : (
+                <>
+                  <div className="space-y-3">
+                    <label className="text-sm font-medium text-gray-700">ZIP Codes for Ingestion</label>
+                    <p className="text-sm text-gray-500">
+                      Add the ZIP codes you want to include when running property data ingestion from Snowflake.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {ingestionZipCodes.map((zip) => (
+                        <div key={zip} className="inline-flex items-center gap-1 bg-secondary text-secondary-foreground rounded-md px-2.5 py-0.5 text-sm font-medium">
+                          <span data-testid={`text-zip-${zip}`}>{zip}</span>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => removeZipCode(zip)}
+                            data-testid={`button-remove-zip-${zip}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Enter ZIP code (e.g., 75225)"
+                        value={newZipCode}
+                        onChange={(e) => setNewZipCode(e.target.value)}
+                        onKeyDown={(e) => e.key === 'Enter' && addZipCode()}
+                        className="max-w-[200px]"
+                        maxLength={5}
+                        data-testid="input-new-zip"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={addZipCode}
+                        data-testid="button-add-zip"
+                      >
+                        <Plus className="h-4 w-4 mr-1" />
+                        Add
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <label className="text-sm font-medium text-gray-700">Default Row Limit</label>
+                    <p className="text-sm text-gray-500">
+                      Maximum number of properties to ingest per ZIP code (1-10000).
+                    </p>
+                    <Input
+                      type="number"
+                      min={1}
+                      max={10000}
+                      value={ingestionLimit}
+                      onChange={(e) => setIngestionLimit(parseInt(e.target.value) || 500)}
+                      className="max-w-[200px]"
+                      data-testid="input-ingestion-limit"
+                    />
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <Button
+                      onClick={saveIngestionSettings}
+                      disabled={isSavingIngestionSettings || ingestionZipCodes.length === 0}
+                      data-testid="button-save-ingestion-settings"
+                    >
+                      {isSavingIngestionSettings ? 'Saving...' : 'Save Settings'}
+                    </Button>
+                  </div>
+
+                  <div className="pt-4 border-t">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Current Configuration</h4>
+                    <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600">
+                      <p>
+                        <strong>ZIP Codes:</strong> {ingestionZipCodes.join(', ') || 'None configured'}
+                      </p>
+                      <p>
+                        <strong>Limit per ZIP:</strong> {ingestionLimit} properties
+                      </p>
+                    </div>
+                  </div>
+                </>
               )}
             </CardContent>
           </Card>
