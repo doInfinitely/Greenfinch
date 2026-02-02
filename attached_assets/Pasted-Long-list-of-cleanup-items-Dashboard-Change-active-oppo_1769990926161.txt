@@ -1,0 +1,27 @@
+Long list of cleanup items:
+
+Dashboard -
+
+Change active opportunities to Opportunities
+Show number of deals in each stage of the pipeline funnel and not just the conversion rates between them
+How can we improve mobile version of pipeline board?
+Prospecting - Properties
+
+Zip code filter still doesn't work in map view; make this autocomplete from the unique list of zip codes in the data and let the user select. Allow adding and removing multiple zip codes
+Filters are not translating between map and list view. I have tried to communicate this multiple times. Use the same filter states for each view when toggling between them
+In property details, grey out service providers and indicate this feature is coming soon; we won't be able to launch it for the MVP
+Getting unique key errors from next.js in map view; this has been happening for a while - why?
+Prospecting - Organizations
+
+There is still a button to research an organization; I'm not sure what this is or what it's supposed to do
+In org detail view, associated contacts show all contact methods as green - these should be the same as everywhere else in the app and reflect data quality / validation status
+In org details there is a drop down (image attached): remove this; it doesn't do anything
+selecting a contact in the filter initial works (autocompletes and allows selection) but once selected, no filter is applied to the data
+Same applies to the associated organization filter in properties
+The organization type filter doesn't seem to be working correctly. only has management and owner; remove
+Number of properties filter doesn't seem to work - selected 2-5 and still seee one with 9 associated properties
+In org details, some relationships are consolidated (Propertry management, leasing) while others are repeated on multiple rows (owner): just tag the property with all assocaited roles in separate little tag/pill things.
+GOt a rate limit failure when selecting multiple props to enrich
+Prospecting - Contacts
+
+It seems in some cases we have an old/alternate title for a contact that is creating multiple org relationships. See attached photo. This should all resolve back to a single employer with a single title, whatever was returned by Apollo or the best available enrichment source
