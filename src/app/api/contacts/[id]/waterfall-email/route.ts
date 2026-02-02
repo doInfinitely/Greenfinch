@@ -81,13 +81,31 @@ export async function POST(
 
     // Always update providerId with the ID from the waterfall response
     // Apollo returns different IDs for different API calls, and the webhook uses the waterfall ID
+    // Also update linkedinUrl and photoUrl if returned by Apollo
+    const updateData: Record<string, any> = {
+      enrichmentSource: 'apollo',
+      updatedAt: new Date(),
+    };
+    
     if (result.apolloId) {
+      updateData.providerId = result.apolloId;
+    }
+    
+    // Update LinkedIn URL if contact doesn't have one and Apollo provided it
+    if (result.linkedinUrl && !contact.linkedinUrl) {
+      updateData.linkedinUrl = result.linkedinUrl;
+      console.log(`[WaterfallEmail] Setting LinkedIn URL from Apollo: ${result.linkedinUrl}`);
+    }
+    
+    // Update photo URL if contact doesn't have one and Apollo provided it
+    if (result.photoUrl && !contact.photoUrl) {
+      updateData.photoUrl = result.photoUrl;
+      console.log(`[WaterfallEmail] Setting photo URL from Apollo`);
+    }
+    
+    if (Object.keys(updateData).length > 0) {
       await db.update(contacts)
-        .set({ 
-          providerId: result.apolloId,
-          enrichmentSource: 'apollo',
-          updatedAt: new Date(),
-        })
+        .set(updateData)
         .where(eq(contacts.id, id));
     }
 

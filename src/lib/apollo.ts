@@ -323,6 +323,8 @@ export interface WaterfallEnrichResult {
   waterfallStatus: 'accepted' | 'failed' | 'not_requested';
   waterfallMessage?: string;
   apolloId?: string;
+  linkedinUrl?: string;
+  photoUrl?: string;
   error?: string;
 }
 
@@ -502,12 +504,25 @@ export async function triggerWaterfallEmail(params: {
     
     console.log('[Apollo] Waterfall email status:', waterfallStatus, data.waterfall?.message);
 
+    // Extract linkedinUrl and photoUrl from person data (if available)
+    let linkedinUrl = data.person?.linkedin_url;
+    if (linkedinUrl && !linkedinUrl.startsWith('http')) {
+      linkedinUrl = `https://${linkedinUrl}`;
+    }
+    const photoUrl = data.person?.photo_url;
+
+    if (linkedinUrl || photoUrl) {
+      console.log('[Apollo] Waterfall email enrichment data:', { linkedinUrl: linkedinUrl ? 'present' : 'none', photoUrl: photoUrl ? 'present' : 'none' });
+    }
+
     return {
       success: waterfallStatus === 'accepted',
       requestId: data.request_id?.toString(),
       waterfallStatus,
       waterfallMessage: data.waterfall?.message,
       apolloId: data.person?.id,
+      linkedinUrl: linkedinUrl || undefined,
+      photoUrl: photoUrl || undefined,
     };
   } catch (error: any) {
     console.error('[Apollo] Waterfall email request failed:', error.message);

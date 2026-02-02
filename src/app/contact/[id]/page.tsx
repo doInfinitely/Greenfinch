@@ -21,6 +21,8 @@ import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import { formatPhoneNumber } from '@/lib/phone-format';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
+import AddToListModal from '@/components/AddToListModal';
+import { List } from 'lucide-react';
 
 interface LinkedInSearchResult {
   name: string;
@@ -189,6 +191,7 @@ export default function ContactDetailPage() {
   const [isFindingEmail, setIsFindingEmail] = useState(false);
   const [phoneMessage, setPhoneMessage] = useState<string | null>(null);
   const [emailMessage, setEmailMessage] = useState<string | null>(null);
+  const [showAddToListModal, setShowAddToListModal] = useState(false);
   const [linkedInMessage, setLinkedInMessage] = useState<string | null>(null);
   
   // Admin edit mode state
@@ -471,6 +474,12 @@ export default function ContactDetailPage() {
   const handleFindPhone = async () => {
     if (!contact) return;
 
+    // Confirm before running enrichment
+    const confirmed = window.confirm(
+      `Search for phone number for ${contact.fullName || 'this contact'}?\n\nThis will use a paid API lookup service.`
+    );
+    if (!confirmed) return;
+
     setIsFindingPhone(true);
     setPhoneMessage(null);
 
@@ -496,6 +505,12 @@ export default function ContactDetailPage() {
 
   const handleFindEmail = async () => {
     if (!contact) return;
+
+    // Confirm before running enrichment
+    const confirmed = window.confirm(
+      `Search for email address for ${contact.fullName || 'this contact'}?\n\nThis will use a paid API lookup service.`
+    );
+    if (!confirmed) return;
 
     setIsFindingEmail(true);
     setEmailMessage(null);
@@ -932,6 +947,17 @@ export default function ContactDetailPage() {
                   {emailMessage}
                 </span>
               )}
+              
+              {/* Add to List button */}
+              <button
+                onClick={() => setShowAddToListModal(true)}
+                className="inline-flex items-center px-3 py-2 text-gray-700 bg-white border border-gray-300 text-sm font-medium rounded-lg hover:bg-gray-50"
+                data-testid="button-add-to-list"
+              >
+                <List className="w-4 h-4 mr-2" />
+                Add to List
+              </button>
+              
               {contact.needsReview && (
                 <span className="px-3 py-1 bg-yellow-100 text-yellow-800 text-sm rounded-full">
                   Needs Review
@@ -1173,6 +1199,14 @@ export default function ContactDetailPage() {
           </div>
         </div>
       </main>
+      
+      {/* Add to List Modal */}
+      <AddToListModal
+        isOpen={showAddToListModal}
+        onClose={() => setShowAddToListModal(false)}
+        itemId={contactId as string}
+        itemType="contacts"
+      />
     </div>
   );
 }

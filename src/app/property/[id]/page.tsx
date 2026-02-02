@@ -286,6 +286,7 @@ export default function PropertyDetailPage() {
   const [enrichmentMessage, setEnrichmentMessage] = useState<string>('');
   const [showAddToListModal, setShowAddToListModal] = useState(false);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [contactForListModal, setContactForListModal] = useState<string | null>(null);
   const [assignDialogTrigger, setAssignDialogTrigger] = useState(0);
   const [isCurrentCustomer, setIsCurrentCustomer] = useState(false);
   const { startEnrichment } = useEnrichment();
@@ -1497,11 +1498,24 @@ export default function PropertyDetailPage() {
                             )}
                             
                             {contact.id && (
-                              <span className="text-xs text-gray-400 ml-auto flex items-center gap-1">
-                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                </svg>
-                              </span>
+                              <div className="flex items-center gap-2 ml-auto">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setContactForListModal(contact.id);
+                                  }}
+                                  className="text-gray-400 hover:text-gray-600 p-1"
+                                  title="Add to list"
+                                  data-testid={`button-add-contact-to-list-${contact.id}`}
+                                >
+                                  <ListPlus className="w-4 h-4" />
+                                </button>
+                                <span className="text-xs text-gray-400 flex items-center gap-1">
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                  </svg>
+                                </span>
+                              </div>
                             )}
                           </div>
                           
@@ -1668,6 +1682,16 @@ export default function PropertyDetailPage() {
           isOpen={showAddContactModal}
           onClose={() => setShowAddContactModal(false)}
           onSuccess={fetchProperty}
+        />
+      )}
+
+      {/* Add Contact to List Modal */}
+      {contactForListModal && (
+        <AddToListModal
+          isOpen={!!contactForListModal}
+          onClose={() => setContactForListModal(null)}
+          itemId={contactForListModal}
+          itemType="contacts"
         />
       )}
 
