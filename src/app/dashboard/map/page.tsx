@@ -164,12 +164,8 @@ export default function MapPage() {
   }, []);
 
   const handlePropertyClick = useCallback((propertyKey: string) => {
-    toast({
-      title: 'Opening property...',
-      description: 'Property details loading in new tab',
-    });
-    window.open(`/property/${propertyKey}`, '_blank');
-  }, [toast]);
+    router.push(`/property/${propertyKey}`);
+  }, [router]);
 
   const handleSearchSelect = useCallback((suggestion: SearchSuggestion) => {
     const zoom = getZoomForType(suggestion.type, !!suggestion.propertyKey);
@@ -177,10 +173,10 @@ export default function MapPage() {
     
     if (suggestion.propertyKey) {
       setTimeout(() => {
-        window.open(`/property/${suggestion.propertyKey}`, '_blank');
+        router.push(`/property/${suggestion.propertyKey}`);
       }, 1600);
     }
-  }, []);
+  }, [router]);
 
   // All filtering is done server-side - allProperties already contains only matching properties
   // visibleProperties filters to what's in the current map bounds (for sidebar display)
