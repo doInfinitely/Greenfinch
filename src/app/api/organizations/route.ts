@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
     const propertyCountSubquery = db
       .select({
         orgId: propertyOrganizations.orgId,
-        count: sql<number>`count(*)::int`.as('property_count'),
+        count: sql<number>`count(DISTINCT ${propertyOrganizations.propertyId})::int`.as('property_count'),
       })
       .from(propertyOrganizations)
       .groupBy(propertyOrganizations.orgId)
@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
     const contactCountSubquery = db
       .select({
         orgId: contactOrganizations.orgId,
-        count: sql<number>`count(*)::int`.as('contact_count'),
+        count: sql<number>`count(DISTINCT ${contactOrganizations.contactId})::int`.as('contact_count'),
       })
       .from(contactOrganizations)
       .groupBy(contactOrganizations.orgId)
