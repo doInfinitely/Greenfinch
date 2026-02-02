@@ -1183,11 +1183,6 @@ export default function PropertyDetailPage() {
                                   {org.orgType}
                                 </span>
                               )}
-                              {org.industry && (
-                                <span className="inline-block px-2 py-0.5 text-xs rounded bg-emerald-100 text-emerald-700">
-                                  {org.industry}
-                                </span>
-                              )}
                             </div>
                             <div className="flex flex-wrap items-center gap-2 mt-1">
                               {org.domain && (
