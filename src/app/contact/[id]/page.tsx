@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { AlertTriangle, Flag, Check, X, ExternalLink, Mail, Phone, CheckCircle, HelpCircle, XCircle, Search, Loader2 } from 'lucide-react';
+import { AlertTriangle, Flag, Check, X, ExternalLink, Mail, Phone, CheckCircle, HelpCircle, XCircle, Search, Loader2, Pencil, Save } from 'lucide-react';
 // Note: Linkedin icon replaced with canonical logo image
 import { 
   EmailStatusIcon as SharedEmailStatusIcon, 
@@ -190,6 +190,17 @@ export default function ContactDetailPage() {
   const [phoneMessage, setPhoneMessage] = useState<string | null>(null);
   const [emailMessage, setEmailMessage] = useState<string | null>(null);
   const [linkedInMessage, setLinkedInMessage] = useState<string | null>(null);
+  
+  // Admin edit mode state
+  const [isEditMode, setIsEditMode] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editForm, setEditForm] = useState({
+    fullName: '',
+    title: '',
+    email: '',
+    phone: '',
+    linkedinUrl: '',
+  });
 
   const fetchContact = useCallback(async () => {
     if (!contactId) return;
@@ -361,6 +372,62 @@ export default function ContactDetailPage() {
   const getAlternativeProfiles = () => {
     if (!contact?.linkedinSearchResults) return [];
     return contact.linkedinSearchResults.filter(r => r.url !== contact.linkedinUrl).slice(0, 3);
+  };
+
+  const handleStartEdit = () => {
+    if (!contact) return;
+    setEditForm({
+      fullName: contact.fullName || '',
+      title: contact.title || '',
+      email: contact.email || '',
+      phone: contact.phone || '',
+      linkedinUrl: contact.linkedinUrl || '',
+    });
+    setIsEditMode(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditMode(false);
+    setEditForm({
+      fullName: '',
+      title: '',
+      email: '',
+      phone: '',
+      linkedinUrl: '',
+    });
+  };
+
+  const handleSaveEdit = async () => {
+    if (!contact) return;
+    
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/contacts/${contactId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editForm),
+      });
+
+      if (response.ok) {
+        // Update local state with new values - use null for empty strings
+        setContact(prev => prev ? {
+          ...prev,
+          fullName: editForm.fullName || null,
+          title: editForm.title || null,
+          email: editForm.email || null,
+          phone: editForm.phone || null,
+          linkedinUrl: editForm.linkedinUrl || null,
+        } : null);
+        setIsEditMode(false);
+      } else {
+        const data = await response.json();
+        alert(data.error || 'Failed to save changes');
+      }
+    } catch (err) {
+      alert('Failed to save changes');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleFindPhone = async () => {
@@ -545,14 +612,207 @@ export default function ContactDetailPage() {
                   </div>
                 )}
                 {/* Contact info validation summary icons */}
-                <div className="mt-2">
+                <div className="mt-2 flex items-center gap-3">
                   <ContactInfoSummary contact={contact} />
+                  {/* LinkedIn flag button - show if contact has a LinkedIn URL */}
+                  {contact.linkedinUrl && (
+                    <button
+                      onClick={handleFlagLinkedIn}
+                      className="text-xs text-gray-500 hover:text-amber-600 hover:underline flex items-center gap-1"
+                      title="Report incorrect LinkedIn profile"
+                      data-testid="button-flag-linkedin"
+                    >
+                      <Flag className="w-3 h-3" />
+                      Wrong profile?
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
             
+            {/* LinkedIn Alternatives Modal */}
+            {showLinkedInAlternatives && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowLinkedInAlternatives(false)}>
+                <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">LinkedIn Profile Issue</h3>
+                    <button onClick={() => setShowLinkedInAlternatives(false)} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  
+                  <p className="text-sm text-gray-600 mb-4">
+                    Is the current LinkedIn profile incorrect? You can mark it as wrong or select an alternative.
+                  </p>
+                  
+                  {contact.linkedinUrl && (
+                    <div className="mb-4 p-3 bg-gray-50 rounded-lg border">
+                      <p className="text-xs text-gray-500 mb-1">Current profile:</p>
+                      <a href={contact.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline flex items-center gap-1">
+                        {contact.linkedinUrl.replace('https://www.linkedin.com/in/', '').replace('/', '')}
+                        <ExternalLink className="w-3 h-3" />
+                      </a>
+                    </div>
+                  )}
+                  
+                  {/* Alternative profiles */}
+                  {getAlternativeProfiles().length > 0 && (
+                    <div className="mb-4">
+                      <p className="text-sm font-medium text-gray-700 mb-2">Alternative profiles found:</p>
+                      <div className="space-y-2">
+                        {getAlternativeProfiles().map((alt, index) => (
+                          <button
+                            key={alt.url}
+                            onClick={() => handleSelectAlternative(alt, index)}
+                            disabled={selectingAlternative}
+                            className="w-full text-left p-3 border rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors disabled:opacity-50"
+                          >
+                            <p className="font-medium text-gray-900">{alt.name}</p>
+                            <p className="text-sm text-gray-600">{alt.title}</p>
+                            {alt.company && <p className="text-xs text-gray-500">{alt.company}</p>}
+                            <p className="text-xs text-blue-600 mt-1">{alt.url.replace('https://www.linkedin.com/in/', '')}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  <div className="flex gap-3">
+                    <button
+                      onClick={handleMarkLinkedInIncorrect}
+                      disabled={selectingAlternative}
+                      className="flex-1 px-4 py-2 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 disabled:opacity-50 text-sm font-medium"
+                    >
+                      {selectingAlternative ? 'Updating...' : 'Mark as Incorrect'}
+                    </button>
+                    <button
+                      onClick={() => setShowLinkedInAlternatives(false)}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                  
+                  {linkedInMessage && (
+                    <p className="mt-3 text-sm text-center text-green-600">{linkedInMessage}</p>
+                  )}
+                </div>
+              </div>
+            )}
+            
+            {/* Edit Contact Modal - Admin Only */}
+            {isEditMode && (
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleCancelEdit}>
+                <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Edit Contact</h3>
+                    <button onClick={handleCancelEdit} className="text-gray-400 hover:text-gray-600">
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+                      <input
+                        type="text"
+                        value={editForm.fullName}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, fullName: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="John Smith"
+                        data-testid="input-edit-fullname"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                      <input
+                        type="text"
+                        value={editForm.title}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, title: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="General Manager"
+                        data-testid="input-edit-title"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                      <input
+                        type="email"
+                        value={editForm.email}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="john.smith@company.com"
+                        data-testid="input-edit-email"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                      <input
+                        type="tel"
+                        value={editForm.phone}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="(214) 555-1234"
+                        data-testid="input-edit-phone"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">LinkedIn URL</label>
+                      <input
+                        type="url"
+                        value={editForm.linkedinUrl}
+                        onChange={(e) => setEditForm(prev => ({ ...prev, linkedinUrl: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                        placeholder="https://www.linkedin.com/in/johnsmith"
+                        data-testid="input-edit-linkedin"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex gap-3 mt-6">
+                    <button
+                      onClick={handleSaveEdit}
+                      disabled={isSaving}
+                      className="flex-1 inline-flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 text-sm font-medium"
+                      data-testid="button-save-edit"
+                    >
+                      {isSaving ? (
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      ) : (
+                        <Save className="w-4 h-4 mr-2" />
+                      )}
+                      {isSaving ? 'Saving...' : 'Save Changes'}
+                    </button>
+                    <button
+                      onClick={handleCancelEdit}
+                      disabled={isSaving}
+                      className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm font-medium"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             {/* Action buttons row - full width on mobile */}
             <div className="flex flex-wrap items-center gap-2">
+              {/* Edit Contact button - admin only */}
+              <AdminOnly>
+                <button
+                  onClick={handleStartEdit}
+                  className="inline-flex items-center px-3 py-2 text-gray-700 bg-gray-100 text-sm font-medium rounded-lg hover:bg-gray-200"
+                  data-testid="button-edit-contact"
+                >
+                  <Pencil className="w-4 h-4 mr-2" />
+                  Edit Contact
+                </button>
+              </AdminOnly>
+              
               {/* Find Phone button - hide once mobile or direct line has been identified */}
               {(() => {
                 const phoneStatus = getEnrichmentStatus(contactId as string, 'contact_phone');

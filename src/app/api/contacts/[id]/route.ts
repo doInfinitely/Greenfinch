@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { contacts, propertyContacts, contactOrganizations, properties, organizations } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
+import { getSession } from '@/lib/auth';
+import { INTERNAL_ORG_SLUG } from '@/lib/permissions';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -151,6 +153,101 @@ export async function GET(
     console.error('Contact detail API error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch contact' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params;
+    const session = await getSession();
+
+    if (!session?.user) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    // Only allow admins of the internal org to edit contacts
+    const isAdmin = session.orgSlug === INTERNAL_ORG_SLUG && session.orgRole === 'org:admin';
+    if (!isAdmin) {
+      return NextResponse.json(
+        { error: 'Admin access required' },
+        { status: 403 }
+      );
+    }
+
+    if (!id || !UUID_REGEX.test(id)) {
+      return NextResponse.json(
+        { error: 'Invalid contact ID format' },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+    const { fullName, title, email, phone, linkedinUrl } = body;
+
+    // Validate at least one field is being updated
+    if (!fullName && title === undefined && email === undefined && phone === undefined && linkedinUrl === undefined) {
+      return NextResponse.json(
+        { error: 'No fields to update' },
+        { status: 400 }
+      );
+    }
+
+    // Check contact exists
+    const existingContact = await db.query.contacts.findFirst({
+      where: eq(contacts.id, id),
+    });
+
+    if (!existingContact) {
+      return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+    }
+
+    // Build update object with only provided fields
+    const updateData: Record<string, unknown> = {
+      updatedAt: new Date(),
+    };
+
+    if (fullName !== undefined) {
+      updateData.fullName = fullName || null; // Treat empty string as null
+    }
+    if (title !== undefined) {
+      updateData.title = title || null; // Treat empty string as null
+    }
+    if (email !== undefined) {
+      updateData.email = email || null; // Treat empty string as null
+      updateData.emailValidationStatus = email ? 'manual' : null;
+    }
+    if (phone !== undefined) {
+      updateData.phone = phone || null; // Treat empty string as null
+      updateData.phoneSource = phone ? 'manual' : null; // Use phoneSource, not phoneLabel
+    }
+    if (linkedinUrl !== undefined) {
+      updateData.linkedinUrl = linkedinUrl || null; // Treat empty string as null
+      updateData.linkedinStatus = linkedinUrl ? 'manual' : null;
+    }
+
+    await db
+      .update(contacts)
+      .set(updateData)
+      .where(eq(contacts.id, id));
+
+    console.log(`[API] Contact ${id} updated by admin ${session.user.id}:`, Object.keys(updateData).filter(k => k !== 'updatedAt'));
+
+    return NextResponse.json({
+      success: true,
+      message: 'Contact updated successfully',
+    });
+  } catch (error) {
+    console.error('Contact update API error:', error);
+    return NextResponse.json(
+      { error: 'Failed to update contact' },
       { status: 500 }
     );
   }
