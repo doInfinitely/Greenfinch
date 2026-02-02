@@ -1050,13 +1050,13 @@ export default function ContactsPage() {
                               }
                               return (
                                 <div className="flex flex-col gap-0.5">
-                                  {phones.map((p, idx) => (
-                                    <div key={idx} className="flex items-center gap-1">
+                                  {phones.map((p) => (
+                                    <div key={p.number} className="flex items-center gap-1">
                                       <a
                                         href={`tel:${p.number}`}
                                         onClick={(e) => e.stopPropagation()}
                                         className="text-sm text-green-600 underline"
-                                        data-testid={`link-phone-${contact.id}-${idx}`}
+                                        data-testid={`link-phone-${contact.id}-${p.number}`}
                                       >
                                         {p.number}
                                       </a>
@@ -1096,8 +1096,8 @@ export default function ContactsPage() {
                                   <div>
                                     <h4 className="text-sm font-medium text-gray-700 mb-2">Properties</h4>
                                     <ul className="space-y-1">
-                                      {contact.properties.slice(0, 5).map((prop, idx) => (
-                                        <li key={idx} className="text-sm text-gray-600">
+                                      {contact.properties.slice(0, 5).map((prop) => (
+                                        <li key={prop.propertyId || prop.propertyKey} className="text-sm text-gray-600">
                                           <Link href={`/property/${prop.propertyId}`} className="text-green-600 hover:underline">
                                             {prop.address || prop.propertyKey || 'Unknown'}
                                           </Link>
@@ -1114,8 +1114,8 @@ export default function ContactsPage() {
                                   <div>
                                     <h4 className="text-sm font-medium text-gray-700 mb-2">Organizations</h4>
                                     <ul className="space-y-1">
-                                      {contact.organizations.slice(0, 5).map((org, idx) => (
-                                        <li key={idx} className="text-sm text-gray-600">
+                                      {contact.organizations.slice(0, 5).map((org) => (
+                                        <li key={org.orgId || org.orgDomain} className="text-sm text-gray-600">
                                           <Link href={`/organization/${org.orgId}`} className="text-green-600 hover:underline">
                                             {org.orgName || org.orgDomain || 'Unknown'}
                                           </Link>

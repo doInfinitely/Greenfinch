@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useToast } from '@/hooks/use-toast';
 
 interface Stats {
   totalProperties: number;
@@ -41,6 +42,7 @@ interface IngestionResult {
 }
 
 export default function AdminPage() {
+  const { toast } = useToast();
   const [stats, setStats] = useState<Stats | null>(null);
   const [isLoadingStats, setIsLoadingStats] = useState(true);
 
@@ -132,11 +134,34 @@ export default function AdminPage() {
       const data = await response.json();
       if (data.success) {
         fetchEnrichmentStatus();
+        toast({
+          title: 'Batch Enrichment Started',
+          description: `Starting enrichment for up to ${parseInt(enrichLimit) || 50} properties...`,
+        });
       } else {
-        alert(data.error || 'Failed to start enrichment');
+        // Handle rate limit errors specially
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          const retrySeconds = retryAfter ? parseInt(retryAfter, 10) : 60;
+          toast({
+            title: 'Rate Limit Exceeded',
+            description: `You've hit the rate limit for batch enrichment. Please wait about ${retrySeconds} seconds before trying again.`,
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Failed to Start Enrichment',
+            description: data.error || 'An error occurred while starting the enrichment batch.',
+            variant: 'destructive',
+          });
+        }
       }
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Failed to start enrichment');
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to start enrichment',
+        variant: 'destructive',
+      });
     } finally {
       setIsStartingEnrichment(false);
     }

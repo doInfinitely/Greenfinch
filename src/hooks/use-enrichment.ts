@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react';
 import { useEnrichmentQueue, EnrichmentItemType } from '@/contexts/EnrichmentQueueContext';
+import { useToast } from '@/hooks/use-toast';
 
 interface EnrichmentOptions {
   type: EnrichmentItemType;
@@ -61,6 +62,7 @@ const PROGRESS_MESSAGES: Record<EnrichmentItemType, string[]> = {
 
 export function useEnrichment() {
   const { addToQueue, updateItem, markCompleted, markFailed, startPolling } = useEnrichmentQueue();
+  const { toast } = useToast();
 
   const startEnrichment = useCallback(async (options: EnrichmentOptions) => {
     const { type, entityId, entityName, apiEndpoint, requestBody, onSuccess, onError, pollForCompletion } = options;
@@ -106,6 +108,27 @@ export function useEnrichment() {
       
       if (!response.ok) {
         clearInterval(progressInterval);
+        
+        // Handle rate limit (429) errors specially
+        if (response.status === 429) {
+          const retryAfter = response.headers.get('Retry-After');
+          const retrySeconds = retryAfter ? parseInt(retryAfter, 10) : 60;
+          
+          // Mark as failed but indicate it's a rate limit
+          const rateLimitMessage = `Rate limit reached. Please wait ${retrySeconds} seconds before trying again.`;
+          markFailed(queueId, rateLimitMessage);
+          
+          // Show a user-friendly toast notification for rate limit
+          toast({
+            title: 'Rate Limit Exceeded',
+            description: `You've hit the rate limit for enrichment requests. Please wait about ${retrySeconds} seconds before trying again. This helps ensure fair access for all users.`,
+            variant: 'destructive',
+          });
+          
+          onError?.(rateLimitMessage);
+          return { success: false, error: rateLimitMessage, rateLimited: true, retryAfter: retrySeconds };
+        }
+        
         throw new Error(data.error || 'Research failed');
       }
 
@@ -155,7 +178,7 @@ export function useEnrichment() {
       onError?.(errorMessage);
       return { success: false, error: errorMessage };
     }
-  }, [addToQueue, updateItem, markCompleted, markFailed, startPolling]);
+  }, [addToQueue, updateItem, markCompleted, markFailed, startPolling, toast]);
 
   return { startEnrichment };
 }

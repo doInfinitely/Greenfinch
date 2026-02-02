@@ -248,21 +248,39 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   }
 
   async function handleAssignOwner() {
-    if (!pipeline?.id || !selectedOwnerId) return;
+    if (!selectedOwnerId) return;
     
     const isUnassigning = selectedOwnerId === 'unassigned';
     
     setUpdating(true);
     try {
-      const res = await fetch(`/api/pipeline/${pipeline.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ownerId: isUnassigning ? null : selectedOwnerId }),
-      });
+      // If no pipeline exists yet, create one first with 'new' status
+      if (!pipeline?.id) {
+        const createRes = await fetch(`/api/properties/${propertyId}/pipeline`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            status: 'new',
+            ownerId: isUnassigning ? null : selectedOwnerId 
+          }),
+        });
+        
+        if (!createRes.ok) {
+          const error = await createRes.json();
+          throw new Error(error.error || 'Failed to create pipeline');
+        }
+      } else {
+        // Pipeline exists, just update the owner
+        const res = await fetch(`/api/pipeline/${pipeline.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ownerId: isUnassigning ? null : selectedOwnerId }),
+        });
 
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.error || 'Failed to assign owner');
+        if (!res.ok) {
+          const error = await res.json();
+          throw new Error(error.error || 'Failed to assign owner');
+        }
       }
 
       // Close dialog first to prevent any blocking UI

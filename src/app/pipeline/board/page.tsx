@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useOrganization } from '@clerk/nextjs';
 import AppSidebar from '@/components/AppSidebar';
@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { PIPELINE_STATUS_LABELS, type PipelineStatus } from '@/lib/schema';
-import { Loader2, Clock, Users, Check, X, Eye, EyeOff } from 'lucide-react';
+import { Loader2, Clock, Users, Check, X, Eye, EyeOff, ChevronRight, ChevronLeft } from 'lucide-react';
 import { PipelineBoardSkeleton } from '@/components/PageSkeleton';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -104,6 +104,11 @@ export default function PipelineBoard() {
   const [ownerFilter, setOwnerFilter] = useState<string>('mine');
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
   const [showLost, setShowLost] = useState(false);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+  const [showHint, setShowHint] = useState(true);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const hintTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
   const { membership } = useOrganization();
   
@@ -120,6 +125,49 @@ export default function PipelineBoard() {
         .catch(console.error);
     }
   }, [isAdmin]);
+
+  const handleScroll = useCallback(() => {
+    if (!scrollContainerRef.current) return;
+    
+    const { scrollLeft, scrollWidth, clientWidth } = scrollContainerRef.current;
+    setCanScrollLeft(scrollLeft > 0);
+    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 10);
+    
+    // Hide hint after first scroll
+    if (showHint) {
+      setShowHint(false);
+      if (hintTimeoutRef.current) {
+        clearTimeout(hintTimeoutRef.current);
+      }
+    }
+  }, [showHint]);
+
+  const scrollBoard = useCallback((direction: 'left' | 'right') => {
+    if (!scrollContainerRef.current) return;
+    const container = scrollContainerRef.current;
+    const scrollAmount = 320; // Column width + gap
+    
+    container.scrollBy({
+      left: direction === 'right' ? scrollAmount : -scrollAmount,
+      behavior: 'smooth',
+    });
+  }, []);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+    
+    container.addEventListener('scroll', handleScroll);
+    // Check initial scroll state
+    setTimeout(handleScroll, 100);
+    
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (hintTimeoutRef.current) {
+        clearTimeout(hintTimeoutRef.current);
+      }
+    };
+  }, [handleScroll]);
 
   const fetchBoardData = useCallback(async () => {
     try {
@@ -305,31 +353,35 @@ export default function PipelineBoard() {
 
   return (
     <AppSidebar>
-      <div className="h-full bg-background dark:bg-background">
-        <div className="sticky top-0 z-10 bg-background border-b px-4 py-3 md:px-6 md:py-4">
-          <div className="flex items-center justify-between gap-3">
-            <div>
+      <div className="h-full bg-background dark:bg-background flex flex-col">
+        <div className="sticky top-0 z-20 bg-background border-b px-4 py-3 md:px-6 md:py-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex-1 min-w-0">
               <h1 className="text-lg md:text-xl font-semibold">Pipeline</h1>
-              <p className="text-xs text-muted-foreground md:hidden">Swipe to navigate</p>
+              {showHint && (
+                <p className="text-xs text-muted-foreground md:hidden animate-pulse">
+                  Swipe to navigate columns
+                </p>
+              )}
             </div>
             
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <Button
                 variant={showLost ? 'default' : 'outline'}
                 size="sm"
                 onClick={() => setShowLost(!showLost)}
-                className="gap-1"
+                className="gap-1 touch-manipulation"
                 data-testid="button-toggle-lost"
               >
-                {showLost ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                <span className="hidden md:inline">{showLost ? 'Hide Lost' : 'Show Lost'}</span>
+                {showLost ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                <span className="hidden sm:inline text-sm">{showLost ? 'Hide' : 'Show'}</span>
               </Button>
               
               {isAdmin && (
                 <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-                  <SelectTrigger className="w-36 md:w-44" data-testid="select-owner-filter">
-                    <Users className="w-3.5 h-3.5 mr-2 text-muted-foreground" />
-                    <SelectValue placeholder="Filter" />
+                  <SelectTrigger className="w-40 md:w-44 touch-manipulation" data-testid="select-owner-filter">
+                    <Users className="w-4 h-4 text-muted-foreground" />
+                    <SelectValue placeholder="Filter" className="text-xs sm:text-sm" />
                   </SelectTrigger>
                   <SelectContent className="bg-popover border shadow-lg">
                     <SelectItem value="mine">My Pipeline</SelectItem>
@@ -360,8 +412,41 @@ export default function PipelineBoard() {
         ) : error ? (
           <div className="text-center py-20 text-destructive">{error}</div>
         ) : (
-          <div className="h-[calc(100%-64px)] overflow-x-auto overflow-y-hidden">
-            <div className="flex gap-3 p-4 md:p-6 min-w-max h-full snap-x snap-mandatory scroll-smooth">
+          <div className="relative flex-1 overflow-hidden">
+            {/* Left scroll indicator */}
+            {canScrollLeft && (
+              <button
+                onClick={() => scrollBoard('left')}
+                className="absolute left-0 top-1/2 -translate-y-1/2 z-10 p-2 md:p-3 bg-gradient-to-r from-background via-background/80 to-transparent hover:from-background/90 transition-all touch-manipulation"
+                data-testid="button-scroll-left"
+                aria-label="Scroll left"
+              >
+                <ChevronLeft className="w-5 h-5 md:w-6 md:h-6 text-foreground" />
+              </button>
+            )}
+            
+            {/* Right scroll indicator with animated pulse on mobile */}
+            {canScrollRight && (
+              <button
+                onClick={() => scrollBoard('right')}
+                className={`absolute right-0 top-1/2 -translate-y-1/2 z-10 p-2 md:p-3 bg-gradient-to-l from-background via-background/80 to-transparent hover:from-background/90 transition-all touch-manipulation ${
+                  showHint ? 'animate-pulse' : ''
+                }`}
+                data-testid="button-scroll-right"
+                aria-label="Scroll right"
+              >
+                <ChevronRight className="w-5 h-5 md:w-6 md:h-6 text-foreground" />
+              </button>
+            )}
+            
+            <div
+              ref={scrollContainerRef}
+              className="h-full overflow-x-auto overflow-y-hidden scroll-smooth"
+              style={{
+                scrollBehavior: 'smooth',
+              }}
+            >
+              <div className="flex gap-3 p-4 md:p-6 min-w-max h-full snap-x snap-mandatory">
               {visibleColumns.map((status: PipelineStatus) => {
                 const style = COLUMN_STYLES[status];
                 const isDropTarget = dragOverColumn === status;
@@ -369,7 +454,7 @@ export default function PipelineBoard() {
                 return (
                   <div 
                     key={status} 
-                    className="w-[280px] md:w-[300px] flex-shrink-0 snap-center flex flex-col" 
+                    className="w-[280px] md:w-[320px] flex-shrink-0 snap-center flex flex-col touch-manipulation" 
                     data-testid={`column-${status}`}
                     onDragOver={(e) => handleDragOver(e, status)}
                     onDragLeave={handleDragLeave}
@@ -378,19 +463,19 @@ export default function PipelineBoard() {
                     <div className={`rounded-lg flex flex-col h-full transition-all ${style.bg} ${
                       isDropTarget ? 'ring-2 ring-primary/50 ring-offset-2' : ''
                     }`}>
-                      <div className="px-3 py-2.5 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div className={`w-2 h-2 rounded-full ${style.accent}`} />
-                          <span className="text-sm font-medium text-foreground">
+                      <div className="px-3 md:px-4 py-3 md:py-4 flex items-center justify-between touch-manipulation">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`w-2.5 h-2.5 md:w-2 md:h-2 rounded-full flex-shrink-0 ${style.accent}`} />
+                          <span className="text-sm md:text-base font-medium text-foreground truncate">
                             {PIPELINE_STATUS_LABELS[status]}
                           </span>
                         </div>
-                        <Badge variant="secondary" className={`text-xs font-normal ${style.badge}`} data-testid={`count-${status}`}>
+                        <Badge variant="secondary" className={`text-xs font-normal flex-shrink-0 ml-2 ${style.badge}`} data-testid={`count-${status}`}>
                           {data?.counts[status] || 0}
                         </Badge>
                       </div>
                       
-                      <div className={`flex-1 overflow-y-auto px-2 pb-2 space-y-2 transition-colors ${
+                      <div className={`flex-1 overflow-y-auto px-2 md:px-3 pb-2 space-y-2 transition-colors ${
                         isDropTarget ? 'bg-primary/5' : ''
                       }`}>
                         {(data?.items[status]?.length || 0) > 0 ? (
@@ -410,22 +495,22 @@ export default function PipelineBoard() {
                                 className={`block ${updating === item.id ? 'opacity-50 pointer-events-none' : ''}`}
                                 data-testid={`card-property-${item.propertyId}`}
                               >
-                                <div className="bg-card border border-border/50 rounded-md p-3 cursor-grab active:cursor-grabbing hover:border-border hover:shadow-sm transition-all">
+                                <div className="bg-card border border-border/50 rounded-md p-3 md:p-4 cursor-grab active:cursor-grabbing hover:border-border hover:shadow-sm transition-all touch-manipulation">
                                   <div className="flex items-start justify-between gap-2">
                                     <div className="flex-1 min-w-0">
-                                      <h3 className="text-sm font-medium text-foreground truncate leading-tight">
+                                      <h3 className="text-sm md:text-base font-medium text-foreground truncate leading-tight">
                                         {displayName}
                                       </h3>
                                       
                                       {item.dealValue && (
-                                        <p className="text-sm font-semibold text-green-600 dark:text-green-500 mt-1">
+                                        <p className="text-sm md:text-base font-semibold text-green-600 dark:text-green-500 mt-1">
                                           {formatCurrency(item.dealValue)}
                                         </p>
                                       )}
                                     </div>
                                     
                                     {item.ownerId && (
-                                      <Avatar className="w-6 h-6 flex-shrink-0">
+                                      <Avatar className="w-7 h-7 md:w-6 md:h-6 flex-shrink-0">
                                         <AvatarImage src={item.ownerProfileImageUrl || undefined} />
                                         <AvatarFallback className="text-[10px] bg-muted">
                                           {getOwnerInitials(item.ownerFirstName, item.ownerLastName)}
@@ -434,34 +519,34 @@ export default function PipelineBoard() {
                                     )}
                                   </div>
                                   
-                                  <div className="flex items-center justify-between mt-2">
-                                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                      <Clock className="w-3 h-3" />
+                                  <div className="flex items-center justify-between mt-3 gap-2">
+                                    <div className="flex items-center gap-1 text-xs md:text-sm text-muted-foreground">
+                                      <Clock className="w-4 h-4 md:w-3 md:h-3" />
                                       <span>{formatDaysInStage(days)}</span>
                                     </div>
                                     
                                     {/* Quick action buttons for closing deals - only show if not already won/lost */}
                                     {item.status !== 'won' && item.status !== 'lost' && (
-                                      <div className="flex items-center gap-0.5">
+                                      <div className="flex items-center gap-1 md:gap-0.5 touch-manipulation">
                                         <Button
                                           variant="ghost"
                                           size="icon"
-                                          className="text-green-600"
+                                          className="text-green-600 h-9 w-9 md:h-8 md:w-8"
                                           onClick={(e) => handleQuickStatus(item, 'won', e)}
                                           title="Mark as Won"
                                           data-testid={`button-won-${item.propertyId}`}
                                         >
-                                          <Check className="w-4 h-4" />
+                                          <Check className="w-4 h-4 md:w-4 md:h-4" />
                                         </Button>
                                         <Button
                                           variant="ghost"
                                           size="icon"
-                                          className="text-red-500"
+                                          className="text-red-500 h-9 w-9 md:h-8 md:w-8"
                                           onClick={(e) => handleQuickStatus(item, 'lost', e)}
                                           title="Mark as Lost"
                                           data-testid={`button-lost-${item.propertyId}`}
                                         >
-                                          <X className="w-4 h-4" />
+                                          <X className="w-4 h-4 md:w-4 md:h-4" />
                                         </Button>
                                       </div>
                                     )}
@@ -488,6 +573,7 @@ export default function PipelineBoard() {
               })}
             </div>
           </div>
+            </div>
         )}
       </div>
     </AppSidebar>

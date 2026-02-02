@@ -107,7 +107,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { status, dealValue, autoClaim } = body;
+    const { status, dealValue, autoClaim, ownerId } = body;
 
     if (!status || !PIPELINE_STATUSES.includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
@@ -180,7 +180,9 @@ export async function POST(
         });
       }
     } else {
-      // For new pipeline entries, auto-assign if autoClaim is true
+      // For new pipeline entries, auto-assign if autoClaim is true or ownerId is provided
+      const assignedOwnerId = ownerId || (autoClaim ? session.user.id : null);
+      
       [pipeline] = await db
         .insert(propertyPipeline)
         .values({
@@ -189,20 +191,20 @@ export async function POST(
           status,
           dealValue: dealValue || null,
           statusChangedByUserId: session.user.id,
-          ...(autoClaim && { ownerId: session.user.id }),
+          ...(assignedOwnerId && { ownerId: assignedOwnerId }),
         })
         .returning();
       
-      // Log ownership assignment activity if auto-claimed
-      if (autoClaim) {
+      // Log ownership assignment activity if owner assigned
+      if (assignedOwnerId) {
         await db.insert(propertyActivity).values({
           propertyId: property.id,
           clerkOrgId: authData.orgId,
           userId: session.user.id,
           activityType: 'owner_assigned',
           previousValue: null,
-          newValue: session.user.id,
-          metadata: { autoAssigned: true },
+          newValue: assignedOwnerId,
+          metadata: { autoAssigned: autoClaim ? true : false, assignedBy: ownerId ? session.user.id : null },
         });
       }
     }

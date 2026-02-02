@@ -126,8 +126,8 @@ export default function ListPage() {
       if (filters.customerStatuses && filters.customerStatuses.length > 0) {
         params.set('customerStatuses', filters.customerStatuses.join(','));
       }
-      if (filters.zipCode) {
-        params.set('zipCode', filters.zipCode);
+      if (filters.zipCodes && filters.zipCodes.length > 0) {
+        params.set('zipCodes', filters.zipCodes.join(','));
       }
       if (filters.buildingClasses && filters.buildingClasses.length > 0) {
         params.set('buildingClasses', filters.buildingClasses.join(','));
@@ -143,6 +143,12 @@ export default function ListPage() {
       }
       if (filters.maxNetSqft !== null) {
         params.set('maxNetSqft', String(filters.maxNetSqft));
+      }
+      if (filters.organizationId) {
+        params.set('organizationId', filters.organizationId);
+      }
+      if (filters.contactId) {
+        params.set('contactId', filters.contactId);
       }
       const response = await fetch(`/api/properties/search?${params.toString()}`);
       return response.json();

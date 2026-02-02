@@ -98,8 +98,8 @@ export default function MapPage() {
     if (filterState.customerStatuses && filterState.customerStatuses.length > 0) {
       params.set('customerStatuses', filterState.customerStatuses.join(','));
     }
-    if (filterState.zipCode) {
-      params.set('zipCode', filterState.zipCode);
+    if (filterState.zipCodes && filterState.zipCodes.length > 0) {
+      params.set('zipCodes', filterState.zipCodes.join(','));
     }
     if (filterState.minLotAcres) {
       params.set('minLotAcres', String(filterState.minLotAcres));
@@ -112,6 +112,12 @@ export default function MapPage() {
     }
     if (filterState.maxNetSqft) {
       params.set('maxNetSqft', String(filterState.maxNetSqft));
+    }
+    if (filterState.organizationId) {
+      params.set('organizationId', filterState.organizationId);
+    }
+    if (filterState.contactId) {
+      params.set('contactId', filterState.contactId);
     }
     
     const queryString = params.toString();
@@ -244,9 +250,9 @@ export default function MapPage() {
               <p>Pan or zoom to see properties</p>
             </div>
           ) : (
-            visibleProperties.slice(0, 100).map((f, idx) => (
+            visibleProperties.slice(0, 100).map((f) => (
               <button
-                key={`property-${f.properties.propertyKey || idx}-${idx}`}
+                key={f.properties.propertyKey}
                 onClick={() => handlePropertyClick(f.properties.propertyKey)}
                 className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors"
                 data-testid={`property-item-${f.properties.propertyKey}`}

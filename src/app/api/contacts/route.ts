@@ -97,10 +97,10 @@ export async function GET(request: NextRequest) {
     if (hasPhone) {
       conditions.push(
         or(
-          sql`${contacts.phone} IS NOT NULL AND ${contacts.phone} != ''`,
-          sql`${contacts.aiPhone} IS NOT NULL AND ${contacts.aiPhone} != ''`,
           sql`${contacts.enrichmentPhoneWork} IS NOT NULL AND ${contacts.enrichmentPhoneWork} != ''`,
-          sql`${contacts.enrichmentPhonePersonal} IS NOT NULL AND ${contacts.enrichmentPhonePersonal} != ''`
+          sql`${contacts.enrichmentPhonePersonal} IS NOT NULL AND ${contacts.enrichmentPhonePersonal} != ''`,
+          sql`${contacts.aiPhone} IS NOT NULL AND ${contacts.aiPhone} != '' AND ${contacts.aiPhoneLabel} != 'office'`,
+          sql`${contacts.phone} IS NOT NULL AND ${contacts.phone} != '' AND ${contacts.phoneLabel} != 'office'`
         )
       );
     }

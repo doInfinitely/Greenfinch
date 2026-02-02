@@ -9,6 +9,14 @@ import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Trash2, Mail, Phone, MoreHorizontal, ChevronRight, Loader2 } from 'lucide-react';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, LinkedInLink, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import Image from 'next/image';
@@ -79,6 +87,7 @@ export default function ListDetailPage() {
   const [isFindingEmails, setIsFindingEmails] = useState(false);
   const [isFindingPhones, setIsFindingPhones] = useState(false);
   const [isRemovingBulk, setIsRemovingBulk] = useState(false);
+  const [showRemoveConfirmation, setShowRemoveConfirmation] = useState(false);
 
   // Fetch list metadata
   const { data: listData, isLoading: isListLoading, error: listError } = useQuery({
@@ -162,12 +171,19 @@ export default function ListDetailPage() {
     }
   };
 
+  const handleBulkRemoveClick = () => {
+    if (selectedItems.size === 0) return;
+    setShowRemoveConfirmation(true);
+  };
+
   const handleBulkRemove = async () => {
     if (selectedItems.size === 0) return;
     
     setIsRemovingBulk(true);
+    setShowRemoveConfirmation(false);
     const itemsToRemove = Array.from(selectedItems);
     let successCount = 0;
+    let errorCount = 0;
     
     for (const itemId of itemsToRemove) {
       try {
@@ -175,8 +191,9 @@ export default function ListDetailPage() {
           method: 'DELETE',
         });
         if (response.ok) successCount++;
+        else errorCount++;
       } catch {
-        // Continue with other items
+        errorCount++;
       }
     }
     
@@ -184,10 +201,177 @@ export default function ListDetailPage() {
     setIsRemovingBulk(false);
     refetchListItems();
     
-    toast({
-      title: 'Items removed',
-      description: `${successCount} item${successCount !== 1 ? 's' : ''} removed from list.`,
+    if (successCount > 0) {
+      toast({
+        title: 'Items removed',
+        description: `${successCount} item${successCount !== 1 ? 's' : ''} removed from list.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
+      });
+    } else {
+      toast({
+        title: 'Error',
+        description: 'Failed to remove items from list.',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleCancelRemove = () => {
+    setShowRemoveConfirmation(false);
+  };
+
+  const handleResearchSelected = async () => {
+    if (selectedItems.size === 0) return;
+
+    const selectedIds = Array.from(selectedItems);
+    const unresearchedSelected = selectedIds.filter(itemId => {
+      const prop = propertyDetails[itemId];
+      return prop && (!prop.enrichmentStatus || prop.enrichmentStatus === 'pending');
     });
+
+    if (unresearchedSelected.length === 0) {
+      toast({
+        title: 'All researched',
+        description: 'All selected properties have already been researched.',
+      });
+      return;
+    }
+
+    setIsResearchingAll(true);
+    let queuedCount = 0;
+    let errorCount = 0;
+
+    for (const itemId of unresearchedSelected) {
+      const prop = propertyDetails[itemId];
+      if (!prop) continue;
+      
+      const keyToUse = prop.propertyKey || prop.id;
+      
+      try {
+        const response = await fetch('/api/enrich', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ propertyKey: keyToUse }),
+        });
+        if (response.ok) {
+          queuedCount++;
+        } else if (response.status === 429) {
+          toast({
+            title: 'Rate limited',
+            description: `Queued ${queuedCount} properties. Please wait before continuing.`,
+            variant: 'destructive',
+          });
+          break;
+        } else {
+          errorCount++;
+        }
+      } catch {
+        errorCount++;
+      }
+    }
+
+    setIsResearchingAll(false);
+    setSelectedItems(new Set());
+    
+    if (queuedCount > 0) {
+      toast({
+        title: 'Research started',
+        description: `${queuedCount} propert${queuedCount !== 1 ? 'ies' : 'y'} queued for research.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
+      });
+      setTimeout(() => refetchListItems(), 5000);
+    } else if (errorCount > 0) {
+      toast({
+        title: 'Research failed',
+        description: `Failed to queue properties for research.`,
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleFindEmailsSelected = async () => {
+    if (selectedItems.size === 0) return;
+
+    const selectedIds = Array.from(selectedItems);
+    const contactsNeedingEmail = selectedIds.filter(itemId => {
+      const contact = contactDetails[itemId];
+      return contact && (!contact.email || contact.emailValidationStatus !== 'valid');
+    });
+
+    if (contactsNeedingEmail.length === 0) {
+      toast({
+        title: 'All emails found',
+        description: 'All selected contacts already have valid emails.',
+      });
+      return;
+    }
+
+    setIsFindingEmails(true);
+    let queuedCount = 0;
+
+    for (const itemId of contactsNeedingEmail) {
+      try {
+        const response = await fetch(`/api/contacts/${itemId}/waterfall-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (response.ok) queuedCount++;
+      } catch {
+        // Continue with other contacts
+      }
+    }
+
+    setIsFindingEmails(false);
+    setSelectedItems(new Set());
+    toast({
+      title: 'Email search started',
+      description: `Searching for emails for ${queuedCount} contact${queuedCount !== 1 ? 's' : ''}.`,
+    });
+    
+    setTimeout(() => refetchListItems(), 5000);
+  };
+
+  const handleFindPhonesSelected = async () => {
+    if (selectedItems.size === 0) return;
+
+    const selectedIds = Array.from(selectedItems);
+    const contactsNeedingPhone = selectedIds.filter(itemId => {
+      const contact = contactDetails[itemId];
+      if (!contact) return false;
+      const hasDirectPhone = contact.enrichmentPhoneWork || contact.enrichmentPhonePersonal || 
+        (contact.phoneLabel && ['mobile', 'direct_work', 'personal'].includes(contact.phoneLabel));
+      return !hasDirectPhone;
+    });
+
+    if (contactsNeedingPhone.length === 0) {
+      toast({
+        title: 'All phones found',
+        description: 'All selected contacts already have direct phone numbers.',
+      });
+      return;
+    }
+
+    setIsFindingPhones(true);
+    let queuedCount = 0;
+
+    for (const itemId of contactsNeedingPhone) {
+      try {
+        const response = await fetch(`/api/contacts/${itemId}/waterfall-phone`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+        });
+        if (response.ok) queuedCount++;
+      } catch {
+        // Continue with other contacts
+      }
+    }
+
+    setIsFindingPhones(false);
+    setSelectedItems(new Set());
+    toast({
+      title: 'Phone search started',
+      description: `Searching for phones for ${queuedCount} contact${queuedCount !== 1 ? 's' : ''}.`,
+    });
+    
+    setTimeout(() => refetchListItems(), 5000);
   };
 
   const handleResearchAll = async () => {
@@ -811,8 +995,56 @@ export default function ListDetailPage() {
         itemLabel={list?.listType === 'properties' ? 'property' : 'contact'}
         onDeselectAll={() => setSelectedItems(new Set())}
       >
+        {list?.listType === 'properties' && (
+          <Button
+            onClick={handleResearchSelected}
+            disabled={isResearchingAll}
+            size="sm"
+            className="gap-2 bg-purple-600 hover:bg-purple-700 text-white"
+            data-testid="button-bulk-research"
+          >
+            {isResearchingAll ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <GreenfinchAgentIcon className="h-4 w-4" />
+            )}
+            {isResearchingAll ? 'Researching...' : 'Research'}
+          </Button>
+        )}
+        {list?.listType === 'contacts' && (
+          <>
+            <Button
+              onClick={handleFindEmailsSelected}
+              disabled={isFindingEmails}
+              size="sm"
+              className="gap-2 bg-blue-600 hover:bg-blue-700 text-white"
+              data-testid="button-bulk-find-emails"
+            >
+              {isFindingEmails ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Mail className="h-4 w-4" />
+              )}
+              {isFindingEmails ? 'Finding...' : 'Find Emails'}
+            </Button>
+            <Button
+              onClick={handleFindPhonesSelected}
+              disabled={isFindingPhones}
+              size="sm"
+              className="gap-2 bg-green-600 hover:bg-green-700 text-white"
+              data-testid="button-bulk-find-phones"
+            >
+              {isFindingPhones ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Phone className="h-4 w-4" />
+              )}
+              {isFindingPhones ? 'Finding...' : 'Find Phones'}
+            </Button>
+          </>
+        )}
         <Button
-          onClick={handleBulkRemove}
+          onClick={handleBulkRemoveClick}
           disabled={isRemovingBulk}
           size="sm"
           variant="destructive"
@@ -820,9 +1052,50 @@ export default function ListDetailPage() {
           data-testid="button-bulk-remove"
         >
           <Trash2 className="h-4 w-4" />
-          {isRemovingBulk ? 'Removing...' : 'Remove Selected'}
+          {isRemovingBulk ? 'Removing...' : 'Remove'}
         </Button>
       </BulkActionBar>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={showRemoveConfirmation} onOpenChange={(open) => !isRemovingBulk && (open ? null : handleCancelRemove())}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-remove-confirmation">
+          <DialogHeader>
+            <DialogTitle>Remove from List?</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to remove {selectedItems.size} item{selectedItems.size !== 1 ? 's' : ''} from this list? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={handleCancelRemove}
+              disabled={isRemovingBulk}
+              data-testid="button-cancel-remove"
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleBulkRemove}
+              disabled={isRemovingBulk}
+              className="gap-2"
+              data-testid="button-confirm-remove"
+            >
+              {isRemovingBulk ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  Removing...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="h-4 w-4" />
+                  Remove Items
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

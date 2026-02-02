@@ -1,6 +1,6 @@
 'use client';
 
-import { usePathname, useRouter } from 'next/navigation';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Map, List } from 'lucide-react';
 import AppSidebar from '@/components/AppSidebar';
 
@@ -11,13 +11,18 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const isMapView = pathname === '/dashboard/map' || pathname === '/dashboard';
 
   const handleToggle = () => {
+    // Preserve all URL search params when toggling between views
+    const currentParams = searchParams.toString();
+    const queryString = currentParams ? `?${currentParams}` : '';
+    
     if (isMapView) {
-      router.push('/dashboard/list');
+      router.push(`/dashboard/list${queryString}`);
     } else {
-      router.push('/dashboard/map');
+      router.push(`/dashboard/map${queryString}`);
     }
   };
 

@@ -45,12 +45,21 @@ export async function GET() {
       .map(r => r.dcad_primary_heating_type)
       .filter(Boolean);
 
+    // Get distinct zip codes
+    const zipCodesResult = await db.execute(
+      sql`SELECT DISTINCT zip FROM ${properties} WHERE zip IS NOT NULL AND zip != '' AND is_active = true ORDER BY zip`
+    );
+    const zipCodes = (zipCodesResult.rows as { zip: string }[])
+      .map(r => r.zip)
+      .filter(Boolean);
+
     return NextResponse.json({
       categories,
       subcategories,
       buildingClasses,
       acTypes,
       heatingTypes,
+      zipCodes,
     });
   } catch (error) {
     console.error('[API] Filter options error:', error);

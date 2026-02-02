@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { properties } from '@/lib/schema';
+import { properties, propertyContacts, propertyOrganizations } from '@/lib/schema';
 import { eq, isNotNull, and, or, sql, inArray, gte, lte, isNull } from 'drizzle-orm';
 import { normalizeCommonName } from '@/lib/normalization';
 
@@ -15,12 +15,14 @@ export async function GET(request: NextRequest) {
     const subcategories = searchParams.get('subcategories')?.split(',').filter(Boolean) || [];
     const enrichmentStatus = searchParams.get('enrichmentStatus'); // 'researched' | 'not_researched' | null
     const customerStatuses = searchParams.get('customerStatuses')?.split(',').filter(Boolean) || [];
-    const zipCode = searchParams.get('zipCode');
+    const zipCodes = searchParams.get('zipCodes')?.split(',').filter(Boolean) || [];
     const buildingClasses = searchParams.get('buildingClasses')?.split(',').filter(Boolean) || [];
     const minLotAcres = searchParams.get('minLotAcres') ? parseFloat(searchParams.get('minLotAcres')!) : null;
     const maxLotAcres = searchParams.get('maxLotAcres') ? parseFloat(searchParams.get('maxLotAcres')!) : null;
     const minNetSqft = searchParams.get('minNetSqft') ? parseFloat(searchParams.get('minNetSqft')!) : null;
     const maxNetSqft = searchParams.get('maxNetSqft') ? parseFloat(searchParams.get('maxNetSqft')!) : null;
+    const organizationId = searchParams.get('organizationId');
+    const contactId = searchParams.get('contactId');
     
     // Optional limit - if not provided, return all matching properties
     const limitParam = searchParams.get('limit');
@@ -76,9 +78,9 @@ export async function GET(request: NextRequest) {
       // If both or other statuses are included, we don't filter (show all)
     }
     
-    // Zip code filter
-    if (zipCode) {
-      conditions.push(eq(properties.zip, zipCode));
+    // Zip codes filter (supports multiple)
+    if (zipCodes.length > 0) {
+      conditions.push(inArray(properties.zip, zipCodes));
     }
 
     // Building class filter
@@ -102,6 +104,24 @@ export async function GET(request: NextRequest) {
     }
     if (maxNetSqft !== null) {
       conditions.push(lte(properties.buildingSqft, maxNetSqft));
+    }
+    
+    // Organization filter - show only properties linked to the selected organization
+    if (organizationId) {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM ${propertyOrganizations} 
+        WHERE ${propertyOrganizations.propertyId} = ${properties.id} 
+        AND ${propertyOrganizations.orgId} = ${organizationId}
+      )`);
+    }
+    
+    // Contact filter - show only properties linked to the selected contact
+    if (contactId) {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM ${propertyContacts} 
+        WHERE ${propertyContacts.propertyId} = ${properties.id} 
+        AND ${propertyContacts.contactId} = ${contactId}
+      )`);
     }
 
     // Build query - with or without limit

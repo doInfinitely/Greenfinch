@@ -5,6 +5,9 @@ import { eq } from 'drizzle-orm';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Disable caching for contact data to ensure enrichment updates are reflected immediately
+export const revalidate = 0;
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -110,14 +113,35 @@ export async function GET(
         role: prop.role,
         confidenceScore: prop.confidenceScore,
       })),
-      organizations: orgRelations.map(org => ({
-        id: org.orgId,
-        name: org.orgName,
-        domain: org.orgDomain,
-        orgType: org.orgType,
-        title: org.title,
-        isCurrent: org.isCurrent,
-      })),
+      // Deduplicate organizations by orgId, keeping the one with isCurrent=true or the first one
+      organizations: Object.values(
+        orgRelations.reduce((acc: Record<string, { id: string | null; name: string | null; domain: string | null; orgType: string | null; title: string | null; isCurrent: boolean | null }>, org) => {
+          const key = org.orgId || '';
+          // Keep existing if it's current and new one isn't
+          if (acc[key]) {
+            if (!acc[key].isCurrent && org.isCurrent) {
+              acc[key] = {
+                id: org.orgId,
+                name: org.orgName,
+                domain: org.orgDomain,
+                orgType: org.orgType,
+                title: org.title,
+                isCurrent: org.isCurrent,
+              };
+            }
+          } else {
+            acc[key] = {
+              id: org.orgId,
+              name: org.orgName,
+              domain: org.orgDomain,
+              orgType: org.orgType,
+              title: org.title,
+              isCurrent: org.isCurrent,
+            };
+          }
+          return acc;
+        }, {})
+      ),
     });
   } catch (error) {
     console.error('Contact detail API error:', error);

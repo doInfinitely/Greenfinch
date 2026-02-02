@@ -949,13 +949,13 @@ export default function PropertyDetailPage() {
                           variant="outline"
                           size="sm"
                           onClick={handleEnrichment}
-                          disabled={isEnrichmentActive || enrichmentHasFailed}
+                          disabled={isEnrichmentActive}
                           className={
                             enrichmentHasFailed 
-                              ? 'text-gray-500 border-gray-300' 
+                              ? 'text-red-600 border-red-300 hover:bg-red-50 dark:text-red-400 dark:border-red-700 dark:hover:bg-red-900/20' 
                               : 'border-purple-500 text-purple-700 dark:text-purple-400'
                           }
-                          title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'}` : undefined}
+                          title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'} - Click to retry` : undefined}
                           data-testid="button-find-decision-makers"
                         >
                           {isEnrichmentActive ? (
@@ -965,7 +965,7 @@ export default function PropertyDetailPage() {
                           ) : (
                             <GreenfinchAgentIcon className="w-4 h-4 mr-1" />
                           )}
-                          {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : 'Research'}
+                          {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Retry Research' : 'Research'}
                         </Button>
                       </AdminOnly>
                     );
@@ -1158,7 +1158,7 @@ export default function PropertyDetailPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {displayRoles.map((role, idx) => (
                                 <span 
-                                  key={idx}
+                                  key={role}
                                   className={`text-xs font-medium ${labelColor}`}
                                 >
                                   {ROLE_LABELS[role] || role}{idx < displayRoles.length - 1 ? ' · ' : ''}
@@ -1524,62 +1524,23 @@ export default function PropertyDetailPage() {
               )}
             </div>
 
-            {/* Service Providers Section */}
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+            {/* Service Providers Section - Coming Soon */}
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 opacity-60">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-                  <Wrench className="w-5 h-5 text-gray-500" />
-                  Service Providers ({serviceProvidersList.length})
+                <h2 className="text-lg font-semibold text-gray-400 flex items-center gap-2">
+                  <Wrench className="w-5 h-5 text-gray-400" />
+                  Service Providers
                 </h2>
-                <button
-                  onClick={() => setShowAddServiceProvider(true)}
-                  className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100"
-                  data-testid="button-add-service-provider"
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Suggest Provider
-                </button>
+                <span className="inline-flex items-center px-2.5 py-1 text-xs font-medium text-gray-500 bg-gray-100 rounded-full">
+                  Coming Soon
+                </span>
               </div>
               
-              {serviceProvidersList.length > 0 ? (
-                <div className="space-y-3">
-                  {serviceProvidersList.map((sp) => (
-                    <div key={sp.id} className="p-3 bg-gray-50 rounded-lg">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800 mb-1">
-                            {SERVICE_CATEGORY_LABELS[sp.serviceCategory as keyof typeof SERVICE_CATEGORY_LABELS] || sp.serviceCategory}
-                          </span>
-                          <p className="font-medium text-gray-900">{sp.providerName || 'Unknown Provider'}</p>
-                          {sp.providerDomain && (
-                            <a 
-                              href={`https://${sp.providerDomain}`}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-sm text-blue-600 hover:underline"
-                            >
-                              {sp.providerDomain}
-                            </a>
-                          )}
-                        </div>
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          sp.status === 'confirmed' ? 'bg-green-100 text-green-800' :
-                          sp.status === 'suggested' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-gray-100 text-gray-800'
-                        }`}>
-                          {sp.status}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Wrench className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500 mb-2">No service providers listed yet</p>
-                  <p className="text-xs text-gray-400">Know who services this property? Click "Suggest Provider" to add them.</p>
-                </div>
-              )}
+              <div className="text-center py-8">
+                <Wrench className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                <p className="text-gray-400 mb-2">Track HVAC, maintenance, and property services</p>
+                <p className="text-xs text-gray-400">This feature will be available in a future release.</p>
+              </div>
             </div>
           </div>
 

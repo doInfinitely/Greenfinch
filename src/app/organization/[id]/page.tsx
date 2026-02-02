@@ -38,6 +38,11 @@ interface ContactRelation {
   fullName: string | null;
   email: string | null;
   phone: string | null;
+  phoneLabel: string | null;
+  aiPhone: string | null;
+  aiPhoneLabel: string | null;
+  enrichmentPhoneWork: string | null;
+  enrichmentPhonePersonal: string | null;
   title: string | null;
   emailStatus: string | null;
   emailValidationStatus: string | null;
@@ -117,6 +122,36 @@ function getEmailStatusColor(status: string | null): string {
     default:
       return 'bg-gray-100 text-gray-600';
   }
+}
+
+interface ConsolidatedProperty extends PropertyRelation {
+  allRoles: string[];
+}
+
+function consolidatePropertiesForDisplay(propsToConsolidate: PropertyRelation[]): ConsolidatedProperty[] {
+  const grouped = new Map<string, { property: PropertyRelation; roles: Set<string> }>();
+  
+  propsToConsolidate.forEach((property) => {
+    const key = property.propertyKey || property.id;
+    
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        property,
+        roles: new Set(),
+      });
+    }
+    
+    if (property.role) {
+      property.role.split(',').forEach((role) => {
+        grouped.get(key)!.roles.add(role.trim());
+      });
+    }
+  });
+  
+  return Array.from(grouped.values()).map((entry) => ({
+    ...entry.property,
+    allRoles: Array.from(entry.roles),
+  }));
 }
 
 export default function OrganizationDetailPage() {
@@ -347,93 +382,6 @@ export default function OrganizationDetailPage() {
                     </svg>
                   </a>
                 )}
-                {(() => {
-                  const queueStatus = getEnrichmentStatus(orgId as string, 'organization');
-                  const isEnrichmentActive = queueStatus.isActive;
-                  const enrichmentHasFailed = queueStatus.status === 'failed';
-                  
-                  // Hide button if enrichment already completed successfully
-                  if (!organization.domain || organization.enrichmentStatus === 'complete') return null;
-                  
-                  return (
-                    <AdminOnly>
-                      <button
-                        onClick={handleEnrichOrganization}
-                        disabled={isEnrichmentActive || enrichmentHasFailed}
-                        className={`inline-flex items-center px-2.5 py-1 text-xs font-medium rounded disabled:cursor-not-allowed ${
-                          enrichmentHasFailed 
-                            ? 'bg-gray-100 text-gray-500' 
-                            : 'bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50'
-                        }`}
-                        title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'}` : undefined}
-                        data-testid="button-enrich-org"
-                      >
-                        {isEnrichmentActive ? (
-                          <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
-                        ) : enrichmentHasFailed ? (
-                          <XCircle className="w-3 h-3 mr-1.5" />
-                        ) : (
-                          <GreenfinchAgentIcon size={12} className="mr-1.5" />
-                        )}
-                        {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Failed' : 'Research Company'}
-                      </button>
-                    </AdminOnly>
-                  );
-                })()}
-                {enrichMessage && (
-                  <span className="text-xs text-green-600">
-                    {enrichMessage}
-                  </span>
-                )}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button 
-                      variant="outline" 
-                      size="icon"
-                      className="h-9 w-9"
-                      data-testid="button-org-actions"
-                      title="Organization actions"
-                    >
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem 
-                      onClick={() => {
-                        // Scroll to properties section
-                        const propertiesSection = document.getElementById('properties-section');
-                        if (propertiesSection) {
-                          propertiesSection.scrollIntoView({ behavior: 'smooth' });
-                        }
-                      }}
-                      data-testid="menu-item-view-properties"
-                    >
-                      <Building2 className="w-4 h-4 mr-2" />
-                      View all properties ({properties.length})
-                    </DropdownMenuItem>
-                    <DropdownMenuItem 
-                      onClick={() => {
-                        // Scroll to contacts section
-                        const contactsSection = document.getElementById('contacts-section');
-                        if (contactsSection) {
-                          contactsSection.scrollIntoView({ behavior: 'smooth' });
-                        }
-                      }}
-                      data-testid="menu-item-view-contacts"
-                    >
-                      <Users className="w-4 h-4 mr-2" />
-                      View all contacts ({contacts.length})
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem 
-                      onClick={handleExportOrganizationData}
-                      data-testid="menu-item-export"
-                    >
-                      <FileJson className="w-4 h-4 mr-2" />
-                      Export organization data
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
               </div>
             </div>
           </div>
@@ -548,9 +496,9 @@ export default function OrganizationDetailPage() {
                   No properties associated with this organization
                 </div>
               ) : (
-                properties.map((property) => (
+                consolidatePropertiesForDisplay(properties).map((property) => (
                   <Link
-                    key={property.id}
+                    key={property.propertyKey || property.id}
                     href={`/property/${property.id}`}
                     className="block px-6 py-4 hover:bg-gray-50"
                     data-testid={`link-property-${property.id}`}
@@ -570,11 +518,18 @@ export default function OrganizationDetailPage() {
                           {[property.city, property.state, property.zip].filter(Boolean).join(', ')}
                         </p>
                       </div>
-                      <div className="ml-4 flex flex-col items-end gap-1">
-                        {property.role && (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[property.role.split(',')[0].trim()] || ROLE_COLORS.other}`}>
-                            {formatRoleLabel(property.role)}
-                          </span>
+                      <div className="ml-4 flex flex-col items-end gap-2">
+                        {property.allRoles && property.allRoles.length > 0 && (
+                          <div className="flex flex-wrap justify-end gap-1">
+                            {property.allRoles.map((role) => (
+                              <span
+                                key={role}
+                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[role] || ROLE_COLORS.other}`}
+                              >
+                                {formatRoleLabel(role)}
+                              </span>
+                            ))}
+                          </div>
                         )}
                         {property.assetCategory && (
                           <span className="text-xs text-gray-400">
@@ -632,7 +587,20 @@ export default function OrganizationDetailPage() {
                           size="sm"
                         />
                         <PhoneStatusIcon 
-                          hasPhone={!!contact.phone}
+                          hasPhone={hasAnyPhone({
+                            phone: contact.phone,
+                            aiPhone: contact.aiPhone,
+                            enrichmentPhoneWork: contact.enrichmentPhoneWork,
+                            enrichmentPhonePersonal: contact.enrichmentPhonePersonal,
+                          })}
+                          isOfficeOnly={hasOnlyOfficeLine({
+                            phone: contact.phone,
+                            phoneLabel: contact.phoneLabel,
+                            aiPhone: contact.aiPhone,
+                            aiPhoneLabel: contact.aiPhoneLabel,
+                            enrichmentPhoneWork: contact.enrichmentPhoneWork,
+                            enrichmentPhonePersonal: contact.enrichmentPhonePersonal,
+                          })}
                           size="sm"
                         />
                         <LinkedInStatusIcon 

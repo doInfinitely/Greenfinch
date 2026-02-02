@@ -6,31 +6,39 @@ import { eq, ilike, or, sql, desc, asc, and, isNotNull } from 'drizzle-orm';
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
-function getPropertyCountCondition(bucket: string, subquery: { count: any }) {
-  switch (bucket) {
+function getPropertyCountCondition(bucket: string, subquery: any) {
+  const countCol = sql<number>`COALESCE(${subquery.count}, 0)`;
+  const normalizedBucket = bucket?.trim();
+  
+  switch (normalizedBucket) {
     case '1':
-      return sql`COALESCE(${subquery.count}, 0) = 1`;
+      return sql`${countCol} = 1`;
     case '2-5':
-      return sql`COALESCE(${subquery.count}, 0) >= 2 AND COALESCE(${subquery.count}, 0) <= 5`;
+      return sql`${countCol} >= 2 AND ${countCol} <= 5`;
     case '6-10':
-      return sql`COALESCE(${subquery.count}, 0) >= 6 AND COALESCE(${subquery.count}, 0) <= 10`;
+      return sql`${countCol} >= 6 AND ${countCol} <= 10`;
     case '10+':
-      return sql`COALESCE(${subquery.count}, 0) > 10`;
+    case '10':  // Handle '10 ' with trailing space from URL encoding
+      return sql`${countCol} >= 10`;  // Changed from 11 to 10 to match label intent
     default:
       return null;
   }
 }
 
-function getContactCountCondition(bucket: string, subquery: { count: any }) {
-  switch (bucket) {
+function getContactCountCondition(bucket: string, subquery: any) {
+  const countCol = sql<number>`COALESCE(${subquery.count}, 0)`;
+  const normalizedBucket = bucket?.trim();
+  
+  switch (normalizedBucket) {
     case '0':
-      return sql`COALESCE(${subquery.count}, 0) = 0`;
+      return sql`${countCol} = 0`;
     case '1-5':
-      return sql`COALESCE(${subquery.count}, 0) >= 1 AND COALESCE(${subquery.count}, 0) <= 5`;
+      return sql`${countCol} >= 1 AND ${countCol} <= 5`;
     case '6-10':
-      return sql`COALESCE(${subquery.count}, 0) >= 6 AND COALESCE(${subquery.count}, 0) <= 10`;
+      return sql`${countCol} >= 6 AND ${countCol} <= 10`;
     case '10+':
-      return sql`COALESCE(${subquery.count}, 0) > 10`;
+    case '10':  // Handle '10 ' with trailing space from URL encoding
+      return sql`${countCol} >= 10`;
     default:
       return null;
   }
@@ -57,7 +65,6 @@ export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q')?.trim();
-    const type = searchParams.get('type');
     const industry = searchParams.get('industry');
     const employeesBucket = searchParams.get('employees');
     const propertyCountBucket = searchParams.get('propertyCount');
@@ -68,6 +75,7 @@ export async function GET(request: NextRequest) {
     const sortOrder = searchParams.get('sortOrder') || 'asc';
     
     const offset = (page - 1) * limit;
+    
 
     const propertyCountSubquery = db
       .select({
@@ -92,7 +100,6 @@ export async function GET(request: NextRequest) {
         id: organizations.id,
         name: organizations.name,
         domain: organizations.domain,
-        orgType: organizations.orgType,
         industry: organizations.industry,
         employees: organizations.employees,
         employeesRange: organizations.employeesRange,
@@ -112,10 +119,6 @@ export async function GET(request: NextRequest) {
           ilike(organizations.domain, `%${query}%`)
         )
       ) as typeof baseQuery;
-    }
-    
-    if (type && type !== 'all') {
-      baseQuery = baseQuery.where(eq(organizations.orgType, type)) as typeof baseQuery;
     }
 
     if (industry && industry !== 'all') {
@@ -158,7 +161,6 @@ export async function GET(request: NextRequest) {
         : sql`COALESCE(${organizations.employees}, 0) ASC`;
     } else {
       const orderColumn = sortBy === 'domain' ? organizations.domain : 
-                          sortBy === 'type' ? organizations.orgType :
                           sortBy === 'industry' ? organizations.industry :
                           sortBy === 'createdAt' ? organizations.createdAt :
                           organizations.name;
@@ -184,10 +186,6 @@ export async function GET(request: NextRequest) {
           ilike(organizations.domain, `%${query}%`)
         )
       ) as typeof countQuery;
-    }
-    
-    if (type && type !== 'all') {
-      countQuery = countQuery.where(eq(organizations.orgType, type)) as typeof countQuery;
     }
 
     if (industry && industry !== 'all') {
@@ -218,10 +216,6 @@ export async function GET(request: NextRequest) {
     const [totalResult] = await countQuery;
     const total = totalResult?.count || 0;
 
-    const [typesResult] = await db
-      .select({ types: sql<string[]>`array_agg(DISTINCT org_type) FILTER (WHERE org_type IS NOT NULL)` })
-      .from(organizations);
-
     const [industriesResult] = await db
       .select({ industries: sql<string[]>`array_agg(DISTINCT industry) FILTER (WHERE industry IS NOT NULL)` })
       .from(organizations);
@@ -234,7 +228,6 @@ export async function GET(request: NextRequest) {
         total,
         totalPages: Math.ceil(total / limit),
       },
-      availableTypes: typesResult?.types || [],
       availableIndustries: industriesResult?.industries || [],
     });
   } catch (error) {

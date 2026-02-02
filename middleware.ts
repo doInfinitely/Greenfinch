@@ -19,8 +19,8 @@ const isProtectedRoute = createRouteMatcher([
   '/lists(.*)',
   '/api/properties(.*)',
   '/api/contacts(.*)',
-  '/api/organizations(.*)',
   '/api/lists(.*)',
+  '/api/organizations(.*)',
   '/api/auth/user',
 ]);
 

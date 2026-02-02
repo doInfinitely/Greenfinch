@@ -254,7 +254,7 @@ export default function PipelineDashboard() {
                 
                 <Card data-testid="card-active-opportunities">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Active Opportunities</CardTitle>
+                    <CardTitle className="text-sm font-medium">Opportunities</CardTitle>
                     <Target className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
@@ -304,6 +304,40 @@ export default function PipelineDashboard() {
                     <CardTitle className="text-base font-medium">Pipeline Funnel</CardTitle>
                   </CardHeader>
                   <CardContent>
+                    {/* Stage Counts */}
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+                      <div className="text-center p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                        <div className="text-2xl font-bold text-green-700 dark:text-green-400" data-testid="text-qualified-count">
+                          {data.counts?.qualified || 0}
+                        </div>
+                        <div className="text-xs text-green-600 dark:text-green-500">Qualified</div>
+                      </div>
+                      <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                        <div className="text-2xl font-bold text-yellow-700 dark:text-yellow-400" data-testid="text-attempted-count">
+                          {data.counts?.attemptedContact || 0}
+                        </div>
+                        <div className="text-xs text-yellow-600 dark:text-yellow-500">Attempted</div>
+                      </div>
+                      <div className="text-center p-3 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                        <div className="text-2xl font-bold text-purple-700 dark:text-purple-400" data-testid="text-active-count">
+                          {data.counts?.activeOpportunity || 0}
+                        </div>
+                        <div className="text-xs text-purple-600 dark:text-purple-500">Active</div>
+                      </div>
+                      <div className="text-center p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                        <div className="text-2xl font-bold text-emerald-700 dark:text-emerald-400" data-testid="text-won-total">
+                          {data.counts?.won || 0}
+                        </div>
+                        <div className="text-xs text-emerald-600 dark:text-emerald-500">Won</div>
+                      </div>
+                      <div className="text-center p-3 bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800 col-span-2 md:col-span-1">
+                        <div className="text-2xl font-bold text-red-700 dark:text-red-400" data-testid="text-lost-total">
+                          {data.counts?.lost || 0}
+                        </div>
+                        <div className="text-xs text-red-600 dark:text-red-500">Lost</div>
+                      </div>
+                    </div>
+                    {/* Conversion Rates */}
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="flex flex-col items-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg">
                         <span className="text-2xl font-bold text-blue-600" data-testid="text-qualified-to-attempted">

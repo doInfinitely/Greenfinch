@@ -18,7 +18,7 @@ export interface FilterState {
   contactId: string | null;
   enrichmentStatus: 'all' | 'researched' | 'not_researched';
   customerStatuses: string[];
-  zipCode: string | null;
+  zipCodes: string[];
   // Legacy fields for backwards compatibility
   minLotSqft: number | null;
   maxLotSqft: number | null;
@@ -32,6 +32,7 @@ interface PropertyFiltersProps {
   availableBuildingClasses?: string[];
   availableAcTypes?: string[];
   availableHeatingTypes?: string[];
+  availableZipCodes?: string[];
 }
 
 const UNKNOWN_CATEGORY = 'Unknown / Unassigned';
@@ -67,7 +68,7 @@ export const emptyFilters: FilterState = {
   contactId: null,
   enrichmentStatus: 'all',
   customerStatuses: [],
-  zipCode: null,
+  zipCodes: [],
   minLotSqft: null,
   maxLotSqft: null,
 };
@@ -90,7 +91,7 @@ export function serializeFiltersToParams(filters: FilterState): URLSearchParams 
   if (filters.contactId) params.set('contactId', filters.contactId);
   if (filters.enrichmentStatus !== 'all') params.set('enrichmentStatus', filters.enrichmentStatus);
   if (filters.customerStatuses.length > 0) params.set('customerStatuses', filters.customerStatuses.join(','));
-  if (filters.zipCode) params.set('zipCode', filters.zipCode);
+  if (filters.zipCodes.length > 0) params.set('zipCodes', filters.zipCodes.join(','));
   
   return params;
 }
@@ -109,7 +110,7 @@ export function parseFiltersFromParams(searchParams: URLSearchParams): FilterSta
   const contactId = searchParams.get('contactId');
   const enrichmentStatus = searchParams.get('enrichmentStatus') as 'all' | 'researched' | 'not_researched' | null;
   const customerStatuses = searchParams.get('customerStatuses');
-  const zipCode = searchParams.get('zipCode');
+  const zipCodes = searchParams.get('zipCodes');
 
   const parsedMinLotAcres = minLotAcres ? parseFloat(minLotAcres) : null;
   const parsedMaxLotAcres = maxLotAcres ? parseFloat(maxLotAcres) : null;
@@ -128,7 +129,7 @@ export function parseFiltersFromParams(searchParams: URLSearchParams): FilterSta
     contactId: contactId || null,
     enrichmentStatus: enrichmentStatus || 'all',
     customerStatuses: customerStatuses ? customerStatuses.split(',') : [],
-    zipCode: zipCode || null,
+    zipCodes: zipCodes ? zipCodes.split(',') : [],
     minLotSqft: parsedMinLotAcres ? Math.round(parsedMinLotAcres * 43560) : null,
     maxLotSqft: parsedMaxLotAcres ? Math.round(parsedMaxLotAcres * 43560) : null,
   };
@@ -142,6 +143,7 @@ export default function PropertyFilters({
   availableBuildingClasses = DEFAULT_BUILDING_CLASSES,
   availableAcTypes = [],
   availableHeatingTypes = [],
+  availableZipCodes = [],
 }: PropertyFiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
@@ -159,17 +161,36 @@ export default function PropertyFilters({
   );
   const [orgSearch, setOrgSearch] = useState('');
   const [contactSearch, setContactSearch] = useState('');
-  const [localZipCode, setLocalZipCode] = useState<string>(filters.zipCode || '');
+  const [zipSearch, setZipSearch] = useState('');
   const [orgResults, setOrgResults] = useState<{id: string; name: string}[]>([]);
   const [contactResults, setContactResults] = useState<{id: string; fullName: string}[]>([]);
   const [selectedOrg, setSelectedOrg] = useState<{id: string; name: string} | null>(null);
   const [selectedContact, setSelectedContact] = useState<{id: string; fullName: string} | null>(null);
+  const [showZipSuggestions, setShowZipSuggestions] = useState(false);
+  const [fetchedZipCodes, setFetchedZipCodes] = useState<string[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Merge provided zip codes with fetched zip codes
+  const allAvailableZipCodes = availableZipCodes.length > 0 ? availableZipCodes : fetchedZipCodes;
+
+  // Fetch zip codes from API on mount if not provided via props
+  useEffect(() => {
+    if (availableZipCodes.length === 0) {
+      fetch('/api/properties/filter-options')
+        .then(res => res.json())
+        .then(data => {
+          if (data.zipCodes) {
+            setFetchedZipCodes(data.zipCodes);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [availableZipCodes.length]);
 
   // Debounce organization and contact search inputs with 300ms delay
   const debouncedOrgSearch = useDebounce(orgSearch, 300);
   const debouncedContactSearch = useDebounce(contactSearch, 300);
-  const debouncedZipCode = useDebounce(localZipCode, 300);
+  const debouncedZipSearch = useDebounce(zipSearch, 300);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -225,16 +246,24 @@ export default function PropertyFilters({
     return () => controller.abort();
   }, [debouncedContactSearch]);
 
-  useEffect(() => {
-    const newZipCode = debouncedZipCode.trim() || null;
-    // Only update if value actually changed to prevent re-render loops
-    if (newZipCode !== filters.zipCode) {
-      onFiltersChange({
-        ...filters,
-        zipCode: newZipCode,
-      });
+  // Filter zip code suggestions based on search
+  const filteredZipCodes = debouncedZipSearch.trim()
+    ? allAvailableZipCodes.filter(
+        zip => zip.startsWith(debouncedZipSearch.trim()) && !filters.zipCodes.includes(zip)
+      )
+    : [];
+
+  const addZipCode = (zip: string) => {
+    if (!filters.zipCodes.includes(zip)) {
+      onFiltersChange({ ...filters, zipCodes: [...filters.zipCodes, zip] });
     }
-  }, [debouncedZipCode, filters.zipCode]);
+    setZipSearch('');
+    setShowZipSuggestions(false);
+  };
+
+  const removeZipCode = (zip: string) => {
+    onFiltersChange({ ...filters, zipCodes: filters.zipCodes.filter(z => z !== zip) });
+  };
 
   const handleAcresChange = (field: 'minLotAcres' | 'maxLotAcres', value: string, setter: (v: string) => void) => {
     setter(value);
@@ -280,7 +309,7 @@ export default function PropertyFilters({
     setLocalMaxNetSqft('');
     setOrgSearch('');
     setContactSearch('');
-    setLocalZipCode('');
+    setZipSearch('');
     setSelectedOrg(null);
     setSelectedContact(null);
     onFiltersChange(emptyFilters);
@@ -322,7 +351,7 @@ export default function PropertyFilters({
     (filters.contactId ? 1 : 0) +
     (filters.enrichmentStatus !== 'all' ? 1 : 0) +
     ((filters.customerStatuses?.length ?? 0) > 0 ? 1 : 0) +
-    (filters.zipCode ? 1 : 0);
+    ((filters.zipCodes?.length ?? 0) > 0 ? 1 : 0);
 
   const toggleSection = (id: string) => {
     setOpenSections(prev => {
@@ -467,28 +496,86 @@ export default function PropertyFilters({
         )}
       </div>
 
-      {/* Zip Code Filter - Top Level */}
+      {/* Zip Code Filter - Top Level with Multi-Select Autocomplete */}
       <div className="border-b border-gray-100 pb-3">
-        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Zip Code</label>
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="block text-xs text-gray-600 font-medium">Zip Codes</label>
+          {filters.zipCodes.length > 0 && (
+            <button
+              onClick={() => onFiltersChange({ ...filters, zipCodes: [] })}
+              className="text-xs text-gray-500 hover:text-gray-700"
+              data-testid="button-clear-all-zip-codes"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+        {filters.zipCodes.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {filters.zipCodes.map((zip) => (
+              <span
+                key={zip}
+                className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium bg-green-100 text-green-700 rounded-full"
+              >
+                {zip}
+                <button
+                  onClick={() => removeZipCode(zip)}
+                  className="text-green-600 hover:text-green-800"
+                  data-testid={`button-remove-zip-${zip}`}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <div className="relative">
           <input
             type="text"
-            value={localZipCode}
-            onChange={(e) => setLocalZipCode(e.target.value)}
-            placeholder="Enter zip code..."
+            value={zipSearch}
+            onChange={(e) => {
+              setZipSearch(e.target.value);
+              setShowZipSuggestions(true);
+            }}
+            onFocus={() => setShowZipSuggestions(true)}
+            placeholder={filters.zipCodes.length > 0 ? "Add more zip codes..." : "Search zip codes..."}
             className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm"
-            data-testid="input-zip-code"
+            data-testid="input-zip-code-search"
           />
-          {localZipCode && (
+          {zipSearch && (
             <button
-              onClick={() => setLocalZipCode('')}
+              onClick={() => {
+                setZipSearch('');
+                setShowZipSuggestions(false);
+              }}
               className="absolute right-3 top-2.5 text-gray-400 hover:text-gray-600"
-              data-testid="button-clear-zip-code"
+              data-testid="button-clear-zip-search"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
+          )}
+          {showZipSuggestions && filteredZipCodes.length > 0 && (
+            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg max-h-32 overflow-y-auto">
+              {filteredZipCodes.slice(0, 10).map((zip) => (
+                <button
+                  key={zip}
+                  onClick={() => addZipCode(zip)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-100"
+                  data-testid={`zip-result-${zip}`}
+                >
+                  {zip}
+                </button>
+              ))}
+            </div>
+          )}
+          {showZipSuggestions && zipSearch.trim() && filteredZipCodes.length === 0 && (
+            <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded shadow-lg p-3 text-sm text-gray-500">
+              No matching zip codes found
+            </div>
           )}
         </div>
       </div>

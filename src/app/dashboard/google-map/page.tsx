@@ -56,7 +56,7 @@ export default function GoogleMapPage() {
     contactId: null,
     enrichmentStatus: 'all',
     customerStatuses: [],
-    zipCode: null,
+    zipCodes: [],
     minLotSqft: null,
     maxLotSqft: null,
   });

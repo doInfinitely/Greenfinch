@@ -10,7 +10,6 @@ interface Organization {
   id: string;
   name: string | null;
   domain: string | null;
-  orgType: string | null;
   industry: string | null;
   employees: number | null;
   employeesRange: string | null;
@@ -56,7 +55,6 @@ export default function OrganizationsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState('all');
   const [industryFilter, setIndustryFilter] = useState('all');
   const [employeesFilter, setEmployeesFilter] = useState('all');
   const [propertyCountFilter, setPropertyCountFilter] = useState('all');
@@ -69,21 +67,18 @@ export default function OrganizationsPage() {
     total: 0,
     totalPages: 0,
   });
-  const [availableTypes, setAvailableTypes] = useState<string[]>([]);
   const [availableIndustries, setAvailableIndustries] = useState<string[]>([]);
   const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const filterDropdownRef = useRef<HTMLDivElement>(null);
 
   const activeFilterCount = 
-    (typeFilter !== 'all' ? 1 : 0) +
     (industryFilter !== 'all' ? 1 : 0) +
     (employeesFilter !== 'all' ? 1 : 0) +
     (propertyCountFilter !== 'all' ? 1 : 0) +
     (contactCountFilter !== 'all' ? 1 : 0);
 
   const clearAllFilters = () => {
-    setTypeFilter('all');
     setIndustryFilter('all');
     setEmployeesFilter('all');
     setPropertyCountFilter('all');
@@ -128,7 +123,6 @@ export default function OrganizationsPage() {
       params.set('sortBy', sortBy);
       params.set('sortOrder', sortOrder);
       if (searchQuery) params.set('q', searchQuery);
-      if (typeFilter !== 'all') params.set('type', typeFilter);
       if (industryFilter !== 'all') params.set('industry', industryFilter);
       if (employeesFilter !== 'all') params.set('employees', employeesFilter);
       if (propertyCountFilter !== 'all') params.set('propertyCount', propertyCountFilter);
@@ -143,9 +137,6 @@ export default function OrganizationsPage() {
 
       setOrganizations(data.organizations || []);
       setPagination(data.pagination || { page: 1, limit: 20, total: 0, totalPages: 0 });
-      if (data.availableTypes) {
-        setAvailableTypes(data.availableTypes);
-      }
       if (data.availableIndustries) {
         setAvailableIndustries(data.availableIndustries);
       }
@@ -154,7 +145,7 @@ export default function OrganizationsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, typeFilter, industryFilter, employeesFilter, propertyCountFilter, contactCountFilter, sortBy, sortOrder]);
+  }, [searchQuery, industryFilter, employeesFilter, propertyCountFilter, contactCountFilter, sortBy, sortOrder]);
 
   useEffect(() => {
     if (searchTimeoutRef.current) {
@@ -226,21 +217,6 @@ export default function OrganizationsPage() {
             Clear all
           </button>
         )}
-      </div>
-
-      <div>
-        <label className="block text-xs text-gray-600 mb-1.5 font-medium">Type</label>
-        <select
-          value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value)}
-          className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm bg-white"
-          data-testid="select-org-type"
-        >
-          <option value="all">All Types</option>
-          {availableTypes.map((type) => (
-            <option key={type} value={type}>{type}</option>
-          ))}
-        </select>
       </div>
 
       <div>
