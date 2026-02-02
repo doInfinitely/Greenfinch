@@ -21,6 +21,7 @@ import { ArrowLeft } from 'lucide-react';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS, ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
 import AddToListModal from '@/components/AddToListModal';
+import AddContactModal from '@/components/AddContactModal';
 import StreetView from '@/components/StreetView';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
@@ -283,6 +284,7 @@ export default function PropertyDetailPage() {
   const [enrichmentStatus, setEnrichmentStatus] = useState<EnrichmentStatusType>('not_enriched');
   const [enrichmentMessage, setEnrichmentMessage] = useState<string>('');
   const [showAddToListModal, setShowAddToListModal] = useState(false);
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [assignDialogTrigger, setAssignDialogTrigger] = useState(0);
   const [isCurrentCustomer, setIsCurrentCustomer] = useState(false);
   const { startEnrichment } = useEnrichment();
@@ -1407,9 +1409,20 @@ export default function PropertyDetailPage() {
             )}
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                Contacts ({contacts.length})
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold text-gray-900">
+                  Contacts ({contacts.length})
+                </h2>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAddContactModal(true)}
+                  data-testid="button-add-contact"
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Contact
+                </Button>
+              </div>
               {contacts.length > 0 ? (
                 <div className="space-y-3">
                   {sortContactsByRelevance(contacts).map((contact, i) => (
@@ -1640,6 +1653,15 @@ export default function PropertyDetailPage() {
           onClose={() => setShowAddToListModal(false)}
           itemId={propertyDbId}
           itemType="properties"
+        />
+      )}
+
+      {propertyDbId && (
+        <AddContactModal
+          propertyId={propertyDbId}
+          isOpen={showAddContactModal}
+          onClose={() => setShowAddContactModal(false)}
+          onSuccess={fetchProperty}
         />
       )}
 

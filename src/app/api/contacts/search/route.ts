@@ -3,10 +3,15 @@ import { db } from '@/lib/db';
 import { contacts } from '@/lib/schema';
 import { ilike, or } from 'drizzle-orm';
 
+const DEFAULT_LIMIT = 10;
+const MAX_LIMIT = 50;
+
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q');
+    const limitParam = searchParams.get('limit');
+    const limit = Math.min(MAX_LIMIT, Math.max(1, parseInt(limitParam || String(DEFAULT_LIMIT), 10)));
 
     if (!query || query.length < 2) {
       return NextResponse.json({ contacts: [] });
@@ -20,17 +25,16 @@ export async function GET(request: NextRequest) {
         fullName: contacts.fullName,
         email: contacts.email,
         title: contacts.title,
-        employerName: contacts.employerName,
+        photoUrl: contacts.photoUrl,
       })
       .from(contacts)
       .where(
         or(
           ilike(contacts.fullName, searchPattern),
-          ilike(contacts.email, searchPattern),
-          ilike(contacts.employerName, searchPattern)
+          ilike(contacts.email, searchPattern)
         )
       )
-      .limit(10);
+      .limit(limit);
 
     return NextResponse.json({ contacts: results });
   } catch (error) {

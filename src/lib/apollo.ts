@@ -588,3 +588,170 @@ export async function enrichCompanyApollo(domain: string): Promise<ApolloCompany
     return { found: false, error: error.message };
   }
 }
+
+/**
+ * Enrich a person by email using Apollo.io People Match API
+ * This is an email-only lookup - no name required
+ */
+export async function enrichPersonByEmail(email: string): Promise<ApolloEnrichResult> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey) {
+    throw new Error('APOLLO_API_KEY is not configured');
+  }
+
+  const requestBody: Record<string, any> = {
+    email: email,
+    reveal_personal_emails: true,
+  };
+
+  const url = `${APOLLO_API_URL}/people/match`;
+
+  console.log('[Apollo] People Match by email request:', { email });
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'accept': 'application/json',
+        'X-Api-Key': apiKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const data: ApolloPersonMatchResponse = await response.json();
+    
+    console.log('[Apollo] Response status:', response.status);
+
+    if (!response.ok) {
+      const errorMsg = data.error || `Apollo API error: ${response.status}`;
+      console.log('[Apollo] API error:', errorMsg);
+      return { found: false, error: errorMsg, raw: data };
+    }
+
+    if (!data.person) {
+      console.log('[Apollo] No person found for email:', email);
+      return { found: false, error: 'No match found', raw: data };
+    }
+
+    const person = data.person;
+    const location = [person.city, person.state, person.country]
+      .filter(Boolean)
+      .join(', ');
+
+    let linkedinUrl = person.linkedin_url;
+    if (linkedinUrl && !linkedinUrl.startsWith('http')) {
+      linkedinUrl = `https://${linkedinUrl}`;
+    }
+
+    const result: ApolloEnrichResult = {
+      found: true,
+      apolloId: person.id,
+      fullName: person.name,
+      firstName: person.first_name,
+      lastName: person.last_name,
+      email: person.email || undefined,
+      phone: person.phone_numbers?.[0]?.sanitized_number || undefined,
+      title: person.title || undefined,
+      company: person.organization?.name || undefined,
+      companyDomain: person.organization?.primary_domain || undefined,
+      linkedinUrl: linkedinUrl || undefined,
+      location: location || undefined,
+      seniority: person.seniority || undefined,
+      emailStatus: person.email_status || undefined,
+      photoUrl: person.photo_url || undefined,
+      waterfallStatus: 'not_requested',
+      raw: data,
+    };
+
+    console.log('[Apollo] Match found by email:', person.name, 'at', person.organization?.name);
+    return result;
+  } catch (error: any) {
+    console.error('[Apollo] Email lookup failed:', error.message);
+    return { found: false, error: error.message };
+  }
+}
+
+/**
+ * Enrich a person by LinkedIn URL using Apollo.io People Match API
+ */
+export async function enrichPersonByLinkedIn(linkedinUrl: string): Promise<ApolloEnrichResult> {
+  const apiKey = process.env.APOLLO_API_KEY;
+  if (!apiKey) {
+    throw new Error('APOLLO_API_KEY is not configured');
+  }
+
+  const requestBody: Record<string, any> = {
+    linkedin_url: linkedinUrl,
+    reveal_personal_emails: true,
+  };
+
+  const url = `${APOLLO_API_URL}/people/match`;
+
+  console.log('[Apollo] People Match by LinkedIn request:', { linkedinUrl });
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'accept': 'application/json',
+        'X-Api-Key': apiKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    const data: ApolloPersonMatchResponse = await response.json();
+    
+    console.log('[Apollo] Response status:', response.status);
+
+    if (!response.ok) {
+      const errorMsg = data.error || `Apollo API error: ${response.status}`;
+      console.log('[Apollo] API error:', errorMsg);
+      return { found: false, error: errorMsg, raw: data };
+    }
+
+    if (!data.person) {
+      console.log('[Apollo] No person found for LinkedIn:', linkedinUrl);
+      return { found: false, error: 'No match found', raw: data };
+    }
+
+    const person = data.person;
+    const location = [person.city, person.state, person.country]
+      .filter(Boolean)
+      .join(', ');
+
+    let normalizedLinkedinUrl = person.linkedin_url;
+    if (normalizedLinkedinUrl && !normalizedLinkedinUrl.startsWith('http')) {
+      normalizedLinkedinUrl = `https://${normalizedLinkedinUrl}`;
+    }
+
+    const result: ApolloEnrichResult = {
+      found: true,
+      apolloId: person.id,
+      fullName: person.name,
+      firstName: person.first_name,
+      lastName: person.last_name,
+      email: person.email || undefined,
+      phone: person.phone_numbers?.[0]?.sanitized_number || undefined,
+      title: person.title || undefined,
+      company: person.organization?.name || undefined,
+      companyDomain: person.organization?.primary_domain || undefined,
+      linkedinUrl: normalizedLinkedinUrl || undefined,
+      location: location || undefined,
+      seniority: person.seniority || undefined,
+      emailStatus: person.email_status || undefined,
+      photoUrl: person.photo_url || undefined,
+      waterfallStatus: 'not_requested',
+      raw: data,
+    };
+
+    console.log('[Apollo] Match found by LinkedIn:', person.name, 'at', person.organization?.name);
+    return result;
+  } catch (error: any) {
+    console.error('[Apollo] LinkedIn lookup failed:', error.message);
+    return { found: false, error: error.message };
+  }
+}
