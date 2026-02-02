@@ -25,6 +25,7 @@ export async function GET(request: NextRequest) {
         fullName: contacts.fullName,
         email: contacts.email,
         title: contacts.title,
+        location: contacts.location,
         photoUrl: contacts.photoUrl,
       })
       .from(contacts)

@@ -33,6 +33,7 @@ interface SearchResult {
   fullName: string;
   email: string | null;
   title: string | null;
+  location: string | null;
   photoUrl: string | null;
 }
 
@@ -358,6 +359,11 @@ export default function AddContactModal({
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{contact.fullName}</p>
+                      {(contact.title || contact.location) && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                          {contact.title}{contact.title && contact.location && ' • '}{contact.location}
+                        </p>
+                      )}
                       {contact.email && (
                         <p className="text-sm text-gray-500 truncate">{contact.email}</p>
                       )}

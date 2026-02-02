@@ -91,6 +91,8 @@ export async function GET(
         source: contact.source,
         needsReview: contact.needsReview,
         reviewReason: contact.reviewReason,
+        photoUrl: contact.photoUrl,
+        location: contact.location,
         createdAt: contact.createdAt,
         updatedAt: contact.updatedAt,
         enrichedAt: contact.enrichedAt,
@@ -100,6 +102,8 @@ export async function GET(
         enrichmentPhoneWork: contact.enrichmentPhoneWork,
         enrichmentPhonePersonal: contact.enrichmentPhonePersonal,
         aiPhone: contact.aiPhone,
+        aiPhoneLabel: contact.aiPhoneLabel,
+        aiPhoneConfidence: contact.aiPhoneConfidence,
       },
       properties: propertyRelations.map(prop => ({
         id: prop.propertyId,
