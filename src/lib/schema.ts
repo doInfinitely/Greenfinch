@@ -800,3 +800,27 @@ export type Notification = typeof notifications.$inferSelect;
 export type InsertNotification = typeof notifications.$inferInsert;
 export type PropertyAction = typeof propertyActions.$inferSelect;
 export type InsertPropertyAction = typeof propertyActions.$inferInsert;
+
+// Admin audit log for tracking database operations
+export const adminAuditLog = pgTable('admin_audit_log', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').references(() => users.id),
+  userEmail: text('user_email'),
+  action: text('action').notNull(), // 'query', 'clear_table', 'delete_rows', 'update', 'export'
+  targetTable: text('target_table'),
+  queryText: text('query_text'),
+  rowsAffected: integer('rows_affected'),
+  environment: text('environment').notNull().default('development'), // 'development' or 'production'
+  success: boolean('success').default(true),
+  errorMessage: text('error_message'),
+  metadata: json('metadata'), // Additional context like filters, conditions
+  ipAddress: text('ip_address'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  userIdIdx: index('admin_audit_log_user_id_idx').on(table.userId),
+  actionIdx: index('admin_audit_log_action_idx').on(table.action),
+  createdAtIdx: index('admin_audit_log_created_at_idx').on(table.createdAt),
+}));
+
+export type AdminAuditLog = typeof adminAuditLog.$inferSelect;
+export type InsertAdminAuditLog = typeof adminAuditLog.$inferInsert;

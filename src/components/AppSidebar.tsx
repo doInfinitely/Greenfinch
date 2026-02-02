@@ -21,6 +21,7 @@ import {
   ChevronRight,
   Menu,
   X,
+  Database,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EnrichmentQueuePopover from '@/components/EnrichmentQueuePopover';
@@ -79,6 +80,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
       internalOnly: true,
       items: [
         { href: '/admin', label: 'Data Admin', icon: <Settings className="w-4 h-4" /> },
+        { href: '/admin/database', label: 'Database', icon: <Database className="w-4 h-4" /> },
       ],
     },
     {
