@@ -2427,10 +2427,13 @@ export async function storeEnrichmentResults(
         needsEnrichment = false; // Already enriched with PDL
       }
     } else {
+      // Derive name from domain if not provided (e.g., "example.com" -> "Example")
+      const derivedName = org.name || (org.domain ? org.domain.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : 'Unknown Organization');
+      
       const [inserted] = await db.insert(organizations)
         .values({
           id: org.id,
-          name: org.name,
+          name: derivedName,
           domain: org.domain,
           orgType: org.orgType,
           description: org.description || undefined,

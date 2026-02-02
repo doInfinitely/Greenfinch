@@ -548,10 +548,14 @@ export default function PropertyDetailPage() {
 
         // Set contacts and organizations if available
         if (data.contacts && data.contacts.length > 0) {
+          console.log(`[PropertyPage] Setting ${data.contacts.length} contacts for property ${propertyId}`);
           setContacts(data.contacts.map((c: any) => ({
             ...c,
             emailValidationStatus: c.emailValidationStatus || 'not_validated',
           })));
+        } else {
+          console.log(`[PropertyPage] No contacts returned for property ${propertyId}`);
+          setContacts([]);
         }
         if (data.organizations && data.organizations.length > 0) {
           setOrganizations(data.organizations);
@@ -569,6 +573,22 @@ export default function PropertyDetailPage() {
     } finally {
       setIsLoading(false);
     }
+  }, [propertyId]);
+
+  // Reset all property-related state when propertyId changes
+  // This prevents stale data from previous properties persisting
+  useEffect(() => {
+    setProperty(null);
+    setPropertyDbId(null);
+    setEnrichedProperty(null);
+    setContacts([]);
+    setOrganizations([]);
+    setConstituentProperties([]);
+    setParentProperty(null);
+    setEnrichmentStatus('not_enriched');
+    setEnrichmentMessage('');
+    setError(null);
+    setServiceProvidersList([]);
   }, [propertyId]);
 
   useEffect(() => {
@@ -1171,7 +1191,7 @@ export default function PropertyDetailPage() {
                               ))}
                             </div>
                             <div className="flex items-center gap-2">
-                              <p className="font-medium text-gray-900">{org.name}</p>
+                              <p className="font-medium text-gray-900">{org.name || org.domain || 'Unknown Organization'}</p>
                               {org.id && (
                                 <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

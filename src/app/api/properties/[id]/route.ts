@@ -41,6 +41,19 @@ export async function GET(
       .from(propertyContacts)
       .innerJoin(contacts, eq(contacts.id, propertyContacts.contactId))
       .where(eq(propertyContacts.propertyId, dbProperty.id));
+    
+    console.log(`[PropertyAPI] Property ${dbProperty.id} (${dbProperty.commonName || 'unnamed'}) has ${propertyContactRows.length} raw contact rows`);
+    
+    // Deduplicate contacts by contactId - each contact should appear only once per property
+    const uniqueContacts = new Map<string, { contact: typeof contacts.$inferSelect; role: string | null }>();
+    for (const row of propertyContactRows) {
+      const contactId = row.contact.id;
+      if (!uniqueContacts.has(contactId)) {
+        uniqueContacts.set(contactId, { contact: row.contact, role: row.role });
+      }
+    }
+    const dedupedContactRows = Array.from(uniqueContacts.values());
+    console.log(`[PropertyAPI] After deduplication: ${dedupedContactRows.length} unique contacts`);
 
     // Get associated organizations
     const propertyOrgRows = await db
@@ -103,7 +116,7 @@ export async function GET(
         calculatedBuildingClass: dbProperty.calculatedBuildingClass,
         buildingClassRationale: dbProperty.buildingClassRationale,
       },
-      contacts: propertyContactRows.map(row => ({
+      contacts: dedupedContactRows.map(row => ({
         ...row.contact,
         role: row.role,
       })),
