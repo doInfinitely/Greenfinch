@@ -78,10 +78,6 @@ export default function DatabaseAdminPage() {
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [isLoadingAudit, setIsLoadingAudit] = useState(false);
 
-  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
-  const [tableToClear, setTableToClear] = useState<{ name: string; rowCount: number } | null>(null);
-  const [isClearing, setIsClearing] = useState(false);
-
   const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
   const [clearAllPreview, setClearAllPreview] = useState<{ tableCounts: { table: string; count: number }[]; totalRows: number } | null>(null);
   const [isClearingAll, setIsClearingAll] = useState(false);
@@ -217,49 +213,6 @@ export default function DatabaseAdminPage() {
     }
   };
 
-  const handleClearTable = async () => {
-    if (!tableToClear) return;
-
-    setIsClearing(true);
-    try {
-      const response = await fetch('/api/admin/database', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({
-          action: 'clear',
-          table: tableToClear.name,
-          confirm: true,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Clear failed');
-      }
-
-      toast({
-        title: 'Table Cleared',
-        description: `${data.rowsDeleted} rows deleted from ${tableToClear.name}`,
-      });
-
-      fetchTables();
-      if (selectedTable === tableToClear.name) {
-        fetchTableDetails(tableToClear.name);
-      }
-    } catch (error) {
-      toast({
-        title: 'Error',
-        description: error instanceof Error ? error.message : 'Failed to clear table',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsClearing(false);
-      setClearConfirmOpen(false);
-      setTableToClear(null);
-    }
-  };
 
   const fetchIngestionSettings = useCallback(async () => {
     setIsLoadingIngestionSettings(true);
@@ -546,20 +499,6 @@ export default function DatabaseAdminPage() {
                                 data-testid={`button-export-${table.name}`}
                               >
                                 <Download className="h-3.5 w-3.5 text-gray-500" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 w-7 p-0"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setTableToClear({ name: table.name, rowCount: table.rowCount });
-                                  setClearConfirmOpen(true);
-                                }}
-                                title="Clear table"
-                                data-testid={`button-clear-${table.name}`}
-                              >
-                                <Trash2 className="h-3.5 w-3.5 text-red-500" />
                               </Button>
                             </>
                           )}
@@ -911,32 +850,6 @@ export default function DatabaseAdminPage() {
           </Card>
         </TabsContent>
       </Tabs>
-
-      <AlertDialog open={clearConfirmOpen} onOpenChange={setClearConfirmOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-red-500" />
-              Clear Table Data
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete all {tableToClear?.rowCount.toLocaleString()} rows from the{' '}
-              <strong>{tableToClear?.name}</strong> table. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isClearing}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleClearTable}
-              disabled={isClearing}
-              className="bg-red-600 hover:bg-red-700"
-              data-testid="button-confirm-clear"
-            >
-              {isClearing ? 'Clearing...' : 'Clear Table'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog open={clearAllConfirmOpen} onOpenChange={setClearAllConfirmOpen}>
         <AlertDialogContent className="max-w-lg">
