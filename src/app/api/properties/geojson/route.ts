@@ -83,9 +83,24 @@ export async function GET(request: NextRequest) {
       conditions.push(inArray(properties.zip, zipCodes));
     }
 
-    // Building class filter
+    // Building class filter - handle "Unknown" for NULL property_class values
     if (buildingClasses.length > 0) {
-      conditions.push(inArray(properties.propertyClass, buildingClasses));
+      const hasUnknown = buildingClasses.includes('Unknown');
+      const knownClasses = buildingClasses.filter(c => c !== 'Unknown');
+      
+      if (hasUnknown && knownClasses.length > 0) {
+        // Include both specific classes AND NULL values
+        conditions.push(or(
+          inArray(properties.propertyClass, knownClasses),
+          isNull(properties.propertyClass)
+        )!);
+      } else if (hasUnknown) {
+        // Only Unknown selected - show NULL values only
+        conditions.push(isNull(properties.propertyClass));
+      } else {
+        // Only specific classes selected
+        conditions.push(inArray(properties.propertyClass, knownClasses));
+      }
     }
     
     // Lot size filters (convert acres to sqft)

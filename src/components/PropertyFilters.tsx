@@ -604,29 +604,6 @@ export default function PropertyFilters({
         )}
       </div>
 
-      {/* Building Class Filter */}
-      <div className="border-b border-gray-100 pb-2">
-        <SectionHeader 
-          id="buildingClass" 
-          title="Building Class" 
-          count={filters.buildingClasses?.length ?? 0}
-          onClear={() => handleClearArray('buildingClasses')}
-        />
-        {openSections.has('buildingClass') && (
-          <div className="mt-2 space-y-1">
-            {availableBuildingClasses.map((bc) => (
-              <label key={bc} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
-                <Checkbox
-                  checked={filters.buildingClasses?.includes(bc) ?? false}
-                  onChange={() => handleArrayToggle('buildingClasses', bc)}
-                  data-testid={`checkbox-building-class-${bc.toLowerCase().replace(/\+/g, '-plus')}`}
-                />
-                <span className="text-gray-700">{bc}</span>
-              </label>
-            ))}
-          </div>
-        )}
-      </div>
       <div className="border-b border-gray-100 pb-2">
         <SectionHeader 
           id="size" 
