@@ -232,6 +232,11 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       // Invalidate queries to refresh contact/property lists immediately
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/properties'] });
+      
+      // Dispatch custom event for pages that don't use React Query
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('enrichment-complete', { detail: { type: 'success' } }));
+      }
     }
   }, [toast, queryClient]);
 
@@ -290,6 +295,11 @@ export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
       // Still invalidate queries in case partial data was saved
       queryClient.invalidateQueries({ queryKey: ['/api/contacts'] });
       queryClient.invalidateQueries({ queryKey: ['/api/properties'] });
+      
+      // Dispatch custom event for pages that don't use React Query
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('enrichment-complete', { detail: { type: 'failed' } }));
+      }
     }
   }, [toast, queryClient]);
 

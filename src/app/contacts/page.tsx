@@ -340,6 +340,18 @@ export default function ContactsPage() {
     };
   }, [fetchContacts]);
 
+  // Listen for enrichment completion events to refresh the list
+  useEffect(() => {
+    const handleEnrichmentComplete = () => {
+      fetchContacts(pagination.page);
+    };
+
+    window.addEventListener('enrichment-complete', handleEnrichmentComplete);
+    return () => {
+      window.removeEventListener('enrichment-complete', handleEnrichmentComplete);
+    };
+  }, [fetchContacts, pagination.page]);
+
   const handlePageChange = (newPage: number) => {
     if (newPage >= 1 && newPage <= pagination.totalPages) {
       fetchContacts(newPage);
