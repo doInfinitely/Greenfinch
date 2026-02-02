@@ -80,9 +80,59 @@ export async function POST(
       );
     }
 
-    // Always update providerId with the ID from the waterfall response
-    // Apollo returns different IDs for different API calls, and the webhook uses the waterfall ID
-    if (result.apolloId) {
+    // CRITICAL: Validate that Apollo returned the correct person before saving providerId
+    // Apollo may return a different person at the same domain, causing data corruption
+    // We require BOTH first AND last name to match (strict validation)
+    const returnedName = result.returnedName?.toLowerCase().trim() || '';
+    const requestedFirstName = firstName.toLowerCase().trim();
+    const requestedLastName = lastName.toLowerCase().trim();
+    
+    // Split returned name into words for word-boundary matching
+    const returnedWords = returnedName.split(/\s+/);
+    
+    // Strict match: require BOTH first and last name to appear as whole words
+    const firstNameMatches = returnedWords.some(word => word === requestedFirstName);
+    const lastNameMatches = requestedLastName ? returnedWords.some(word => word === requestedLastName) : false;
+    const strictNameMatch = firstNameMatches && lastNameMatches;
+    
+    // Strong identifiers: apolloId or linkedinUrl that we sent TO Apollo (not what Apollo returns)
+    const hadStrongIdentifier = !!(contact.providerId || contact.linkedinUrl);
+    
+    // VALIDATION RULES:
+    // 1. If Apollo returned a name, it MUST match (strict) regardless of whether we had strong identifier
+    // 2. If Apollo did NOT return a name, only trust it if we had a strong identifier
+    // 3. Never blindly trust "no name returned" without a strong identifier
+    let shouldSaveApolloData = false;
+    let validationReason = '';
+    
+    if (result.returnedName) {
+      // Apollo returned a name - must match strictly
+      if (strictNameMatch) {
+        shouldSaveApolloData = true;
+        validationReason = 'strict name match passed';
+      } else {
+        shouldSaveApolloData = false;
+        validationReason = `name mismatch: requested "${firstName} ${lastName}", Apollo returned "${result.returnedName}"`;
+        console.warn(`[WaterfallPhone] ${validationReason}`);
+        console.warn(`[WaterfallPhone] NOT saving Apollo's providerId to prevent data corruption`);
+      }
+    } else {
+      // Apollo did NOT return a name - only trust if we had strong identifier
+      if (hadStrongIdentifier) {
+        shouldSaveApolloData = true;
+        validationReason = 'no name returned but had strong identifier (providerId/linkedinUrl)';
+      } else {
+        shouldSaveApolloData = false;
+        validationReason = 'no name returned and no strong identifier - cannot validate match';
+        console.warn(`[WaterfallPhone] ${validationReason}`);
+      }
+    }
+    
+    console.log(`[WaterfallPhone] Validation: ${validationReason}, shouldSave=${shouldSaveApolloData}`);
+    
+    // Only update the contact record if validation passed
+    // Do NOT update enrichmentSource/updatedAt if validation failed - this would mask the failure
+    if (shouldSaveApolloData && result.apolloId) {
       await db.update(contacts)
         .set({ 
           providerId: result.apolloId,
@@ -90,6 +140,10 @@ export async function POST(
           updatedAt: new Date(),
         })
         .where(eq(contacts.id, id));
+      
+      console.log(`[WaterfallPhone] Contact updated successfully`);
+    } else if (!shouldSaveApolloData) {
+      console.warn(`[WaterfallPhone] Validation FAILED - contact NOT updated to prevent data corruption`);
     }
 
     console.log(`[WaterfallPhone] Request accepted for ${contact.fullName}, Apollo ID: ${result.apolloId}`);

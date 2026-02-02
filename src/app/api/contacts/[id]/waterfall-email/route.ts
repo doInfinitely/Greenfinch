@@ -79,34 +79,87 @@ export async function POST(
       );
     }
 
-    // Always update providerId with the ID from the waterfall response
-    // Apollo returns different IDs for different API calls, and the webhook uses the waterfall ID
-    // Also update linkedinUrl and photoUrl if returned by Apollo
-    const updateData: Record<string, any> = {
-      enrichmentSource: 'apollo',
-      updatedAt: new Date(),
-    };
+    // CRITICAL: Validate that Apollo returned the correct person before saving any data
+    // Apollo may return a different person at the same domain, causing data corruption
+    // We require BOTH first AND last name to match (strict validation)
+    const returnedName = result.returnedName?.toLowerCase().trim() || '';
+    const requestedFirstName = firstName.toLowerCase().trim();
+    const requestedLastName = lastName.toLowerCase().trim();
     
-    if (result.apolloId) {
-      updateData.providerId = result.apolloId;
+    // Split returned name into words for word-boundary matching
+    const returnedWords = returnedName.split(/\s+/);
+    
+    // Strict match: require BOTH first and last name to appear as whole words
+    const firstNameMatches = returnedWords.some(word => word === requestedFirstName);
+    const lastNameMatches = requestedLastName ? returnedWords.some(word => word === requestedLastName) : false;
+    const strictNameMatch = firstNameMatches && lastNameMatches;
+    
+    // Strong identifiers: apolloId or linkedinUrl that we sent TO Apollo (not what Apollo returns)
+    const hadStrongIdentifier = !!(contact.providerId || contact.linkedinUrl);
+    
+    // VALIDATION RULES:
+    // 1. If Apollo returned a name, it MUST match (strict) regardless of whether we had strong identifier
+    // 2. If Apollo did NOT return a name, only trust it if we had a strong identifier
+    // 3. Never blindly trust "no name returned" without a strong identifier
+    let shouldSaveApolloData = false;
+    let validationReason = '';
+    
+    if (result.returnedName) {
+      // Apollo returned a name - must match strictly
+      if (strictNameMatch) {
+        shouldSaveApolloData = true;
+        validationReason = 'strict name match passed';
+      } else {
+        shouldSaveApolloData = false;
+        validationReason = `name mismatch: requested "${firstName} ${lastName}", Apollo returned "${result.returnedName}"`;
+        console.warn(`[WaterfallEmail] ${validationReason}`);
+        console.warn(`[WaterfallEmail] NOT saving Apollo's providerId/linkedinUrl/photoUrl to prevent data corruption`);
+      }
+    } else {
+      // Apollo did NOT return a name - only trust if we had strong identifier
+      if (hadStrongIdentifier) {
+        shouldSaveApolloData = true;
+        validationReason = 'no name returned but had strong identifier (providerId/linkedinUrl)';
+      } else {
+        shouldSaveApolloData = false;
+        validationReason = 'no name returned and no strong identifier - cannot validate match';
+        console.warn(`[WaterfallEmail] ${validationReason}`);
+      }
     }
     
-    // Update LinkedIn URL if contact doesn't have one and Apollo provided it
-    if (result.linkedinUrl && !contact.linkedinUrl) {
-      updateData.linkedinUrl = result.linkedinUrl;
-      console.log(`[WaterfallEmail] Setting LinkedIn URL from Apollo: ${result.linkedinUrl}`);
-    }
+    console.log(`[WaterfallEmail] Validation: ${validationReason}, shouldSave=${shouldSaveApolloData}`);
     
-    // Update photo URL if contact doesn't have one and Apollo provided it
-    if (result.photoUrl && !contact.photoUrl) {
-      updateData.photoUrl = result.photoUrl;
-      console.log(`[WaterfallEmail] Setting photo URL from Apollo`);
-    }
-    
-    if (Object.keys(updateData).length > 0) {
+    // Only update the contact record if validation passed
+    // Do NOT update enrichmentSource/updatedAt if validation failed - this would mask the failure
+    if (shouldSaveApolloData) {
+      const updateData: Record<string, any> = {
+        enrichmentSource: 'apollo',
+        updatedAt: new Date(),
+      };
+      
+      if (result.apolloId) {
+        updateData.providerId = result.apolloId;
+      }
+      
+      // Update LinkedIn URL if contact doesn't have one and Apollo provided it
+      if (result.linkedinUrl && !contact.linkedinUrl) {
+        updateData.linkedinUrl = result.linkedinUrl;
+        console.log(`[WaterfallEmail] Setting LinkedIn URL from Apollo: ${result.linkedinUrl}`);
+      }
+      
+      // Update photo URL if contact doesn't have one and Apollo provided it
+      if (result.photoUrl && !contact.photoUrl) {
+        updateData.photoUrl = result.photoUrl;
+        console.log(`[WaterfallEmail] Setting photo URL from Apollo`);
+      }
+      
       await db.update(contacts)
         .set(updateData)
         .where(eq(contacts.id, id));
+        
+      console.log(`[WaterfallEmail] Contact updated successfully`);
+    } else {
+      console.warn(`[WaterfallEmail] Validation FAILED - contact NOT updated to prevent data corruption`);
     }
 
     console.log(`[WaterfallEmail] Request accepted for ${contact.fullName}, Apollo ID: ${result.apolloId}`);

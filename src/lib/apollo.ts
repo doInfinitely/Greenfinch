@@ -325,6 +325,7 @@ export interface WaterfallEnrichResult {
   apolloId?: string;
   linkedinUrl?: string;
   photoUrl?: string;
+  returnedName?: string;  // Name returned by Apollo - used for validation to prevent data corruption
   error?: string;
 }
 
@@ -410,12 +411,24 @@ export async function triggerWaterfallPhone(params: {
     
     console.log('[Apollo] Waterfall phone status:', waterfallStatus, data.waterfall?.message);
 
+    // Extract the returned person's name for validation
+    // This is CRITICAL to prevent data corruption when Apollo returns a different person
+    const returnedName = data.person?.name || 
+      (data.person?.first_name && data.person?.last_name 
+        ? `${data.person.first_name} ${data.person.last_name}` 
+        : undefined);
+
+    if (returnedName) {
+      console.log('[Apollo] Waterfall phone returned name:', returnedName);
+    }
+
     return {
       success: waterfallStatus === 'accepted',
       requestId: data.request_id?.toString(),
       waterfallStatus,
       waterfallMessage: data.waterfall?.message,
       apolloId: data.person?.id,
+      returnedName: returnedName || undefined,
     };
   } catch (error: any) {
     console.error('[Apollo] Waterfall phone request failed:', error.message);
@@ -504,15 +517,26 @@ export async function triggerWaterfallEmail(params: {
     
     console.log('[Apollo] Waterfall email status:', waterfallStatus, data.waterfall?.message);
 
-    // Extract linkedinUrl and photoUrl from person data (if available)
+    // Extract linkedinUrl, photoUrl, and name from person data (if available)
     let linkedinUrl = data.person?.linkedin_url;
     if (linkedinUrl && !linkedinUrl.startsWith('http')) {
       linkedinUrl = `https://${linkedinUrl}`;
     }
     const photoUrl = data.person?.photo_url;
+    
+    // Extract the returned person's name for validation
+    // This is CRITICAL to prevent data corruption when Apollo returns a different person
+    const returnedName = data.person?.name || 
+      (data.person?.first_name && data.person?.last_name 
+        ? `${data.person.first_name} ${data.person.last_name}` 
+        : undefined);
 
-    if (linkedinUrl || photoUrl) {
-      console.log('[Apollo] Waterfall email enrichment data:', { linkedinUrl: linkedinUrl ? 'present' : 'none', photoUrl: photoUrl ? 'present' : 'none' });
+    if (linkedinUrl || photoUrl || returnedName) {
+      console.log('[Apollo] Waterfall email enrichment data:', { 
+        returnedName: returnedName || 'none',
+        linkedinUrl: linkedinUrl ? 'present' : 'none', 
+        photoUrl: photoUrl ? 'present' : 'none' 
+      });
     }
 
     return {
@@ -523,6 +547,7 @@ export async function triggerWaterfallEmail(params: {
       apolloId: data.person?.id,
       linkedinUrl: linkedinUrl || undefined,
       photoUrl: photoUrl || undefined,
+      returnedName: returnedName || undefined,
     };
   } catch (error: any) {
     console.error('[Apollo] Waterfall email request failed:', error.message);
