@@ -93,10 +93,10 @@ export default function TeamManagement() {
   const [activeTab, setActiveTab] = useState<'members' | 'invitations'>('members');
 
   useEffect(() => {
-    if (isAdmin) {
+    if (isAdmin && organization?.id) {
       fetchTeamData();
     }
-  }, [isAdmin]);
+  }, [isAdmin, organization?.id]);
 
   async function fetchTeamData() {
     setLoading(true);
