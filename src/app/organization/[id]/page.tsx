@@ -20,6 +20,18 @@ import {
 import { Button } from '@/components/ui/button';
 import { ROLE_LABELS, ROLE_COLORS, formatRoleLabel } from '@/lib/constants';
 
+// Helper to title-case ALL CAPS names for better display
+function formatPropertyName(name: string | null): string | null {
+  if (!name) return null;
+  // If the name is mostly uppercase (>80%), convert to title case
+  const upperCount = (name.match(/[A-Z]/g) || []).length;
+  const letterCount = (name.match(/[a-zA-Z]/g) || []).length;
+  if (letterCount > 0 && upperCount / letterCount > 0.8) {
+    return name.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+  }
+  return name;
+}
+
 interface PropertyRelation {
   id: string;
   propertyKey: string | null;
@@ -508,7 +520,7 @@ export default function OrganizationDetailPage() {
                       <div className="flex-1 min-w-0">
                         {property.commonName && (
                           <p className="text-sm font-medium text-gray-900 truncate">
-                            {property.commonName}
+                            {formatPropertyName(property.commonName)}
                           </p>
                         )}
                         <p className="text-sm text-gray-600 truncate">

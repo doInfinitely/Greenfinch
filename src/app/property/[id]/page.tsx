@@ -1165,7 +1165,9 @@ export default function PropertyDetailPage() {
               {organizations.length > 0 ? (
                 <div className="space-y-3 mb-4">
                   {organizations.map((org) => {
-                    const displayRoles = org.roles?.length ? org.roles : (org.role ? [org.role] : []);
+                    // Handle both arrays and comma-separated strings, then deduplicate
+                    const rawRoles = org.roles?.length ? org.roles : (org.role ? [org.role] : []);
+                    const displayRoles = [...new Set(rawRoles.flatMap(r => r.split(',').map(s => s.trim())))];
                     const isOwner = displayRoles.includes('owner');
                     const isManager = displayRoles.includes('property_manager') || displayRoles.includes('facilities_manager');
                     const bgColor = isOwner ? 'bg-purple-50 border-purple-100' : isManager ? 'bg-blue-50 border-blue-100' : 'bg-gray-50 border-gray-200';
