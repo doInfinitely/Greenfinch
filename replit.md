@@ -68,6 +68,13 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
   - **Follow-up Actions**: Schedule follow-ups for properties with quick options (tomorrow 9am, next week 9am) or custom dates.
   - **Notification Bell**: Located in the global app header (next to enrichment queue). Shows unread count with real-time polling (60s). Accessible from any page.
   - **Notification Types**: `mention` (when mentioned in notes), `action_due` (reminder for due actions), `action_assigned` (when assigned a follow-up by another user).
+- **Add Contact to Property**: Allows users to add contacts and create contact-property relationships directly from property detail pages.
+  - **4-Step Wizard Modal**: Search existing contacts with autocomplete → associate with role selection, OR create new contacts via Apollo enrichment.
+  - **Apollo Enrichment**: Supports lookup by email or LinkedIn URL using Apollo People Match API. Prefills contact form with enriched data.
+  - **ZeroBounce Validation**: New contact emails are validated with ZeroBounce and status is stored with the contact.
+  - **Deduplication**: Server-side checks prevent duplicate contacts by normalized email or LinkedIn URL. Returns existing contact ID with suggestion to use associate endpoint.
+  - **Relationship Roles**: Contacts are linked to properties via propertyContacts junction table with role field (uses ROLE_LABELS constants).
+  - **Targeted Refresh**: Uses fetchProperty() instead of full page reload for better UX after adding contacts.
 
 ## External Dependencies
 - **Snowflake**: For Regrid parcel data access and ingestion.
