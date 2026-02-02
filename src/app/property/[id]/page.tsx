@@ -1180,18 +1180,18 @@ export default function PropertyDetailPage() {
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
-                            <div className="flex flex-wrap gap-1 mb-1">
-                              {displayRoles.map((role, idx) => (
-                                <span 
-                                  key={role}
-                                  className={`text-xs font-medium ${labelColor}`}
-                                >
-                                  {ROLE_LABELS[role] || role}{idx < displayRoles.length - 1 ? ' · ' : ''}
-                                </span>
-                              ))}
-                            </div>
                             <div className="flex items-center gap-2">
                               <p className="font-medium text-gray-900">{org.name || org.domain || 'Unknown Organization'}</p>
+                              <div className="flex flex-wrap gap-1">
+                                {displayRoles.map((role) => (
+                                  <span 
+                                    key={role}
+                                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[role] || ROLE_COLORS.other}`}
+                                  >
+                                    {ROLE_LABELS[role] || role}
+                                  </span>
+                                ))}
+                              </div>
                               {org.id && (
                                 <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
