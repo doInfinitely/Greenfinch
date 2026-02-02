@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { contacts, propertyContacts, contactOrganizations, properties, organizations } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
+import { auth } from '@clerk/nextjs/server';
 import { INTERNAL_ORG_SLUG } from '@/lib/permissions';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -165,6 +166,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const session = await getSession();
+    const authData = await auth();
 
     if (!session?.user) {
       return NextResponse.json(
@@ -174,7 +176,7 @@ export async function PATCH(
     }
 
     // Only allow admins of the internal org to edit contacts
-    const isAdmin = session.orgSlug === INTERNAL_ORG_SLUG && session.orgRole === 'org:admin';
+    const isAdmin = authData.orgSlug === INTERNAL_ORG_SLUG && authData.orgRole === 'org:admin';
     if (!isAdmin) {
       return NextResponse.json(
         { error: 'Admin access required' },
