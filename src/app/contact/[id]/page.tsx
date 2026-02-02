@@ -397,8 +397,45 @@ export default function ContactDetailPage() {
     });
   };
 
+  const validateEmail = (email: string): boolean => {
+    if (!email) return true; // Empty is ok (clears the field)
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
+  };
+
+  const validateLinkedIn = (url: string): boolean => {
+    if (!url) return true; // Empty is ok (clears the field)
+    const linkedinRegex = /^https?:\/\/(www\.)?linkedin\.com\/in\/[\w-]+\/?$/i;
+    return linkedinRegex.test(url);
+  };
+
+  const validatePhone = (phone: string): boolean => {
+    if (!phone) return true; // Empty is ok (clears the field)
+    // Basic phone validation - must have at least 10 digits
+    const digitsOnly = phone.replace(/\D/g, '');
+    return digitsOnly.length >= 10 && digitsOnly.length <= 15;
+  };
+
   const handleSaveEdit = async () => {
     if (!contact) return;
+    
+    // Validate email
+    if (editForm.email && !validateEmail(editForm.email)) {
+      alert('Please enter a valid email address');
+      return;
+    }
+    
+    // Validate LinkedIn URL
+    if (editForm.linkedinUrl && !validateLinkedIn(editForm.linkedinUrl)) {
+      alert('Please enter a valid LinkedIn URL (e.g., https://linkedin.com/in/username)');
+      return;
+    }
+    
+    // Validate phone
+    if (editForm.phone && !validatePhone(editForm.phone)) {
+      alert('Please enter a valid phone number (10-15 digits)');
+      return;
+    }
     
     setIsSaving(true);
     try {
@@ -409,14 +446,15 @@ export default function ContactDetailPage() {
       });
 
       if (response.ok) {
-        // Update local state with new values - use null for empty strings
+        const data = await response.json();
+        // Update local state with server-normalized values
         setContact(prev => prev ? {
           ...prev,
-          fullName: editForm.fullName || null,
-          title: editForm.title || null,
-          email: editForm.email || null,
-          phone: editForm.phone || null,
-          linkedinUrl: editForm.linkedinUrl || null,
+          fullName: data.contact?.fullName ?? (editForm.fullName || null),
+          title: data.contact?.title ?? (editForm.title || null),
+          email: data.contact?.email ?? (editForm.email || null),
+          phone: data.contact?.phone ?? (editForm.phone || null),
+          linkedinUrl: data.contact?.linkedinUrl ?? (editForm.linkedinUrl || null),
         } : null);
         setIsEditMode(false);
       } else {

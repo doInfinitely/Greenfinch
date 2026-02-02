@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
 import { auth } from '@clerk/nextjs/server';
 import { INTERNAL_ORG_SLUG } from '@/lib/permissions';
+import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -211,6 +212,21 @@ export async function PATCH(
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
+    // Server-side validation
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return NextResponse.json({ error: 'Invalid email format' }, { status: 400 });
+      }
+    }
+    
+    if (linkedinUrl) {
+      const linkedinRegex = /^https?:\/\/(www\.)?linkedin\.com\/in\/[\w-]+\/?$/i;
+      if (!linkedinRegex.test(linkedinUrl)) {
+        return NextResponse.json({ error: 'Invalid LinkedIn URL format' }, { status: 400 });
+      }
+    }
+
     // Build update object with only provided fields
     const updateData: Record<string, unknown> = {
       updatedAt: new Date(),
@@ -227,8 +243,25 @@ export async function PATCH(
       updateData.emailValidationStatus = email ? 'manual' : null;
     }
     if (phone !== undefined) {
-      updateData.phone = phone || null; // Treat empty string as null
-      updateData.phoneSource = phone ? 'manual' : null; // Use phoneSource, not phoneLabel
+      let formattedPhone: string | null = null;
+      if (phone) {
+        // Try to parse and format the phone number
+        const parsed = parsePhoneNumberFromString(phone, 'US');
+        if (parsed && parsed.isValid()) {
+          // Format as +1 (XXX) XXX-XXXX for US numbers
+          formattedPhone = parsed.formatNational();
+          if (parsed.country === 'US') {
+            formattedPhone = `+1 ${formattedPhone}`;
+          } else {
+            formattedPhone = parsed.formatInternational();
+          }
+        } else {
+          // Invalid phone number
+          return NextResponse.json({ error: 'Invalid phone number format' }, { status: 400 });
+        }
+      }
+      updateData.phone = formattedPhone;
+      updateData.phoneSource = formattedPhone ? 'manual' : null;
     }
     if (linkedinUrl !== undefined) {
       updateData.linkedinUrl = linkedinUrl || null; // Treat empty string as null
@@ -242,9 +275,21 @@ export async function PATCH(
 
     console.log(`[API] Contact ${id} updated by admin ${session.user.id}:`, Object.keys(updateData).filter(k => k !== 'updatedAt'));
 
+    // Fetch and return updated contact for client sync
+    const updatedContact = await db.query.contacts.findFirst({
+      where: eq(contacts.id, id),
+    });
+
     return NextResponse.json({
       success: true,
       message: 'Contact updated successfully',
+      contact: updatedContact ? {
+        fullName: updatedContact.fullName,
+        title: updatedContact.title,
+        email: updatedContact.email,
+        phone: updatedContact.phone,
+        linkedinUrl: updatedContact.linkedinUrl,
+      } : null,
     });
   } catch (error) {
     console.error('Contact update API error:', error);
