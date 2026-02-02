@@ -82,6 +82,10 @@ export default function DatabaseAdminPage() {
   const [tableToClear, setTableToClear] = useState<{ name: string; rowCount: number } | null>(null);
   const [isClearing, setIsClearing] = useState(false);
 
+  const [clearAllConfirmOpen, setClearAllConfirmOpen] = useState(false);
+  const [clearAllPreview, setClearAllPreview] = useState<{ tableCounts: { table: string; count: number }[]; totalRows: number } | null>(null);
+  const [isClearingAll, setIsClearingAll] = useState(false);
+
   const fetchTables = useCallback(async () => {
     setIsLoadingTables(true);
     try {
@@ -251,6 +255,69 @@ export default function DatabaseAdminPage() {
     }
   };
 
+  const handlePrepareClearAll = async () => {
+    try {
+      const response = await fetch('/api/admin/database', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action: 'clearAll', confirm: false }),
+      });
+
+      const data = await response.json();
+
+      if (data.requiresConfirmation) {
+        setClearAllPreview({ tableCounts: data.tableCounts, totalRows: data.totalRows });
+        setClearAllConfirmOpen(true);
+      } else if (!response.ok) {
+        throw new Error(data.error || 'Failed to prepare clear all');
+      }
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to prepare clear all',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleClearAllTables = async () => {
+    setIsClearingAll(true);
+    try {
+      const response = await fetch('/api/admin/database', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ action: 'clearAll', confirm: true }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Clear all failed');
+      }
+
+      toast({
+        title: 'All Tables Cleared',
+        description: `${data.totalDeleted} rows deleted across ${data.results.filter((r: { success: boolean }) => r.success).length} tables`,
+      });
+
+      fetchTables();
+      setSelectedTable(null);
+      setTablePreview(null);
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to clear all tables',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsClearingAll(false);
+      setClearAllConfirmOpen(false);
+      setClearAllPreview(null);
+    }
+  };
+
   const handleExport = async (tableName: string) => {
     try {
       const response = await fetch(`/api/admin/database/export?table=${encodeURIComponent(tableName)}`, {
@@ -324,15 +391,27 @@ export default function DatabaseAdminPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <CardTitle className="text-lg">Tables</CardTitle>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={fetchTables}
-                    disabled={isLoadingTables}
-                    data-testid="button-refresh-tables"
-                  >
-                    <RefreshCw className={`h-4 w-4 ${isLoadingTables ? 'animate-spin' : ''}`} />
-                  </Button>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={fetchTables}
+                      disabled={isLoadingTables}
+                      data-testid="button-refresh-tables"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoadingTables ? 'animate-spin' : ''}`} />
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handlePrepareClearAll}
+                      className="text-red-500 hover:text-red-700 hover:bg-red-50"
+                      title="Clear all tables (respects FK constraints)"
+                      data-testid="button-clear-all-tables"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="p-0 max-h-[600px] overflow-y-auto">
@@ -650,6 +729,50 @@ export default function DatabaseAdminPage() {
               data-testid="button-confirm-clear"
             >
               {isClearing ? 'Clearing...' : 'Clear Table'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={clearAllConfirmOpen} onOpenChange={setClearAllConfirmOpen}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              Clear All Tables
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                <p>
+                  This will permanently delete <strong>{clearAllPreview?.totalRows?.toLocaleString() || 0} rows</strong> across{' '}
+                  <strong>{clearAllPreview?.tableCounts?.length || 0} tables</strong> in the correct order to respect foreign key constraints.
+                </p>
+                {clearAllPreview?.tableCounts && clearAllPreview.tableCounts.length > 0 && (
+                  <div className="max-h-40 overflow-y-auto bg-gray-50 rounded-md p-2 text-sm">
+                    <p className="font-medium text-gray-700 mb-1">Tables to be cleared:</p>
+                    <ul className="space-y-0.5">
+                      {clearAllPreview.tableCounts.map(({ table, count }) => (
+                        <li key={table} className="flex justify-between text-gray-600">
+                          <span>{table}</span>
+                          <span className="text-gray-500">{count.toLocaleString()} rows</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <p className="text-red-600 font-medium">This action cannot be undone.</p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isClearingAll}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleClearAllTables}
+              disabled={isClearingAll}
+              className="bg-red-600 hover:bg-red-700"
+              data-testid="button-confirm-clear-all"
+            >
+              {isClearingAll ? 'Clearing...' : 'Clear All Tables'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

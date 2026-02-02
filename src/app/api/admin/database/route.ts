@@ -29,6 +29,27 @@ const SAFE_TABLES = [
   'admin_audit_log',
 ];
 
+const DELETION_ORDER = [
+  'notifications',
+  'property_actions',
+  'property_notes',
+  'property_activity',
+  'property_pipeline',
+  'list_items',
+  'lists',
+  'property_service_providers',
+  'contact_linkedin_flags',
+  'property_flags',
+  'property_contacts',
+  'property_organizations',
+  'contact_organizations',
+  'service_providers',
+  'contacts',
+  'organizations',
+  'properties',
+  'waitlist_signups',
+];
+
 async function logAuditAction(
   userId: string | null,
   userEmail: string | null,
@@ -323,6 +344,83 @@ export async function POST(request: NextRequest) {
         success: true,
         rowsDeleted: result.rowCount,
         message: `Cleared ${result.rowCount} rows from ${table}`,
+      });
+    }
+
+    if (action === 'clearAll') {
+      if (IS_PRODUCTION) {
+        await logAuditAction(currentUser?.id || null, currentUser?.email || null, 'clear_all_blocked', null, null, null, CURRENT_ENVIRONMENT, false, 'Clear all blocked in production', null, ipAddress);
+        return NextResponse.json({
+          error: 'Clear all operations are permanently blocked in production',
+        }, { status: 403 });
+      }
+
+      if (!confirm) {
+        const tableCounts: { table: string; count: number }[] = [];
+        let totalRows = 0;
+
+        for (const tableName of DELETION_ORDER) {
+          try {
+            const countResult = await pool.query(`SELECT COUNT(*) as count FROM "${tableName}"`);
+            const count = parseInt(countResult.rows[0].count);
+            if (count > 0) {
+              tableCounts.push({ table: tableName, count });
+              totalRows += count;
+            }
+          } catch {
+            // Table might not exist, skip
+          }
+        }
+
+        await logAuditAction(currentUser?.id || null, currentUser?.email || null, 'clear_all_unconfirmed', null, null, null, CURRENT_ENVIRONMENT, false, 'Confirmation required', { tableCounts }, ipAddress);
+        return NextResponse.json({
+          error: 'Confirmation required',
+          requiresConfirmation: true,
+          tableCounts,
+          totalRows,
+          deletionOrder: DELETION_ORDER,
+          message: `This will delete ${totalRows} rows across ${tableCounts.length} tables in the correct order to respect foreign key constraints. Set confirm: true to proceed.`,
+        }, { status: 400 });
+      }
+
+      const results: { table: string; rowsDeleted: number; success: boolean; error?: string }[] = [];
+      let totalDeleted = 0;
+
+      for (const tableName of DELETION_ORDER) {
+        try {
+          const deleteResult = await pool.query(`DELETE FROM "${tableName}"`);
+          const rowsDeleted = deleteResult.rowCount || 0;
+          results.push({ table: tableName, rowsDeleted, success: true });
+          totalDeleted += rowsDeleted;
+        } catch (err) {
+          results.push({ 
+            table: tableName, 
+            rowsDeleted: 0, 
+            success: false, 
+            error: err instanceof Error ? err.message : 'Unknown error' 
+          });
+        }
+      }
+
+      await logAuditAction(
+        currentUser?.id || null,
+        currentUser?.email || null,
+        'clear_all_tables',
+        null,
+        `Cleared ${DELETION_ORDER.length} tables in order`,
+        totalDeleted,
+        CURRENT_ENVIRONMENT,
+        true,
+        null,
+        { results },
+        ipAddress
+      );
+
+      return NextResponse.json({
+        success: true,
+        totalDeleted,
+        results,
+        message: `Cleared ${totalDeleted} rows across ${results.filter(r => r.success).length} tables`,
       });
     }
 
