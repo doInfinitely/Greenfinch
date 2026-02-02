@@ -1,6 +1,6 @@
 import { db } from './db';
 import { properties, parcelToProperty } from './schema';
-import { and, or, ilike, gte, lte, eq, sql, inArray, asc, desc } from 'drizzle-orm';
+import { and, or, ilike, gte, lte, eq, sql, inArray, asc, desc, isNull } from 'drizzle-orm';
 
 export interface PropertyResult {
   id: string;
@@ -284,9 +284,26 @@ export async function getFilteredPropertiesFromPostgres(
     conditions.push(inArray(properties.assetSubcategory, filters.subcategories));
   }
 
-  // Building class filter
+  // Building class filter - handle 'Unknown' as NULL values
   if (filters.buildingClasses && filters.buildingClasses.length > 0) {
-    conditions.push(inArray(properties.calculatedBuildingClass, filters.buildingClasses));
+    const hasUnknown = filters.buildingClasses.includes('Unknown');
+    const knownClasses = filters.buildingClasses.filter(c => c !== 'Unknown');
+    
+    if (hasUnknown && knownClasses.length > 0) {
+      // Both unknown (NULL) and specific classes selected
+      conditions.push(
+        or(
+          isNull(properties.calculatedBuildingClass),
+          inArray(properties.calculatedBuildingClass, knownClasses)
+        )!
+      );
+    } else if (hasUnknown) {
+      // Only unknown (NULL) selected
+      conditions.push(isNull(properties.calculatedBuildingClass));
+    } else {
+      // Only specific classes selected
+      conditions.push(inArray(properties.calculatedBuildingClass, knownClasses));
+    }
   }
 
   // HVAC filters

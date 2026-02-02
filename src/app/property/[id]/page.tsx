@@ -414,165 +414,166 @@ export default function PropertyDetailPage() {
     }
   }, [propertyId]);
 
-  useEffect(() => {
+  const fetchProperty = useCallback(async () => {
     if (!propertyId) return;
+    
+    setIsLoading(true);
+    setError(null);
 
-    const fetchProperty = async () => {
-      setIsLoading(true);
-      setError(null);
+    try {
+      const response = await fetch(`/api/properties/${propertyId}`);
+      const data = await response.json();
 
-      try {
-        const response = await fetch(`/api/properties/${propertyId}`);
-        const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to fetch property');
+      }
 
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to fetch property');
+      // Handle Postgres response structure (with enrichment data)
+      if (data.source === 'postgres') {
+        const prop = data.property;
+        const rawParcels = Array.isArray(prop.rawParcelsJson) ? prop.rawParcelsJson : [];
+        
+        // Collect owners from raw parcels for display (deduplicated, uppercase normalized)
+        const ownersSet = new Set<string>();
+        const usedescSet = new Set<string>();
+        for (const parcel of rawParcels) {
+          if (parcel.owner) ownersSet.add(parcel.owner.toUpperCase());
+          if (parcel.owner2) ownersSet.add(parcel.owner2.toUpperCase());
+          if (parcel.usedesc) usedescSet.add(parcel.usedesc);
         }
-
-        // Handle Postgres response structure (with enrichment data)
-        if (data.source === 'postgres') {
-          const prop = data.property;
-          const rawParcels = Array.isArray(prop.rawParcelsJson) ? prop.rawParcelsJson : [];
-          
-          // Collect owners from raw parcels for display (deduplicated, uppercase normalized)
-          const ownersSet = new Set<string>();
-          const usedescSet = new Set<string>();
-          for (const parcel of rawParcels) {
-            if (parcel.owner) ownersSet.add(parcel.owner.toUpperCase());
-            if (parcel.owner2) ownersSet.add(parcel.owner2.toUpperCase());
-            if (parcel.usedesc) usedescSet.add(parcel.usedesc);
+        
+        // Also include property-level owners (normalized to uppercase for deduplication)
+        if (prop.regridOwner) ownersSet.add(prop.regridOwner.toUpperCase());
+        if (prop.regridOwner2) ownersSet.add(prop.regridOwner2.toUpperCase());
+        // Include DCAD owner fields
+        if (prop.dcadBizName) ownersSet.add(prop.dcadBizName.toUpperCase());
+        if (prop.dcadOwnerName1) ownersSet.add(prop.dcadOwnerName1.toUpperCase());
+        if (prop.dcadOwnerName2) ownersSet.add(prop.dcadOwnerName2.toUpperCase());
+        
+        // Determine account owner (primary owner at account level)
+        // Priority: dcadBizName > dcadOwnerName1 > regridOwner
+        const accountOwner = (prop.dcadBizName || prop.dcadOwnerName1 || prop.regridOwner || '').toUpperCase() || null;
+        
+        // Constituent owners are all other owners that differ from account owner
+        const allOwnersArray = Array.from(ownersSet);
+        const constituentOwners = allOwnersArray.filter(o => 
+          accountOwner && o.toUpperCase() !== accountOwner.toUpperCase()
+        );
+        
+        // Use pre-aggregated values from properties table (source of truth)
+        const lotAcres = prop.lotSqft ? prop.lotSqft / 43560 : 0;
+        
+        setPropertyDbId(prop.id);
+        setProperty({
+          propertyKey: prop.propertyKey,
+          address: prop.address || prop.validatedAddress || prop.regridAddress || '',
+          city: prop.city || '',
+          state: prop.state || 'TX',
+          zip: prop.zip || '',
+          county: prop.county || '',
+          lat: prop.lat || 0,
+          lon: prop.lon || 0,
+          lotAcres: lotAcres,
+          yearBuilt: prop.yearBuilt || null,
+          numFloors: prop.numFloors || null,
+          buildingSqft: prop.buildingSqft || null,
+          totalParval: 0,
+          totalImprovval: 0,
+          landval: 0,
+          accountOwner: accountOwner,
+          constituentOwners: constituentOwners,
+          allOwners: allOwnersArray,
+          primaryOwner: prop.regridOwner || null,
+          usedesc: Array.from(usedescSet),
+          usecode: [],
+          parcelCount: rawParcels.length || 1,
+          // Parcel relationship fields
+          isParentProperty: prop.isParentProperty || false,
+          parentPropertyKey: prop.parentPropertyKey || null,
+          constituentAccountNums: prop.constituentAccountNums || null,
+          constituentCount: prop.constituentCount || 0,
+          calculatedBuildingClass: prop.calculatedBuildingClass || null,
+        });
+        
+        // If this is a parent property, fetch constituent properties
+        if (prop.isParentProperty && prop.constituentAccountNums?.length > 0) {
+          const constituentRes = await fetch(`/api/properties?keys=${prop.constituentAccountNums.join(',')}`);
+          if (constituentRes.ok) {
+            const constituentData = await constituentRes.json();
+            setConstituentProperties(constituentData.properties || []);
           }
-          
-          // Also include property-level owners (normalized to uppercase for deduplication)
-          if (prop.regridOwner) ownersSet.add(prop.regridOwner.toUpperCase());
-          if (prop.regridOwner2) ownersSet.add(prop.regridOwner2.toUpperCase());
-          // Include DCAD owner fields
-          if (prop.dcadBizName) ownersSet.add(prop.dcadBizName.toUpperCase());
-          if (prop.dcadOwnerName1) ownersSet.add(prop.dcadOwnerName1.toUpperCase());
-          if (prop.dcadOwnerName2) ownersSet.add(prop.dcadOwnerName2.toUpperCase());
-          
-          // Determine account owner (primary owner at account level)
-          // Priority: dcadBizName > dcadOwnerName1 > regridOwner
-          const accountOwner = (prop.dcadBizName || prop.dcadOwnerName1 || prop.regridOwner || '').toUpperCase() || null;
-          
-          // Constituent owners are all other owners that differ from account owner
-          const allOwnersArray = Array.from(ownersSet);
-          const constituentOwners = allOwnersArray.filter(o => 
-            accountOwner && o.toUpperCase() !== accountOwner.toUpperCase()
-          );
-          
-          // Use pre-aggregated values from properties table (source of truth)
-          const lotAcres = prop.lotSqft ? prop.lotSqft / 43560 : 0;
-          
-          setPropertyDbId(prop.id);
-          setProperty({
-            propertyKey: prop.propertyKey,
-            address: prop.address || prop.validatedAddress || prop.regridAddress || '',
-            city: prop.city || '',
-            state: prop.state || 'TX',
-            zip: prop.zip || '',
-            county: prop.county || '',
-            lat: prop.lat || 0,
-            lon: prop.lon || 0,
-            lotAcres: lotAcres,
-            yearBuilt: prop.yearBuilt || null,
-            numFloors: prop.numFloors || null,
-            buildingSqft: prop.buildingSqft || null,
-            totalParval: 0,
-            totalImprovval: 0,
-            landval: 0,
-            accountOwner: accountOwner,
-            constituentOwners: constituentOwners,
-            allOwners: allOwnersArray,
-            primaryOwner: prop.regridOwner || null,
-            usedesc: Array.from(usedescSet),
-            usecode: [],
-            parcelCount: rawParcels.length || 1,
-            // Parcel relationship fields
-            isParentProperty: prop.isParentProperty || false,
-            parentPropertyKey: prop.parentPropertyKey || null,
-            constituentAccountNums: prop.constituentAccountNums || null,
-            constituentCount: prop.constituentCount || 0,
-            calculatedBuildingClass: prop.calculatedBuildingClass || null,
-          });
-          
-          // If this is a parent property, fetch constituent properties
-          if (prop.isParentProperty && prop.constituentAccountNums?.length > 0) {
-            const constituentRes = await fetch(`/api/properties?keys=${prop.constituentAccountNums.join(',')}`);
-            if (constituentRes.ok) {
-              const constituentData = await constituentRes.json();
-              setConstituentProperties(constituentData.properties || []);
-            }
-          }
-          
-          // If this is a constituent property, fetch parent info
-          if (prop.parentPropertyKey) {
-            const parentRes = await fetch(`/api/properties/${prop.parentPropertyKey}`);
-            if (parentRes.ok) {
-              const parentData = await parentRes.json();
-              setParentProperty({
-                propertyKey: prop.parentPropertyKey,
-                commonName: parentData.property?.commonName || normalizeCommonName(parentData.property?.dcadBizName) || null,
-              });
-            }
-          }
-
-          // Set enriched data if any enrichment fields are present
-          const hasEnrichedData = prop.assetCategory || prop.commonName || prop.beneficialOwner || prop.managementCompany;
-          if (hasEnrichedData) {
-            setEnrichedProperty({
-              assetCategory: prop.assetCategory,
-              assetSubcategory: prop.assetSubcategory,
-              categoryConfidence: prop.categoryConfidence,
-              commonName: prop.commonName,
-              commonNameConfidence: prop.commonNameConfidence,
-              beneficialOwner: prop.beneficialOwner,
-              beneficialOwnerConfidence: prop.beneficialOwnerConfidence,
-              beneficialOwnerType: prop.beneficialOwnerType,
-              managementType: prop.managementType,
-              managementCompany: prop.managementCompany,
-              managementCompanyDomain: prop.managementCompanyDomain,
-              managementConfidence: prop.managementConfidence,
-              propertyWebsite: prop.propertyWebsite,
-              propertyPhone: prop.propertyPhone,
-              propertyManagerWebsite: prop.propertyManagerWebsite,
-              aiRationale: prop.aiRationale,
-              enrichmentSources: prop.enrichmentSources,
-              lastEnrichedAt: prop.lastEnrichedAt,
+        }
+        
+        // If this is a constituent property, fetch parent info
+        if (prop.parentPropertyKey) {
+          const parentRes = await fetch(`/api/properties/${prop.parentPropertyKey}`);
+          if (parentRes.ok) {
+            const parentData = await parentRes.json();
+            setParentProperty({
+              propertyKey: prop.parentPropertyKey,
+              commonName: parentData.property?.commonName || normalizeCommonName(parentData.property?.dcadBizName) || null,
             });
           }
-          if (prop.enrichmentStatus === 'completed') {
-            setEnrichmentStatus('completed');
-          }
+        }
 
-          // Set contacts and organizations if available
-          if (data.contacts && data.contacts.length > 0) {
-            setContacts(data.contacts.map((c: any) => ({
-              ...c,
-              emailValidationStatus: c.emailValidationStatus || 'not_validated',
-            })));
-          }
-          if (data.organizations && data.organizations.length > 0) {
-            setOrganizations(data.organizations);
-          }
-        } else {
-          // Snowflake response (original format) - convert lotSqft to lotAcres
-          const snowflakeProp = data.property;
-          setProperty({
-            ...snowflakeProp,
-            lotAcres: snowflakeProp.lotSqft ? snowflakeProp.lotSqft / 43560 : 0,
+        // Set enriched data if any enrichment fields are present
+        const hasEnrichedData = prop.assetCategory || prop.commonName || prop.beneficialOwner || prop.managementCompany;
+        if (hasEnrichedData) {
+          setEnrichedProperty({
+            assetCategory: prop.assetCategory,
+            assetSubcategory: prop.assetSubcategory,
+            categoryConfidence: prop.categoryConfidence,
+            commonName: prop.commonName,
+            commonNameConfidence: prop.commonNameConfidence,
+            beneficialOwner: prop.beneficialOwner,
+            beneficialOwnerConfidence: prop.beneficialOwnerConfidence,
+            beneficialOwnerType: prop.beneficialOwnerType,
+            managementType: prop.managementType,
+            managementCompany: prop.managementCompany,
+            managementCompanyDomain: prop.managementCompanyDomain,
+            managementConfidence: prop.managementConfidence,
+            propertyWebsite: prop.propertyWebsite,
+            propertyPhone: prop.propertyPhone,
+            propertyManagerWebsite: prop.propertyManagerWebsite,
+            aiRationale: prop.aiRationale,
+            enrichmentSources: prop.enrichmentSources,
+            lastEnrichedAt: prop.lastEnrichedAt,
           });
         }
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'An error occurred');
-      } finally {
-        setIsLoading(false);
-      }
-    };
+        if (prop.enrichmentStatus === 'completed') {
+          setEnrichmentStatus('completed');
+        }
 
+        // Set contacts and organizations if available
+        if (data.contacts && data.contacts.length > 0) {
+          setContacts(data.contacts.map((c: any) => ({
+            ...c,
+            emailValidationStatus: c.emailValidationStatus || 'not_validated',
+          })));
+        }
+        if (data.organizations && data.organizations.length > 0) {
+          setOrganizations(data.organizations);
+        }
+      } else {
+        // Snowflake response (original format) - convert lotSqft to lotAcres
+        const snowflakeProp = data.property;
+        setProperty({
+          ...snowflakeProp,
+          lotAcres: snowflakeProp.lotSqft ? snowflakeProp.lotSqft / 43560 : 0,
+        });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An error occurred');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [propertyId]);
+
+  useEffect(() => {
+    if (!propertyId) return;
     fetchProperty();
     fetchServiceProviders();
-  }, [propertyId, fetchServiceProviders]);
+  }, [propertyId, fetchProperty, fetchServiceProviders]);
 
   // Fetch pipeline data for owner display in header
   useEffect(() => {
