@@ -11,6 +11,7 @@ greenfinch.ai is a commercial property prospecting tool that provides sales repr
 - Use zoning-only classification (rule-based, no AI) for commercial/multifamily detection
 - Use Mapbox POI enrichment for category/subcategory assignment
 - Design for nationwide expansion (MVP scope: ZIP 75225 in Dallas, TX)
+- Light mode only: Dark mode is disabled; the app always serves light mode design regardless of device preferences
 
 ## System Architecture
 
