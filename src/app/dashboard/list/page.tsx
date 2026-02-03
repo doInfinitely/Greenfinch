@@ -383,6 +383,18 @@ export default function ListPage() {
                           );
                         })()}
                       </td>
+                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
+                        {p.contactCount > 0 ? p.contactCount : '-'}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
+                        {p.organizations?.length > 0 ? p.organizations.length : '-'}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
+                        {formatLotSize(p.lotSqft)}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-500" onClick={() => handleRowClick(p.propertyKey)}>
+                        {p.city}, {p.state}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
