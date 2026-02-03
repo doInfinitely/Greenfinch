@@ -516,19 +516,32 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   );
 
   const assignDialog = showAssignDialog ? (
-    <Dialog open={showAssignDialog} onOpenChange={(open) => {
-      if (!open) {
-        setSelectedOwnerId('');
-      }
-      setShowAssignDialog(open);
-    }}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Assign Owner</DialogTitle>
-          <DialogDescription>
+    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
+      <div 
+        className="fixed inset-0 bg-black/50" 
+        onClick={() => {
+          setShowAssignDialog(false);
+          setSelectedOwnerId('');
+        }}
+      />
+      <div className="relative z-50 w-full max-w-lg bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 mx-4">
+        <button
+          type="button"
+          className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100"
+          onClick={() => {
+            setShowAssignDialog(false);
+            setSelectedOwnerId('');
+          }}
+        >
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </button>
+        <div className="flex flex-col space-y-1.5 text-left">
+          <h2 className="text-lg font-semibold leading-none tracking-tight">Assign Owner</h2>
+          <p className="text-sm text-muted-foreground">
             Select a team member to be responsible for this opportunity.
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+        </div>
         <div className="py-4">
           <Label htmlFor="owner">Owner</Label>
           <select
@@ -548,7 +561,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
             ))}
           </select>
         </div>
-        <DialogFooter>
+        <div className="flex flex-col-reverse sm:flex-row sm:justify-end sm:space-x-2">
           <Button
             variant="outline"
             onClick={() => {
@@ -566,9 +579,9 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
           >
             {updating ? 'Assigning...' : 'Assign'}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </div>
+      </div>
+    </div>
   ) : null;
 
   // Editable deal value button for inline mode
