@@ -36,6 +36,7 @@ export class DashboardMap {
   private initError: string | null = null;
   private handlersRegistered = false; // Track if handlers were registered
   private resizeObserver: ResizeObserver | null = null; // Track container size changes
+  private searchMarker: mapboxgl.Marker | null = null; // Search location marker
 
   constructor(config: DashboardMapConfig) {
     this.config = config;
@@ -543,11 +544,16 @@ export class DashboardMap {
     }
   }
 
-  flyTo(lat: number, lon: number, zoom: number = 16) {
+  flyTo(lat: number, lon: number, zoom: number = 16, showMarker: boolean = true) {
     if (!this.map) return;
     
     // Prevent style switching during animation
     this.isAnimating = true;
+    
+    // Show search marker at the location
+    if (showMarker) {
+      this.setSearchMarker(lat, lon);
+    }
     
     this.map.flyTo({
       center: [lon, lat],
@@ -561,6 +567,35 @@ export class DashboardMap {
     });
   }
 
+  setSearchMarker(lat: number, lon: number) {
+    if (!this.map) return;
+    
+    // Remove existing marker if any
+    this.clearSearchMarker();
+    
+    // Create marker element with a distinctive search pin style
+    const el = document.createElement('div');
+    el.className = 'search-marker';
+    el.innerHTML = `
+      <svg width="32" height="40" viewBox="0 0 32 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M16 0C7.164 0 0 7.164 0 16c0 12 16 24 16 24s16-12 16-24c0-8.836-7.164-16-16-16z" fill="#ef4444"/>
+        <circle cx="16" cy="16" r="6" fill="white"/>
+      </svg>
+    `;
+    el.style.cursor = 'pointer';
+    
+    this.searchMarker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([lon, lat])
+      .addTo(this.map);
+  }
+
+  clearSearchMarker() {
+    if (this.searchMarker) {
+      this.searchMarker.remove();
+      this.searchMarker = null;
+    }
+  }
+
   destroy() {
     this.isDestroyed = true;
     if (this.resizeObserver) {
@@ -571,6 +606,7 @@ export class DashboardMap {
       this.hoverPopup.remove();
       this.hoverPopup = null;
     }
+    this.clearSearchMarker();
     if (this.map) {
       this.map.remove();
       this.map = null;

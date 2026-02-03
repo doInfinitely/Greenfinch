@@ -16,7 +16,8 @@ interface MapCanvasProps {
 }
 
 export interface MapCanvasHandle {
-  flyTo: (lat: number, lon: number, zoom?: number) => void;
+  flyTo: (lat: number, lon: number, zoom?: number, showMarker?: boolean) => void;
+  clearSearchMarker: () => void;
 }
 
 const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
@@ -41,8 +42,11 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
   callbacksRef.current = { onBoundsChange, onPropertyClick };
 
   useImperativeHandle(ref, () => ({
-    flyTo: (lat: number, lon: number, zoom: number = 16) => {
-      mapRef.current?.flyTo(lat, lon, zoom);
+    flyTo: (lat: number, lon: number, zoom: number = 16, showMarker: boolean = true) => {
+      mapRef.current?.flyTo(lat, lon, zoom, showMarker);
+    },
+    clearSearchMarker: () => {
+      mapRef.current?.clearSearchMarker();
     },
   }));
 
