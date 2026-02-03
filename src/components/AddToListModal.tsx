@@ -76,6 +76,12 @@ export default function AddToListModal({
         return;
       }
 
+      if (response.status === 400) {
+        const errorData = await response.json();
+        setError(errorData.error || 'Cannot add this item to this list type');
+        return;
+      }
+
       if (!response.ok) {
         throw new Error('Failed to add item');
       }

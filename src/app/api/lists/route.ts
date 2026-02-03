@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { userLists, listItems } from '@/lib/schema';
-import { eq, sql } from 'drizzle-orm';
+import { eq, sql, and } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const session = await getSession();
     if (!session) {
@@ -12,6 +12,14 @@ export async function GET() {
     }
 
     const userId = session.user.id;
+    const searchParams = request.nextUrl.searchParams;
+    const typeFilter = searchParams.get('type');
+
+    // Build where conditions
+    const conditions = [eq(userLists.userId, userId)];
+    if (typeFilter && ['properties', 'contacts'].includes(typeFilter)) {
+      conditions.push(eq(userLists.listType, typeFilter));
+    }
 
     const listsWithCount = await db
       .select({
@@ -23,7 +31,7 @@ export async function GET() {
       })
       .from(userLists)
       .leftJoin(listItems, eq(userLists.id, listItems.listId))
-      .where(eq(userLists.userId, userId))
+      .where(and(...conditions))
       .groupBy(userLists.id, userLists.listName, userLists.listType, userLists.createdAt)
       .orderBy(userLists.createdAt);
 

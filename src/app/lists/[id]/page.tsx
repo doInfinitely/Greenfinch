@@ -123,14 +123,27 @@ export default function ListDetailPage() {
   // Derived state from queries
   const list = listData?.list as ListDetail | undefined;
   const items = useMemo(() => (itemsData?.items || []) as ListItem[], [itemsData]);
-  const propertyDetails = useMemo(() => 
-    (list?.listType === 'properties' ? (itemsData?.details || {}) : {}) as Record<string, PropertyInfo>,
-    [itemsData, list?.listType]
-  );
-  const contactDetails = useMemo(() => 
-    (list?.listType === 'contacts' ? (itemsData?.details || {}) : {}) as Record<string, ContactInfo>,
-    [itemsData, list?.listType]
-  );
+  // All details are now in a single object with _type field to distinguish
+  const allDetails = useMemo(() => (itemsData?.details || {}) as Record<string, PropertyInfo | ContactInfo & { _type?: string; _mismatch?: boolean }>, [itemsData]);
+  // For backwards compatibility, also provide separated details
+  const propertyDetails = useMemo(() => {
+    const props: Record<string, PropertyInfo> = {};
+    for (const [id, detail] of Object.entries(allDetails)) {
+      if ((detail as { _type?: string })._type === 'property' || list?.listType === 'properties') {
+        props[id] = detail as PropertyInfo;
+      }
+    }
+    return props;
+  }, [allDetails, list?.listType]);
+  const contactDetails = useMemo(() => {
+    const conts: Record<string, ContactInfo> = {};
+    for (const [id, detail] of Object.entries(allDetails)) {
+      if ((detail as { _type?: string })._type === 'contact' || list?.listType === 'contacts') {
+        conts[id] = detail as ContactInfo;
+      }
+    }
+    return conts;
+  }, [allDetails, list?.listType]);
 
   const isLoading = isListLoading || (!!listData && isItemsLoading);
   const error = listError?.message || null;
@@ -840,11 +853,16 @@ export default function ListDetailPage() {
                   const propDetail = propertyDetails[item.itemId];
                   const contactDetail = contactDetails[item.itemId];
                   const isSelected = selectedItems.has(item.itemId);
+                  
+                  // Determine the actual type of this item (for mixed lists / legacy data)
+                  const itemDetail = allDetails[item.itemId] as { _type?: string; _mismatch?: boolean } | undefined;
+                  const actualItemType = itemDetail?._type || (propDetail ? 'property' : contactDetail ? 'contact' : null);
+                  const isMismatchedType = itemDetail?._mismatch || false;
 
                   return (
                     <tr
                       key={item.id}
-                      className={`hover:bg-gray-50 ${isSelected ? 'bg-green-50' : ''}`}
+                      className={`hover:bg-gray-50 ${isSelected ? 'bg-green-50' : ''} ${isMismatchedType ? 'bg-amber-50/50' : ''}`}
                       data-testid={`row-list-item-${item.itemId}`}
                     >
                       <td className="px-4 py-3">
@@ -854,7 +872,47 @@ export default function ListDetailPage() {
                           data-testid={`checkbox-item-${item.itemId}`}
                         />
                       </td>
-                      {list.listType === 'properties' ? (
+                      {/* Render based on actual item type, not just list type - handles mixed lists */}
+                      {actualItemType === 'contact' && list.listType === 'properties' ? (
+                        // Mismatched contact in properties list - show simplified contact info
+                        <>
+                          <td className="px-4 py-3" colSpan={4}>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Contact</span>
+                              <Link
+                                href={`/contact/${item.itemId}`}
+                                className="group flex items-center gap-2"
+                              >
+                                <span className="text-gray-900 font-medium group-hover:text-green-600 truncate">
+                                  {contactDetail?.fullName || 'Unknown Contact'}
+                                </span>
+                                {contactDetail?.email && (
+                                  <span className="text-gray-500 text-sm">({contactDetail.email})</span>
+                                )}
+                                <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </Link>
+                            </div>
+                          </td>
+                        </>
+                      ) : actualItemType === 'property' && list.listType === 'contacts' ? (
+                        // Mismatched property in contacts list - show simplified property info
+                        <>
+                          <td className="px-4 py-3" colSpan={5}>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs px-2 py-0.5 rounded bg-amber-100 text-amber-700">Property</span>
+                              <Link
+                                href={`/property/${item.itemId}`}
+                                className="group flex items-center gap-2"
+                              >
+                                <span className="text-gray-900 font-medium group-hover:text-green-600 truncate">
+                                  {propDetail?.commonName || propDetail?.address || propDetail?.validatedAddress || 'Unknown Property'}
+                                </span>
+                                <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              </Link>
+                            </div>
+                          </td>
+                        </>
+                      ) : list.listType === 'properties' ? (
                         <>
                           <td className="px-4 py-3">
                             {propDetail ? (

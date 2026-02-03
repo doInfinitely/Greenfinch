@@ -58,6 +58,8 @@ export async function GET(
       return NextResponse.json({ items, details });
     }
 
+    // Try to fetch from the expected table based on list type
+    // Also check the other table for any mismatched items (legacy data)
     if (list.listType === 'properties') {
       // Batch fetch all properties
       const propertyRecords = await db
@@ -80,7 +82,29 @@ export async function GET(
         details[prop.id] = {
           ...prop,
           address: prop.validatedAddress || prop.regridAddress,
+          _type: 'property',
         };
+      }
+      
+      // Check for any mismatched contacts in this properties list (legacy data fix)
+      const missingIds = itemIds.filter(id => !details[id]);
+      if (missingIds.length > 0) {
+        const contactRecords = await db
+          .select({
+            id: contacts.id,
+            fullName: contacts.fullName,
+            email: contacts.email,
+          })
+          .from(contacts)
+          .where(inArray(contacts.id, missingIds));
+        
+        for (const contact of contactRecords) {
+          details[contact.id] = {
+            ...contact,
+            _type: 'contact',
+            _mismatch: true, // Flag as mismatched type
+          };
+        }
       }
     } else if (list.listType === 'contacts') {
       // Batch fetch all contacts
@@ -105,7 +129,34 @@ export async function GET(
         .where(inArray(contacts.id, itemIds));
 
       for (const contact of contactRecords) {
-        details[contact.id] = contact;
+        details[contact.id] = {
+          ...contact,
+          _type: 'contact',
+        };
+      }
+      
+      // Check for any mismatched properties in this contacts list (legacy data fix)
+      const missingIds = itemIds.filter(id => !details[id]);
+      if (missingIds.length > 0) {
+        const propertyRecords = await db
+          .select({
+            id: properties.id,
+            propertyKey: properties.propertyKey,
+            regridAddress: properties.regridAddress,
+            validatedAddress: properties.validatedAddress,
+            commonName: properties.commonName,
+          })
+          .from(properties)
+          .where(inArray(properties.id, missingIds));
+        
+        for (const prop of propertyRecords) {
+          details[prop.id] = {
+            ...prop,
+            address: prop.validatedAddress || prop.regridAddress,
+            _type: 'property',
+            _mismatch: true, // Flag as mismatched type
+          };
+        }
       }
     }
 
@@ -140,12 +191,35 @@ export async function POST(
     }
 
     const [existingList] = await db
-      .select({ id: userLists.id })
+      .select({ id: userLists.id, listType: userLists.listType })
       .from(userLists)
       .where(and(eq(userLists.id, listId), eq(userLists.userId, session.user.id)));
 
     if (!existingList) {
       return NextResponse.json({ error: 'List not found' }, { status: 404 });
+    }
+
+    // Validate that the item exists and matches the list type
+    if (existingList.listType === 'properties') {
+      const [propertyExists] = await db
+        .select({ id: properties.id })
+        .from(properties)
+        .where(eq(properties.id, itemId))
+        .limit(1);
+      
+      if (!propertyExists) {
+        return NextResponse.json({ error: 'Property not found. Cannot add contacts to a properties list.' }, { status: 400 });
+      }
+    } else if (existingList.listType === 'contacts') {
+      const [contactExists] = await db
+        .select({ id: contacts.id })
+        .from(contacts)
+        .where(eq(contacts.id, itemId))
+        .limit(1);
+      
+      if (!contactExists) {
+        return NextResponse.json({ error: 'Contact not found. Cannot add properties to a contacts list.' }, { status: 400 });
+      }
     }
 
     const [existingItem] = await db
