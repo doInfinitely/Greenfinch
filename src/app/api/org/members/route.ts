@@ -43,6 +43,29 @@ export async function GET(request: NextRequest) {
       .from(users)
       .where(inArray(users.clerkId, clerkUserIds));
 
+    // Sync profile images from Clerk to database (background, non-blocking)
+    const syncPromises = memberships.data.map(async (m) => {
+      const clerkUserId = m.publicUserData?.userId;
+      const clerkImageUrl = m.publicUserData?.imageUrl;
+      const dbUser = dbUsers.find(u => u.clerkId === clerkUserId);
+      
+      if (dbUser && clerkImageUrl && dbUser.profileImageUrl !== clerkImageUrl) {
+        try {
+          await db
+            .update(users)
+            .set({ profileImageUrl: clerkImageUrl, updatedAt: new Date() })
+            .where(eq(users.id, dbUser.id));
+        } catch (err) {
+          console.error(`[org/members] Failed to sync profile image for user ${dbUser.id}:`, err);
+        }
+      }
+    });
+    
+    // Run syncs in background without blocking response
+    Promise.all(syncPromises).catch(err => {
+      console.error('[org/members] Profile sync failed:', err);
+    });
+
     const members = memberships.data.map(m => {
       const clerkUserId = m.publicUserData?.userId;
       const dbUser = dbUsers.find(u => u.clerkId === clerkUserId);

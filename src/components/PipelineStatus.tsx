@@ -465,9 +465,9 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   ) : null;
 
   const ownerDisplay = pipeline?.owner ? (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <Avatar className="w-6 h-6">
-        <AvatarImage src={pipeline.owner.profileImageUrl || ''} />
+    <div className="flex items-center gap-2 text-sm text-muted-foreground" key={pipeline.owner.id}>
+      <Avatar className="w-6 h-6" key={`avatar-${pipeline.owner.id}`}>
+        <AvatarImage src={pipeline.owner.profileImageUrl || ''} key={`img-${pipeline.owner.id}-${pipeline.owner.profileImageUrl}`} />
         <AvatarFallback className="text-xs">
           {pipeline.owner.displayName?.charAt(0) || '?'}
         </AvatarFallback>
