@@ -85,3 +85,19 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **EnrichLayer**: For LinkedIn-sourced company and contact data (profile photos, company profiles, industry classification).
 - **Clerk Auth**: Handles user authentication and legacy user migration.
 - **Google Gemini**: Utilized for AI-based property enrichment, including contact discovery and beneficial owner identification.
+
+## Future Exploration
+
+### Refactor to use Clerk IDs everywhere
+Currently the system uses separate database user IDs (`dbUserId`) alongside Clerk user IDs for certain operations like pipeline owner assignments. Consider refactoring to use Clerk IDs consistently across all operations for simpler ID handling. This would require:
+- Migrating database `users.id` to use Clerk user IDs as primary key
+- Updating all foreign key references (pipeline.ownerId, notes.userId, actions.assignedTo, etc.)
+- Removing dual-ID handling in org/members API and related components
+
+### Admin CSV Enrichment Page (PDL Integration)
+Build an admin-only page that allows bulk person enrichment via CSV upload:
+- Upload CSV with columns: name, company domain, location (+ other optional columns)
+- Select enrichment provider (e.g., People Data Labs)
+- Parse CSV and call PDL Person Enrichment API for each row
+- Display enriched results in a table with export functionality
+- Will require PDL API key to be added as a secret
