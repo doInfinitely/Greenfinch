@@ -2,7 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Force light mode - ignore system dark mode preferences */
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: light;
+  }
+}
+
 :root {
+  color-scheme: light;
   --foreground-rgb: 0, 0, 0;
   --background-start-rgb: 255, 255, 255;
   --background-end-rgb: 255, 255, 255;
