@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { PIPELINE_STATUS_LABELS, type PipelineStatus } from '@/lib/schema';
-import { Loader2, Clock, Users, Check, X, Eye, EyeOff, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Loader2, Clock, Users, Check, X, Eye, EyeOff, ChevronRight, ChevronLeft, GripVertical } from 'lucide-react';
 import { PipelineBoardSkeleton } from '@/components/PageSkeleton';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -496,27 +496,32 @@ export default function PipelineBoard() {
                                 data-testid={`card-property-${item.propertyId}`}
                               >
                                 <div className="bg-card border border-border/50 rounded-md p-3 md:p-4 cursor-grab active:cursor-grabbing hover:border-border hover:shadow-sm transition-all touch-manipulation">
-                                  <div className="flex items-start justify-between gap-2">
+                                  <div className="flex items-start gap-2">
+                                    <GripVertical className="w-4 h-4 text-muted-foreground/50 flex-shrink-0 mt-0.5" />
                                     <div className="flex-1 min-w-0">
-                                      <h3 className="text-sm md:text-base font-medium text-foreground truncate leading-tight">
-                                        {displayName}
-                                      </h3>
-                                      
-                                      {item.dealValue && (
-                                        <p className="text-sm md:text-base font-semibold text-green-600 dark:text-green-500 mt-1">
-                                          {formatCurrency(item.dealValue)}
-                                        </p>
-                                      )}
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <h3 className="text-sm md:text-base font-medium text-foreground truncate leading-tight">
+                                            {displayName}
+                                          </h3>
+                                          
+                                          {item.dealValue && (
+                                            <p className="text-sm md:text-base font-semibold text-green-600 mt-1">
+                                              {formatCurrency(item.dealValue)}
+                                            </p>
+                                          )}
+                                        </div>
+                                        
+                                        {item.ownerId && (
+                                          <Avatar className="w-7 h-7 md:w-6 md:h-6 flex-shrink-0">
+                                            <AvatarImage src={item.ownerProfileImageUrl || undefined} />
+                                            <AvatarFallback className="text-[10px] bg-muted">
+                                              {getOwnerInitials(item.ownerFirstName, item.ownerLastName)}
+                                            </AvatarFallback>
+                                          </Avatar>
+                                        )}
+                                      </div>
                                     </div>
-                                    
-                                    {item.ownerId && (
-                                      <Avatar className="w-7 h-7 md:w-6 md:h-6 flex-shrink-0">
-                                        <AvatarImage src={item.ownerProfileImageUrl || undefined} />
-                                        <AvatarFallback className="text-[10px] bg-muted">
-                                          {getOwnerInitials(item.ownerFirstName, item.ownerLastName)}
-                                        </AvatarFallback>
-                                      </Avatar>
-                                    )}
                                   </div>
                                   
                                   <div className="flex items-center justify-between mt-3 gap-2">

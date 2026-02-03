@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
         senderLastName: users.lastName,
         senderProfileImage: users.profileImageUrl,
         propertyAddress: properties.regridAddress,
+        propertyCommonName: properties.commonName,
       })
       .from(notifications)
       .leftJoin(users, eq(users.id, notifications.senderUserId))
@@ -82,6 +83,7 @@ export async function GET(request: NextRequest) {
           profileImage: n.senderProfileImage,
         } : null,
         propertyAddress: n.propertyAddress,
+        propertyCommonName: n.propertyCommonName,
       })),
       unreadCount: Number(unreadCount[0]?.count || 0),
     });

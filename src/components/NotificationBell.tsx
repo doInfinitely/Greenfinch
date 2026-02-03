@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Bell, Check, MessageSquare, Calendar, User } from 'lucide-react';
+import { Bell, Check, MessageSquare, Calendar, User, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -10,8 +10,9 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { formatDistanceToNow } from 'date-fns';
+import { normalizeCommonName } from '@/lib/normalization';
 
 interface Notification {
   id: string;
@@ -30,6 +31,7 @@ interface Notification {
     profileImage: string | null;
   } | null;
   propertyAddress: string | null;
+  propertyCommonName: string | null;
 }
 
 export default function NotificationBell() {
@@ -37,6 +39,7 @@ export default function NotificationBell() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
+  const router = useRouter();
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -153,64 +156,73 @@ export default function NotificationBell() {
             </div>
           ) : (
             <div className="divide-y">
-              {notifications.map(notification => (
-                <div
-                  key={notification.id}
-                  className={`p-3 hover-elevate cursor-pointer ${!notification.isRead ? 'bg-blue-50 dark:bg-blue-950/20' : ''}`}
-                  onClick={() => {
-                    if (!notification.isRead) {
-                      markAsRead(notification.id);
-                    }
-                  }}
-                  data-testid={`notification-item-${notification.id}`}
-                >
-                  <div className="flex gap-3">
-                    <div className="flex-shrink-0 mt-0.5">
-                      {notification.sender ? (
-                        <Avatar className="w-8 h-8">
-                          <AvatarImage src={notification.sender.profileImage || ''} />
-                          <AvatarFallback className="text-xs bg-gray-100">
-                            {notification.sender.firstName?.charAt(0) || '?'}
-                          </AvatarFallback>
-                        </Avatar>
-                      ) : (
-                        <div className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800">
-                          {getNotificationIcon(notification.type)}
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium line-clamp-1">
-                        {notification.title}
-                      </p>
-                      {notification.message && (
-                        <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
-                          {notification.message}
+              {notifications.map(notification => {
+                const propertyDisplayName = notification.propertyCommonName 
+                  ? normalizeCommonName(notification.propertyCommonName)
+                  : notification.propertyAddress;
+                
+                return (
+                  <div
+                    key={notification.id}
+                    className={`p-3 hover-elevate cursor-pointer ${!notification.isRead ? 'bg-blue-50' : ''}`}
+                    onClick={() => {
+                      if (!notification.isRead) {
+                        markAsRead(notification.id);
+                      }
+                      if (notification.propertyId) {
+                        setIsOpen(false);
+                        router.push(`/property/${notification.propertyId}`);
+                      }
+                    }}
+                    data-testid={`notification-item-${notification.id}`}
+                  >
+                    <div className="flex gap-3">
+                      <div className="flex-shrink-0 mt-0.5">
+                        {notification.sender ? (
+                          <Avatar className="w-8 h-8">
+                            <AvatarImage src={notification.sender.profileImage || ''} />
+                            <AvatarFallback className="text-xs bg-gray-100">
+                              {notification.sender.firstName?.charAt(0) || '?'}
+                            </AvatarFallback>
+                          </Avatar>
+                        ) : (
+                          <div className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-100">
+                            {getNotificationIcon(notification.type)}
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium line-clamp-1">
+                          {notification.title}
                         </p>
-                      )}
-                      <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-muted-foreground">
-                          {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
-                        </span>
-                        {notification.propertyId && notification.propertyAddress && (
-                          <Link 
-                            href={`/property/${notification.propertyId}`}
-                            className="text-xs text-blue-600 hover:underline truncate max-w-[150px]"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            {notification.propertyAddress}
-                          </Link>
+                        {notification.message && (
+                          <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">
+                            {notification.message}
+                          </p>
+                        )}
+                        <div className="flex items-center gap-2 mt-1">
+                          <span className="text-xs text-muted-foreground">
+                            {formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}
+                          </span>
+                          {notification.propertyId && propertyDisplayName && (
+                            <span className="text-xs text-blue-600 truncate max-w-[150px]">
+                              {propertyDisplayName}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 flex-shrink-0">
+                        {!notification.isRead && (
+                          <div className="w-2 h-2 rounded-full bg-blue-500" />
+                        )}
+                        {notification.propertyId && (
+                          <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
                         )}
                       </div>
                     </div>
-                    {!notification.isRead && (
-                      <div className="flex-shrink-0">
-                        <div className="w-2 h-2 rounded-full bg-blue-500" />
-                      </div>
-                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
