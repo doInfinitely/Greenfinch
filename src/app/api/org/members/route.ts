@@ -48,9 +48,9 @@ export async function GET(request: NextRequest) {
       const dbUser = dbUsers.find(u => u.clerkId === clerkUserId);
       
       return {
-        id: clerkUserId || m.id,
+        id: clerkUserId || m.id, // Clerk user ID for team management (role updates, member removal)
         clerkUserId: clerkUserId,
-        dbUserId: dbUser?.id || null,
+        dbUserId: dbUser?.id || null, // Database user ID for pipeline assignments
         email: m.publicUserData?.identifier || dbUser?.email || '',
         firstName: m.publicUserData?.firstName || dbUser?.firstName || '',
         lastName: m.publicUserData?.lastName || dbUser?.lastName || '',
@@ -59,6 +59,7 @@ export async function GET(request: NextRequest) {
         displayName: [m.publicUserData?.firstName, m.publicUserData?.lastName].filter(Boolean).join(' ') || m.publicUserData?.identifier || 'Unknown',
         joinedAt: m.createdAt ? new Date(m.createdAt).toISOString() : new Date().toISOString(),
         membershipId: m.id,
+        canBeAssignedOwner: !!dbUser?.id, // Flag if this member can be assigned as pipeline owner
       };
     });
 

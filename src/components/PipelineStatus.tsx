@@ -83,9 +83,11 @@ interface Owner {
 
 interface OrgMember {
   id: string;
+  dbUserId: string | null;
   displayName: string;
   email: string;
   profileImageUrl: string;
+  canBeAssignedOwner?: boolean;
 }
 
 export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false, hideOwnerControls = false, hideOwnerDisplay = false, triggerAssignDialog = 0, isCustomer = false }: PipelineStatusProps) {
@@ -530,8 +532,10 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
             </SelectTrigger>
             <SelectContent className="bg-popover border shadow-lg">
               <SelectItem value="unassigned">Unassigned</SelectItem>
-              {orgMembers.map((member) => (
-                <SelectItem key={member.id} value={member.id}>
+              {orgMembers
+                .filter((member) => member.dbUserId)
+                .map((member) => (
+                <SelectItem key={member.dbUserId!} value={member.dbUserId!}>
                   <div className="flex items-center gap-2">
                     <Avatar className="w-5 h-5">
                       <AvatarImage src={member.profileImageUrl} />

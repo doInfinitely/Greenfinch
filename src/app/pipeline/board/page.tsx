@@ -16,6 +16,7 @@ import { normalizeCommonName } from '@/lib/normalization';
 
 interface OrgMember {
   id: string;
+  dbUserId: string | null;
   displayName: string;
   email: string;
   profileImageUrl: string;
@@ -387,8 +388,10 @@ export default function PipelineBoard() {
                     <SelectItem value="mine">My Pipeline</SelectItem>
                     <SelectItem value="all">All Members</SelectItem>
                     <SelectItem value="unassigned">Unassigned</SelectItem>
-                    {orgMembers.map((member) => (
-                      <SelectItem key={member.id} value={member.id}>
+                    {orgMembers
+                      .filter((member) => member.dbUserId)
+                      .map((member) => (
+                      <SelectItem key={member.dbUserId!} value={member.dbUserId!}>
                         <div className="flex items-center gap-2">
                           <Avatar className="w-4 h-4">
                             <AvatarImage src={member.profileImageUrl} />

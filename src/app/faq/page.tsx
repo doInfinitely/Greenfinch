@@ -28,7 +28,7 @@ const faqs = [
   {
     question: 'Can I export data to my CRM?',
     answer:
-      'Yes! Greenfinch integrates with popular CRMs including Salesforce, HubSpot, and Pipedrive. You can export leads directly or set up automated syncing. Pro and Enterprise plans include full CRM integration capabilities.',
+      'CRM integration is coming soon! We are working on integrations with popular CRMs including Salesforce, HubSpot, and Airtable. Early access members will be notified when these features become available.',
   },
   {
     question: "What's the difference between a Property Owner and Property Manager?",
