@@ -1092,13 +1092,23 @@ export default function ContactDetailPage() {
                       className="block p-4 border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors"
                     >
                       <div className="flex items-start justify-between">
-                        <div>
-                          <p className="font-medium text-gray-900">
+                        <div className="flex-1 min-w-0">
+                          {prop.commonName && (
+                            <p className="font-medium text-gray-900 truncate">
+                              {(() => {
+                                const name = prop.commonName;
+                                const upperCount = (name.match(/[A-Z]/g) || []).length;
+                                const letterCount = (name.match(/[a-zA-Z]/g) || []).length;
+                                if (letterCount > 0 && upperCount / letterCount > 0.8) {
+                                  return name.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+                                }
+                                return name;
+                              })()}
+                            </p>
+                          )}
+                          <p className={prop.commonName ? "text-sm text-gray-600 truncate" : "font-medium text-gray-900 truncate"}>
                             {prop.address || 'Unknown Address'}
                           </p>
-                          {prop.commonName && (
-                            <p className="text-sm text-gray-600">{prop.commonName}</p>
-                          )}
                           <p className="text-sm text-gray-500">
                             {[prop.city, prop.state, prop.zip].filter(Boolean).join(', ')}
                           </p>
