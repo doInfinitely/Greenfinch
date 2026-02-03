@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
-import { ListPlus, Filter, Mail, Phone, Loader2 } from 'lucide-react';
+import { ListPlus, Filter, Mail, Phone, Loader2, Plus } from 'lucide-react';
 import { ContactCardSkeleton } from '@/components/PageSkeleton';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, LinkedInLink, hasAnyPhone, hasOnlyOfficeLine, hasHighQualityPhone } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
@@ -108,6 +108,9 @@ interface AddToListState {
   isAdding: boolean;
   lists: UserList[];
   selectedListId: string | null;
+  showCreateForm: boolean;
+  newListName: string;
+  isCreating: boolean;
 }
 
 export default function ContactsPage() {
@@ -160,6 +163,9 @@ export default function ContactsPage() {
     isAdding: false,
     lists: [],
     selectedListId: null,
+    showCreateForm: false,
+    newListName: '',
+    isCreating: false,
   });
 
   const activeFilterCount = 
@@ -641,6 +647,9 @@ export default function ContactsPage() {
       isAdding: false,
       lists: [],
       selectedListId: null,
+      showCreateForm: false,
+      newListName: '',
+      isCreating: false,
     });
     
     setSelectedContacts(new Set());
@@ -653,8 +662,85 @@ export default function ContactsPage() {
       isAdding: false,
       lists: [],
       selectedListId: null,
+      showCreateForm: false,
+      newListName: '',
+      isCreating: false,
     });
   }, []);
+
+  const handleCreateListAndAdd = useCallback(async () => {
+    const listName = addToListState.newListName.trim();
+    if (!listName) return;
+
+    setAddToListState(prev => ({ ...prev, isCreating: true }));
+    
+    try {
+      const response = await fetch('/api/lists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          listName,
+          listType: 'contacts',
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create list');
+      }
+
+      const data = await response.json();
+      if (data.list) {
+        setAddToListState(prev => ({
+          ...prev,
+          lists: [...prev.lists, data.list],
+          selectedListId: data.list.id,
+          showCreateForm: false,
+          newListName: '',
+          isCreating: false,
+        }));
+        
+        const contactIds = Array.from(selectedContacts);
+        setAddToListState(prev => ({ ...prev, isAdding: true }));
+        
+        let successCount = 0;
+        let skipCount = 0;
+        
+        for (const contactId of contactIds) {
+          try {
+            const addResponse = await fetch(`/api/lists/${data.list.id}/items`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ itemId: contactId }),
+            });
+            
+            if (addResponse.ok) {
+              successCount++;
+            } else if (addResponse.status === 409) {
+              skipCount++;
+            }
+          } catch (error) {
+            console.error('Failed to add contact to list:', error);
+          }
+        }
+        
+        toast({
+          title: 'List Created',
+          description: `Created "${listName}" and added ${successCount} contact${successCount !== 1 ? 's' : ''}${skipCount > 0 ? ` (${skipCount} already in list)` : ''}.`,
+        });
+        
+        handleCancelAddToList();
+        setSelectedContacts(new Set());
+      }
+    } catch (error) {
+      console.error('Failed to create list:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to create list. Please try again.',
+        variant: 'destructive',
+      });
+      setAddToListState(prev => ({ ...prev, isCreating: false }));
+    }
+  }, [addToListState.newListName, selectedContacts, toast, handleCancelAddToList]);
 
   const allSelected = contacts.length > 0 && contacts.every(c => selectedContacts.has(c.id));
   const someSelected = contacts.some(c => selectedContacts.has(c.id));
@@ -1434,55 +1520,105 @@ export default function ContactsPage() {
             <div className="flex items-center justify-center py-6">
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
-          ) : addToListState.lists.length === 0 ? (
-            <div className="py-6 text-center text-muted-foreground">
-              No contact lists found. Create a list first in My Lists.
-            </div>
           ) : (
-            <Select
-              value={addToListState.selectedListId || ''}
-              onValueChange={(value) => setAddToListState(prev => ({ ...prev, selectedListId: value }))}
-            >
-              <SelectTrigger className="w-full" data-testid="select-list">
-                <SelectValue placeholder="Select a list..." />
-              </SelectTrigger>
-              <SelectContent>
-                {addToListState.lists.map((list) => (
-                  <SelectItem key={list.id} value={list.id} data-testid={`list-option-${list.id}`}>
-                    {list.listName} ({list.itemCount} contacts)
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="space-y-4">
+              {addToListState.lists.length > 0 && (
+                <Select
+                  value={addToListState.selectedListId || ''}
+                  onValueChange={(value) => setAddToListState(prev => ({ ...prev, selectedListId: value, showCreateForm: false }))}
+                >
+                  <SelectTrigger className="w-full" data-testid="select-list">
+                    <SelectValue placeholder="Select a list..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {addToListState.lists.map((list) => (
+                      <SelectItem key={list.id} value={list.id} data-testid={`list-option-${list.id}`}>
+                        {list.listName} ({list.itemCount} contacts)
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              
+              {addToListState.showCreateForm ? (
+                <div className="space-y-3 pt-2 border-t">
+                  <input
+                    type="text"
+                    value={addToListState.newListName}
+                    onChange={(e) => setAddToListState(prev => ({ ...prev, newListName: e.target.value }))}
+                    placeholder="New list name..."
+                    className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                    autoFocus
+                    data-testid="input-new-list-name"
+                  />
+                  <div className="flex items-center gap-2">
+                    <Button
+                      onClick={handleCreateListAndAdd}
+                      disabled={!addToListState.newListName.trim() || addToListState.isCreating}
+                      className="flex-1"
+                      data-testid="button-create-and-add"
+                    >
+                      {addToListState.isCreating ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Creating...
+                        </>
+                      ) : (
+                        'Create & Add'
+                      )}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setAddToListState(prev => ({ ...prev, showCreateForm: false, newListName: '' }))}
+                      disabled={addToListState.isCreating}
+                      data-testid="button-cancel-create"
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setAddToListState(prev => ({ ...prev, showCreateForm: true, selectedListId: null }))}
+                  className="w-full flex items-center justify-center gap-2 p-3 text-green-600 border border-dashed border-gray-300 rounded-lg hover:border-green-500 hover:bg-green-50 transition-colors"
+                  data-testid="button-show-create-form"
+                >
+                  <Plus className="w-5 h-5" />
+                  <span className="font-medium">Create new list</span>
+                </button>
+              )}
+            </div>
           )}
           
-          <DialogFooter className="gap-2 sm:gap-0">
-            <Button
-              variant="outline"
-              onClick={handleCancelAddToList}
-              disabled={addToListState.isAdding || addToListState.isLoading}
-              data-testid="button-cancel-add-to-list"
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleConfirmAddToList}
-              disabled={addToListState.isAdding || !addToListState.selectedListId || addToListState.lists.length === 0}
-              data-testid="button-confirm-add-to-list"
-            >
-              {addToListState.isAdding ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Adding...
-                </>
-              ) : (
-                <>
-                  <ListPlus className="h-4 w-4 mr-2" />
-                  Add to List
-                </>
-              )}
-            </Button>
-          </DialogFooter>
+          {!addToListState.showCreateForm && (
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                variant="outline"
+                onClick={handleCancelAddToList}
+                disabled={addToListState.isAdding || addToListState.isLoading}
+                data-testid="button-cancel-add-to-list"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleConfirmAddToList}
+                disabled={addToListState.isAdding || !addToListState.selectedListId}
+                data-testid="button-confirm-add-to-list"
+              >
+                {addToListState.isAdding ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  <>
+                    <ListPlus className="h-4 w-4 mr-2" />
+                    Add to List
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
     </div>
