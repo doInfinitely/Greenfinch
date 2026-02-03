@@ -522,7 +522,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
       }
       setShowAssignDialog(open);
     }}>
-      <DialogContent onCloseAutoFocus={(e) => e.preventDefault()}>
+      <DialogContent>
         <DialogHeader>
           <DialogTitle>Assign Owner</DialogTitle>
           <DialogDescription>
@@ -531,29 +531,22 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         </DialogHeader>
         <div className="py-4">
           <Label htmlFor="owner">Owner</Label>
-          <Select value={selectedOwnerId} onValueChange={setSelectedOwnerId}>
-            <SelectTrigger className="mt-2" data-testid="select-owner">
-              <SelectValue placeholder="Select a team member" />
-            </SelectTrigger>
-            <SelectContent className="bg-popover border shadow-lg">
-              <SelectItem value="unassigned">Unassigned</SelectItem>
-              {orgMembers
-                .filter((member) => member.dbUserId)
-                .map((member) => (
-                <SelectItem key={member.dbUserId!} value={member.dbUserId!}>
-                  <div className="flex items-center gap-2">
-                    <Avatar className="w-5 h-5">
-                      <AvatarImage src={member.profileImageUrl} />
-                      <AvatarFallback className="text-xs">
-                        {member.displayName?.charAt(0) || '?'}
-                      </AvatarFallback>
-                    </Avatar>
-                    {member.displayName}
-                  </div>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <select
+            value={selectedOwnerId}
+            onChange={(e) => setSelectedOwnerId(e.target.value)}
+            className="mt-2 w-full h-9 rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus:outline-none focus:ring-1 focus:ring-ring"
+            data-testid="select-owner"
+          >
+            <option value="">Select a team member</option>
+            <option value="unassigned">Unassigned</option>
+            {orgMembers
+              .filter((member) => member.dbUserId)
+              .map((member) => (
+              <option key={member.dbUserId!} value={member.dbUserId!}>
+                {member.displayName}
+              </option>
+            ))}
+          </select>
         </div>
         <DialogFooter>
           <Button
