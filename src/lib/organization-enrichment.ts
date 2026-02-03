@@ -27,8 +27,15 @@ async function findOrCreateOrgByDomain(domain: string): Promise<{ id: string; is
     return { id: existing.id, isNew: false, needsEnrichment };
   }
   
+  // Derive a name from the domain (e.g., "stockdale-investment-group.com" -> "Stockdale Investment Group")
+  const derivedName = normalizedDomain
+    .split('.')[0]
+    .replace(/-/g, ' ')
+    .replace(/\b\w/g, c => c.toUpperCase());
+  
   const [inserted] = await db.insert(organizations)
     .values({
+      name: derivedName,
       domain: normalizedDomain,
       enrichmentStatus: 'pending',
     })

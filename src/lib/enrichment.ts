@@ -2409,10 +2409,14 @@ export async function storeEnrichmentResults(
       orgId = existingOrg.id;
       needsEnrichment = existingOrg.enrichmentStatus !== 'complete' && !!existingOrg.domain;
       
-      // Update with PDL data if available
-      if (org.pdlEnriched) {
+      // Update with PDL data if available, and ensure name is set
+      if (org.pdlEnriched || !existingOrg.name) {
+        // Derive name from domain if org has no name
+        const derivedName = org.name || existingOrg.name || (org.domain ? org.domain.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : (existingOrg.domain ? existingOrg.domain.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) : null));
+        
         await db.update(organizations)
           .set({
+            name: derivedName || existingOrg.name || undefined,
             description: org.description || existingOrg.description || undefined,
             industry: org.industry || existingOrg.industry || undefined,
             employees: org.employees || existingOrg.employees || undefined,
@@ -2420,11 +2424,11 @@ export async function storeEnrichmentResults(
             linkedinHandle: org.linkedinHandle || existingOrg.linkedinHandle || undefined,
             city: org.city || existingOrg.city || undefined,
             state: org.state || existingOrg.state || undefined,
-            pdlEnriched: true,
-            pdlEnrichedAt: new Date(),
+            pdlEnriched: org.pdlEnriched || existingOrg.pdlEnriched || false,
+            pdlEnrichedAt: org.pdlEnriched ? new Date() : existingOrg.pdlEnrichedAt,
           })
           .where(eq(organizations.id, orgId));
-        needsEnrichment = false; // Already enriched with PDL
+        if (org.pdlEnriched) needsEnrichment = false; // Already enriched with PDL
       }
     } else {
       // Derive name from domain if not provided (e.g., "example.com" -> "Example")
