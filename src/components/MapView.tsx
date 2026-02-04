@@ -48,6 +48,19 @@ interface MapViewProps {
 const LIGHT_STYLE = 'mapbox://styles/mapbox/light-v11';
 const SATELLITE_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
 
+interface ParcelPropertyInfo {
+  propertyKey: string;
+  displayName: string;
+  address?: string;
+  category?: string;
+  subcategory?: string;
+  isParentProperty?: boolean;
+}
+
+const parcelPropertyCache = new Map<string, ParcelPropertyInfo | null>();
+const CACHE_TTL = 5 * 60 * 1000;
+const cacheTimestamps = new Map<string, number>();
+
 export default function MapView({ flyTo, onFlyComplete, onPropertyClick, properties, onMapMove, onBoundsChange, highlightProperty, initialCenter, initialZoom }: MapViewProps) {
   const router = useRouter();
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -62,6 +75,8 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
   const lastFlyToRef = useRef<string | null>(null);
   const currentStyle = useRef<string>(LIGHT_STYLE);
   const isStyleSwitching = useRef(false);
+  const parcelHoverDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const currentHoveredLlUuid = useRef<string | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapToken, setMapToken] = useState<string>('');
   const [regridToken, setRegridToken] = useState<string>('');
@@ -259,6 +274,7 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       
       const feature = e.features[0];
       const featureId = feature.id;
+      const llUuid = feature.properties?.ll_uuid;
       
       if (hoveredParcelId.current !== null && hoveredParcelId.current !== featureId) {
         try {
@@ -282,12 +298,76 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
           // Ignore errors
         }
       }
+
+      if (llUuid && llUuid !== currentHoveredLlUuid.current) {
+        currentHoveredLlUuid.current = llUuid;
+        
+        if (parcelHoverDebounceRef.current) {
+          clearTimeout(parcelHoverDebounceRef.current);
+        }
+        
+        const lngLat = e.lngLat;
+        
+        parcelHoverDebounceRef.current = setTimeout(async () => {
+          if (currentHoveredLlUuid.current !== llUuid) return;
+          
+          const now = Date.now();
+          const cachedTimestamp = cacheTimestamps.get(llUuid);
+          if (cachedTimestamp && (now - cachedTimestamp) < CACHE_TTL && parcelPropertyCache.has(llUuid)) {
+            const cached = parcelPropertyCache.get(llUuid);
+            if (cached && map.current && hoverPopup.current) {
+              const displayName = cached.displayName || 'Unknown Property';
+              const popupContent = `<div style="font-size: 12px; max-width: 200px;">
+                <div style="font-weight: 500;">${displayName}</div>
+                ${cached.subcategory || cached.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${cached.subcategory || cached.category}</div>` : ''}
+              </div>`;
+              hoverPopup.current.setLngLat(lngLat).setHTML(popupContent).addTo(map.current);
+            }
+            return;
+          }
+          
+          try {
+            const response = await fetch(`/api/parcels/resolve?ll_uuid=${encodeURIComponent(llUuid)}`);
+            if (response.ok) {
+              const data: ParcelPropertyInfo = await response.json();
+              if (!data.displayName) {
+                data.displayName = 'Unknown Property';
+              }
+              parcelPropertyCache.set(llUuid, data);
+              cacheTimestamps.set(llUuid, Date.now());
+              
+              if (currentHoveredLlUuid.current === llUuid && map.current && hoverPopup.current) {
+                const popupContent = `<div style="font-size: 12px; max-width: 200px;">
+                  <div style="font-weight: 500;">${data.displayName}</div>
+                  ${data.subcategory || data.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${data.subcategory || data.category}</div>` : ''}
+                </div>`;
+                hoverPopup.current.setLngLat(lngLat).setHTML(popupContent).addTo(map.current);
+              }
+            } else {
+              parcelPropertyCache.set(llUuid, null);
+              cacheTimestamps.set(llUuid, Date.now());
+            }
+          } catch (error) {
+            console.error('Failed to resolve parcel for tooltip:', error);
+          }
+        }, 100);
+      }
     });
 
     map.current.on('mouseleave', 'parcels-fill', () => {
       if (!map.current) return;
       
       map.current.getCanvas().style.cursor = '';
+      
+      if (parcelHoverDebounceRef.current) {
+        clearTimeout(parcelHoverDebounceRef.current);
+        parcelHoverDebounceRef.current = null;
+      }
+      currentHoveredLlUuid.current = null;
+      
+      if (hoverPopup.current) {
+        hoverPopup.current.remove();
+      }
       
       if (hoveredParcelId.current !== null) {
         if (map.current.isStyleLoaded() && !isStyleSwitching.current && map.current.getSource('regrid-parcels')) {
@@ -354,6 +434,9 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
     map.current.on('mouseenter', 'unclustered-point', (e) => {
       if (!map.current || !hoverPopup.current) return;
       map.current.getCanvas().style.cursor = 'pointer';
+      
+      const currentZoom = map.current.getZoom();
+      if (currentZoom >= 14) return;
       
       if (e.features && e.features.length > 0) {
         const feature = e.features[0];
