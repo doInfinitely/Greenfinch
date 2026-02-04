@@ -335,6 +335,12 @@ export class DashboardMap {
     if (this.map) this.map.getCanvas().style.cursor = '';
   };
 
+  private parcelHoverCache = new Map<string, { displayName: string; category?: string; subcategory?: string } | null>();
+  private parcelHoverCacheTimestamps = new Map<string, number>();
+  private currentHoveredLlUuid: string | null = null;
+  private parcelHoverDebounceTimer: NodeJS.Timeout | null = null;
+  private static CACHE_TTL = 5 * 60 * 1000;
+
   private onParcelHover = (e: mapboxgl.MapLayerMouseEvent) => {
     if (!this.map || !this.styleReady || !e.features?.length) return;
 
@@ -364,36 +370,63 @@ export class DashboardMap {
       }
 
       const props = feature.properties || {};
-      const llUuid = props.ll_uuid || featureId?.toString();
+      const llUuid = props.ll_uuid || (typeof featureId === 'string' ? featureId : null);
       const center = e.lngLat;
 
-      // First try ll_uuid match, then fall back to spatial matching
-      // Always prefer our database data over Regrid tile data
-      let propertyInfo = llUuid ? this.findPropertyByLlUuid(llUuid) : null;
-      if (!propertyInfo) {
-        propertyInfo = this.findPropertyByLocation(center.lng, center.lat);
-      }
-
-      // Only show tooltip if we have property data from our database
-      // This prevents showing sub-parcel addresses like "APT 925"
-      if (!propertyInfo) {
+      if (!llUuid) {
         if (this.hoverPopup) this.hoverPopup.remove();
         return;
       }
 
-      const commonName = propertyInfo.commonName ? normalizeCommonName(propertyInfo.commonName) : null;
-      const address = propertyInfo.address || 'Unknown Address';
+      if (llUuid === this.currentHoveredLlUuid) return;
+      this.currentHoveredLlUuid = llUuid;
 
-      let popupContent = `<div style="font-size: 12px; max-width: 220px;">`;
-      if (commonName) {
-        popupContent += `<div style="font-weight: 600; margin-bottom: 2px;">${commonName}</div>`;
+      if (this.parcelHoverDebounceTimer) {
+        clearTimeout(this.parcelHoverDebounceTimer);
       }
-      popupContent += `<div style="color: #374151;">${address}</div>`;
-      popupContent += `</div>`;
 
-      if (this.hoverPopup) {
-        this.hoverPopup.setLngLat(center).setHTML(popupContent).addTo(this.map);
-      }
+      this.parcelHoverDebounceTimer = setTimeout(async () => {
+        if (this.currentHoveredLlUuid !== llUuid || !this.map) return;
+
+        const now = Date.now();
+        const cachedTimestamp = this.parcelHoverCacheTimestamps.get(llUuid);
+        if (cachedTimestamp && (now - cachedTimestamp) < DashboardMap.CACHE_TTL && this.parcelHoverCache.has(llUuid)) {
+          const cached = this.parcelHoverCache.get(llUuid);
+          if (cached && this.hoverPopup) {
+            const popupContent = `<div style="font-size: 12px; max-width: 220px;">
+              <div style="font-weight: 600;">${cached.displayName}</div>
+              ${cached.subcategory || cached.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${cached.subcategory || cached.category}</div>` : ''}
+            </div>`;
+            this.hoverPopup.setLngLat(center).setHTML(popupContent).addTo(this.map);
+          }
+          return;
+        }
+
+        try {
+          const response = await fetch(`/api/parcels/resolve?ll_uuid=${encodeURIComponent(llUuid)}`);
+          if (response.ok) {
+            const data = await response.json();
+            const displayName = data.displayName || 'Unknown Property';
+            this.parcelHoverCache.set(llUuid, { displayName, category: data.category, subcategory: data.subcategory });
+            this.parcelHoverCacheTimestamps.set(llUuid, Date.now());
+
+            if (this.currentHoveredLlUuid === llUuid && this.hoverPopup && this.map) {
+              const popupContent = `<div style="font-size: 12px; max-width: 220px;">
+                <div style="font-weight: 600;">${displayName}</div>
+                ${data.subcategory || data.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${data.subcategory || data.category}</div>` : ''}
+              </div>`;
+              this.hoverPopup.setLngLat(center).setHTML(popupContent).addTo(this.map);
+            }
+          } else {
+            this.parcelHoverCache.set(llUuid, null);
+            this.parcelHoverCacheTimestamps.set(llUuid, Date.now());
+            if (this.hoverPopup) this.hoverPopup.remove();
+          }
+        } catch (error) {
+          console.error('Failed to resolve parcel for tooltip:', error);
+          if (this.hoverPopup) this.hoverPopup.remove();
+        }
+      }, 100);
     }
   };
 
@@ -401,6 +434,12 @@ export class DashboardMap {
     if (!this.map) return;
 
     this.map.getCanvas().style.cursor = '';
+
+    if (this.parcelHoverDebounceTimer) {
+      clearTimeout(this.parcelHoverDebounceTimer);
+      this.parcelHoverDebounceTimer = null;
+    }
+    this.currentHoveredLlUuid = null;
 
     if (this.hoveredParcelId !== null && this.styleReady) {
       try {

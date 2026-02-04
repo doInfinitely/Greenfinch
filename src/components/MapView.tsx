@@ -245,7 +245,7 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
     map.current.on('click', 'parcels-fill', async (e) => {
       if (e.features && e.features.length > 0) {
         const feature = e.features[0];
-        const llUuid = feature.properties?.ll_uuid;
+        const llUuid = feature.properties?.ll_uuid || (typeof feature.id === 'string' ? feature.id : null);
         
         if (llUuid) {
           try {
@@ -274,7 +274,12 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       
       const feature = e.features[0];
       const featureId = feature.id;
-      const llUuid = feature.properties?.ll_uuid;
+      const llUuid = feature.properties?.ll_uuid || (typeof featureId === 'string' ? featureId : null);
+      
+      // Debug logging - remove after testing
+      if (!llUuid && featureId !== hoveredParcelId.current) {
+        console.log('[Parcel Debug] Feature:', { id: featureId, idType: typeof featureId, props: Object.keys(feature.properties || {}) });
+      }
       
       if (hoveredParcelId.current !== null && hoveredParcelId.current !== featureId) {
         try {
