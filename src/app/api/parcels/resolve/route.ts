@@ -41,11 +41,11 @@ export async function GET(request: NextRequest) {
         if (constituentResult.length > 0) {
           propertyKey = constituentResult[0].propertyKey;
         } else {
-          // Strategy 3: Prefix match (first 13 chars) for Regrid/DCAD mismatch
-          // Regrid parcel numbers like 005457000D01A5800 should match DCAD 005457000D01A0000
-          // Use ORDER BY for deterministic results (prefer parent properties, then shortest key)
-          if (normalizedParcel.length >= 13) {
-            const prefix = normalizedParcel.substring(0, 13);
+          // Strategy 3: Progressive prefix match for Regrid/DCAD mismatch
+          // Try progressively shorter prefixes until we find a match
+          // Start from full length - 1 and work down to minimum of 10 chars
+          for (let len = normalizedParcel.length - 1; len >= 10 && !propertyKey; len--) {
+            const prefix = normalizedParcel.substring(0, len);
             const prefixResult = await db
               .select({ propertyKey: properties.propertyKey })
               .from(properties)

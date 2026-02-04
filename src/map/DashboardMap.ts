@@ -466,9 +466,19 @@ export class DashboardMap {
   private findPropertyByParcelNumber(parcelnumb: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
     const normalizedParcel = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
     
-    // Only do exact match - prefix matching is too imprecise and returns wrong properties
-    // For parcels without exact match, rely on ll_uuid lookup via parcel_to_property table
-    return this.propertyIndex.get(`pk:${normalizedParcel}`) || null;
+    // Try exact match first
+    const exact = this.propertyIndex.get(`pk:${normalizedParcel}`);
+    if (exact) return exact;
+    
+    // Progressive prefix matching - try shorter prefixes until we find a match
+    // Start from full length - 1 and work down to minimum of 10 chars
+    for (let len = normalizedParcel.length - 1; len >= 10; len--) {
+      const prefix = normalizedParcel.substring(0, len);
+      const prefixMatch = this.propertyIndex.get(`prefix:${prefix}`);
+      if (prefixMatch) return prefixMatch;
+    }
+    
+    return null;
   }
 
   private onParcelLeave = () => {
@@ -649,14 +659,16 @@ export class DashboardMap {
         llUuid: props.llUuid || null,
       };
       
-      // Index by normalized propertyKey (for parcelnumb matching)
+      // Index by normalized propertyKey (for exact parcelnumb matching)
       const normalizedKey = props.propertyKey.replace(/[-\s]/g, '').toUpperCase();
       this.propertyIndex.set(`pk:${normalizedKey}`, info);
       
-      // Also index by prefix (first 13 chars) for partial matching
-      // DCAD parcel numbers like 005457000D01A0000 can match Regrid parcels like 005457000D01A5800
-      if (normalizedKey.length >= 13) {
-        const prefix = normalizedKey.substring(0, 13);
+      // Index by all prefix lengths (10 chars to full length - 1) for progressive matching
+      // This allows matching Regrid parcels like 005457000D01A5800 to DCAD 005457000D01A0000
+      // by finding the longest matching prefix
+      for (let len = normalizedKey.length - 1; len >= 10; len--) {
+        const prefix = normalizedKey.substring(0, len);
+        // Only store first property per prefix to avoid collisions
         if (!this.propertyIndex.has(`prefix:${prefix}`)) {
           this.propertyIndex.set(`prefix:${prefix}`, info);
         }
