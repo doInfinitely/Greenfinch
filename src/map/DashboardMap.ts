@@ -466,19 +466,9 @@ export class DashboardMap {
   private findPropertyByParcelNumber(parcelnumb: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
     const normalizedParcel = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
     
-    // Try exact match first
-    const exact = this.propertyIndex.get(`pk:${normalizedParcel}`);
-    if (exact) return exact;
-    
-    // Try prefix match (first 13 chars) as fallback
-    // This handles cases where Regrid parcel numbers differ slightly from DCAD account numbers
-    if (normalizedParcel.length >= 13) {
-      const prefix = normalizedParcel.substring(0, 13);
-      const prefixMatch = this.propertyIndex.get(`prefix:${prefix}`);
-      if (prefixMatch) return prefixMatch;
-    }
-    
-    return null;
+    // Only do exact match - prefix matching is too imprecise and returns wrong properties
+    // For parcels without exact match, rely on ll_uuid lookup via parcel_to_property table
+    return this.propertyIndex.get(`pk:${normalizedParcel}`) || null;
   }
 
   private onParcelLeave = () => {
