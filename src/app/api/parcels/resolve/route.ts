@@ -43,12 +43,14 @@ export async function GET(request: NextRequest) {
         } else {
           // Strategy 3: Prefix match (first 13 chars) for Regrid/DCAD mismatch
           // Regrid parcel numbers like 005457000D01A5800 should match DCAD 005457000D01A0000
+          // Use ORDER BY for deterministic results (prefer parent properties, then shortest key)
           if (normalizedParcel.length >= 13) {
             const prefix = normalizedParcel.substring(0, 13);
             const prefixResult = await db
               .select({ propertyKey: properties.propertyKey })
               .from(properties)
-              .where(sql`UPPER(REPLACE(REPLACE(${properties.propertyKey}, '-', ''), ' ', '')) LIKE ${prefix + '%'}`)
+              .where(sql`${properties.propertyKey} LIKE ${prefix + '%'}`)
+              .orderBy(sql`${properties.isParentProperty} DESC, LENGTH(${properties.propertyKey}) ASC`)
               .limit(1);
 
             if (prefixResult.length > 0) {
