@@ -1,34 +1,80 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { parcelToProperty, properties } from '@/lib/schema';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const llUuid = searchParams.get('ll_uuid');
+  const parcelnumb = searchParams.get('parcelnumb');
 
-  if (!llUuid) {
+  if (!llUuid && !parcelnumb) {
     return NextResponse.json(
-      { error: 'll_uuid parameter is required' },
+      { error: 'll_uuid or parcelnumb parameter is required' },
       { status: 400 }
     );
   }
 
   try {
-    const parcelResult = await db
-      .select({ propertyKey: parcelToProperty.propertyKey })
-      .from(parcelToProperty)
-      .where(eq(parcelToProperty.llUuid, llUuid))
-      .limit(1);
+    let propertyKey: string | null = null;
 
-    if (parcelResult.length === 0) {
+    if (parcelnumb) {
+      const normalizedParcel = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
+      
+      // Strategy 1: Direct match against propertyKey (fast, indexed)
+      const directResult = await db
+        .select({ propertyKey: properties.propertyKey })
+        .from(properties)
+        .where(sql`UPPER(REPLACE(REPLACE(${properties.propertyKey}, '-', ''), ' ', '')) = ${normalizedParcel}`)
+        .limit(1);
+
+      if (directResult.length > 0) {
+        propertyKey = directResult[0].propertyKey;
+      } else {
+        // Strategy 2: Check if parcelnumb is a constituent using JSONB containment (database-side)
+        // This uses PostgreSQL JSONB operator @> which can use GIN indexes
+        const constituentResult = await db
+          .select({ propertyKey: properties.propertyKey })
+          .from(properties)
+          .where(sql`${properties.isParentProperty} = true AND ${properties.constituentAccountNums}::jsonb @> ${JSON.stringify([parcelnumb])}::jsonb`)
+          .limit(1);
+
+        if (constituentResult.length > 0) {
+          propertyKey = constituentResult[0].propertyKey;
+        } else {
+          // Try with normalized format in case constituent accounts are stored differently
+          const constituentNormalizedResult = await db
+            .select({ propertyKey: properties.propertyKey })
+            .from(properties)
+            .where(sql`${properties.isParentProperty} = true AND ${properties.constituentAccountNums}::jsonb @> ${JSON.stringify([normalizedParcel])}::jsonb`)
+            .limit(1);
+
+          if (constituentNormalizedResult.length > 0) {
+            propertyKey = constituentNormalizedResult[0].propertyKey;
+          }
+        }
+      }
+    }
+
+    // Strategy 3: If ll_uuid is provided and no match yet, try parcel mapping table
+    if (!propertyKey && llUuid) {
+      const parcelResult = await db
+        .select({ propertyKey: parcelToProperty.propertyKey })
+        .from(parcelToProperty)
+        .where(eq(parcelToProperty.llUuid, llUuid))
+        .limit(1);
+
+      if (parcelResult.length > 0) {
+        propertyKey = parcelResult[0].propertyKey;
+      }
+    }
+
+    if (!propertyKey) {
       return NextResponse.json(
         { error: 'Property not found for this parcel' },
         { status: 404 }
       );
     }
-
-    const propertyKey = parcelResult[0].propertyKey;
 
     const propertyResult = await db
       .select({
@@ -54,6 +100,7 @@ export async function GET(request: NextRequest) {
 
     const property = propertyResult[0];
     
+    // If this is a constituent, resolve to parent
     if (property.parentPropertyKey) {
       const parentResult = await db
         .select({
