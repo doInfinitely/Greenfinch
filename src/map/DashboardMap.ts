@@ -336,6 +336,7 @@ export class DashboardMap {
   };
 
   private currentHoveredParcelId: string | null = null;
+  private tooltipCache: Map<string, { displayName: string; address: string | null; category?: string; subcategory?: string }> = new Map();
 
   private onParcelHover = (e: mapboxgl.MapLayerMouseEvent) => {
     if (!this.map || !this.styleReady || !e.features?.length) return;
@@ -343,6 +344,7 @@ export class DashboardMap {
     const feature = e.features[0];
     const featureId = feature.id;
 
+    // Update hover state for parcel fill
     if (this.hoveredParcelId !== null && this.hoveredParcelId !== featureId) {
       try {
         this.map.setFeatureState(
@@ -364,40 +366,50 @@ export class DashboardMap {
       } catch (err) {
         // Ignore
       }
+    }
 
-      const props = feature.properties || {};
-      const center = e.lngLat;
-      
-      const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
-      const llUuid = props.ll_uuid || (typeof featureId === 'string' ? featureId : null);
-      const parcelId = parcelnumb || llUuid;
-      
-      if (!parcelId) {
-        if (this.hoverPopup) this.hoverPopup.remove();
-        return;
-      }
+    const props = feature.properties || {};
+    const center = e.lngLat;
+    
+    const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
+    const llUuid = props.ll_uuid || (typeof featureId === 'string' ? featureId : null);
+    const parcelId = parcelnumb || llUuid;
+    
+    if (!parcelId) {
+      if (this.hoverPopup) this.hoverPopup.remove();
+      this.currentHoveredParcelId = null;
+      return;
+    }
 
-      // If same parcel, just update popup position
-      if (parcelId === this.currentHoveredParcelId && this.hoverPopup) {
-        this.hoverPopup.setLngLat(center);
-        return;
-      }
-      
-      this.currentHoveredParcelId = parcelId;
+    // Always update position, check if we need new content
+    const isSameParcel = parcelId === this.currentHoveredParcelId;
+    this.currentHoveredParcelId = parcelId;
 
-      // Try client-side matching first (instant)
-      let propertyInfo = parcelnumb 
-        ? this.findPropertyByParcelNumber(parcelnumb)
-        : this.findPropertyByLlUuid(llUuid!);
+    // Check cache first (for API results)
+    const cached = this.tooltipCache.get(parcelId);
+    if (cached) {
+      this.showTooltip(center, {
+        commonName: cached.displayName,
+        address: cached.address,
+        category: cached.category,
+        subcategory: cached.subcategory,
+      });
+      return;
+    }
 
-      if (propertyInfo) {
-        this.showTooltip(center, propertyInfo);
-      } else if (parcelnumb) {
-        // API fallback for constituent parcels - async but non-blocking
-        this.fetchAndShowTooltip(center, parcelnumb, parcelId);
-      } else {
-        if (this.hoverPopup) this.hoverPopup.remove();
-      }
+    // Try client-side matching (instant)
+    let propertyInfo = parcelnumb 
+      ? this.findPropertyByParcelNumber(parcelnumb)
+      : this.findPropertyByLlUuid(llUuid!);
+
+    if (propertyInfo) {
+      this.showTooltip(center, propertyInfo);
+    } else if (parcelnumb && !isSameParcel) {
+      // API fallback for constituent parcels - only fetch on new parcel
+      this.fetchAndShowTooltip(center, parcelnumb, parcelId);
+    } else if (!isSameParcel) {
+      // No match and no API to call - hide tooltip
+      if (this.hoverPopup) this.hoverPopup.remove();
     }
   };
 
@@ -422,18 +434,27 @@ export class DashboardMap {
   private async fetchAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string, parcelId: string) {
     try {
       const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
-      // Check if user is still hovering over the same parcel
-      if (this.currentHoveredParcelId !== parcelId) return;
       
       if (response.ok) {
         const data = await response.json();
         if (data.displayName) {
-          this.showTooltip(center, {
-            commonName: data.displayName,
+          // Cache the result
+          this.tooltipCache.set(parcelId, {
+            displayName: data.displayName,
             address: data.address,
             category: data.category,
             subcategory: data.subcategory,
           });
+          
+          // Only show if still hovering over the same parcel
+          if (this.currentHoveredParcelId === parcelId) {
+            this.showTooltip(center, {
+              commonName: data.displayName,
+              address: data.address,
+              category: data.category,
+              subcategory: data.subcategory,
+            });
+          }
         }
       }
     } catch (err) {
