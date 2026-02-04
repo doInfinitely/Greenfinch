@@ -398,25 +398,36 @@ export class DashboardMap {
       return;
     }
 
-    // Try client-side matching (instant)
-    let propertyInfo = parcelnumb 
+    // Try client-side matching by parcelnumb (instant)
+    const propertyInfo = parcelnumb 
       ? this.findPropertyByParcelNumber(parcelnumb)
-      : this.findPropertyByLlUuid(llUuid!);
+      : null;
 
     if (propertyInfo) {
       this.showTooltip(center, propertyInfo);
     } else if (parcelnumb && !isSameParcel) {
       // API fallback for constituent parcels - only fetch on new parcel
-      this.fetchAndShowTooltip(center, parcelnumb, parcelId);
-    } else if (!isSameParcel) {
-      // No match and no API to call - hide tooltip
-      if (this.hoverPopup) this.hoverPopup.remove();
+      // Pass Regrid props so we can show address if no match found
+      this.fetchAndShowTooltip(center, parcelnumb, parcelId, props);
+    } else {
+      // No match in our database - show Regrid tile data (address, owner)
+      const regridAddress = props.address || props.siteaddr || props.mail_addres;
+      const owner = props.owner || props.owner1;
+      if (regridAddress || owner) {
+        this.showTooltip(center, {
+          commonName: owner || null,
+          address: regridAddress || null,
+          isUnimported: true,
+        });
+      } else if (!isSameParcel) {
+        if (this.hoverPopup) this.hoverPopup.remove();
+      }
     }
   };
 
   private showTooltip(
     center: mapboxgl.LngLat, 
-    propertyInfo: { commonName: string | null; address: string | null; category?: string; subcategory?: string }
+    propertyInfo: { commonName: string | null; address: string | null; category?: string; subcategory?: string; isUnimported?: boolean }
   ) {
     const displayName = propertyInfo.commonName 
       ? normalizeCommonName(propertyInfo.commonName) 
@@ -432,7 +443,7 @@ export class DashboardMap {
     }
   }
 
-  private async fetchAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string, parcelId: string) {
+  private async fetchAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string, parcelId: string, regridProps?: Record<string, any>) {
     try {
       const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
       
@@ -456,10 +467,35 @@ export class DashboardMap {
               subcategory: data.subcategory,
             });
           }
+          return;
+        }
+      }
+      
+      // No match found in our database - show Regrid tile data as fallback
+      if (regridProps && this.currentHoveredParcelId === parcelId) {
+        const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
+        const owner = regridProps.owner || regridProps.owner1;
+        if (regridAddress || owner) {
+          this.showTooltip(center, {
+            commonName: owner || null,
+            address: regridAddress || null,
+            isUnimported: true,
+          });
         }
       }
     } catch (err) {
-      // Silently ignore API errors for hover tooltips
+      // On error, try to show Regrid data if available
+      if (regridProps && this.currentHoveredParcelId === parcelId) {
+        const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
+        const owner = regridProps.owner || regridProps.owner1;
+        if (regridAddress || owner) {
+          this.showTooltip(center, {
+            commonName: owner || null,
+            address: regridAddress || null,
+            isUnimported: true,
+          });
+        }
+      }
     }
   }
 
@@ -510,56 +546,31 @@ export class DashboardMap {
     const feature = e.features[0];
     const props = feature.properties || {};
     const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
-    const llUuid = feature.id as string || props.ll_uuid;
     
-    // Try parcelnumb first (direct match to propertyKey)
-    if (parcelnumb) {
-      const propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
-      if (propertyInfo?.propertyKey) {
-        this.config.onPropertyClick(propertyInfo.propertyKey);
-        return;
-      }
+    if (!parcelnumb) {
+      console.warn('No parcel number found for clicked parcel');
+      return;
     }
     
-    // Try ll_uuid client-side matching
-    if (llUuid) {
-      const propertyInfo = this.findPropertyByLlUuid(llUuid);
-      if (propertyInfo?.propertyKey) {
-        this.config.onPropertyClick(propertyInfo.propertyKey);
-        return;
-      }
+    // Try client-side match first (exact + progressive prefix matching)
+    const propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
+    if (propertyInfo?.propertyKey) {
+      this.config.onPropertyClick(propertyInfo.propertyKey);
+      return;
     }
     
-    // API fallback for constituent parcels - use parcelnumb if available
-    if (parcelnumb) {
-      try {
-        const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.propertyKey) {
-            this.config.onPropertyClick(data.propertyKey);
-            return;
-          }
+    // API fallback for parcels not found client-side
+    try {
+      const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.propertyKey) {
+          this.config.onPropertyClick(data.propertyKey);
+          return;
         }
-      } catch (err) {
-        console.warn('Parcel lookup by number failed', err);
       }
-    }
-    
-    // Final API fallback with ll_uuid
-    if (llUuid) {
-      try {
-        const response = await fetch(`/api/properties/by-parcel/${encodeURIComponent(llUuid)}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.propertyKey) {
-            this.config.onPropertyClick(data.propertyKey);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('Parcel lookup by ll_uuid failed', err);
-      }
+    } catch (err) {
+      console.warn('Parcel lookup failed', err);
     }
   };
 
