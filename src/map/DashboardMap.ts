@@ -679,9 +679,20 @@ export class DashboardMap {
       // by finding the longest matching prefix
       for (let len = normalizedKey.length - 1; len >= 10; len--) {
         const prefix = normalizedKey.substring(0, len);
-        // Only store first property per prefix to avoid collisions
-        if (!this.propertyIndex.has(`prefix:${prefix}`)) {
-          this.propertyIndex.set(`prefix:${prefix}`, info);
+        const existingKey = `prefix:${prefix}`;
+        const existing = this.propertyIndex.get(existingKey);
+        
+        // Store this property if no existing, or if this one is "better" (more trailing zeros = parent property)
+        if (!existing) {
+          this.propertyIndex.set(existingKey, info);
+        } else {
+          // Prefer property with more trailing zeros (parent properties like 005453000K01A0000 vs 005453000K01A0100)
+          const existingNormalized = existing.propertyKey.replace(/[-\s]/g, '').toUpperCase();
+          const existingTrailingZeros = (existingNormalized.match(/0+$/) || [''])[0].length;
+          const newTrailingZeros = (normalizedKey.match(/0+$/) || [''])[0].length;
+          if (newTrailingZeros > existingTrailingZeros) {
+            this.propertyIndex.set(existingKey, info);
+          }
         }
       }
       

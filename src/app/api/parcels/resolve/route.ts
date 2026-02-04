@@ -44,13 +44,14 @@ export async function GET(request: NextRequest) {
           // Strategy 3: Progressive prefix match for Regrid/DCAD mismatch
           // Try progressively shorter prefixes until we find a match
           // Start from full length - 1 and work down to minimum of 10 chars
+          // Order by: most trailing zeros first (parent properties like 005453000K01A0000 vs 005453000K01A0100)
           for (let len = normalizedParcel.length - 1; len >= 10 && !propertyKey; len--) {
             const prefix = normalizedParcel.substring(0, len);
             const prefixResult = await db
               .select({ propertyKey: properties.propertyKey })
               .from(properties)
               .where(sql`${properties.propertyKey} LIKE ${prefix + '%'}`)
-              .orderBy(sql`${properties.isParentProperty} DESC, LENGTH(${properties.propertyKey}) ASC`)
+              .orderBy(sql`LENGTH(REGEXP_REPLACE(${properties.propertyKey}, '.*[^0]', '')) DESC, ${properties.isParentProperty} DESC`)
               .limit(1);
 
             if (prefixResult.length > 0) {
