@@ -465,7 +465,20 @@ export class DashboardMap {
 
   private findPropertyByParcelNumber(parcelnumb: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
     const normalizedParcel = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
-    return this.propertyIndex.get(`pk:${normalizedParcel}`) || null;
+    
+    // Try exact match first
+    const exact = this.propertyIndex.get(`pk:${normalizedParcel}`);
+    if (exact) return exact;
+    
+    // Try prefix match (first 13 chars) as fallback
+    // This handles cases where Regrid parcel numbers differ slightly from DCAD account numbers
+    if (normalizedParcel.length >= 13) {
+      const prefix = normalizedParcel.substring(0, 13);
+      const prefixMatch = this.propertyIndex.get(`prefix:${prefix}`);
+      if (prefixMatch) return prefixMatch;
+    }
+    
+    return null;
   }
 
   private onParcelLeave = () => {
@@ -649,6 +662,15 @@ export class DashboardMap {
       // Index by normalized propertyKey (for parcelnumb matching)
       const normalizedKey = props.propertyKey.replace(/[-\s]/g, '').toUpperCase();
       this.propertyIndex.set(`pk:${normalizedKey}`, info);
+      
+      // Also index by prefix (first 13 chars) for partial matching
+      // DCAD parcel numbers like 005457000D01A0000 can match Regrid parcels like 005457000D01A5800
+      if (normalizedKey.length >= 13) {
+        const prefix = normalizedKey.substring(0, 13);
+        if (!this.propertyIndex.has(`prefix:${prefix}`)) {
+          this.propertyIndex.set(`prefix:${prefix}`, info);
+        }
+      }
       
       // Also index by llUuid if available
       if (props.llUuid) {

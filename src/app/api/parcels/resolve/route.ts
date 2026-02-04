@@ -32,7 +32,6 @@ export async function GET(request: NextRequest) {
         propertyKey = directResult[0].propertyKey;
       } else {
         // Strategy 2: Check if parcelnumb is a constituent using JSONB containment (database-side)
-        // This uses PostgreSQL JSONB operator @> which can use GIN indexes
         const constituentResult = await db
           .select({ propertyKey: properties.propertyKey })
           .from(properties)
@@ -42,15 +41,19 @@ export async function GET(request: NextRequest) {
         if (constituentResult.length > 0) {
           propertyKey = constituentResult[0].propertyKey;
         } else {
-          // Try with normalized format in case constituent accounts are stored differently
-          const constituentNormalizedResult = await db
-            .select({ propertyKey: properties.propertyKey })
-            .from(properties)
-            .where(sql`${properties.isParentProperty} = true AND ${properties.constituentAccountNums}::jsonb @> ${JSON.stringify([normalizedParcel])}::jsonb`)
-            .limit(1);
+          // Strategy 3: Prefix match (first 13 chars) for Regrid/DCAD mismatch
+          // Regrid parcel numbers like 005457000D01A5800 should match DCAD 005457000D01A0000
+          if (normalizedParcel.length >= 13) {
+            const prefix = normalizedParcel.substring(0, 13);
+            const prefixResult = await db
+              .select({ propertyKey: properties.propertyKey })
+              .from(properties)
+              .where(sql`UPPER(REPLACE(REPLACE(${properties.propertyKey}, '-', ''), ' ', '')) LIKE ${prefix + '%'}`)
+              .limit(1);
 
-          if (constituentNormalizedResult.length > 0) {
-            propertyKey = constituentNormalizedResult[0].propertyKey;
+            if (prefixResult.length > 0) {
+              propertyKey = prefixResult[0].propertyKey;
+            }
           }
         }
       }
