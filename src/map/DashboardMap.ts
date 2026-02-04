@@ -28,6 +28,7 @@ export class DashboardMap {
   private config: DashboardMapConfig;
   private isDestroyed = false;
   private currentData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+  private propertyIndex: Map<string, { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string; llUuid?: string }> = new Map();
   private hoverPopup: mapboxgl.Popup | null = null;
   private hoveredParcelId: string | number | null = null;
   private currentStyle: string = LIGHT_STYLE;
@@ -464,23 +465,7 @@ export class DashboardMap {
 
   private findPropertyByParcelNumber(parcelnumb: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
     const normalizedParcel = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
-    
-    for (const feature of this.currentData.features) {
-      const props = feature.properties as any;
-      if (!props?.propertyKey) continue;
-      
-      const normalizedKey = props.propertyKey.replace(/[-\s]/g, '').toUpperCase();
-      if (normalizedKey === normalizedParcel) {
-        return {
-          propertyKey: props.propertyKey,
-          commonName: props.commonName || null,
-          address: props.address || null,
-          category: props.category || null,
-          subcategory: props.subcategory || null,
-        };
-      }
-    }
-    return null;
+    return this.propertyIndex.get(`pk:${normalizedParcel}`) || null;
   }
 
   private onParcelLeave = () => {
@@ -566,19 +551,7 @@ export class DashboardMap {
   };
 
   private findPropertyByLlUuid(llUuid: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
-    for (const feature of this.currentData.features) {
-      const props = feature.properties as any;
-      if (props?.llUuid === llUuid) {
-        return {
-          propertyKey: props?.propertyKey || null,
-          commonName: props?.commonName || null,
-          address: props?.address || null,
-          category: props?.category || null,
-          subcategory: props?.subcategory || null,
-        };
-      }
-    }
-    return null;
+    return this.propertyIndex.get(`ll:${llUuid}`) || null;
   }
 
   private findPropertyByLocation(lng: number, lat: number): { propertyKey: string; commonName: string | null; address: string | null } | null {
@@ -647,11 +620,40 @@ export class DashboardMap {
 
   setData(geojson: GeoJSON.FeatureCollection) {
     this.currentData = geojson;
+    this.buildPropertyIndex();
+    
     if (!this.map) return;
 
     const source = this.map.getSource('properties') as mapboxgl.GeoJSONSource | undefined;
     if (source) {
       source.setData(this.currentData);
+    }
+  }
+
+  private buildPropertyIndex() {
+    this.propertyIndex.clear();
+    
+    for (const feature of this.currentData.features) {
+      const props = feature.properties as any;
+      if (!props?.propertyKey) continue;
+      
+      const info = {
+        propertyKey: props.propertyKey,
+        commonName: props.commonName || null,
+        address: props.address || null,
+        category: props.category || null,
+        subcategory: props.subcategory || null,
+        llUuid: props.llUuid || null,
+      };
+      
+      // Index by normalized propertyKey (for parcelnumb matching)
+      const normalizedKey = props.propertyKey.replace(/[-\s]/g, '').toUpperCase();
+      this.propertyIndex.set(`pk:${normalizedKey}`, info);
+      
+      // Also index by llUuid if available
+      if (props.llUuid) {
+        this.propertyIndex.set(`ll:${props.llUuid}`, info);
+      }
     }
   }
 
