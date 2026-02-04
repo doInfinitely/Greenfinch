@@ -377,31 +377,69 @@ export class DashboardMap {
         return;
       }
 
-      if (parcelId === this.currentHoveredParcelId) return;
+      // If same parcel, just update popup position
+      if (parcelId === this.currentHoveredParcelId && this.hoverPopup) {
+        this.hoverPopup.setLngLat(center);
+        return;
+      }
+      
       this.currentHoveredParcelId = parcelId;
 
-      const propertyInfo = parcelnumb 
+      // Try client-side matching first (instant)
+      let propertyInfo = parcelnumb 
         ? this.findPropertyByParcelNumber(parcelnumb)
         : this.findPropertyByLlUuid(llUuid!);
 
       if (propertyInfo) {
-        const displayName = propertyInfo.commonName 
-          ? normalizeCommonName(propertyInfo.commonName) 
-          : propertyInfo.address || 'Unknown Property';
-        
-        const popupContent = `<div style="font-size: 12px; max-width: 220px;">
-          <div style="font-weight: 600;">${displayName}</div>
-          ${propertyInfo.subcategory || propertyInfo.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${propertyInfo.subcategory || propertyInfo.category}</div>` : ''}
-        </div>`;
-        
-        if (this.hoverPopup && this.map) {
-          this.hoverPopup.setLngLat(center).setHTML(popupContent).addTo(this.map);
-        }
+        this.showTooltip(center, propertyInfo);
+      } else if (parcelnumb) {
+        // API fallback for constituent parcels - async but non-blocking
+        this.fetchAndShowTooltip(center, parcelnumb, parcelId);
       } else {
         if (this.hoverPopup) this.hoverPopup.remove();
       }
     }
   };
+
+  private showTooltip(
+    center: mapboxgl.LngLat, 
+    propertyInfo: { commonName: string | null; address: string | null; category?: string; subcategory?: string }
+  ) {
+    const displayName = propertyInfo.commonName 
+      ? normalizeCommonName(propertyInfo.commonName) 
+      : propertyInfo.address || 'Unknown Property';
+    
+    const popupContent = `<div style="font-size: 12px; max-width: 220px;">
+      <div style="font-weight: 600;">${displayName}</div>
+      ${propertyInfo.subcategory || propertyInfo.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${propertyInfo.subcategory || propertyInfo.category}</div>` : ''}
+    </div>`;
+    
+    if (this.hoverPopup && this.map) {
+      this.hoverPopup.setLngLat(center).setHTML(popupContent).addTo(this.map);
+    }
+  }
+
+  private async fetchAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string, parcelId: string) {
+    try {
+      const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
+      // Check if user is still hovering over the same parcel
+      if (this.currentHoveredParcelId !== parcelId) return;
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.displayName) {
+          this.showTooltip(center, {
+            commonName: data.displayName,
+            address: data.address,
+            category: data.category,
+            subcategory: data.subcategory,
+          });
+        }
+      }
+    } catch (err) {
+      // Silently ignore API errors for hover tooltips
+    }
+  }
 
   private findPropertyByParcelNumber(parcelnumb: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
     const normalizedParcel = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
