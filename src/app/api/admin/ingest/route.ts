@@ -156,14 +156,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const zipCode = body.zipCode || configuredZipCodes[0];
-    console.log(`Starting DCAD-based ingestion for ZIP ${zipCode} with limit ${configuredLimit}`);
-    const stats = await runIngestion(zipCode, configuredLimit);
-    
+    if (body.zipCode) {
+      console.log(`Starting DCAD-based ingestion for ZIP ${body.zipCode} with limit ${configuredLimit}`);
+      const stats = await runIngestion(body.zipCode, configuredLimit);
+      return NextResponse.json({
+        success: true,
+        mode: 'mvp',
+        zipCode: body.zipCode,
+        limit: configuredLimit,
+        stats,
+      });
+    }
+
+    console.log(`Starting DCAD-based ingestion for ${configuredZipCodes.length} ZIP codes: ${configuredZipCodes.join(', ')} with limit ${configuredLimit}`);
+    const stats = await runMultiZipIngestion(configuredZipCodes, configuredLimit);
     return NextResponse.json({
       success: true,
-      mode: 'mvp',
-      zipCode,
+      mode: 'multi-zip',
+      zipCodes: configuredZipCodes,
       limit: configuredLimit,
       stats,
     });

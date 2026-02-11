@@ -50,6 +50,7 @@ export default function AdminPage() {
   const [ingestOffset, setIngestOffset] = useState('0');
   const [isIngesting, setIsIngesting] = useState(false);
   const [ingestionResult, setIngestionResult] = useState<IngestionResult | null>(null);
+  const [ingestionSettings, setIngestionSettings] = useState<{ zipCodes: string[]; defaultLimit: number; allZips: boolean } | null>(null);
 
   const [enrichLimit, setEnrichLimit] = useState('50');
   const [onlyUnenriched, setOnlyUnenriched] = useState(true);
@@ -79,10 +80,26 @@ export default function AdminPage() {
     }
   }, []);
 
+  const fetchIngestionSettings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/ingestion-settings', { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        setIngestionSettings(data);
+        if (data.defaultLimit) {
+          setIngestLimit(String(data.defaultLimit));
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch ingestion settings:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchStats();
     fetchEnrichmentStatus();
-  }, [fetchStats, fetchEnrichmentStatus]);
+    fetchIngestionSettings();
+  }, [fetchStats, fetchEnrichmentStatus, fetchIngestionSettings]);
 
   useEffect(() => {
     if (enrichmentStatus?.isRunning) {
@@ -221,6 +238,13 @@ export default function AdminPage() {
               Import properties from Snowflake database
             </p>
 
+            {ingestionSettings && (
+              <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm text-gray-600">
+                <p><strong>Scope:</strong> {ingestionSettings.allZips ? 'All ZIP codes (county-wide)' : `Specific ZIPs: ${ingestionSettings.zipCodes.join(', ')}`}</p>
+                <p className="text-xs text-gray-400 mt-1">Change in Database {'>'} Ingestion Settings</p>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -232,7 +256,7 @@ export default function AdminPage() {
                   onChange={(e) => setIngestLimit(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
                   min="1"
-                  max="10000"
+                  max="100000"
                 />
               </div>
               <div>
