@@ -84,6 +84,7 @@ export default function DatabaseAdminPage() {
 
   const [ingestionZipCodes, setIngestionZipCodes] = useState<string[]>(['75225']);
   const [ingestionLimit, setIngestionLimit] = useState<number>(500);
+  const [ingestionAllZips, setIngestionAllZips] = useState<boolean>(false);
   const [newZipCode, setNewZipCode] = useState('');
   const [isLoadingIngestionSettings, setIsLoadingIngestionSettings] = useState(false);
   const [isSavingIngestionSettings, setIsSavingIngestionSettings] = useState(false);
@@ -222,6 +223,7 @@ export default function DatabaseAdminPage() {
       const data = await response.json();
       setIngestionZipCodes(data.zipCodes || ['75225']);
       setIngestionLimit(data.defaultLimit || 500);
+      setIngestionAllZips(data.allZips === true);
     } catch (error) {
       toast({
         title: 'Error',
@@ -243,6 +245,7 @@ export default function DatabaseAdminPage() {
         body: JSON.stringify({
           zipCodes: ingestionZipCodes,
           defaultLimit: ingestionLimit,
+          allZips: ingestionAllZips,
         }),
       });
 
@@ -251,7 +254,9 @@ export default function DatabaseAdminPage() {
 
       toast({
         title: 'Settings Saved',
-        description: `Ingestion will use ${data.zipCodes.length} ZIP code(s) with limit ${data.defaultLimit}`,
+        description: data.allZips 
+          ? `Ingestion will use ALL ZIP codes with limit ${data.defaultLimit}`
+          : `Ingestion will use ${data.zipCodes.length} ZIP code(s) with limit ${data.defaultLimit}`,
       });
     } catch (error) {
       toast({
@@ -287,10 +292,10 @@ export default function DatabaseAdminPage() {
   };
 
   const removeZipCode = (zip: string) => {
-    if (ingestionZipCodes.length === 1) {
+    if (ingestionZipCodes.length === 1 && !ingestionAllZips) {
       toast({
         title: 'Cannot Remove',
-        description: 'At least one ZIP code is required',
+        description: 'At least one ZIP code is required when not using "All ZIP codes" mode',
         variant: 'destructive',
       });
       return;
@@ -766,51 +771,89 @@ export default function DatabaseAdminPage() {
               ) : (
                 <>
                   <div className="space-y-3">
-                    <label className="text-sm font-medium text-gray-700">ZIP Codes for Ingestion</label>
+                    <label className="text-sm font-medium text-gray-700">ZIP Code Scope</label>
                     <p className="text-sm text-gray-500">
-                      Add the ZIP codes you want to include when running property data ingestion from Snowflake.
+                      Choose whether to ingest from specific ZIP codes or all available ZIP codes in the county.
                     </p>
-                    <div className="flex flex-wrap gap-2">
-                      {ingestionZipCodes.map((zip) => (
-                        <div key={zip} className="inline-flex items-center gap-1 bg-secondary text-secondary-foreground rounded-md pl-2.5 pr-1 py-0.5 text-sm font-medium">
-                          <span data-testid={`text-zip-${zip}`}>{zip}</span>
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            onClick={() => removeZipCode(zip)}
-                            data-testid={`button-remove-zip-${zip}`}
-                          >
-                            <X className="h-3 w-3" />
-                          </Button>
-                        </div>
-                      ))}
-                    </div>
                     <div className="flex gap-2">
-                      <Input
-                        placeholder="Enter ZIP code (e.g., 75225)"
-                        value={newZipCode}
-                        onChange={(e) => setNewZipCode(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && addZipCode()}
-                        className="max-w-[200px]"
-                        maxLength={5}
-                        data-testid="input-new-zip"
-                      />
                       <Button
+                        variant={ingestionAllZips ? 'outline' : 'default'}
                         size="sm"
-                        variant="outline"
-                        onClick={addZipCode}
-                        data-testid="button-add-zip"
+                        onClick={() => setIngestionAllZips(false)}
+                        className="toggle-elevate"
+                        data-testid="button-scope-specific"
                       >
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add
+                        Specific ZIP Codes
+                      </Button>
+                      <Button
+                        variant={ingestionAllZips ? 'default' : 'outline'}
+                        size="sm"
+                        onClick={() => setIngestionAllZips(true)}
+                        className="toggle-elevate"
+                        data-testid="button-scope-all"
+                      >
+                        All ZIP Codes
                       </Button>
                     </div>
+                    {ingestionAllZips && (
+                      <div className="bg-amber-50 border border-amber-200 rounded-md p-3 text-sm text-amber-800">
+                        Ingestion will pull all commercial, industrial, and multifamily properties across all ZIP codes in the county. This may take significantly longer and return a large number of properties.
+                      </div>
+                    )}
                   </div>
 
+                  {!ingestionAllZips && (
+                    <div className="space-y-3">
+                      <label className="text-sm font-medium text-gray-700">ZIP Codes for Ingestion</label>
+                      <p className="text-sm text-gray-500">
+                        Add the ZIP codes you want to include when running property data ingestion from Snowflake.
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {ingestionZipCodes.map((zip) => (
+                          <div key={zip} className="inline-flex items-center gap-1 bg-secondary text-secondary-foreground rounded-md pl-2.5 pr-1 py-0.5 text-sm font-medium">
+                            <span data-testid={`text-zip-${zip}`}>{zip}</span>
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() => removeZipCode(zip)}
+                              data-testid={`button-remove-zip-${zip}`}
+                            >
+                              <X className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          placeholder="Enter ZIP code (e.g., 75225)"
+                          value={newZipCode}
+                          onChange={(e) => setNewZipCode(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && addZipCode()}
+                          className="max-w-[200px]"
+                          maxLength={5}
+                          data-testid="input-new-zip"
+                        />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={addZipCode}
+                          data-testid="button-add-zip"
+                        >
+                          <Plus className="h-4 w-4 mr-1" />
+                          Add
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="space-y-3">
-                    <label className="text-sm font-medium text-gray-700">Default Row Limit</label>
+                    <label className="text-sm font-medium text-gray-700">
+                      {ingestionAllZips ? 'Total Row Limit' : 'Default Row Limit'}
+                    </label>
                     <p className="text-sm text-gray-500">
-                      Maximum number of properties to ingest per ZIP code (1-10000).
+                      {ingestionAllZips
+                        ? 'Maximum total number of properties to ingest across all ZIP codes (1-10000).'
+                        : 'Maximum number of properties to ingest per ZIP code (1-10000).'}
                     </p>
                     <Input
                       type="number"
@@ -826,7 +869,7 @@ export default function DatabaseAdminPage() {
                   <div className="pt-4 border-t">
                     <Button
                       onClick={saveIngestionSettings}
-                      disabled={isSavingIngestionSettings || ingestionZipCodes.length === 0}
+                      disabled={isSavingIngestionSettings || (!ingestionAllZips && ingestionZipCodes.length === 0)}
                       data-testid="button-save-ingestion-settings"
                     >
                       {isSavingIngestionSettings ? 'Saving...' : 'Save Settings'}
@@ -837,10 +880,15 @@ export default function DatabaseAdminPage() {
                     <h4 className="text-sm font-medium text-gray-700 mb-2">Current Configuration</h4>
                     <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600">
                       <p>
-                        <strong>ZIP Codes:</strong> {ingestionZipCodes.join(', ') || 'None configured'}
+                        <strong>Scope:</strong> {ingestionAllZips ? 'All ZIP codes (county-wide)' : 'Specific ZIP codes'}
                       </p>
+                      {!ingestionAllZips && (
+                        <p>
+                          <strong>ZIP Codes:</strong> {ingestionZipCodes.join(', ') || 'None configured'}
+                        </p>
+                      )}
                       <p>
-                        <strong>Limit per ZIP:</strong> {ingestionLimit} properties
+                        <strong>{ingestionAllZips ? 'Total limit:' : 'Limit per ZIP:'}</strong> {ingestionLimit} properties
                       </p>
                     </div>
                   </div>

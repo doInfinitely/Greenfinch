@@ -7,6 +7,7 @@ import { eq } from 'drizzle-orm';
 const DEFAULT_SETTINGS = {
   zip_codes: ['75225'],
   default_limit: 500,
+  all_zips: false,
 };
 
 export async function GET() {
@@ -33,6 +34,7 @@ export async function GET() {
     return NextResponse.json({
       zipCodes: (settingsMap.zip_codes as string[]) || DEFAULT_SETTINGS.zip_codes,
       defaultLimit: (settingsMap.default_limit as number) || DEFAULT_SETTINGS.default_limit,
+      allZips: settingsMap.all_zips === true ? true : DEFAULT_SETTINGS.all_zips,
     });
   } catch (error) {
     console.error('[IngestionSettings] Error fetching settings:', error);
@@ -58,10 +60,32 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { zipCodes, defaultLimit } = body;
+    const { zipCodes, defaultLimit, allZips } = body;
 
     const session = await getSession();
     const userId = session?.user?.id || null;
+
+    if (allZips !== undefined) {
+      const allZipsValue = allZips === true;
+      const existingSetting = await db.select().from(ingestionSettings).where(eq(ingestionSettings.key, 'all_zips'));
+      
+      if (existingSetting.length > 0) {
+        await db.update(ingestionSettings)
+          .set({ 
+            value: allZipsValue, 
+            updatedAt: new Date(),
+            updatedByUserId: userId 
+          })
+          .where(eq(ingestionSettings.key, 'all_zips'));
+      } else {
+        await db.insert(ingestionSettings).values({
+          key: 'all_zips',
+          value: allZipsValue,
+          description: 'Whether to ingest all ZIP codes instead of specific ones',
+          updatedByUserId: userId,
+        });
+      }
+    }
 
     if (zipCodes !== undefined) {
       if (!Array.isArray(zipCodes)) {
@@ -69,7 +93,7 @@ export async function PUT(request: NextRequest) {
       }
       
       const validZips = zipCodes.filter(z => typeof z === 'string' && /^\d{5}$/.test(z));
-      if (validZips.length === 0) {
+      if (allZips !== true && validZips.length === 0) {
         return NextResponse.json({ error: 'At least one valid 5-digit ZIP code is required' }, { status: 400 });
       }
 
@@ -129,6 +153,7 @@ export async function PUT(request: NextRequest) {
       success: true,
       zipCodes: (settingsMap.zip_codes as string[]) || DEFAULT_SETTINGS.zip_codes,
       defaultLimit: (settingsMap.default_limit as number) || DEFAULT_SETTINGS.default_limit,
+      allZips: settingsMap.all_zips === true ? true : DEFAULT_SETTINGS.all_zips,
     });
   } catch (error) {
     console.error('[IngestionSettings] Error updating settings:', error);

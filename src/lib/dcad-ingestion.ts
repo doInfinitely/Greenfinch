@@ -197,6 +197,19 @@ export async function countCommercialPropertiesByZip(zipCode: string): Promise<n
   return rows[0]?.CNT || 0;
 }
 
+export async function countAllCommercialProperties(): Promise<number> {
+  const sptdCodesList = INCLUDED_SPTD_CODES.map(c => `'${c}'`).join(', ');
+  
+  const sql = `
+    SELECT COUNT(*) as CNT 
+    FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
+    JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
+    WHERE aa.SPTD_CODE IN (${sptdCodesList})
+  `;
+  const rows = await executeQuery<any>(sql);
+  return rows[0]?.CNT || 0;
+}
+
 export async function getCommercialPropertiesByZip(
   zipCode: string,
   limit: number = 1000,
@@ -272,6 +285,88 @@ export async function getCommercialPropertiesByZip(
     LEFT JOIN ${REGRID_TABLE} r ON ai.GIS_PARCEL_ID = r."parcelnumb"
     WHERE cp.ZIP LIKE '${zipCode}%'
       AND aa.SPTD_CODE IN (${sptdCodesList})
+    ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
+    LIMIT ${limit}
+    OFFSET ${offset}
+  `;
+  
+  const rows = await executeQuery<any>(sql);
+  return rows.map(mapRowToProperty);
+}
+
+export async function getAllCommercialProperties(
+  limit: number = 50000,
+  offset: number = 0
+): Promise<DCadCommercialProperty[]> {
+  const sptdCodesList = INCLUDED_SPTD_CODES.map(c => `'${c}'`).join(', ');
+  
+  const sql = `
+    SELECT 
+      cp.PARCEL_ID,
+      ai.GIS_PARCEL_ID,
+      r."ll_uuid" AS REGRID_LL_UUID,
+      cp."address",
+      cp.CITY,
+      cp.ZIP,
+      cp."lat",
+      cp."lon",
+      cp."usedesc",
+      cp."usecode",
+      cp.REGRID_YEAR_BUILT,
+      cp.REGRID_NUM_STORIES,
+      cp.REGRID_IMPROV_VAL,
+      cp.REGRID_LAND_VAL,
+      cp.REGRID_TOTAL_VAL,
+      cp.LOT_ACRES,
+      cp.LOT_SQFT,
+      cp.BLDG_FOOTPRINT_SQFT,
+      cp.ACCOUNT_NUM,
+      cp.DIVISION_CD,
+      cp.DCAD_IMPROV_VAL,
+      cp.DCAD_LAND_VAL,
+      cp.DCAD_TOTAL_VAL,
+      cp.BLDG_CLASS_CD,
+      cp.CITY_JURIS_DESC,
+      cp.ISD_JURIS_DESC,
+      cp.BIZ_NAME,
+      cp.OWNER_NAME1,
+      cp.OWNER_NAME2,
+      cp.OWNER_ADDRESS_LINE1,
+      cp.OWNER_CITY,
+      cp.OWNER_STATE,
+      cp.OWNER_ZIPCODE,
+      cp.OWNER_PHONE,
+      cp.DEED_TXFR_DATE,
+      cp.DCAD_ZONING,
+      cp.FRONT_DIM,
+      cp.DEPTH_DIM,
+      cp.LAND_AREA,
+      cp.LAND_AREA_UOM,
+      cp.LAND_COST_PER_UOM,
+      cp.TAX_OBJ_ID,
+      cp.PROPERTY_NAME,
+      cp.BLDG_CLASS_DESC,
+      cp.DCAD_YEAR_BUILT,
+      cp.REMODEL_YR,
+      cp.GROSS_BLDG_AREA,
+      cp.DCAD_NUM_STORIES,
+      cp.NUM_UNITS,
+      cp.NET_LEASE_AREA,
+      cp.CONSTRUCTION_TYPE,
+      cp.FOUNDATION_TYPE,
+      cp.HEATING_TYPE,
+      cp.AC_TYPE,
+      cp.QUALITY_GRADE,
+      cp.CONDITION_GRADE,
+      aa.SPTD_CODE,
+      land.AREA_SIZE AS LAND_AREA_SIZE,
+      land.AREA_UOM_DESC AS LAND_AREA_UOM_DESC
+    FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
+    JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
+    JOIN ${ACCOUNT_INFO_TABLE} ai ON cp.ACCOUNT_NUM = ai.ACCOUNT_NUM
+    LEFT JOIN ${LAND_TABLE} land ON cp.ACCOUNT_NUM = land.ACCOUNT_NUM AND land.APPRAISAL_YR = 2025
+    LEFT JOIN ${REGRID_TABLE} r ON ai.GIS_PARCEL_ID = r."parcelnumb"
+    WHERE aa.SPTD_CODE IN (${sptdCodesList})
     ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
     LIMIT ${limit}
     OFFSET ${offset}
@@ -852,6 +947,75 @@ export async function runMultiZipIngestion(
   stats.durationMs = Date.now() - startTime;
   console.log(`\n[Ingestion] Multi-ZIP ingestion complete in ${Math.round(stats.durationMs / 1000)}s`);
   console.log(`[Ingestion] Total: ${stats.propertiesSaved} new, ${stats.propertiesUpdated} updated, ${stats.errors} errors across ${zipCodes.length} ZIPs`);
+  
+  return stats;
+}
+
+export async function runAllZipsIngestion(
+  limit: number = 50000
+): Promise<IngestionStats> {
+  console.log(`[Ingestion] Starting ALL ZIP codes ingestion with limit ${limit}`);
+  
+  const startTime = Date.now();
+  const stats: IngestionStats = {
+    totalFromSnowflake: 0,
+    propertiesSaved: 0,
+    propertiesUpdated: 0,
+    errors: 0,
+    durationMs: 0,
+  };
+  
+  const count = await countAllCommercialProperties();
+  console.log(`[Ingestion] Found ${count} total commercial properties (rows) across all ZIP codes`);
+  
+  const commercialProperties = await getAllCommercialProperties(limit);
+  stats.totalFromSnowflake = commercialProperties.length;
+  console.log(`[Ingestion] Fetched ${commercialProperties.length} rows from Snowflake`);
+  
+  const aggregatedProperties = aggregatePropertiesByParcel(commercialProperties);
+  console.log(`[Ingestion] Aggregated into ${aggregatedProperties.length} unique properties`);
+  
+  const relationships = identifyParcelRelationships(aggregatedProperties);
+  const complexCount = relationships.size;
+  if (complexCount > 0) {
+    console.log(`[Ingestion] Found ${complexCount} property complexes with multiple accounts:`);
+    for (const [parcelId, rel] of [...relationships.entries()].slice(0, 5)) {
+      const parent = aggregatedProperties.find(p => p.accountNum === rel.parentAccountNum);
+      console.log(`  - ${parent?.primaryPropertyName || parcelId}: ${rel.constituentAccountNums.length + 1} accounts`);
+    }
+  }
+  
+  const multiBuilding = aggregatedProperties.filter(p => p.buildingCount > 1);
+  if (multiBuilding.length > 0) {
+    console.log(`[Ingestion] ${multiBuilding.length} properties have multiple buildings:`);
+    for (const p of multiBuilding.slice(0, 5)) {
+      console.log(`  - ${p.primaryPropertyName || p.parcelId}: ${p.buildingCount} buildings, ${p.totalGrossBldgArea?.toLocaleString()} sqft`);
+    }
+  }
+  
+  for (let i = 0; i < aggregatedProperties.length; i++) {
+    const prop = aggregatedProperties[i];
+    
+    try {
+      const result = await upsertAggregatedPropertyToPostgres(prop, relationships);
+      
+      if (result.created) {
+        stats.propertiesSaved++;
+      } else {
+        stats.propertiesUpdated++;
+      }
+      
+      if ((i + 1) % 100 === 0) {
+        console.log(`[Ingestion] Progress: ${i + 1}/${aggregatedProperties.length}`);
+      }
+    } catch (error) {
+      stats.errors++;
+      console.error(`[Ingestion] Error saving property ${prop.parcelId}:`, error instanceof Error ? error.message : error);
+    }
+  }
+  
+  stats.durationMs = Date.now() - startTime;
+  console.log(`[Ingestion] All-ZIP ingestion complete in ${Math.round(stats.durationMs / 1000)}s: ${stats.propertiesSaved} new, ${stats.propertiesUpdated} updated, ${stats.errors} errors`);
   
   return stats;
 }

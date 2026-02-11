@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runIngestion, runMultiZipIngestion, countCommercialPropertiesByZip } from '@/lib/dcad-ingestion';
+import { runIngestion, runMultiZipIngestion, runAllZipsIngestion, countCommercialPropertiesByZip, countAllCommercialProperties } from '@/lib/dcad-ingestion';
 import { requireAdminAccess } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { ingestionSettings } from '@/lib/schema';
@@ -7,7 +7,7 @@ import { ingestionSettings } from '@/lib/schema';
 const DEFAULT_ZIP_CODES = ['75225'];
 const DEFAULT_LIMIT = 500;
 
-async function getIngestionSettings(): Promise<{ zipCodes: string[]; limit: number }> {
+async function getIngestionSettings(): Promise<{ zipCodes: string[]; limit: number; allZips: boolean }> {
   try {
     const settings = await db.select().from(ingestionSettings);
     const settingsMap: Record<string, unknown> = {};
@@ -17,6 +17,7 @@ async function getIngestionSettings(): Promise<{ zipCodes: string[]; limit: numb
     
     const storedZipCodes = settingsMap.zip_codes as string[] | undefined;
     const storedLimit = settingsMap.default_limit as number | undefined;
+    const storedAllZips = settingsMap.all_zips as boolean | undefined;
     
     const zipCodes = Array.isArray(storedZipCodes) && storedZipCodes.length > 0 
       ? storedZipCodes 
@@ -24,11 +25,12 @@ async function getIngestionSettings(): Promise<{ zipCodes: string[]; limit: numb
     const limit = typeof storedLimit === 'number' && storedLimit >= 1 && storedLimit <= 10000
       ? storedLimit
       : DEFAULT_LIMIT;
+    const allZips = storedAllZips === true;
     
-    return { zipCodes, limit };
+    return { zipCodes, limit, allZips };
   } catch (error) {
     console.error('[Ingest] Failed to fetch settings, using defaults:', error);
-    return { zipCodes: DEFAULT_ZIP_CODES, limit: DEFAULT_LIMIT };
+    return { zipCodes: DEFAULT_ZIP_CODES, limit: DEFAULT_LIMIT, allZips: false };
   }
 }
 
@@ -46,7 +48,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    let body: { mode?: string; zipCode?: string; zipCodes?: string[]; limit?: number } = {};
+    let body: { mode?: string; zipCode?: string; zipCodes?: string[]; limit?: number; allZips?: boolean } = {};
     try {
       body = await request.json();
     } catch {
@@ -57,7 +59,7 @@ export async function POST(request: NextRequest) {
     let configuredZipCodes = dbSettings.zipCodes;
     let configuredLimit = dbSettings.limit;
     
-    if (body.zipCodes !== undefined) {
+    if (body.zipCodes !== undefined && body.allZips !== true) {
       if (!Array.isArray(body.zipCodes) || body.zipCodes.length === 0) {
         return NextResponse.json(
           { error: 'zipCodes must be a non-empty array of 5-digit strings' },
@@ -85,9 +87,9 @@ export async function POST(request: NextRequest) {
       configuredLimit = parsedLimit;
     }
 
-    if (body.mode !== undefined && body.mode !== 'count' && body.mode !== 'mvp' && body.mode !== 'multi-zip') {
+    if (body.mode !== undefined && body.mode !== 'count' && body.mode !== 'mvp' && body.mode !== 'multi-zip' && body.mode !== 'all') {
       return NextResponse.json(
-        { error: 'Invalid mode. Must be "count", "mvp", or "multi-zip"' },
+        { error: 'Invalid mode. Must be "count", "mvp", "multi-zip", or "all"' },
         { status: 400 }
       );
     }
@@ -102,7 +104,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const allZips = body.allZips === true || (body.allZips === undefined && dbSettings.allZips);
+
     if (body.mode === 'count') {
+      if (allZips) {
+        const totalParcels = await countAllCommercialProperties();
+        return NextResponse.json({
+          success: true,
+          totalParcels,
+          allZips: true,
+          configuredLimit,
+        });
+      }
       const zipCounts: Record<string, number> = {};
       let totalParcels = 0;
       for (const zip of configuredZipCodes) {
@@ -116,6 +129,18 @@ export async function POST(request: NextRequest) {
         zipCounts,
         configuredZipCodes,
         configuredLimit,
+      });
+    }
+
+    if (body.mode === 'all' || allZips) {
+      console.log(`Starting DCAD-based ingestion for ALL ZIP codes with limit ${configuredLimit}`);
+      const stats = await runAllZipsIngestion(configuredLimit);
+      return NextResponse.json({
+        success: true,
+        mode: 'all',
+        allZips: true,
+        limit: configuredLimit,
+        stats,
       });
     }
 
