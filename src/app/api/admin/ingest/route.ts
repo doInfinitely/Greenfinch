@@ -22,7 +22,7 @@ async function getIngestionSettings(): Promise<{ zipCodes: string[]; limit: numb
     const zipCodes = Array.isArray(storedZipCodes) && storedZipCodes.length > 0 
       ? storedZipCodes 
       : DEFAULT_ZIP_CODES;
-    const limit = typeof storedLimit === 'number' && storedLimit >= 1 && storedLimit <= 10000
+    const limit = typeof storedLimit === 'number' && storedLimit >= 1 && storedLimit <= 100000
       ? storedLimit
       : DEFAULT_LIMIT;
     const allZips = storedAllZips === true;
@@ -78,9 +78,9 @@ export async function POST(request: NextRequest) {
     
     if (body.limit !== undefined) {
       const parsedLimit = typeof body.limit === 'number' ? body.limit : parseInt(String(body.limit));
-      if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 10000) {
+      if (isNaN(parsedLimit) || parsedLimit < 1 || parsedLimit > 100000) {
         return NextResponse.json(
-          { error: 'limit must be a number between 1 and 10000' },
+          { error: 'limit must be a number between 1 and 100000' },
           { status: 400 }
         );
       }

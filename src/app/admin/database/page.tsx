@@ -852,13 +852,13 @@ export default function DatabaseAdminPage() {
                     </label>
                     <p className="text-sm text-gray-500">
                       {ingestionAllZips
-                        ? 'Maximum total number of properties to ingest across all ZIP codes (1-10000).'
-                        : 'Maximum number of properties to ingest per ZIP code (1-10000).'}
+                        ? 'Maximum total number of properties to ingest across all ZIP codes (1-100000).'
+                        : 'Maximum number of properties to ingest per ZIP code (1-100000).'}
                     </p>
                     <Input
                       type="number"
                       min={1}
-                      max={10000}
+                      max={100000}
                       value={ingestionLimit}
                       onChange={(e) => setIngestionLimit(parseInt(e.target.value) || 500)}
                       className="max-w-[200px]"

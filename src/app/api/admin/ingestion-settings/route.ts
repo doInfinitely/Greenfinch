@@ -119,8 +119,8 @@ export async function PUT(request: NextRequest) {
 
     if (defaultLimit !== undefined) {
       const limit = parseInt(defaultLimit);
-      if (isNaN(limit) || limit < 1 || limit > 10000) {
-        return NextResponse.json({ error: 'defaultLimit must be between 1 and 10000' }, { status: 400 });
+      if (isNaN(limit) || limit < 1 || limit > 100000) {
+        return NextResponse.json({ error: 'defaultLimit must be between 1 and 100000' }, { status: 400 });
       }
 
       const existingLimitSetting = await db.select().from(ingestionSettings).where(eq(ingestionSettings.key, 'default_limit'));
