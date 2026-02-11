@@ -71,7 +71,7 @@ greenfinch.ai is a commercial real estate prospecting platform that provides sal
 | **ORM** | Drizzle ORM |
 | **Styling** | Tailwind CSS v3 |
 | **Maps** | Mapbox GL JS (primary), Google Maps (alternative) |
-| **AI** | Google Gemini (gemini-2.0-flash with Search Grounding) |
+| **AI** | Google Gemini (gemini-3.0-flash with Search Grounding) |
 | **Auth** | Clerk |
 | **Caching** | Upstash Redis |
 
