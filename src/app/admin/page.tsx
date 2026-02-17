@@ -136,6 +136,24 @@ export default function AdminPage() {
     }
   };
 
+  const handleCancelBatch = async () => {
+    try {
+      const response = await fetch('/api/admin/enrich-batch', {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+      const data = await response.json();
+      toast({
+        title: data.cancelled ? 'Batch Cancelled' : 'No Running Batch',
+        description: data.message,
+        variant: data.cancelled ? 'default' : 'destructive',
+      });
+      fetchEnrichmentStatus();
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to cancel batch', variant: 'destructive' });
+    }
+  };
+
   const handleStartEnrichment = async () => {
     setIsStartingEnrichment(true);
     try {
@@ -353,13 +371,25 @@ export default function AdminPage() {
               </label>
             </div>
 
-            <button
-              onClick={handleStartEnrichment}
-              disabled={isStartingEnrichment || enrichmentStatus?.isRunning}
-              className="w-full px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-            >
-              {isStartingEnrichment ? 'Starting...' : enrichmentStatus?.isRunning ? 'Batch Running...' : 'Start Enrichment'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={handleStartEnrichment}
+                disabled={isStartingEnrichment || enrichmentStatus?.isRunning}
+                className="flex-1 px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                data-testid="button-start-enrichment"
+              >
+                {isStartingEnrichment ? 'Starting...' : enrichmentStatus?.isRunning ? 'Batch Running...' : 'Start Enrichment'}
+              </button>
+              {enrichmentStatus?.isRunning && (
+                <button
+                  onClick={handleCancelBatch}
+                  className="px-4 py-2 bg-red-600 text-white font-medium rounded-lg hover:bg-red-700 transition-colors"
+                  data-testid="button-cancel-batch"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
 
             {enrichmentStatus && (enrichmentStatus.isRunning || enrichmentStatus.status !== 'idle') && (
               <div className="mt-4 p-4 bg-gray-50 rounded-lg border border-gray-200">

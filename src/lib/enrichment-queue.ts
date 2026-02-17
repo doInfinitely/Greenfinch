@@ -658,12 +658,44 @@ export async function getQueueStatus(): Promise<BatchStatus | null> {
   return getBatchStatus();
 }
 
+const STALE_BATCH_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes with no progress = stale
+
 export async function isBatchRunning(): Promise<boolean> {
   const batch = await getBatchStatus();
+  if (!batch || batch.status !== 'running') return false;
+
   if (isRedisConfigured()) {
-    return batch?.status === 'running';
+    const startedAt = batch.startedAt ? new Date(batch.startedAt).getTime() : 0;
+    const elapsed = Date.now() - startedAt;
+    if (elapsed > STALE_BATCH_TIMEOUT_MS && batch.progress.processed === 0) {
+      console.warn(`[EnrichmentQueue] Detected stale batch ${batch.batchId} - started ${Math.round(elapsed / 1000)}s ago with 0 progress. Auto-cancelling.`);
+      batch.status = 'failed';
+      batch.completedAt = new Date();
+      batch.errors.push({ propertyKey: '', error: 'Batch became stale (server restart or timeout)' });
+      await setBatchStatus(batch);
+      await releaseLock(REDIS_LOCK_KEY);
+      return false;
+    }
+    return true;
   }
-  return memoryIsProcessing || (batch?.status === 'running');
+  return memoryIsProcessing;
+}
+
+export async function cancelBatch(): Promise<{ cancelled: boolean; message: string }> {
+  const batch = await getBatchStatus();
+  if (!batch || batch.status !== 'running') {
+    return { cancelled: false, message: 'No running batch to cancel' };
+  }
+  batch.status = 'failed';
+  batch.completedAt = new Date();
+  batch.errors.push({ propertyKey: '', error: 'Manually cancelled by admin' });
+  await setBatchStatus(batch);
+  memoryIsProcessing = false;
+  if (isRedisConfigured()) {
+    await releaseLock(REDIS_LOCK_KEY);
+  }
+  console.log(`[EnrichmentQueue] Batch ${batch.batchId} cancelled by admin`);
+  return { cancelled: true, message: `Batch ${batch.batchId} cancelled. Processed ${batch.progress.processed}/${batch.progress.total}.` };
 }
 
 export async function checkRateLimitForIndividual(): Promise<boolean> {

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { startBatch, isBatchRunning, getMaxBatchSize } from '@/lib/enrichment-queue';
+import { startBatch, isBatchRunning, getMaxBatchSize, cancelBatch } from '@/lib/enrichment-queue';
 import { requireAdminAccess } from '@/lib/auth';
 import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
 
@@ -94,4 +94,29 @@ export async function GET() {
       'concurrency controls parallel property processing (1-50, default: 15)',
     ],
   });
+}
+
+export async function DELETE(request: NextRequest) {
+  try {
+    await requireAdminAccess();
+  } catch (error) {
+    if (error instanceof Error && error.message === 'UNAUTHORIZED') {
+      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
+    }
+    if (error instanceof Error && error.message === 'FORBIDDEN') {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+    return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
+  }
+
+  try {
+    const result = await cancelBatch();
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error('[API] Batch cancel error:', error);
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Internal server error' },
+      { status: 500 }
+    );
+  }
 }
