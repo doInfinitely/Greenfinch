@@ -49,7 +49,7 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Map Management**: A dedicated `DashboardMap` controller manages Mapbox GL lifecycle and state.
 - **Search Functionality**: Integrates Mapbox Search Box API for POI, address, and location searches.
 - **Cascade Enrichment Architecture**: Multi-provider enrichment pipelines with raw response storage and confidence flags.
-  - **Contact Pipeline (4 stages)**: Input Validation → Email/LinkedIn Discovery (Findymail Verify → Findymail Finder → Hunter Finder → Findymail Reverse Email) → PDL Person Enrichment → Crustdata Verification (conditional on domain mismatch).
+  - **Contact Pipeline (5 stages)**: Input Validation → Email/LinkedIn Discovery (Findymail Verify → Findymail Finder → Hunter Finder → Findymail Reverse Email) → PDL Person Enrichment → SERP LinkedIn Discovery (Google search fallback via SerpAPI when no LinkedIn found) → Crustdata Verification (conditional on domain mismatch).
   - **Organization Pipeline (2 stages)**: PDL Company Enrichment → Crustdata Company Enrichment.
   - **Confidence Flags**: "verified" (Crustdata confirmed) | "pdl_matched" (PDL domain matched input) | "unverified" (PDL domain mismatch, no Crustdata) | "email_only" (only email found).
   - **Email Source Tracking**: "input_verified" | "input_invalid" | "findymail_finder" | "hunter_finder".
@@ -62,7 +62,7 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Horizontal Scaling Infrastructure**: Redis-backed distributed state management using Upstash for cross-instance coordination.
   - **Redis State**: Enrichment queue, caches (ZeroBounce, Mapbox POI, Google Places) use Redis with in-memory fallback when Redis unavailable.
   - **Distributed Locking**: Uses Redis SETNX pattern with unique tokens for batch enrichment locks (5-minute timeout). Fail-closed on Redis errors to prevent concurrent access.
-  - **Cache TTLs**: ZeroBounce 1hr, Mapbox POI 24hr, Google Places 24hr.
+  - **Cache TTLs**: ZeroBounce 1hr, Mapbox POI 24hr, Google Places 24hr, SERP LinkedIn 24hr.
   - **Key Prefixes**: `gf:cache:`, `gf:queue:`, `gf:lock:` for namespace isolation (helpers auto-prefix).
 - **API Performance Optimizations**:
   - **Cursor Pagination**: Contacts and properties APIs use cursor-based pagination for stable, efficient pagination on large datasets. Base64-encoded cursors contain id and sort value.
@@ -98,6 +98,7 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Hunter.io**: Email finding (by name+domain) as fallback to Findymail, and organization domain enrichment.
 - **People Data Labs (PDL)**: Primary person enrichment (phone, identity, location, title) and company enrichment. Env vars: PDL_API_KEY / PEOPLEDATALABS_API_KEY.
 - **Crustdata**: Verification layer for contacts (100% accuracy in testing) and supplementary company enrichment. Uses LinkedIn URL or email as input.
+- **SerpAPI**: Google search-based LinkedIn profile discovery. Used as fallback when Findymail, Hunter, and PDL fail to find a LinkedIn URL. Results cached in Redis for 24hrs. Env var: SERP_API_KEY.
 - **LeadMagic**: Provides email validation services.
 - **EnrichLayer**: For LinkedIn-sourced company and contact data (profile photos, company profiles, industry classification).
 - **Clerk Auth**: Handles user authentication and legacy user migration.

@@ -1,10 +1,11 @@
 /**
  * Cascade Enrichment Service
  * 
- * Contact Pipeline (4 stages):
+ * Contact Pipeline (5 stages):
  *   Stage 1: Input Validation
  *   Stage 2: Email & LinkedIn Discovery (Findymail Verify → Findymail Finder → Hunter Finder → Findymail Reverse Email)
  *   Stage 3: PDL Person Enrichment
+ *   Stage 3.5: SERP LinkedIn Discovery (Google search fallback when no LinkedIn found)
  *   Stage 4: Crustdata Verification (conditional — when PDL domain != input domain)
  * 
  * Organization Pipeline (2 stages):
@@ -22,6 +23,7 @@ import { enrichCompanyPDL, enrichPersonPDL } from './pdl';
 import { enrichPersonCrustdata, enrichCompanyCrustdata } from './crustdata';
 import { verifyEmail as verifyEmailFindymail, findEmailByName, findLinkedInByEmail } from './findymail';
 import { findEmail as findEmailHunter } from './hunter';
+import { searchLinkedInProfile } from './serp-linkedin';
 
 export type ConfidenceFlag = 'verified' | 'pdl_matched' | 'unverified' | 'email_only' | 'insufficient_input' | 'no_match';
 export type EmailSource = 'input_verified' | 'input_invalid' | 'findymail_finder' | 'hunter_finder' | null;
@@ -296,20 +298,20 @@ export async function enrichOrganizationCascade(domain: string): Promise<Organiz
 }
 
 /**
- * Enrich a contact using the 4-stage pipeline:
+ * Enrich a contact using the 5-stage pipeline:
  * Stage 1: Input Validation
  * Stage 2: Email & LinkedIn Discovery Waterfall (Findymail Verify → Findymail Finder → Hunter Finder → Findymail Reverse Email)
  * Stage 3: PDL Person Enrichment
+ * Stage 3.5: SERP LinkedIn Discovery (Google search fallback when no LinkedIn found from prior stages)
  * Stage 4: Crustdata Verification (conditional)
  */
 export async function enrichContactCascade(
   input: ContactEnrichmentInput,
-  serpSearch?: (name: string, company: string | null) => Promise<{ linkedinUrl: string | null; confidence: number }>
 ): Promise<ContactEnrichmentResult> {
   const { fullName, email, companyDomain, companyName, title, location, linkedinUrl: existingLinkedin } = input;
   const { firstName, lastName } = parseFullName(fullName);
   
-  console.log(`[CascadeEnrichment] Starting 4-stage contact enrichment for: ${fullName} (${email || 'no email'})`);
+  console.log(`[CascadeEnrichment] Starting 5-stage contact enrichment for: ${fullName} (${email || 'no email'})`);
   
   // ═══════════════════════════════════════════════════════════════
   // STAGE 1: Input Validation
@@ -471,6 +473,34 @@ export async function enrichContactCascade(
   } catch (error) {
     console.warn('[CascadeEnrichment] PDL enrichment failed:', error instanceof Error ? error.message : error);
   }
+  
+  // ═══════════════════════════════════════════════════════════════
+  // STAGE 3.5: SERP LinkedIn Discovery (fallback when no LinkedIn found)
+  // ═══════════════════════════════════════════════════════════════
+  if (!foundLinkedin) {
+    console.log('[CascadeEnrichment] Stage 3.5: SERP LinkedIn Discovery (no LinkedIn from Findymail/Hunter/PDL)...');
+    
+    try {
+      const serpResult = await searchLinkedInProfile(
+        firstName,
+        lastName,
+        companyName || companyDomain || null
+      );
+      
+      if (serpResult.found && serpResult.linkedinUrl) {
+        foundLinkedin = serpResult.linkedinUrl;
+        console.log(`[CascadeEnrichment] SERP found LinkedIn: ${foundLinkedin} (confidence: ${serpResult.confidence})`);
+      } else {
+        console.log('[CascadeEnrichment] SERP LinkedIn: no match found');
+      }
+    } catch (error) {
+      console.warn('[CascadeEnrichment] SERP LinkedIn search failed:', error instanceof Error ? error.message : error);
+    }
+  } else {
+    console.log(`[CascadeEnrichment] Stage 3.5: Skipped — LinkedIn already found: ${foundLinkedin}`);
+  }
+  
+  console.log(`[CascadeEnrichment] Pre-Crustdata state — linkedin: ${foundLinkedin || 'none'}, email: ${verifiedEmail || 'none'}`);
   
   // ═══════════════════════════════════════════════════════════════
   // STAGE 4: Crustdata Verification (Conditional)
