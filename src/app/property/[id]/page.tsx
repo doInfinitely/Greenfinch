@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Loader2, MoreVertical, ListPlus, User, UserCircle, Sparkles, Phone, XCircle } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Loader2, MoreVertical, ListPlus, User, UserCircle, Sparkles, Phone, XCircle, Eye } from 'lucide-react';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -595,6 +595,14 @@ export default function PropertyDetailPage() {
     if (!propertyId) return;
     fetchProperty();
     fetchServiceProviders();
+    
+    // Record that the user viewed this property
+    fetch('/api/properties/views', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ propertyId }),
+    }).catch(() => {});
   }, [propertyId, fetchProperty, fetchServiceProviders]);
 
   // Fetch pipeline data for owner display in header
@@ -1013,6 +1021,22 @@ export default function PropertyDetailPage() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700">
+                      <DropdownMenuItem 
+                        onClick={async () => {
+                          try {
+                            await fetch('/api/properties/views', {
+                              method: 'DELETE',
+                              headers: { 'Content-Type': 'application/json' },
+                              credentials: 'include',
+                              body: JSON.stringify({ propertyId }),
+                            });
+                          } catch {}
+                        }}
+                        data-testid="menu-item-mark-new"
+                      >
+                        <Eye className="w-4 h-4 mr-2" />
+                        Mark as New
+                      </DropdownMenuItem>
                       <AdminOnly>
                         <DropdownMenuItem 
                           onClick={() => setAssignDialogTrigger(prev => prev + 1)}

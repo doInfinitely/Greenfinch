@@ -761,9 +761,11 @@ export const propertyActions = pgTable('property_actions', {
   
   // Due date
   dueAt: timestamp('due_at').notNull(),
+  originalDueAt: timestamp('original_due_at'), // set on creation, preserved when due date changes
   
   // Status
   status: text('status').default('pending'), // 'pending', 'completed', 'cancelled'
+  completionStatus: text('completion_status'), // 'completed_on_time', 'completed_overdue', 'rescheduled', 'cancelled'
   completedAt: timestamp('completed_at'),
   
   createdAt: timestamp('created_at').defaultNow(),
@@ -837,3 +839,105 @@ export const ingestionSettings = pgTable('ingestion_settings', {
 
 export type IngestionSettings = typeof ingestionSettings.$inferSelect;
 export type InsertIngestionSettings = typeof ingestionSettings.$inferInsert;
+
+// Property views - tracks when users last viewed a property (for unread indicators)
+export const propertyViews = pgTable('property_views', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  propertyId: uuid('property_id').references(() => properties.id).notNull(),
+  userId: uuid('user_id').references(() => users.id).notNull(),
+  clerkOrgId: text('clerk_org_id').notNull(),
+  lastViewedAt: timestamp('last_viewed_at').defaultNow().notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  userPropertyIdx: uniqueIndex('idx_property_views_user_property').on(table.userId, table.propertyId, table.clerkOrgId),
+  propertyIdx: index('idx_property_views_property').on(table.propertyId),
+  userIdx: index('idx_property_views_user').on(table.userId),
+}));
+
+export type PropertyView = typeof propertyViews.$inferSelect;
+export type InsertPropertyView = typeof propertyViews.$inferInsert;
+
+// Pipeline stage history - tracks every stage transition with timing and context
+export const pipelineStageHistory = pgTable('pipeline_stage_history', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  pipelineId: uuid('pipeline_id').references(() => propertyPipeline.id).notNull(),
+  propertyId: uuid('property_id').references(() => properties.id).notNull(),
+  clerkOrgId: text('clerk_org_id').notNull(),
+  userId: uuid('user_id').references(() => users.id).notNull(),
+
+  fromStage: text('from_stage'),
+  toStage: text('to_stage').notNull(),
+
+  outreachMethods: json('outreach_methods'), // e.g. ['email', 'phone', 'linkedin']
+  successfulMethod: text('successful_method'), // which method worked (on active_opportunity transition)
+  lossReasonCodeId: uuid('loss_reason_code_id'),
+
+  transitionedAt: timestamp('transitioned_at').defaultNow().notNull(),
+  durationInStageMs: integer('duration_in_stage_ms'), // time spent in fromStage
+}, (table) => ({
+  pipelineIdx: index('idx_stage_history_pipeline').on(table.pipelineId),
+  propertyIdx: index('idx_stage_history_property').on(table.propertyId),
+  orgIdx: index('idx_stage_history_org').on(table.clerkOrgId),
+  toStageIdx: index('idx_stage_history_to_stage').on(table.toStage),
+  transitionedAtIdx: index('idx_stage_history_transitioned_at').on(table.transitionedAt),
+}));
+
+export type PipelineStageHistory = typeof pipelineStageHistory.$inferSelect;
+export type InsertPipelineStageHistory = typeof pipelineStageHistory.$inferInsert;
+
+// Loss reason codes - configurable per org with stage eligibility
+export const lossReasonCodes = pgTable('loss_reason_codes', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clerkOrgId: text('clerk_org_id'), // null = system default, set = org-specific
+  code: text('code').notNull(),
+  label: text('label').notNull(),
+  description: text('description'),
+  eligibleFromStages: json('eligible_from_stages').notNull(), // e.g. ['active_opportunity', 'qualified']
+  isActive: boolean('is_active').default(true),
+  isSystemDefault: boolean('is_system_default').default(false),
+  sortOrder: integer('sort_order').default(0),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  orgIdx: index('idx_loss_reason_codes_org').on(table.clerkOrgId),
+  activeIdx: index('idx_loss_reason_codes_active').on(table.isActive),
+}));
+
+export type LossReasonCode = typeof lossReasonCodes.$inferSelect;
+export type InsertLossReasonCode = typeof lossReasonCodes.$inferInsert;
+
+// Outreach method constants
+export const OUTREACH_METHODS = [
+  'email',
+  'phone',
+  'linkedin',
+  'in_person',
+  'lunch_and_learn',
+  'direct_mail',
+  'referral',
+  'other',
+] as const;
+
+export type OutreachMethod = typeof OUTREACH_METHODS[number];
+
+export const OUTREACH_METHOD_LABELS: Record<OutreachMethod, string> = {
+  email: 'Email',
+  phone: 'Phone Call',
+  linkedin: 'LinkedIn',
+  in_person: 'In-Person Visit',
+  lunch_and_learn: 'Lunch & Learn Invitation',
+  direct_mail: 'Direct Mail',
+  referral: 'Referral',
+  other: 'Other',
+};
+
+// Task completion status constants
+export const TASK_COMPLETION_STATUSES = [
+  'pending',
+  'completed_on_time',
+  'completed_overdue',
+  'rescheduled',
+  'cancelled',
+] as const;
+
+export type TaskCompletionStatus = typeof TASK_COMPLETION_STATUSES[number];

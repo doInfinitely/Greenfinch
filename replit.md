@@ -76,6 +76,12 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
   - **Deduplication**: Server-side checks prevent duplicate contacts by normalized email or LinkedIn URL. Returns existing contact ID with suggestion to use associate endpoint.
   - **Relationship Roles**: Contacts are linked to properties via propertyContacts junction table with role field (uses ROLE_LABELS constants).
   - **Targeted Refresh**: Uses fetchProperty() instead of full page reload for better UX after adding contacts.
+- **Unread Property Indicators**: Tracks which properties each user has viewed, showing visual indicators for unviewed ("new") properties.
+  - **View Tracking**: When a user opens a property detail page, a view record is created/updated in `property_views` table (scoped by user + org).
+  - **Blue Dot Indicators**: Unviewed properties show a blue dot and bolder text in both list view (desktop table and mobile cards) and PropertyList panel view.
+  - **Mark as New**: Users can mark a property as "new" again via the property detail page dropdown menu (deletes the view record).
+  - **View Status Filter**: PropertyFilters includes a "View Status" section with All / New Only / Viewed options for client-side filtering.
+  - **API**: `GET/POST/DELETE /api/properties/views` for batch view status checks, recording views, and removing view records.
 
 ## External Dependencies
 - **Snowflake**: For Regrid parcel data access and ingestion.

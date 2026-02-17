@@ -29,12 +29,14 @@ interface PropertyListProps {
   properties: PropertyFeature[];
   isLoading?: boolean;
   viewMode?: 'panel' | 'full';
+  viewedPropertyIds?: Set<string>;
 }
 
 export default function PropertyList({
   properties,
   isLoading = false,
   viewMode = 'panel',
+  viewedPropertyIds,
 }: PropertyListProps) {
   const router = useRouter();
 
@@ -94,6 +96,10 @@ export default function PropertyList({
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50 sticky top-0">
               <tr>
+                {viewedPropertyIds && (
+                  <th className="px-2 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider w-8">
+                  </th>
+                )}
                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Address
                 </th>
@@ -120,13 +126,21 @@ export default function PropertyList({
             <tbody className="bg-white divide-y divide-gray-200">
               {properties.map((feature) => {
                 const p = feature.properties;
+                const isUnread = viewedPropertyIds && !viewedPropertyIds.has(p.propertyKey);
                 return (
                   <tr
                     key={p.propertyKey}
                     onClick={() => handlePropertyClick(p.propertyKey)}
                     className="hover:bg-green-50 cursor-pointer transition-colors"
                   >
-                    <td className="px-4 py-3 text-sm text-gray-900 whitespace-nowrap">
+                    {viewedPropertyIds && (
+                      <td className="px-2 py-3 text-center">
+                        {isUnread && (
+                          <div className="w-2 h-2 bg-blue-500 rounded-full mx-auto"></div>
+                        )}
+                      </td>
+                    )}
+                    <td className={`px-4 py-3 text-sm whitespace-nowrap ${isUnread ? 'font-semibold text-gray-900' : 'text-gray-900'}`}>
                       {p.address}
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
@@ -176,15 +190,19 @@ export default function PropertyList({
       <div className="flex-1 overflow-y-auto">
         {properties.map((feature) => {
           const p = feature.properties;
+          const isUnread = viewedPropertyIds && !viewedPropertyIds.has(p.propertyKey);
           return (
             <div
               key={p.propertyKey}
               onClick={() => handlePropertyClick(p.propertyKey)}
               className="border-b border-gray-100 px-4 py-3 hover:bg-green-50 cursor-pointer transition-colors"
             >
-              <div className="flex items-start justify-between">
+              <div className="flex items-start justify-between gap-2">
+                {isUnread && (
+                  <div className="flex-shrink-0 w-2 h-2 bg-blue-500 rounded-full mt-1"></div>
+                )}
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
+                  <p className={`text-sm truncate ${isUnread ? 'font-semibold text-gray-900' : 'font-medium text-gray-900'}`}>
                     {normalizeCommonName(p.commonName) || p.address}
                   </p>
                   {p.commonName && (

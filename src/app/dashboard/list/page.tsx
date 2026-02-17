@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { normalizeCommonName } from '@/lib/normalization';
@@ -159,6 +159,36 @@ export default function ListPage() {
   const properties = data?.properties || [];
   const pagination = data?.pagination || { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
 
+  const [viewedPropertyIds, setViewedPropertyIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (properties.length === 0) return;
+    const ids = properties.map(p => p.propertyKey).join(',');
+    fetch(`/api/properties/views?propertyIds=${encodeURIComponent(ids)}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(data => {
+        const viewed = new Set<string>();
+        if (data.views) {
+          for (const [id, viewedAt] of Object.entries(data.views)) {
+            if (viewedAt) viewed.add(id);
+          }
+        }
+        setViewedPropertyIds(viewed);
+      })
+      .catch(() => {});
+  }, [properties]);
+
+  const displayProperties = useMemo(() => {
+    if (!filters.viewStatus || filters.viewStatus === 'all') return properties;
+    if (filters.viewStatus === 'new_only') {
+      return properties.filter(p => !viewedPropertyIds.has(p.propertyKey));
+    }
+    if (filters.viewStatus === 'viewed_only') {
+      return properties.filter(p => viewedPropertyIds.has(p.propertyKey));
+    }
+    return properties;
+  }, [properties, filters.viewStatus, viewedPropertyIds]);
+
   useEffect(() => {
     setCurrentPage(1);
     setSelectedProperties(new Set());
@@ -191,12 +221,12 @@ export default function ListPage() {
 
   const handleSelectAll = useCallback((checked: boolean) => {
     if (checked) {
-      const allIds = new Set(properties.map(p => p.propertyId).filter(Boolean));
+      const allIds = new Set(displayProperties.map(p => p.propertyId).filter(Boolean));
       setSelectedProperties(allIds);
     } else {
       setSelectedProperties(new Set());
     }
-  }, [properties]);
+  }, [displayProperties]);
 
   const handleDeselectAll = useCallback(() => {
     setSelectedProperties(new Set());
@@ -242,8 +272,8 @@ export default function ListPage() {
     setShowAddToListModal(true);
   }, []);
 
-  const allSelected = properties.length > 0 && properties.every(p => selectedProperties.has(p.propertyId));
-  const someSelected = properties.some(p => selectedProperties.has(p.propertyId));
+  const allSelected = displayProperties.length > 0 && displayProperties.every(p => selectedProperties.has(p.propertyId));
+  const someSelected = displayProperties.some(p => selectedProperties.has(p.propertyId));
 
   return (
     <div className="h-full flex flex-col bg-white">
@@ -278,7 +308,7 @@ export default function ListPage() {
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <TableSkeleton rows={12} />
-        ) : properties.length === 0 ? (
+        ) : displayProperties.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-64 text-gray-500">
             <svg className="w-12 h-12 mb-3 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -311,7 +341,7 @@ export default function ListPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
-                  {properties.map((p: Property) => (
+                  {displayProperties.map((p: Property) => (
                     <tr
                       key={p.propertyKey}
                       className={`hover:bg-gray-50 cursor-pointer transition-colors ${selectedProperties.has(p.propertyId) ? 'bg-green-50' : ''}`}
@@ -331,6 +361,9 @@ export default function ListPage() {
                       </td>
                       <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
                         <div className="flex items-start gap-1.5">
+                          {!viewedPropertyIds.has(p.propertyKey) && (
+                            <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-1.5" title="New" />
+                          )}
                           {p.enriched && (
                             <Tooltip>
                               <TooltipTrigger asChild>
@@ -344,11 +377,11 @@ export default function ListPage() {
                           <div className="min-w-0">
                             {p.commonName ? (
                               <>
-                                <p className="font-medium text-gray-900">{normalizeCommonName(p.commonName)}</p>
+                                <p className={`${viewedPropertyIds.has(p.propertyKey) ? 'font-medium' : 'font-semibold'} text-gray-900`}>{normalizeCommonName(p.commonName)}</p>
                                 <p className="text-sm text-gray-500">{p.address}</p>
                               </>
                             ) : (
-                              <p className="font-medium text-gray-900">{p.address}</p>
+                              <p className={`${viewedPropertyIds.has(p.propertyKey) ? 'font-medium' : 'font-semibold'} text-gray-900`}>{p.address}</p>
                             )}
                           </div>
                         </div>
@@ -402,7 +435,7 @@ export default function ListPage() {
             </div>
             
             <div className="md:hidden divide-y divide-gray-200">
-              {properties.map((p: Property) => (
+              {displayProperties.map((p: Property) => (
                 <div
                   key={p.propertyKey}
                   className={`w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors flex items-start gap-3 ${selectedProperties.has(p.propertyId) ? 'bg-green-50' : ''}`}
@@ -420,16 +453,21 @@ export default function ListPage() {
                     className="flex-1 text-left min-w-0"
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        {p.commonName ? (
-                          <>
-                            <p className="font-medium text-gray-900 truncate">{normalizeCommonName(p.commonName)}</p>
-                            <p className="text-sm text-gray-500 truncate">{p.address}</p>
-                          </>
-                        ) : (
-                          <p className="font-medium text-gray-900 truncate">{p.address}</p>
+                      <div className="flex items-start gap-1.5 flex-1 min-w-0">
+                        {!viewedPropertyIds.has(p.propertyKey) && (
+                          <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-1.5" title="New" />
                         )}
-                        <p className="text-xs text-gray-500 mt-0.5">{p.city}, {p.zip}</p>
+                        <div className="flex-1 min-w-0">
+                          {p.commonName ? (
+                            <>
+                              <p className={`${viewedPropertyIds.has(p.propertyKey) ? 'font-medium' : 'font-semibold'} text-gray-900 truncate`}>{normalizeCommonName(p.commonName)}</p>
+                              <p className="text-sm text-gray-500 truncate">{p.address}</p>
+                            </>
+                          ) : (
+                            <p className={`${viewedPropertyIds.has(p.propertyKey) ? 'font-medium' : 'font-semibold'} text-gray-900 truncate`}>{p.address}</p>
+                          )}
+                          <p className="text-xs text-gray-500 mt-0.5">{p.city}, {p.zip}</p>
+                        </div>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
                         {(() => {

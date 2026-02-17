@@ -17,6 +17,7 @@ export interface FilterState {
   organizationId: string | null;
   contactId: string | null;
   enrichmentStatus: 'all' | 'researched' | 'not_researched';
+  viewStatus: 'all' | 'new_only' | 'viewed_only';
   customerStatuses: string[];
   zipCodes: string[];
   // Legacy fields for backwards compatibility
@@ -67,6 +68,7 @@ export const emptyFilters: FilterState = {
   organizationId: null,
   contactId: null,
   enrichmentStatus: 'all',
+  viewStatus: 'all',
   customerStatuses: [],
   zipCodes: [],
   minLotSqft: null,
@@ -90,6 +92,7 @@ export function serializeFiltersToParams(filters: FilterState): URLSearchParams 
   if (filters.organizationId) params.set('organizationId', filters.organizationId);
   if (filters.contactId) params.set('contactId', filters.contactId);
   if (filters.enrichmentStatus !== 'all') params.set('enrichmentStatus', filters.enrichmentStatus);
+  if (filters.viewStatus !== 'all') params.set('viewStatus', filters.viewStatus);
   if (filters.customerStatuses.length > 0) params.set('customerStatuses', filters.customerStatuses.join(','));
   if (filters.zipCodes.length > 0) params.set('zipCodes', filters.zipCodes.join(','));
   
@@ -109,6 +112,7 @@ export function parseFiltersFromParams(searchParams: URLSearchParams): FilterSta
   const organizationId = searchParams.get('organizationId');
   const contactId = searchParams.get('contactId');
   const enrichmentStatus = searchParams.get('enrichmentStatus') as 'all' | 'researched' | 'not_researched' | null;
+  const viewStatus = searchParams.get('viewStatus') as 'all' | 'new_only' | 'viewed_only' | null;
   const customerStatuses = searchParams.get('customerStatuses');
   const zipCodes = searchParams.get('zipCodes');
 
@@ -128,6 +132,7 @@ export function parseFiltersFromParams(searchParams: URLSearchParams): FilterSta
     organizationId: organizationId || null,
     contactId: contactId || null,
     enrichmentStatus: enrichmentStatus || 'all',
+    viewStatus: viewStatus || 'all',
     customerStatuses: customerStatuses ? customerStatuses.split(',') : [],
     zipCodes: zipCodes ? zipCodes.split(',') : [],
     minLotSqft: parsedMinLotAcres ? Math.round(parsedMinLotAcres * 43560) : null,
@@ -350,6 +355,7 @@ export default function PropertyFilters({
     (filters.organizationId ? 1 : 0) +
     (filters.contactId ? 1 : 0) +
     (filters.enrichmentStatus !== 'all' ? 1 : 0) +
+    (filters.viewStatus !== 'all' ? 1 : 0) +
     ((filters.customerStatuses?.length ?? 0) > 0 ? 1 : 0) +
     ((filters.zipCodes?.length ?? 0) > 0 ? 1 : 0);
 
@@ -842,6 +848,52 @@ export default function PropertyFilters({
               data-testid="button-enrichment-not-researched"
             >
               Not Researched
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <SectionHeader 
+          id="viewStatus" 
+          title="View Status" 
+          count={filters.viewStatus !== 'all' ? 1 : 0}
+          onClear={() => onFiltersChange({ ...filters, viewStatus: 'all' })}
+        />
+        {openSections.has('viewStatus') && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            <button
+              onClick={() => onFiltersChange({ ...filters, viewStatus: 'all' })}
+              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
+                filters.viewStatus === 'all'
+                  ? 'bg-green-100 border-green-500 text-green-700'
+                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
+              }`}
+              data-testid="button-view-status-all"
+            >
+              All
+            </button>
+            <button
+              onClick={() => onFiltersChange({ ...filters, viewStatus: 'new_only' })}
+              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
+                filters.viewStatus === 'new_only'
+                  ? 'bg-blue-100 border-blue-500 text-blue-700'
+                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
+              }`}
+              data-testid="button-view-status-new"
+            >
+              New Only
+            </button>
+            <button
+              onClick={() => onFiltersChange({ ...filters, viewStatus: 'viewed_only' })}
+              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
+                filters.viewStatus === 'viewed_only'
+                  ? 'bg-green-100 border-green-500 text-green-700'
+                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
+              }`}
+              data-testid="button-view-status-viewed"
+            >
+              Viewed
             </button>
           </div>
         )}
