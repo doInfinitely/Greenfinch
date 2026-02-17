@@ -1,9 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { propertyViews } from '@/lib/schema';
+import { propertyViews, properties } from '@/lib/schema';
 import { requireSession } from '@/lib/auth';
 import { eq, and, inArray } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
+
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function resolvePropertyId(input: string): Promise<string | null> {
+  if (UUID_REGEX.test(input)) return input;
+  const [row] = await db.select({ id: properties.id })
+    .from(properties)
+    .where(eq(properties.propertyKey, input))
+    .limit(1);
+  return row?.id || null;
+}
+
+async function resolvePropertyIds(inputs: string[]): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  const keysToLookup: string[] = [];
+  for (const input of inputs) {
+    if (UUID_REGEX.test(input)) {
+      result.set(input, input);
+    } else {
+      keysToLookup.push(input);
+    }
+  }
+  if (keysToLookup.length > 0) {
+    const rows = await db.select({ id: properties.id, propertyKey: properties.propertyKey })
+      .from(properties)
+      .where(inArray(properties.propertyKey, keysToLookup));
+    for (const row of rows) {
+      result.set(row.propertyKey, row.id);
+    }
+  }
+  return result;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -14,10 +46,15 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { propertyId } = body;
+    const { propertyId: rawPropertyId } = body;
 
-    if (!propertyId) {
+    if (!rawPropertyId) {
       return NextResponse.json({ error: 'propertyId is required' }, { status: 400 });
+    }
+
+    const propertyId = await resolvePropertyId(rawPropertyId);
+    if (!propertyId) {
+      return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     }
 
     const existing = await db.select().from(propertyViews)
@@ -59,10 +96,15 @@ export async function DELETE(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { propertyId } = body;
+    const { propertyId: rawPropertyId } = body;
 
-    if (!propertyId) {
+    if (!rawPropertyId) {
       return NextResponse.json({ error: 'propertyId is required' }, { status: 400 });
+    }
+
+    const propertyId = await resolvePropertyId(rawPropertyId);
+    if (!propertyId) {
+      return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     }
 
     await db.delete(propertyViews)
@@ -97,9 +139,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'propertyIds query param is required' }, { status: 400 });
     }
 
-    const propertyIds = propertyIdsParam.split(',').filter(Boolean);
+    const rawIds = propertyIdsParam.split(',').filter(Boolean);
 
-    if (propertyIds.length === 0) {
+    if (rawIds.length === 0) {
+      return NextResponse.json({ views: {} });
+    }
+
+    const idMap = await resolvePropertyIds(rawIds);
+    const resolvedUuids = Array.from(idMap.values());
+
+    if (resolvedUuids.length === 0) {
       return NextResponse.json({ views: {} });
     }
 
@@ -107,13 +156,18 @@ export async function GET(request: NextRequest) {
       .where(and(
         eq(propertyViews.userId, session.user.id),
         eq(propertyViews.clerkOrgId, orgId),
-        inArray(propertyViews.propertyId, propertyIds),
+        inArray(propertyViews.propertyId, resolvedUuids),
       ));
 
     const views: Record<string, string | null> = {};
-    for (const id of propertyIds) {
-      const record = viewRecords.find(v => v.propertyId === id);
-      views[id] = record?.lastViewedAt?.toISOString() ?? null;
+    for (const rawId of rawIds) {
+      const uuid = idMap.get(rawId);
+      if (!uuid) {
+        views[rawId] = null;
+        continue;
+      }
+      const record = viewRecords.find(v => v.propertyId === uuid);
+      views[rawId] = record?.lastViewedAt?.toISOString() ?? null;
     }
 
     return NextResponse.json({ views });

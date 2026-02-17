@@ -1,9 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
 import pLimit from 'p-limit';
 import { db } from './db';
-import { properties } from './schema';
+import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from './schema';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
-import { runFocusedEnrichment } from './ai-enrichment';
+import { runFocusedEnrichment, cleanupAISummary } from './ai-enrichment';
+import type { FocusedEnrichmentResult, DiscoveredContact, DiscoveredOrganization } from './ai-enrichment';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
 import { CONCURRENCY } from './constants';
@@ -109,6 +110,273 @@ async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedP
     parcelCount: rawParcels.length || 1,
     rawParcelsJson: rawParcels,
   };
+}
+
+function normalizeEmail(email: string | null): string | null {
+  if (!email) return null;
+  return email.trim().toLowerCase();
+}
+
+function normalizeName(name: string | null): string | null {
+  if (!name) return null;
+  return name.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+async function saveEnrichmentResults(
+  propertyKey: string,
+  result: FocusedEnrichmentResult
+): Promise<{ propertyId: string; contactIds: string[]; orgIds: string[] }> {
+  const [dbProperty] = await db
+    .select({ id: properties.id })
+    .from(properties)
+    .where(eq(properties.propertyKey, propertyKey))
+    .limit(1);
+
+  if (!dbProperty) {
+    throw new Error(`Property not found for key: ${propertyKey}`);
+  }
+
+  const propertyId = dbProperty.id;
+  const classification = result.classification.data;
+  const ownership = result.ownership.data;
+  const physical = result.physical.data;
+  const discoveredContacts = result.contacts.data.contacts || [];
+  const discoveredOrgs = result.contacts.data.organizations || [];
+
+  const allSummaries = [
+    result.classification.summary,
+    result.ownership.summary,
+    result.contacts.summary,
+  ].filter(Boolean).join('\n\n');
+
+  let cleanedSummary = allSummaries;
+  try {
+    if (allSummaries.length > 50) {
+      cleanedSummary = await cleanupAISummary(allSummaries);
+    }
+  } catch (e) {
+    console.warn('[SaveEnrichment] Summary cleanup failed, using raw:', e);
+  }
+
+  const allSources = [
+    ...(result.classification.sources || []),
+    ...(result.ownership.sources || []),
+    ...(result.contacts.sources || []),
+  ];
+
+  await db.update(properties)
+    .set({
+      commonName: classification.propertyName || undefined,
+      validatedAddress: classification.canonicalAddress || undefined,
+      assetCategory: classification.category || undefined,
+      assetSubcategory: classification.subcategory || undefined,
+      categoryConfidence: classification.confidence || undefined,
+      propertyClass: classification.propertyClass || undefined,
+      beneficialOwner: ownership.beneficialOwner?.name || undefined,
+      beneficialOwnerType: ownership.beneficialOwner?.type || undefined,
+      beneficialOwnerConfidence: ownership.beneficialOwner?.confidence || undefined,
+      managementCompany: ownership.managementCompany?.name || undefined,
+      managementCompanyDomain: ownership.managementCompany?.domain || undefined,
+      managementConfidence: ownership.managementCompany?.confidence || undefined,
+      propertyWebsite: ownership.propertyWebsite || undefined,
+      propertyPhone: ownership.propertyPhone || undefined,
+      aiLotAcres: physical.lotAcres || undefined,
+      aiLotAcresConfidence: physical.lotAcresConfidence || undefined,
+      aiNetSqft: physical.netSqft || undefined,
+      aiNetSqftConfidence: physical.netSqftConfidence || undefined,
+      aiRationale: cleanedSummary || undefined,
+      enrichmentSources: allSources.length > 0 ? allSources.map(s => s.url).filter(Boolean) : undefined,
+      enrichmentStatus: 'enriched',
+      lastEnrichedAt: new Date(),
+      enrichmentJson: {
+        classification: result.classification.data,
+        ownership: result.ownership.data,
+        physical: result.physical.data,
+        contacts: discoveredContacts,
+        organizations: discoveredOrgs,
+        timing: result.timing,
+        sources: allSources,
+      },
+      updatedAt: new Date(),
+    })
+    .where(eq(properties.id, propertyId));
+
+  console.log(`[SaveEnrichment] Updated property ${propertyKey} with enrichment data`);
+
+  const orgIds: string[] = [];
+  for (const org of discoveredOrgs) {
+    try {
+      const normalizedDomain = org.domain?.trim().toLowerCase() || null;
+
+      let existingOrg = normalizedDomain
+        ? await db.query.organizations.findFirst({
+            where: eq(organizations.domain, normalizedDomain),
+          })
+        : null;
+
+      let orgId: string;
+
+      if (existingOrg) {
+        orgId = existingOrg.id;
+        console.log(`[SaveEnrichment] Found existing org: ${existingOrg.name} (${orgId})`);
+      } else {
+        const [inserted] = await db.insert(organizations)
+          .values({
+            name: org.name,
+            domain: normalizedDomain,
+            orgType: org.orgType,
+            enrichmentSource: 'ai',
+            enrichmentStatus: 'pending',
+          })
+          .onConflictDoNothing()
+          .returning({ id: organizations.id });
+
+        if (inserted) {
+          orgId = inserted.id;
+          console.log(`[SaveEnrichment] Created org: ${org.name} (${orgId})`);
+        } else {
+          const found = normalizedDomain
+            ? await db.query.organizations.findFirst({
+                where: eq(organizations.domain, normalizedDomain),
+              })
+            : null;
+          if (!found) {
+            console.warn(`[SaveEnrichment] Could not insert or find org: ${org.name}, skipping`);
+            continue;
+          }
+          orgId = found.id;
+          console.log(`[SaveEnrichment] Found existing org after conflict: ${org.name} (${orgId})`);
+        }
+      }
+
+      orgIds.push(orgId);
+
+      await db.insert(propertyOrganizations)
+        .values({
+          propertyId,
+          orgId,
+          role: org.roles?.[0] || org.orgType || 'related',
+        })
+        .onConflictDoNothing();
+    } catch (err) {
+      console.error(`[SaveEnrichment] Error saving org ${org.name}:`, err);
+    }
+  }
+
+  const contactIds: string[] = [];
+  for (const contact of discoveredContacts) {
+    try {
+      const normalized = normalizeEmail(contact.email);
+      const normalizedNameVal = normalizeName(contact.name);
+
+      let existingContact = normalized
+        ? await db.query.contacts.findFirst({
+            where: eq(contacts.normalizedEmail, normalized),
+          })
+        : null;
+
+      let contactId: string;
+
+      if (existingContact) {
+        contactId = existingContact.id;
+        await db.update(contacts)
+          .set({
+            title: contact.title || existingContact.title,
+            companyDomain: contact.companyDomain || existingContact.companyDomain,
+            employerName: contact.company || existingContact.employerName,
+            phone: contact.phone || existingContact.phone,
+            phoneLabel: contact.phoneLabel || existingContact.phoneLabel,
+            aiPhone: contact.phone || existingContact.aiPhone,
+            aiPhoneLabel: contact.phoneLabel || existingContact.aiPhoneLabel,
+            aiPhoneConfidence: contact.phoneConfidence || existingContact.aiPhoneConfidence,
+            contactType: contact.contactType || existingContact.contactType,
+            location: contact.location || existingContact.location,
+            updatedAt: new Date(),
+          })
+          .where(eq(contacts.id, existingContact.id));
+        console.log(`[SaveEnrichment] Updated existing contact: ${contact.name} (${contactId})`);
+      } else {
+        const [inserted] = await db.insert(contacts)
+          .values({
+            fullName: contact.name,
+            normalizedName: normalizedNameVal,
+            nameConfidence: 0.8,
+            email: contact.email,
+            normalizedEmail: normalized,
+            emailConfidence: contact.email ? 0.7 : null,
+            emailSource: contact.emailSource || null,
+            emailValidationStatus: contact.email ? 'pending' : null,
+            phone: contact.phone,
+            phoneLabel: contact.phoneLabel,
+            phoneConfidence: contact.phoneConfidence,
+            aiPhone: contact.phone,
+            aiPhoneLabel: contact.phoneLabel,
+            aiPhoneConfidence: contact.phoneConfidence,
+            title: contact.title,
+            titleConfidence: contact.title ? 0.7 : null,
+            companyDomain: contact.companyDomain,
+            employerName: contact.company,
+            contactType: contact.contactType,
+            location: contact.location,
+            source: 'ai',
+            enrichmentSource: 'ai',
+            contactRationale: `AI-discovered: ${contact.role} (rank #${contact.priorityRank})`,
+          })
+          .onConflictDoNothing()
+          .returning({ id: contacts.id });
+
+        if (inserted) {
+          contactId = inserted.id;
+        } else {
+          const found = normalized
+            ? await db.query.contacts.findFirst({
+                where: eq(contacts.normalizedEmail, normalized),
+              })
+            : null;
+          if (!found) {
+            console.warn(`[SaveEnrichment] Could not insert or find contact: ${contact.name}, skipping`);
+            continue;
+          }
+          contactId = found.id;
+        }
+        console.log(`[SaveEnrichment] Created contact: ${contact.name} (${contactId})`);
+      }
+
+      contactIds.push(contactId);
+
+      await db.insert(propertyContacts)
+        .values({
+          propertyId,
+          contactId,
+          role: contact.role,
+          confidenceScore: contact.roleConfidence,
+          discoveredAt: new Date(),
+        })
+        .onConflictDoNothing();
+
+      if (contact.companyDomain) {
+        const matchingOrg = await db.query.organizations.findFirst({
+          where: eq(organizations.domain, contact.companyDomain.trim().toLowerCase()),
+        });
+
+        if (matchingOrg) {
+          await db.insert(contactOrganizations)
+            .values({
+              contactId,
+              orgId: matchingOrg.id,
+              title: contact.title,
+              isCurrent: true,
+            })
+            .onConflictDoNothing();
+        }
+      }
+    } catch (err) {
+      console.error(`[SaveEnrichment] Error saving contact ${contact.name}:`, err);
+    }
+  }
+
+  console.log(`[SaveEnrichment] Complete for ${propertyKey}: ${contactIds.length} contacts, ${orgIds.length} orgs`);
+  return { propertyId, contactIds, orgIds };
 }
 
 export interface QueueProgress {
@@ -260,9 +528,13 @@ async function processPropertyItem(
       totalGrossBldgArea: property.buildingSqft || null,
       buildings: [],
     };
-    await runFocusedEnrichment(dcadProperty as any);
+    const enrichmentResult = await runFocusedEnrichment(dcadProperty as any);
+    
+    await saveEnrichmentResults(item.propertyKey, enrichmentResult);
+    
     return { success: true };
   } catch (error) {
+    console.error(`[EnrichmentQueue] Error processing ${item.propertyKey}:`, error);
     return { 
       success: false, 
       error: error instanceof Error ? error.message : 'Unknown error' 
