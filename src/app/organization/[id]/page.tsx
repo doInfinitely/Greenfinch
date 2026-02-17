@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
-import { Loader2, XCircle, MoreVertical, FileJson, Users, Building2 } from 'lucide-react';
+import { Loader2, XCircle, MoreVertical, FileJson, Users, Building2, Phone, Mail } from 'lucide-react';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
@@ -97,6 +97,11 @@ interface Organization {
   
   // Logo
   logoUrl: string | null;
+  
+  // Contact info
+  phoneNumbers: string[] | null;
+  emailAddresses: string[] | null;
+  tags: string[] | null;
   
   // Parent companies
   parentDomain: string | null;
@@ -440,6 +445,49 @@ export default function OrganizationDetailPage() {
             </div>
           )}
         </div>
+
+        {(organization.phoneNumbers?.length || organization.emailAddresses?.length) ? (
+          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Company Contact</p>
+            <div className="flex flex-wrap gap-4">
+              {organization.phoneNumbers?.map((phone, i) => (
+                <a
+                  key={i}
+                  href={`tel:${phone}`}
+                  className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900"
+                  data-testid={`link-org-phone-${i}`}
+                >
+                  <Phone className="w-4 h-4 text-gray-400" />
+                  {phone}
+                </a>
+              ))}
+              {organization.emailAddresses?.map((email, i) => (
+                <a
+                  key={i}
+                  href={`mailto:${email}`}
+                  className="inline-flex items-center gap-1.5 text-sm text-gray-700 hover:text-gray-900"
+                  data-testid={`link-org-email-${i}`}
+                >
+                  <Mail className="w-4 h-4 text-gray-400" />
+                  {email}
+                </a>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {organization.tags?.length ? (
+          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Tags</p>
+            <div className="flex flex-wrap gap-1.5">
+              {organization.tags.map((tag) => (
+                <span key={tag} className="inline-block px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600">
+                  {tag}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {(organization.parentDomain || organization.ultimateParentDomain) && (
           <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">

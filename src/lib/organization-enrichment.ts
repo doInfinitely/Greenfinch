@@ -107,8 +107,17 @@ export async function enrichOrganizationByDomain(
     country: cascadeResult.country || undefined,
     
     linkedinHandle: linkedinHandle || undefined,
+    twitterHandle: cascadeResult.twitterUrl 
+      ? (cascadeResult.twitterUrl.includes('twitter.com/') || cascadeResult.twitterUrl.includes('x.com/')
+        ? cascadeResult.twitterUrl.split('/').pop()?.replace(/\/$/, '') || cascadeResult.twitterUrl
+        : cascadeResult.twitterUrl)
+      : undefined,
+    facebookHandle: cascadeResult.facebookUrl
+      ? (cascadeResult.facebookUrl.includes('facebook.com/')
+        ? cascadeResult.facebookUrl.split('facebook.com/')[1]?.replace(/\/$/, '') || cascadeResult.facebookUrl
+        : cascadeResult.facebookUrl)
+      : undefined,
     
-    // Apollo logo takes priority - it's set first in the cascade
     logoUrl: cascadeResult.logoUrl || undefined,
     
     phoneNumbers: cascadeResult.phone ? [cascadeResult.phone] : undefined,

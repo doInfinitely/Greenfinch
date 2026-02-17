@@ -4,7 +4,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
-import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Loader2, MoreVertical, ListPlus, User, UserCircle, Sparkles, Phone, XCircle, Eye } from 'lucide-react';
+import { AlertTriangle, Flag, X, Search, Check, Plus, Wrench, Maximize2, Loader2, MoreVertical, ListPlus, User, UserCircle, Sparkles, Phone, XCircle, Eye, Globe, Mail, Calendar, Tag, Building2, ExternalLink } from 'lucide-react';
+import { SiLinkedin, SiX, SiFacebook } from 'react-icons/si';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -137,15 +138,24 @@ interface Organization {
   name: string;
   domain: string | null;
   orgType: string | null;
-  role: string | null; // Single role for backward compatibility
-  roles?: string[]; // Array of roles for multi-role organizations
+  role: string | null;
+  roles?: string[];
   description?: string | null;
   industry?: string | null;
   employees?: number | null;
   employeesRange?: string | null;
-  linkedinHandle?: string | null; // LinkedIn company handle from database
+  linkedinHandle?: string | null;
+  twitterHandle?: string | null;
+  facebookHandle?: string | null;
+  crunchbaseHandle?: string | null;
   city?: string | null;
   state?: string | null;
+  country?: string | null;
+  foundedYear?: number | null;
+  tags?: string[] | null;
+  phoneNumbers?: string[] | null;
+  emailAddresses?: string[] | null;
+  logoUrl?: string | null;
   pdlEnriched?: boolean;
 }
 
@@ -1189,6 +1199,32 @@ export default function PropertyDetailPage() {
                     const bgColor = isOwner ? 'bg-purple-50 border-purple-100' : isManager ? 'bg-blue-50 border-blue-100' : 'bg-gray-50 border-gray-200';
                     const labelColor = isOwner ? 'text-purple-700' : isManager ? 'text-blue-700' : 'text-gray-700';
                     
+                    const socialLinks = [
+                      org.linkedinHandle ? {
+                        icon: SiLinkedin,
+                        url: org.linkedinHandle.startsWith('http') ? org.linkedinHandle : `https://linkedin.com/company/${org.linkedinHandle}`,
+                        label: 'LinkedIn',
+                        color: 'text-[#0A66C2] hover:text-[#004182]',
+                      } : null,
+                      org.twitterHandle ? {
+                        icon: SiX,
+                        url: org.twitterHandle.startsWith('http') ? org.twitterHandle : `https://x.com/${org.twitterHandle}`,
+                        label: 'X / Twitter',
+                        color: 'text-gray-800 hover:text-black',
+                      } : null,
+                      org.facebookHandle ? {
+                        icon: SiFacebook,
+                        url: org.facebookHandle.startsWith('http') ? org.facebookHandle : `https://facebook.com/${org.facebookHandle}`,
+                        label: 'Facebook',
+                        color: 'text-[#1877F2] hover:text-[#0d5fba]',
+                      } : null,
+                    ].filter(Boolean) as { icon: any; url: string; label: string; color: string }[];
+
+                    const locationParts = [org.city, org.state].filter(Boolean);
+                    const locationStr = locationParts.length > 0 ? locationParts.join(', ') : null;
+                    const primaryPhone = org.phoneNumbers?.[0] || null;
+                    const primaryEmail = org.emailAddresses?.[0] || null;
+
                     return (
                       <div 
                         key={org.id || org.name}
@@ -1198,7 +1234,7 @@ export default function PropertyDetailPage() {
                       >
                         <div className="flex items-start justify-between">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-medium text-gray-900">{org.name || org.domain || 'Unknown Organization'}</p>
                               <div className="flex flex-wrap gap-1">
                                 {displayRoles.map((role) => (
@@ -1216,48 +1252,109 @@ export default function PropertyDetailPage() {
                                 </svg>
                               )}
                             </div>
+
                             <div className="flex flex-wrap items-center gap-2 mt-1">
                               {org.orgType && (
                                 <span className={`inline-block px-2 py-0.5 text-xs rounded ${isOwner ? 'bg-purple-100 text-purple-700' : isManager ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-600'}`}>
                                   {org.orgType}
                                 </span>
                               )}
+                              {org.industry && (
+                                <span className="inline-block px-2 py-0.5 text-xs rounded bg-gray-100 text-gray-600">
+                                  {org.industry}
+                                </span>
+                              )}
+                              {org.foundedYear && (
+                                <span className="text-xs text-gray-500">Est. {org.foundedYear}</span>
+                              )}
+                              {org.employeesRange && (
+                                <span className="text-xs text-gray-500">{org.employeesRange} employees</span>
+                              )}
                             </div>
-                            <div className="flex flex-wrap items-center gap-2 mt-1">
+
+                            <div className="flex flex-wrap items-center gap-3 mt-1.5">
                               {org.domain && (
                                 <span
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     window.open(`https://${org.domain}`, '_blank');
                                   }}
-                                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                  className="inline-flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
+                                  data-testid={`link-org-domain-${org.id}`}
                                 >
+                                  <Globe className="w-3.5 h-3.5" />
                                   {org.domain}
                                 </span>
                               )}
-                              {org.linkedinHandle && (
-                                <span
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    const linkedinUrl = org.linkedinHandle!.startsWith('http') 
-                                      ? org.linkedinHandle! 
-                                      : `https://linkedin.com/company/${org.linkedinHandle}`;
-                                    window.open(linkedinUrl, '_blank');
-                                  }}
-                                  className="text-sm text-blue-600 hover:text-blue-800 hover:underline cursor-pointer"
-                                  data-testid={`link-org-linkedin-${org.id}`}
-                                >
-                                  LinkedIn
-                                </span>
+                              {socialLinks.length > 0 && (
+                                <div className="flex items-center gap-1.5">
+                                  {socialLinks.map((link) => (
+                                    <span
+                                      key={link.label}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        window.open(link.url, '_blank');
+                                      }}
+                                      className={`inline-flex items-center cursor-pointer transition-colors ${link.color}`}
+                                      title={link.label}
+                                      data-testid={`link-org-${link.label.toLowerCase().replace(/\s+/g, '-')}-${org.id}`}
+                                    >
+                                      <link.icon className="w-3.5 h-3.5" />
+                                    </span>
+                                  ))}
+                                </div>
                               )}
-                              {(org.city || org.state) && (
-                                <span className="text-sm text-gray-500">
-                                  {[org.city, org.state].filter(Boolean).join(', ')}
-                                </span>
+                              {locationStr && (
+                                <span className="text-sm text-gray-500">{locationStr}</span>
                               )}
                             </div>
+
+                            {(primaryPhone || primaryEmail) && (
+                              <div className="flex flex-wrap items-center gap-3 mt-1.5">
+                                {primaryPhone && (
+                                  <span
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      window.open(`tel:${primaryPhone}`, '_self');
+                                    }}
+                                    className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 cursor-pointer"
+                                    data-testid={`link-org-phone-${org.id}`}
+                                  >
+                                    <Phone className="w-3.5 h-3.5" />
+                                    {primaryPhone}
+                                  </span>
+                                )}
+                                {primaryEmail && (
+                                  <span
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      window.open(`mailto:${primaryEmail}`, '_self');
+                                    }}
+                                    className="inline-flex items-center gap-1 text-sm text-gray-600 hover:text-gray-900 cursor-pointer"
+                                    data-testid={`link-org-email-${org.id}`}
+                                  >
+                                    <Mail className="w-3.5 h-3.5" />
+                                    {primaryEmail}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
                             {org.description && (
                               <p className="text-sm text-gray-600 mt-2 line-clamp-2">{org.description}</p>
+                            )}
+
+                            {org.tags && org.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-2">
+                                {org.tags.slice(0, 5).map((tag) => (
+                                  <span key={tag} className="inline-block px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-500">
+                                    {tag}
+                                  </span>
+                                ))}
+                                {org.tags.length > 5 && (
+                                  <span className="text-xs text-gray-400">+{org.tags.length - 5} more</span>
+                                )}
+                              </div>
                             )}
                           </div>
                           <button

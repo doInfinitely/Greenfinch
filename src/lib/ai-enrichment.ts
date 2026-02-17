@@ -235,7 +235,7 @@ Return JSON:
       model: GEMINI_MODEL,
       contents: prompt,
       config: { 
-        temperature: 0.1,
+        temperature: 0.0,
         // googleSearch: {} always grounds - no dynamic threshold supported in JS SDK
         tools: [{ googleSearch: {} }]
       }
@@ -413,7 +413,7 @@ Return JSON:
         model: GEMINI_MODEL,
         contents: prompt,
         config: { 
-          temperature: 0.1,
+          temperature: 0.0,
           // googleSearch: {} always grounds - no dynamic threshold supported in JS SDK
           tools: [{ googleSearch: {} }]
         }
@@ -539,7 +539,7 @@ contact_type values:
         model: GEMINI_MODEL,
         contents: prompt,
         config: { 
-          temperature: 0.1,
+          temperature: 0.0,
           // googleSearch: {} always grounds - no dynamic threshold supported in JS SDK
           tools: [{ googleSearch: {} }]
         }
@@ -701,7 +701,7 @@ ${rawSummary}`;
         () => client.models.generateContent({
           model: GEMINI_MODEL,
           contents: prompt,
-          config: { temperature: 0.3 }
+          config: { temperature: 0.1 }
         }),
         30000,
         1

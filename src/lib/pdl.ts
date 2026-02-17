@@ -290,6 +290,8 @@ export async function enrichPersonPDL(
           }
           
           params.append('min_likelihood', '7');
+          params.append('pretty', 'true');
+          params.append('titlecase', 'true');
 
           console.log('[PDL] Enrich API params:', Object.fromEntries(params));
 
@@ -425,6 +427,8 @@ export async function enrichCompanyPDL(domain: string): Promise<PDLCompanyResult
         async () => {
           const params = new URLSearchParams({
             website: domain,
+            pretty: 'true',
+            titlecase: 'true',
           });
 
           console.log('[PDL] Company enrich request:', domain);
