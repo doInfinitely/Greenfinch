@@ -478,7 +478,7 @@ export async function enrichContactCascade(
   let crustdataData: any = null;
   let confidenceFlag: ConfidenceFlag = 'no_match';
   
-  const pdlDomainMatches = pdlData ? domainsMatch(pdlData.companyDomain, companyDomain) : false;
+  const pdlDomainMatches = pdlData ? domainsMatch(pdlData.companyDomain, companyDomain ?? null) : false;
   const shouldRunCrustdata = 
     !pdlDomainMatches || 
     !pdlData || 

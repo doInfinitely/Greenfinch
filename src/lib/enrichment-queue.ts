@@ -377,8 +377,10 @@ async function saveEnrichmentResults(
     }
   }
 
-  console.log(`[SaveEnrichment] Complete for ${propertyKey}: ${contactIds.length} contacts, ${orgIds.length} orgs`);
-  return { propertyId, contactIds, orgIds };
+  const uniqueContactIds = [...new Set(contactIds)];
+  const uniqueOrgIds = [...new Set(orgIds)];
+  console.log(`[SaveEnrichment] Complete for ${propertyKey}: ${uniqueContactIds.length} contacts (${contactIds.length - uniqueContactIds.length} dupes removed), ${uniqueOrgIds.length} orgs (${orgIds.length - uniqueOrgIds.length} dupes removed)`);
+  return { propertyId, contactIds: uniqueContactIds, orgIds: uniqueOrgIds };
 }
 
 async function runCascadeEnrichmentOnSavedRecords(
@@ -440,7 +442,14 @@ async function runCascadeEnrichmentOnSavedRecords(
         where: eq(contacts.id, contactId),
       });
       if (!contact || !contact.fullName) continue;
-      if (contact.confidenceFlag === 'verified' || contact.confidenceFlag === 'pdl_matched') continue;
+      if (contact.confidenceFlag === 'verified' || contact.confidenceFlag === 'pdl_matched') {
+        console.log(`[CascadeEnrichment] Skipping already-enriched contact: ${contact.fullName} (${contact.confidenceFlag})`);
+        continue;
+      }
+      if (contact.enrichmentSource && contact.enrichmentSource !== 'ai') {
+        console.log(`[CascadeEnrichment] Skipping contact already processed by cascade: ${contact.fullName} (source: ${contact.enrichmentSource}, flag: ${contact.confidenceFlag})`);
+        continue;
+      }
 
       console.log(`[CascadeEnrichment] Enriching contact: ${contact.fullName} (${contact.email || 'no email'})`);
 
