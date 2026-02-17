@@ -159,7 +159,7 @@ interface Organization {
   pdlEnriched?: boolean;
 }
 
-type EnrichmentStatusType = 'not_enriched' | 'pending' | 'completed' | 'failed';
+type EnrichmentStatusType = 'not_enriched' | 'pending' | 'completed' | 'enriched' | 'failed';
 
 
 // Priority order for contact sorting (lower = higher priority)
@@ -249,6 +249,7 @@ function EnrichmentStatusBadge({ status }: { status: EnrichmentStatusType }) {
     not_enriched: { color: 'bg-gray-100 text-gray-600', label: 'Not Researched' },
     pending: { color: 'bg-yellow-100 text-yellow-700', label: 'Researching...' },
     completed: { color: 'bg-green-100 text-green-700', label: 'Researched with AI' },
+    enriched: { color: 'bg-green-100 text-green-700', label: 'Researched with AI' },
     failed: { color: 'bg-red-100 text-red-700', label: 'Research Failed' },
   };
   
@@ -256,7 +257,7 @@ function EnrichmentStatusBadge({ status }: { status: EnrichmentStatusType }) {
   
   return (
     <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${color}`}>
-      {status === 'completed' && (
+      {(status === 'completed' || status === 'enriched') && (
         <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
           <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
         </svg>
@@ -552,8 +553,8 @@ export default function PropertyDetailPage() {
             lastEnrichedAt: prop.lastEnrichedAt,
           });
         }
-        if (prop.enrichmentStatus === 'completed') {
-          setEnrichmentStatus('completed');
+        if (prop.enrichmentStatus === 'completed' || prop.enrichmentStatus === 'enriched') {
+          setEnrichmentStatus(prop.enrichmentStatus);
         }
 
         // Set contacts and organizations if available
@@ -663,7 +664,7 @@ export default function PropertyDetailPage() {
           // Preserve emailValidationStatus from the server - don't overwrite with 'not_validated'
           setContacts(result.enrichment.contacts || []);
           setOrganizations(result.enrichment.organizations || []);
-          setEnrichmentStatus('completed');
+          setEnrichmentStatus('enriched');
           setEnrichmentMessage(`Found ${result.enrichment.contacts?.length || 0} contacts and ${result.enrichment.organizations?.length || 0} organizations`);
         }
       },
@@ -967,7 +968,7 @@ export default function PropertyDetailPage() {
                     const queueStatus = property ? getEnrichmentStatus(property.propertyKey, 'property') : { isActive: false, status: null };
                     const isEnrichmentActive = queueStatus.isActive;
                     const enrichmentHasFailed = queueStatus.status === 'failed';
-                    const isResearchComplete = enrichmentStatus === 'completed';
+                    const isResearchComplete = enrichmentStatus === 'completed' || enrichmentStatus === 'enriched';
                     
                     if (isResearchComplete) {
                       return (
@@ -1069,7 +1070,7 @@ export default function PropertyDetailPage() {
               </div>
 
               {enrichmentMessage && enrichmentStatus !== 'pending' && (
-                <div className={`mb-6 p-3 rounded-lg ${enrichmentStatus === 'completed' ? 'bg-green-50 text-green-700' : enrichmentStatus === 'failed' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
+                <div className={`mb-6 p-3 rounded-lg ${(enrichmentStatus === 'completed' || enrichmentStatus === 'enriched') ? 'bg-green-50 text-green-700' : enrichmentStatus === 'failed' ? 'bg-red-50 text-red-700' : 'bg-blue-50 text-blue-700'}`}>
                   <p className="text-sm">{enrichmentMessage}</p>
                 </div>
               )}
@@ -1127,7 +1128,7 @@ export default function PropertyDetailPage() {
               </div>
             </div>
 
-            {enrichmentStatus === 'completed' && enrichedProperty && (
+            {(enrichmentStatus === 'completed' || enrichmentStatus === 'enriched') && enrichedProperty && (
               <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">About This Property</h2>
                 
@@ -1232,7 +1233,16 @@ export default function PropertyDetailPage() {
                         onClick={() => org.id && router.push(`/organization/${org.id}`)}
                         data-testid={`ownership-org-${org.id}`}
                       >
-                        <div className="flex items-start justify-between">
+                        <div className="flex items-start justify-between gap-3">
+                          {org.logoUrl && (
+                            <img
+                              src={org.logoUrl}
+                              alt={org.name || 'Organization logo'}
+                              className="w-10 h-10 rounded object-contain flex-shrink-0 bg-white border border-gray-200"
+                              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                              data-testid={`img-org-logo-${org.id}`}
+                            />
+                          )}
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
                               <p className="font-medium text-gray-900">{org.name || org.domain || 'Unknown Organization'}</p>
