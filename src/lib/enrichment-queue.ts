@@ -5,6 +5,8 @@ import { properties, contacts, organizations, propertyContacts, propertyOrganiza
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
 import { runFocusedEnrichment, cleanupAISummary } from './ai-enrichment';
 import type { FocusedEnrichmentResult, DiscoveredContact, DiscoveredOrganization } from './ai-enrichment';
+import { enrichContactCascade } from './cascade-enrichment';
+import { enrichOrganizationCascade } from './cascade-enrichment';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
 import { CONCURRENCY } from './constants';
@@ -379,6 +381,185 @@ async function saveEnrichmentResults(
   return { propertyId, contactIds, orgIds };
 }
 
+async function runCascadeEnrichmentOnSavedRecords(
+  contactIds: string[],
+  orgIds: string[]
+): Promise<void> {
+  for (const orgId of orgIds) {
+    try {
+      const org = await db.query.organizations.findFirst({
+        where: eq(organizations.id, orgId),
+      });
+      if (!org || !org.domain || org.enrichmentStatus === 'enriched') continue;
+
+      console.log(`[CascadeEnrichment] Enriching org: ${org.name} (${org.domain})`);
+      const result = await enrichOrganizationCascade(org.domain);
+
+      if (result.found) {
+        const updateData: Record<string, any> = {
+          enrichmentStatus: 'enriched',
+          enrichedAt: new Date(),
+          updatedAt: new Date(),
+        };
+        if (result.enrichmentSource) updateData.enrichmentSource = result.enrichmentSource;
+        if (result.providerId) updateData.providerId = result.providerId;
+        if (result.description) updateData.description = result.description;
+        if (result.industry) updateData.industry = result.industry;
+        if (result.employeeCount) updateData.employeeCount = result.employeeCount;
+        if (result.employeesRange) updateData.employeesRange = result.employeesRange;
+        if (result.foundedYear) updateData.foundedYear = result.foundedYear;
+        if (result.city) updateData.city = result.city;
+        if (result.state) updateData.state = result.state;
+        if (result.country) updateData.country = result.country;
+        if (result.website) updateData.website = result.website;
+        if (result.linkedinUrl) updateData.linkedinUrl = result.linkedinUrl;
+        if (result.twitterUrl) updateData.twitterUrl = result.twitterUrl;
+        if (result.facebookUrl) updateData.facebookUrl = result.facebookUrl;
+        if (result.logoUrl) updateData.logoUrl = result.logoUrl;
+        if (result.phone) updateData.phone = result.phone;
+        if (result.sicCodes) updateData.sicCodes = result.sicCodes;
+        if (result.naicsCodes) updateData.naicsCodes = result.naicsCodes;
+        if (result.tags) updateData.tags = result.tags;
+        if (result.pdlRaw) updateData.pdlRawResponse = result.pdlRaw;
+        if (result.crustdataRaw) updateData.crustdataRawResponse = result.crustdataRaw;
+
+        await db.update(organizations)
+          .set(updateData)
+          .where(eq(organizations.id, orgId));
+
+        console.log(`[CascadeEnrichment] Org enriched: ${org.name} via ${result.enrichmentSource}`);
+      }
+    } catch (err) {
+      console.error(`[CascadeEnrichment] Error enriching org ${orgId}:`, err);
+    }
+  }
+
+  for (const contactId of contactIds) {
+    try {
+      const contact = await db.query.contacts.findFirst({
+        where: eq(contacts.id, contactId),
+      });
+      if (!contact || !contact.fullName) continue;
+      if (contact.confidenceFlag === 'verified' || contact.confidenceFlag === 'pdl_matched') continue;
+
+      console.log(`[CascadeEnrichment] Enriching contact: ${contact.fullName} (${contact.email || 'no email'})`);
+
+      const result = await enrichContactCascade({
+        fullName: contact.fullName,
+        email: contact.email,
+        companyDomain: contact.companyDomain,
+        companyName: contact.employerName,
+        title: contact.title,
+        location: contact.location || 'Dallas, TX',
+        linkedinUrl: contact.linkedinUrl,
+      });
+
+      if (!result.found) {
+        console.log(`[CascadeEnrichment] No data found for contact: ${contact.fullName} (${result.confidenceFlag})`);
+        await db.update(contacts)
+          .set({ confidenceFlag: result.confidenceFlag, updatedAt: new Date() })
+          .where(eq(contacts.id, contactId));
+        continue;
+      }
+
+      const updateData: Record<string, any> = {
+        updatedAt: new Date(),
+        confidenceFlag: result.confidenceFlag,
+        enrichmentSource: result.enrichmentSource,
+      };
+
+      if (result.linkedinUrl) {
+        updateData.linkedinUrl = result.linkedinUrl;
+        updateData.linkedinConfidence = result.confidenceFlag === 'verified' ? 0.95 : 0.80;
+        updateData.linkedinStatus = result.confidenceFlag === 'verified' ? 'verified' : 'enriched';
+      }
+      if (result.email) {
+        updateData.email = result.email;
+        updateData.normalizedEmail = result.email.toLowerCase();
+        updateData.emailConfidence = result.emailVerified ? 0.95 : 0.70;
+        updateData.emailSource = result.emailSource;
+        updateData.emailValidationStatus = result.emailStatus;
+      }
+      if (result.phone) {
+        updateData.phone = result.phone;
+        updateData.phoneConfidence = result.confidenceFlag === 'pdl_matched' ? 0.85 : 0.70;
+        updateData.phoneSource = 'pdl';
+      }
+      if (result.mobilePhone) {
+        updateData.enrichmentPhonePersonal = result.mobilePhone;
+      }
+      if (result.title && !contact.title) {
+        updateData.title = result.title;
+        updateData.titleConfidence = result.confidenceFlag === 'verified' ? 0.95 : 0.80;
+      }
+      if (result.company && !contact.employerName) {
+        updateData.employerName = result.company;
+      }
+      if (result.companyDomain && !contact.companyDomain) {
+        updateData.companyDomain = result.companyDomain;
+      }
+      if (result.photoUrl) {
+        updateData.photoUrl = result.photoUrl;
+      }
+      if (result.location && !contact.location) {
+        updateData.location = result.location;
+      }
+      if (result.seniority) {
+        updateData.seniority = result.seniority;
+      }
+
+      updateData.findymailVerified = result.findymailVerified;
+      updateData.findymailVerifyStatus = result.findymailVerifyStatus;
+      updateData.pdlRawResponse = result.pdlRaw;
+      updateData.crustdataRawResponse = result.crustdataRaw;
+      updateData.pdlFullName = result.pdlFullName;
+      updateData.pdlWorkEmail = result.pdlWorkEmail;
+      updateData.pdlEmailsJson = result.pdlEmailsJson;
+      updateData.pdlPersonalEmails = result.pdlPersonalEmails;
+      updateData.pdlPhonesJson = result.pdlPhonesJson;
+      updateData.pdlMobilePhone = result.pdlMobilePhone;
+      updateData.pdlLinkedinUrl = result.pdlLinkedinUrl;
+      updateData.pdlTitle = result.pdlTitle;
+      updateData.pdlCompany = result.pdlCompany;
+      updateData.pdlCompanyDomain = result.pdlCompanyDomain;
+      updateData.pdlTitleRole = result.pdlTitleRole;
+      updateData.pdlTitleLevels = result.pdlTitleLevels;
+      updateData.pdlTitleClass = result.pdlTitleClass;
+      updateData.pdlTitleSubRole = result.pdlTitleSubRole;
+      updateData.pdlLocation = result.pdlLocation;
+      updateData.pdlCity = result.pdlCity;
+      updateData.pdlState = result.pdlState;
+      updateData.pdlAddressesJson = result.pdlAddressesJson;
+      updateData.pdlIndustry = result.pdlIndustry;
+      updateData.pdlGender = result.pdlGender;
+      updateData.pdlDatasetVersion = result.pdlDatasetVersion;
+      updateData.crustdataTitle = result.crustdataTitle;
+      updateData.crustdataCompany = result.crustdataCompany;
+      updateData.crustdataCompanyDomain = result.crustdataCompanyDomain;
+      updateData.crustdataWorkEmail = result.crustdataWorkEmail;
+      updateData.crustdataLinkedinUrl = result.crustdataLinkedinUrl;
+      updateData.crustdataLocation = result.crustdataLocation;
+      updateData.crustdataEnriched = result.crustdataEnriched;
+      if (result.crustdataEnriched) {
+        updateData.crustdataEnrichedAt = new Date();
+      }
+      updateData.providerId = result.providerId;
+
+      const cleanUpdate = Object.fromEntries(
+        Object.entries(updateData).filter(([_, v]) => v !== undefined)
+      );
+
+      await db.update(contacts)
+        .set(cleanUpdate)
+        .where(eq(contacts.id, contactId));
+
+      console.log(`[CascadeEnrichment] Contact enriched: ${contact.fullName} (${result.confidenceFlag})`);
+    } catch (err) {
+      console.error(`[CascadeEnrichment] Error enriching contact ${contactId}:`, err);
+    }
+  }
+}
+
 export interface QueueProgress {
   total: number;
   processed: number;
@@ -530,7 +711,12 @@ async function processPropertyItem(
     };
     const enrichmentResult = await runFocusedEnrichment(dcadProperty as any);
     
-    await saveEnrichmentResults(item.propertyKey, enrichmentResult);
+    const saved = await saveEnrichmentResults(item.propertyKey, enrichmentResult);
+    
+    if (saved.contactIds.length > 0 || saved.orgIds.length > 0) {
+      console.log(`[EnrichmentQueue] Running cascade enrichment on ${saved.contactIds.length} contacts, ${saved.orgIds.length} orgs...`);
+      await runCascadeEnrichmentOnSavedRecords(saved.contactIds, saved.orgIds);
+    }
     
     return { success: true };
   } catch (error) {
