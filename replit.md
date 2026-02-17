@@ -48,7 +48,15 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 - **Parcel Aggregation**: Properties are aggregated by GIS_PARCEL_ID to represent physical complexes, handling parent-constituent relationships.
 - **Map Management**: A dedicated `DashboardMap` controller manages Mapbox GL lifecycle and state.
 - **Search Functionality**: Integrates Mapbox Search Box API for POI, address, and location searches.
-- **Cascade Enrichment Architecture**: Uses a multi-provider cascade approach for enrichment with provider tracking and early-exit optimization for both organizations and contacts.
+- **Cascade Enrichment Architecture**: Multi-provider enrichment pipelines with raw response storage and confidence flags.
+  - **Contact Pipeline (4 stages)**: Input Validation → Email/LinkedIn Discovery (Findymail Verify → Findymail Finder → Hunter Finder → Findymail Reverse Email) → PDL Person Enrichment → Crustdata Verification (conditional on domain mismatch).
+  - **Organization Pipeline (2 stages)**: PDL Company Enrichment → Crustdata Company Enrichment.
+  - **Confidence Flags**: "verified" (Crustdata confirmed) | "pdl_matched" (PDL domain matched input) | "unverified" (PDL domain mismatch, no Crustdata) | "email_only" (only email found).
+  - **Email Source Tracking**: "input_verified" | "input_invalid" | "findymail_finder" | "hunter_finder".
+  - **Domain Alias Matching**: Built-in alias table + fuzzy TLD-stripped comparison for Crustdata trigger logic.
+  - **Raw Response Storage**: pdl_raw_response and crustdata_raw_response stored as JSONB on contacts and organizations for auditability.
+  - **PDL Validation**: min_likelihood=7, requires full_name + job_title + job_company_name + job_company_website; discards incomplete matches.
+  - **Crustdata Trigger**: Fires when PDL company domain doesn't match input domain, or PDL returned no data. Requires LinkedIn URL or verified email.
 - **Email Validation Rules**: Prioritizes ZeroBounce with NeverBounce as fallback. Catch-all emails are invalid, and personal email providers trigger further business email enrichment.
 - **Enrichment Queue System**: A non-blocking queue system allows background processing of enrichment tasks with UI progress updates and persistence.
 - **Horizontal Scaling Infrastructure**: Redis-backed distributed state management using Upstash for cross-instance coordination.
@@ -86,8 +94,11 @@ The project uses a standard Next.js structure with `/src/app` for API routes and
 ## External Dependencies
 - **Snowflake**: For Regrid parcel data access and ingestion.
 - **Mapbox**: For interactive mapping, geocoding, and Point of Interest (POI) enrichment.
+- **Findymail**: Email finding (by name+domain), email verification, and reverse email-to-LinkedIn lookup.
+- **Hunter.io**: Email finding (by name+domain) as fallback to Findymail, and organization domain enrichment.
+- **People Data Labs (PDL)**: Primary person enrichment (phone, identity, location, title) and company enrichment. Env vars: PDL_API_KEY / PEOPLEDATALABS_API_KEY.
+- **Crustdata**: Verification layer for contacts (100% accuracy in testing) and supplementary company enrichment. Uses LinkedIn URL or email as input.
 - **LeadMagic**: Provides email validation services.
-- **Hunter.io**: For organization domain enrichment (contact info, social profiles, parent companies, tech stack).
 - **EnrichLayer**: For LinkedIn-sourced company and contact data (profile photos, company profiles, industry classification).
 - **Clerk Auth**: Handles user authentication and legacy user migration.
 - **Google Gemini**: Utilized for AI-based property enrichment, including contact discovery and beneficial owner identification.

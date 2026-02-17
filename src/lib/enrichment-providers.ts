@@ -30,8 +30,19 @@ export {
 export { 
   findEmailByName as findEmailFindymail,
   findEmailByLinkedIn as findEmailFindymailLinkedIn,
+  findLinkedInByEmail as findLinkedInByEmailFindymail,
   verifyEmail as verifyEmailFindymail 
 } from './findymail';
+export {
+  enrichPersonCrustdata,
+  enrichCompanyCrustdata
+} from './crustdata';
+
+// Cascade Enrichment Pipelines
+export {
+  enrichContactCascade,
+  enrichOrganizationCascade
+} from './cascade-enrichment';
 
 // Email Verification Providers
 export { 
@@ -43,6 +54,8 @@ export { validateEmail as validateEmailNeverBounce } from './neverbounce';
 
 // Type exports for convenience
 export type { PDLPersonResult, PDLCompanyResult } from './pdl';
+export type { CrustdataPersonResult, CrustdataCompanyResult } from './crustdata';
+export type { ContactEnrichmentResult, OrganizationEnrichmentResult as CascadeOrgResult, ConfidenceFlag, EmailSource } from './cascade-enrichment';
 export type { EmailFindResult } from './hunter';
 export type { EmailValidationResult as LeadMagicValidationResult } from './leadmagic';
 export type { EmailValidationResult as NeverBounceValidationResult } from './neverbounce';

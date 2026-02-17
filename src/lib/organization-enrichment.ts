@@ -48,7 +48,7 @@ export async function enrichOrganizationByDomain(
   domain: string,
   options?: { forceRefresh?: boolean }
 ): Promise<OrganizationEnrichmentResult> {
-  console.log(`[OrgEnrichment] Enriching organization with cascade (Apollo → EnrichLayer → PDL): ${domain}`);
+  console.log(`[OrgEnrichment] Enriching organization with cascade (PDL → Crustdata): ${domain}`);
   
   if (!domain) {
     return { success: false, orgId: '', enrichedData: null, error: 'no_domain' };
@@ -119,11 +119,14 @@ export async function enrichOrganizationByDomain(
     enrichmentSource: cascadeResult.enrichmentSource || undefined,
     enrichmentStatus: 'complete',
     lastEnrichedAt: cascadeResult.enrichedAt || new Date(),
-    rawEnrichmentJson: cascadeResult.raw ? { [cascadeResult.enrichmentSource || 'unknown']: cascadeResult.raw } : undefined,
+    rawEnrichmentJson: (cascadeResult.pdlRaw || cascadeResult.crustdataRaw) ? { pdl: cascadeResult.pdlRaw || null, crustdata: cascadeResult.crustdataRaw || null } : undefined,
     
-    // Legacy PDL fields - set based on source
-    pdlEnriched: cascadeResult.enrichmentSource === 'pdl',
-    pdlEnrichedAt: cascadeResult.enrichmentSource === 'pdl' ? new Date() : undefined,
+    pdlEnriched: !!cascadeResult.pdlRaw,
+    pdlEnrichedAt: cascadeResult.pdlRaw ? new Date() : undefined,
+    pdlRawResponse: cascadeResult.pdlRaw || undefined,
+    crustdataRawResponse: cascadeResult.crustdataRaw || undefined,
+    crustdataEnriched: !!cascadeResult.crustdataRaw,
+    crustdataEnrichedAt: cascadeResult.crustdataRaw ? new Date() : undefined,
     
     updatedAt: new Date(),
   };

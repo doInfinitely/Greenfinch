@@ -182,6 +182,65 @@ export async function findEmailByLinkedIn(linkedinUrl: string): Promise<FindEmai
 }
 
 /**
+ * Reverse email lookup - find LinkedIn URL from an email address
+ */
+export async function findLinkedInByEmail(email: string): Promise<FindEmailResult> {
+  const apiKey = process.env.FINDYMAIL_API_KEY;
+  if (!apiKey) {
+    throw new Error('FINDYMAIL_API_KEY is not configured');
+  }
+
+  console.log('[Findymail] Reverse email lookup:', email);
+
+  try {
+    const response = await fetch(`${FINDYMAIL_API_URL}/search/reverse-email`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ email }),
+    });
+
+    const data: FindymailEmailResult = await response.json();
+    
+    console.log('[Findymail] Reverse email response status:', response.status);
+    console.log('[Findymail] Reverse email response body:', JSON.stringify(data).substring(0, 500));
+
+    if (!response.ok) {
+      const errorMsg = (data as any).message || (data as any).error || `API error: ${response.status}`;
+      return { found: false, error: errorMsg, raw: data };
+    }
+
+    const contact = data.contact;
+    let linkedinUrl = contact?.linkedin;
+    if (linkedinUrl && !linkedinUrl.startsWith('http')) {
+      linkedinUrl = `https://${linkedinUrl}`;
+    }
+
+    if (!linkedinUrl) {
+      return { found: false, error: 'No LinkedIn URL found', raw: data };
+    }
+
+    return {
+      found: true,
+      email: contact?.email || email,
+      fullName: contact?.name,
+      firstName: contact?.first_name,
+      lastName: contact?.last_name,
+      title: contact?.job_title,
+      linkedinUrl,
+      phone: contact?.phone,
+      raw: data,
+    };
+  } catch (error: any) {
+    console.error('[Findymail] Reverse email lookup failed:', error.message);
+    return { found: false, error: error.message };
+  }
+}
+
+/**
  * Verify an email address using Findymail
  */
 export async function verifyEmail(email: string): Promise<VerifyEmailResult> {

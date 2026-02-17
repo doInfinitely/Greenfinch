@@ -12,13 +12,28 @@ export interface PDLPersonResult {
   lastName: string | null;
   fullName: string | null;
   email: string | null;
+  workEmail: string | null;
+  personalEmails: string[] | null;
+  emailsJson: any[] | null;
+  phonesJson: any[] | null;
+  mobilePhone: string | null;
   linkedinUrl: string | null;
   title: string | null;
+  titleRole: string | null;
+  titleLevels: string[] | null;
+  titleClass: string | null;
+  titleSubRole: string | null;
   companyName: string | null;
   companyDomain: string | null;
   location: string | null;
+  city: string | null;
+  state: string | null;
+  addressesJson: any[] | null;
+  industry: string | null;
+  gender: string | null;
   photoUrl: string | null;
   domainMatch: boolean;
+  datasetVersion: string | null;
   raw?: any;
 }
 
@@ -36,6 +51,13 @@ export interface PDLCompanyResult {
   city: string | null;
   state: string | null;
   country: string | null;
+  sicCode: string | null;
+  naicsCode: string | null;
+  tags: string[] | null;
+  phone: string | null;
+  twitterUrl: string | null;
+  facebookUrl: string | null;
+  logoUrl: string | null;
   raw?: any;
 }
 
@@ -74,31 +96,75 @@ function strictMatch(
   return firstMatch && lastMatch && domainMatch;
 }
 
+function emptyPersonResult(): PDLPersonResult {
+  return {
+    found: false,
+    confidence: 0,
+    firstName: null,
+    lastName: null,
+    fullName: null,
+    email: null,
+    workEmail: null,
+    personalEmails: null,
+    emailsJson: null,
+    phonesJson: null,
+    mobilePhone: null,
+    linkedinUrl: null,
+    title: null,
+    titleRole: null,
+    titleLevels: null,
+    titleClass: null,
+    titleSubRole: null,
+    companyName: null,
+    companyDomain: null,
+    location: null,
+    city: null,
+    state: null,
+    addressesJson: null,
+    industry: null,
+    gender: null,
+    photoUrl: null,
+    domainMatch: false,
+    datasetVersion: null,
+  };
+}
+
+function emptyCompanyResult(): PDLCompanyResult {
+  return {
+    found: false,
+    name: null,
+    displayName: null,
+    description: null,
+    website: null,
+    linkedinUrl: null,
+    industry: null,
+    employeeCount: null,
+    employeeRange: null,
+    foundedYear: null,
+    city: null,
+    state: null,
+    country: null,
+    sicCode: null,
+    naicsCode: null,
+    tags: null,
+    phone: null,
+    twitterUrl: null,
+    facebookUrl: null,
+    logoUrl: null,
+  };
+}
+
 export async function enrichPersonPDL(
   firstName: string,
   lastName: string,
   domain: string,
-  options: { location?: string; useSearch?: boolean; companyName?: string } = {}
+  options: { location?: string; useSearch?: boolean; companyName?: string; email?: string; linkedinUrl?: string } = {}
 ): Promise<PDLPersonResult> {
-  const apiKey = process.env.PEOPLEDATALABS_API_KEY;
+  const apiKey = process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY;
   
   if (!apiKey) {
-    console.warn('[PDL] PEOPLEDATALABS_API_KEY not configured');
-    return {
-      found: false,
-      confidence: 0,
-      firstName: null,
-      lastName: null,
-      fullName: null,
-      email: null,
-      linkedinUrl: null,
-      title: null,
-      companyName: null,
-      companyDomain: null,
-      location: null,
-      photoUrl: null,
-      domainMatch: false,
-    };
+    console.warn('[PDL] PDL_API_KEY / PEOPLEDATALABS_API_KEY not configured');
+    return emptyPersonResult();
   }
 
   try {
@@ -106,11 +172,8 @@ export async function enrichPersonPDL(
       pRetry(
         async () => {
           if (options.useSearch) {
-            // PDL Person Search API - Elasticsearch query
-            // PDL has limited ES support - no minimum_should_match allowed
             const mustClauses: any[] = [];
             
-            // Name matching - use match for flexibility
             if (firstName) {
               mustClauses.push({ match: { first_name: firstName.toLowerCase() } });
             }
@@ -118,14 +181,9 @@ export async function enrichPersonPDL(
               mustClauses.push({ match: { last_name: lastName.toLowerCase() } });
             }
             
-            // Company matching - use OR via bool should at top level
-            // Since PDL doesn't support minimum_should_match, we'll try domain first
-            // and fall back to a simpler query
             const shouldClauses: any[] = [];
             if (domain) {
-              // Try to match on company website (normalized domain)
               shouldClauses.push({ term: { job_company_website: normalizeDomain(domain) } });
-              // Also try company name derived from domain
               const companyFromDomain = domain
                 .replace(/^www\./i, '')
                 .replace(/\.(com|org|net|io|co|ai|app|dev)$/i, '')
@@ -133,7 +191,6 @@ export async function enrichPersonPDL(
               shouldClauses.push({ match: { job_company_name: companyFromDomain } });
             }
             
-            // Location is optional boost
             if (options.location) {
               shouldClauses.push({ match: { location_name: options.location } });
             }
@@ -142,10 +199,10 @@ export async function enrichPersonPDL(
               query: {
                 bool: {
                   must: mustClauses,
-                  should: shouldClauses, // Optional but boosts relevance
+                  should: shouldClauses,
                 }
               },
-              size: 5, // Get top 5 results to find best match
+              size: 5,
             };
             
             console.log('[PDL] Search API query:', JSON.stringify(esQuery, null, 2));
@@ -188,7 +245,6 @@ export async function enrichPersonPDL(
               return { found: false };
             }
             
-            // Find best match - prefer one with matching domain
             let bestMatch = data.data[0];
             const normalizedInputDomain = normalizeDomain(domain || '');
             
@@ -204,22 +260,16 @@ export async function enrichPersonPDL(
             return { found: true, data: { data: bestMatch, likelihood: 0.7 } };
           }
           
-          // PDL Person Enrich API - requires specific identifying info
-          // Build params based on available data
           const params = new URLSearchParams();
           
-          // Always add name
           params.append('first_name', firstName);
           if (lastName) {
             params.append('last_name', lastName);
           }
           
-          // PDL Enrich API: 'company' should be company NAME, not domain
-          // If we have a company name, use it; otherwise try to derive from domain
           if (options.companyName) {
             params.append('company', options.companyName);
           } else if (domain) {
-            // Try to extract company name from domain (e.g., google.com -> google)
             const companyFromDomain = domain
               .replace(/^www\./i, '')
               .replace(/\.(com|org|net|io|co|ai|app|dev)$/i, '')
@@ -230,9 +280,16 @@ export async function enrichPersonPDL(
           if (options.location) {
             params.append('location', options.location);
           }
+
+          if (options.email) {
+            params.append('email', options.email);
+          }
+
+          if (options.linkedinUrl) {
+            params.append('profile', options.linkedinUrl);
+          }
           
-          // Set minimum likelihood threshold for quality
-          params.append('min_likelihood', '3');
+          params.append('min_likelihood', '7');
 
           console.log('[PDL] Enrich API params:', Object.fromEntries(params));
 
@@ -279,30 +336,31 @@ export async function enrichPersonPDL(
     );
 
     if (!result.found || !result.data) {
-      return {
-        found: false,
-        confidence: 0,
-        firstName: null,
-        lastName: null,
-        fullName: null,
-        email: null,
-        linkedinUrl: null,
-        title: null,
-        companyName: null,
-        companyDomain: null,
-        location: null,
-        photoUrl: null,
-        domainMatch: false,
-      };
+      return emptyPersonResult();
     }
 
     const person = result.data.data || result.data;
     const job = person.job_company_name ? person : (person.experience?.[0] || {});
+
+    const personFullName = person.full_name || null;
+    const personTitle = person.job_title || job.job_title || null;
+    const personCompanyName = person.job_company_name || job.job_company_name || null;
+    const personCompanyWebsite = job.job_company_website || person.job_company_website || null;
+
+    if (!personFullName || !personTitle || !personCompanyName || !personCompanyWebsite) {
+      console.log('[PDL] Incomplete match - missing required fields:', {
+        full_name: !!personFullName,
+        job_title: !!personTitle,
+        job_company_name: !!personCompanyName,
+        job_company_website: !!personCompanyWebsite,
+      });
+      return emptyPersonResult();
+    }
     
     const resultData = {
       firstName: person.first_name || null,
       lastName: person.last_name || null,
-      companyDomain: job.job_company_website || person.job_company_website || null,
+      companyDomain: personCompanyWebsite,
     };
     
     const isStrictMatch = domain ? strictMatch(
@@ -310,10 +368,8 @@ export async function enrichPersonPDL(
       resultData
     ) : false;
 
-    // Get LinkedIn URL from profiles array or direct field
     const linkedinProfiles = person.profiles?.filter((p: any) => p.network === 'linkedin') || [];
     let linkedinUrl = linkedinProfiles[0]?.url || person.linkedin_url || null;
-    // Normalize LinkedIn URL to include https://
     if (linkedinUrl && !linkedinUrl.startsWith('http')) {
       linkedinUrl = `https://${linkedinUrl}`;
     }
@@ -323,57 +379,44 @@ export async function enrichPersonPDL(
       confidence: isStrictMatch ? (result.data.likelihood / 10 || 0.8) : (result.data.likelihood / 10 || 0.5),
       firstName: person.first_name || null,
       lastName: person.last_name || null,
-      fullName: person.full_name || null,
+      fullName: personFullName,
       email: person.work_email || person.personal_emails?.[0] || null,
+      workEmail: person.work_email || null,
+      personalEmails: person.personal_emails || null,
+      emailsJson: person.emails || null,
+      phonesJson: person.phone_numbers || null,
+      mobilePhone: person.mobile_phone || null,
       linkedinUrl,
-      title: person.job_title || job.job_title || null,
-      companyName: person.job_company_name || job.job_company_name || null,
+      title: personTitle,
+      titleRole: person.job_title_role || null,
+      titleLevels: person.job_title_levels || null,
+      titleClass: person.job_title_class || null,
+      titleSubRole: person.job_title_sub_role || null,
+      companyName: personCompanyName,
       companyDomain: resultData.companyDomain,
       location: person.location_name || null,
+      city: person.location_locality || null,
+      state: person.location_region || null,
+      addressesJson: person.street_addresses || null,
+      industry: person.industry || null,
+      gender: person.sex || null,
       photoUrl: person.profile_pic_url || null,
       domainMatch: isStrictMatch,
+      datasetVersion: person.dataset_version || null,
       raw: result.data,
     };
   } catch (error) {
     console.error('[PDL] Person enrichment failed:', error);
-    return {
-      found: false,
-      confidence: 0,
-      firstName: null,
-      lastName: null,
-      fullName: null,
-      email: null,
-      linkedinUrl: null,
-      title: null,
-      companyName: null,
-      companyDomain: null,
-      location: null,
-      photoUrl: null,
-      domainMatch: false,
-    };
+    return emptyPersonResult();
   }
 }
 
 export async function enrichCompanyPDL(domain: string): Promise<PDLCompanyResult> {
-  const apiKey = process.env.PEOPLEDATALABS_API_KEY;
+  const apiKey = process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY;
   
   if (!apiKey) {
-    console.warn('[PDL] PEOPLEDATALABS_API_KEY not configured');
-    return {
-      found: false,
-      name: null,
-      displayName: null,
-      description: null,
-      website: null,
-      linkedinUrl: null,
-      industry: null,
-      employeeCount: null,
-      employeeRange: null,
-      foundedYear: null,
-      city: null,
-      state: null,
-      country: null,
-    };
+    console.warn('[PDL] PDL_API_KEY / PEOPLEDATALABS_API_KEY not configured');
+    return emptyCompanyResult();
   }
 
   try {
@@ -427,21 +470,7 @@ export async function enrichCompanyPDL(domain: string): Promise<PDLCompanyResult
     );
 
     if (!result.found || !result.data) {
-      return {
-        found: false,
-        name: null,
-        displayName: null,
-        description: null,
-        website: null,
-        linkedinUrl: null,
-        industry: null,
-        employeeCount: null,
-        employeeRange: null,
-        foundedYear: null,
-        city: null,
-        state: null,
-        country: null,
-      };
+      return emptyCompanyResult();
     }
 
     const company = result.data;
@@ -468,25 +497,18 @@ export async function enrichCompanyPDL(domain: string): Promise<PDLCompanyResult
       city: company.location?.locality || company.location?.name?.split(',')[0]?.trim() || null,
       state: company.location?.region || null,
       country: company.location?.country || null,
+      sicCode: company.sic?.[0]?.toString() || null,
+      naicsCode: company.naics?.[0]?.naics_code?.toString() || company.naics?.[0]?.toString() || null,
+      tags: company.tags || null,
+      phone: company.phone || null,
+      twitterUrl: company.twitter_url || null,
+      facebookUrl: company.facebook_url || null,
+      logoUrl: company.profile_pic_url || company.logo_url || null,
       raw: result.data,
     };
   } catch (error) {
     console.error('[PDL] Company enrichment failed:', error);
-    return {
-      found: false,
-      name: null,
-      displayName: null,
-      description: null,
-      website: null,
-      linkedinUrl: null,
-      industry: null,
-      employeeCount: null,
-      employeeRange: null,
-      foundedYear: null,
-      city: null,
-      state: null,
-      country: null,
-    };
+    return emptyCompanyResult();
   }
 }
 

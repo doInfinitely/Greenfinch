@@ -58,6 +58,7 @@
     "@types/mapbox-gl": "^3.4.1",
     "@types/memoizee": "^0.4.12",
     "@upstash/redis": "^1.36.1",
+    "adm-zip": "^0.5.16",
     "axios": "^1.13.2",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
