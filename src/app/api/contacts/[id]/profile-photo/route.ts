@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { contacts } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
-import { enrichPersonPDL } from '@/lib/pdl';
+import { getProfilePicture } from '@/lib/enrichlayer';
+import { cacheGet, cacheSet } from '@/lib/redis';
+
+const PHOTO_CACHE_TTL = 60 * 60 * 24 * 7; // 7 days
+const PHOTO_NOT_FOUND_TTL = 60 * 60 * 24; // 1 day for negative cache
+
+function photoCacheKey(linkedinUrl: string): string {
+  const normalized = linkedinUrl.toLowerCase().replace(/\/+$/, '');
+  return `photo:${normalized}`;
+}
 
 export async function GET(
   request: NextRequest,
@@ -27,41 +36,47 @@ export async function GET(
       });
     }
 
-    if (!contact.linkedinUrl && !contact.email) {
+    if (!contact.linkedinUrl) {
       return NextResponse.json({ 
         success: false, 
-        error: 'No LinkedIn URL or email available to fetch profile photo' 
+        error: 'No LinkedIn URL available to fetch profile photo' 
       });
     }
 
-    const result = await enrichPersonPDL(
-      '',
-      '',
-      '',
-      {
-        email: contact.email || undefined,
-        linkedinUrl: contact.linkedinUrl || undefined,
+    const cacheKey = photoCacheKey(contact.linkedinUrl);
+    const cached = await cacheGet<{ url: string | null }>(cacheKey);
+    if (cached !== null) {
+      if (cached.url) {
+        await db.update(contacts)
+          .set({ photoUrl: cached.url, updatedAt: new Date() })
+          .where(eq(contacts.id, id));
+        return NextResponse.json({ success: true, url: cached.url, cached: true });
       }
-    );
+      return NextResponse.json({ success: false, error: 'No profile photo found (cached)' });
+    }
 
-    if (result?.found && result.photoUrl) {
-      await db.update(contacts)
-        .set({ 
-          photoUrl: result.photoUrl,
-          updatedAt: new Date()
-        })
-        .where(eq(contacts.id, id));
+    const result = await getProfilePicture(contact.linkedinUrl);
+
+    if (result.success && result.url) {
+      await Promise.all([
+        db.update(contacts)
+          .set({ photoUrl: result.url, updatedAt: new Date() })
+          .where(eq(contacts.id, id)),
+        cacheSet(cacheKey, { url: result.url }, PHOTO_CACHE_TTL),
+      ]);
 
       return NextResponse.json({ 
         success: true, 
-        url: result.photoUrl,
+        url: result.url,
         cached: false 
       });
     }
 
+    await cacheSet(cacheKey, { url: null }, PHOTO_NOT_FOUND_TTL);
+
     return NextResponse.json({ 
       success: false, 
-      error: 'No profile photo found via PDL' 
+      error: result.error || 'No profile photo found via EnrichLayer' 
     });
   } catch (error) {
     console.error('[API] Profile photo fetch error:', error);
@@ -87,41 +102,34 @@ export async function POST(
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
-    if (!contact.linkedinUrl && !contact.email) {
+    if (!contact.linkedinUrl) {
       return NextResponse.json({ 
         success: false, 
-        error: 'No LinkedIn URL or email available to fetch profile photo' 
+        error: 'No LinkedIn URL available to fetch profile photo' 
       });
     }
 
-    const result = await enrichPersonPDL(
-      '',
-      '',
-      '',
-      {
-        email: contact.email || undefined,
-        linkedinUrl: contact.linkedinUrl || undefined,
-      }
-    );
+    const result = await getProfilePicture(contact.linkedinUrl);
 
-    if (result?.found && result.photoUrl) {
-      await db.update(contacts)
-        .set({ 
-          photoUrl: result.photoUrl,
-          updatedAt: new Date()
-        })
-        .where(eq(contacts.id, id));
+    if (result.success && result.url) {
+      const cacheKey = photoCacheKey(contact.linkedinUrl);
+      await Promise.all([
+        db.update(contacts)
+          .set({ photoUrl: result.url, updatedAt: new Date() })
+          .where(eq(contacts.id, id)),
+        cacheSet(cacheKey, { url: result.url }, PHOTO_CACHE_TTL),
+      ]);
 
       return NextResponse.json({ 
         success: true, 
-        url: result.photoUrl,
+        url: result.url,
         refreshed: true 
       });
     }
 
     return NextResponse.json({ 
       success: false, 
-      error: 'No profile photo found via PDL' 
+      error: result.error || 'No profile photo found via EnrichLayer' 
     });
   } catch (error) {
     console.error('[API] Profile photo refresh error:', error);
