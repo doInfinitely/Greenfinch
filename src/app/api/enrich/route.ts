@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPropertyByKey } from '@/lib/snowflake';
 import { runFocusedEnrichment } from '@/lib/ai-enrichment';
-import { isBatchRunning, checkRateLimitForIndividual, updateLastRequestTime } from '@/lib/enrichment-queue';
+import { isBatchRunning, checkRateLimitForIndividual, updateLastRequestTime, saveEnrichmentResults, runCascadeEnrichmentOnSavedRecords } from '@/lib/enrichment-queue';
 import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
@@ -238,6 +238,18 @@ export async function POST(request: NextRequest) {
     try {
       const enrichmentResult = await runFocusedEnrichment(commercialProperty as any);
 
+      if (storeResults) {
+        const saved = await saveEnrichmentResults(property.propertyKey, enrichmentResult);
+        console.log(`[API] Saved enrichment results: ${saved.contactIds.length} contacts, ${saved.orgIds.length} orgs`);
+
+        if (saved.contactIds.length > 0 || saved.orgIds.length > 0) {
+          console.log(`[API] Running cascade enrichment on saved records...`);
+          runCascadeEnrichmentOnSavedRecords(saved.contactIds, saved.orgIds).catch(err => {
+            console.error('[API] Background cascade enrichment error:', err);
+          });
+        }
+      }
+
       const response = NextResponse.json({
         success: true,
         propertyKey: property.propertyKey,
@@ -248,7 +260,7 @@ export async function POST(request: NextRequest) {
           contacts: enrichmentResult.contacts.data,
         },
         timing: enrichmentResult.timing,
-        stored: storeResults ? null : undefined,
+        stored: storeResults,
       });
       addRateLimitHeaders(response, rateInfo);
       return response;

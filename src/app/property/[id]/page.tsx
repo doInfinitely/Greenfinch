@@ -657,16 +657,10 @@ export default function PropertyDetailPage() {
         propertyKey: property.propertyKey,
         storeResults: true,
       },
-      onSuccess: (data: unknown) => {
-        const result = data as { enrichment?: { property?: EnrichedPropertyData; contacts?: Contact[]; organizations?: Organization[] } };
-        if (result.enrichment) {
-          setEnrichedProperty(result.enrichment.property || null);
-          // Preserve emailValidationStatus from the server - don't overwrite with 'not_validated'
-          setContacts(result.enrichment.contacts || []);
-          setOrganizations(result.enrichment.organizations || []);
-          setEnrichmentStatus('enriched');
-          setEnrichmentMessage(`Found ${result.enrichment.contacts?.length || 0} contacts and ${result.enrichment.organizations?.length || 0} organizations`);
-        }
+      onSuccess: async () => {
+        await fetchProperty();
+        setEnrichmentStatus('enriched');
+        setEnrichmentMessage('Research complete - data has been refreshed');
       },
       onError: (error: string) => {
         setEnrichmentStatus('failed');

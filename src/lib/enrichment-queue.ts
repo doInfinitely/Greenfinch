@@ -124,7 +124,7 @@ function normalizeName(name: string | null): string | null {
   return name.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 
-async function saveEnrichmentResults(
+export async function saveEnrichmentResults(
   propertyKey: string,
   result: FocusedEnrichmentResult
 ): Promise<{ propertyId: string; contactIds: string[]; orgIds: string[] }> {
@@ -383,7 +383,7 @@ async function saveEnrichmentResults(
   return { propertyId, contactIds: uniqueContactIds, orgIds: uniqueOrgIds };
 }
 
-async function runCascadeEnrichmentOnSavedRecords(
+export async function runCascadeEnrichmentOnSavedRecords(
   contactIds: string[],
   orgIds: string[]
 ): Promise<void> {
