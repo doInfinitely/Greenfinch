@@ -15,9 +15,11 @@ const SAFE_TABLES = [
   'property_organizations',
   'contact_organizations',
   'property_pipeline',
+  'pipeline_stage_history',
   'property_notes',
   'property_activity',
   'property_actions',
+  'property_views',
   'notifications',
   'lists',
   'list_items',
@@ -25,6 +27,7 @@ const SAFE_TABLES = [
   'property_service_providers',
   'property_flags',
   'contact_linkedin_flags',
+  'parcel_to_property',
   'waitlist_signups',
   'admin_audit_log',
 ];
@@ -34,6 +37,8 @@ const DELETION_ORDER = [
   'property_actions',
   'property_notes',
   'property_activity',
+  'property_views',
+  'pipeline_stage_history',
   'property_pipeline',
   'list_items',
   'lists',
@@ -46,6 +51,7 @@ const DELETION_ORDER = [
   'service_providers',
   'contacts',
   'organizations',
+  'parcel_to_property',
   'properties',
   'waitlist_signups',
 ];
@@ -313,37 +319,68 @@ export async function POST(request: NextRequest) {
         }, { status: 403 });
       }
 
+      const dependentTablesQuery = await pool.query(`
+        SELECT DISTINCT tc.table_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.constraint_column_usage ccu ON tc.constraint_name = ccu.constraint_name
+        WHERE tc.constraint_type = 'FOREIGN KEY' AND ccu.table_name = $1
+      `, [table]);
+      const dependentTables = dependentTablesQuery.rows
+        .map((r: any) => r.table_name as string)
+        .filter((t: string) => SAFE_TABLES.includes(t));
+
       if (!confirm) {
         const countResult = await pool.query(`SELECT COUNT(*) as count FROM "${table}"`);
+        const depInfo = dependentTables.length > 0
+          ? ` Dependent tables that will also be cleared first: ${dependentTables.join(', ')}.`
+          : '';
         await logAuditAction(currentUser?.id || null, currentUser?.email || null, 'clear_unconfirmed', table, null, null, CURRENT_ENVIRONMENT, false, 'Confirmation required', null, ipAddress);
         return NextResponse.json({
           error: 'Confirmation required',
           requiresConfirmation: true,
           rowCount: parseInt(countResult.rows[0].count),
-          message: `This will delete ${countResult.rows[0].count} rows from ${table}. Set confirm: true to proceed.`,
+          dependentTables,
+          message: `This will delete ${countResult.rows[0].count} rows from ${table}.${depInfo} Set confirm: true to proceed.`,
         }, { status: 400 });
       }
 
+      const clearResults: { table: string; rowsDeleted: number }[] = [];
+
+      if (dependentTables.length > 0) {
+        const orderedDeps = DELETION_ORDER.filter(t => dependentTables.includes(t));
+        for (const depTable of orderedDeps) {
+          try {
+            const depResult = await pool.query(`DELETE FROM "${depTable}"`);
+            clearResults.push({ table: depTable, rowsDeleted: depResult.rowCount || 0 });
+          } catch (err) {
+            console.error(`[Admin] Failed to clear dependent table ${depTable}:`, err);
+          }
+        }
+      }
+
       const result = await pool.query(`DELETE FROM "${table}"`);
+      clearResults.push({ table, rowsDeleted: result.rowCount || 0 });
 
       await logAuditAction(
         currentUser?.id || null,
         currentUser?.email || null,
         'clear_table',
         table,
-        `DELETE FROM "${table}"`,
+        `DELETE FROM "${table}" (+ ${dependentTables.length} dependent tables)`,
         result.rowCount,
         CURRENT_ENVIRONMENT,
         true,
         null,
-        null,
+        { clearResults },
         ipAddress
       );
 
       return NextResponse.json({
         success: true,
         rowsDeleted: result.rowCount,
-        message: `Cleared ${result.rowCount} rows from ${table}`,
+        clearResults,
+        message: `Cleared ${result.rowCount} rows from ${table}` + 
+          (clearResults.length > 1 ? ` (also cleared ${clearResults.length - 1} dependent tables)` : ''),
       });
     }
 
