@@ -3,7 +3,7 @@ import pLimit from 'p-limit';
 import { db } from './db';
 import { properties } from './schema';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
-import { enrichAndStoreProperty } from './enrichment';
+import { runFocusedEnrichment } from './ai-enrichment';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
 import { CONCURRENCY } from './constants';
@@ -239,8 +239,29 @@ async function processPropertyItem(
       return { success: false, error: 'Property not found in database' };
     }
 
-    const { result } = await enrichAndStoreProperty(property);
-    return { success: result.success, error: result.error };
+    const dcadProperty = (property as any).dcad || {
+      parcelId: property.propertyKey,
+      address: property.address,
+      city: property.city,
+      zip: property.zip,
+      lat: property.lat,
+      lon: property.lon,
+      usedesc: property.usedesc?.[0] || '',
+      usecode: property.usecode?.[0] || '',
+      regridYearBuilt: property.yearBuilt || null,
+      regridNumStories: property.numFloors || null,
+      lotSqft: property.lotSqft || null,
+      accountNum: '',
+      divisionCd: 'COM',
+      bizName: property.primaryOwner || null,
+      ownerName1: property.allOwners?.[0] || null,
+      ownerName2: property.allOwners?.[1] || null,
+      buildingCount: 1,
+      totalGrossBldgArea: property.buildingSqft || null,
+      buildings: [],
+    };
+    await runFocusedEnrichment(dcadProperty as any);
+    return { success: true };
   } catch (error) {
     return { 
       success: false, 

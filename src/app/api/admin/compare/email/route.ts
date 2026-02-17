@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminAccess } from '@/lib/auth';
-import { validateEmail as neverBounceValidate } from '@/lib/neverbounce';
 import { verifyEmail as hunterVerify } from '@/lib/hunter';
 import { verifyEmail as findymailVerify } from '@/lib/findymail';
 import { validateEmail as zerobounceValidate } from '@/lib/zerobounce';
@@ -35,42 +34,6 @@ export async function POST(request: NextRequest) {
     const startTime = Date.now();
 
     const promises: Promise<void>[] = [];
-
-    if (process.env.NEVERBOUNCE_API_KEY) {
-      promises.push(
-        (async () => {
-          const nbStart = Date.now();
-          try {
-            const result = await neverBounceValidate(email);
-            let normalizedStatus: 'valid' | 'catch-all' | 'invalid' = 'invalid';
-            if (result.status === 'valid') normalizedStatus = 'valid';
-            else if (result.status === 'catchall') normalizedStatus = 'catch-all';
-            
-            results.neverbounce = {
-              provider: 'NeverBounce',
-              success: true,
-              data: {
-                status: normalizedStatus,
-                rawStatus: result.status,
-                isValid: result.isValid,
-                confidence: result.confidence,
-                suggestedCorrection: result.details.suggested_correction || null,
-                flags: result.details.flags || [],
-              },
-              latency: Date.now() - nbStart,
-              raw: result.details,
-            };
-          } catch (error: any) {
-            results.neverbounce = {
-              provider: 'NeverBounce',
-              success: false,
-              error: error.message,
-              latency: Date.now() - nbStart,
-            };
-          }
-        })()
-      );
-    }
 
     if (process.env.HUNTER_API_KEY) {
       promises.push(

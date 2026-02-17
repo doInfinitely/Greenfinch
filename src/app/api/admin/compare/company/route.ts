@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAdminAccess } from '@/lib/auth';
 import { enrichCompanyPDL } from '@/lib/pdl';
-import { resolveCompanyByDomain, getCompanyProfile } from '@/lib/enrichlayer';
 import { enrichCompanyByDomain as hunterEnrichCompany } from '@/lib/hunter';
-import { enrichCompanyApollo } from '@/lib/apollo';
 
 export async function POST(request: NextRequest) {
   try {
@@ -33,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     const promises: Promise<void>[] = [];
 
-    if (process.env.PEOPLEDATALABS_API_KEY) {
+    if (process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY) {
       promises.push(
         (async () => {
           const pdlStart = Date.now();
@@ -66,67 +64,6 @@ export async function POST(request: NextRequest) {
               success: false,
               error: error.message,
               latency: Date.now() - pdlStart,
-            };
-          }
-        })()
-      );
-    }
-
-    if (process.env.ENRICHLAYER_API_KEY) {
-      promises.push(
-        (async () => {
-          const elStart = Date.now();
-          try {
-            const resolveResult = await resolveCompanyByDomain(normalizedDomain);
-            if (resolveResult.success && resolveResult.linkedinUrl) {
-              const profileResult = await getCompanyProfile(resolveResult.linkedinUrl);
-              if (profileResult.success && profileResult.data) {
-                const d = profileResult.data;
-                const employeeRange = d.companySize 
-                  ? `${d.companySize[0] || '?'}-${d.companySize[1] || '?'}` 
-                  : null;
-                results.enrichlayer = {
-                  provider: 'EnrichLayer',
-                  success: true,
-                  data: {
-                    name: d.name,
-                    description: d.description,
-                    industry: d.industry,
-                    category: d.categories?.join(', ') || null,
-                    employeeCount: d.companySize?.[0] || null,
-                    employeeRange,
-                    foundedYear: d.foundedYear,
-                    city: d.headquarter?.city,
-                    state: d.headquarter?.state,
-                    country: d.headquarter?.country,
-                    location: [d.headquarter?.city, d.headquarter?.state, d.headquarter?.country].filter(Boolean).join(', '),
-                    website: d.website,
-                    linkedinUrl: resolveResult.linkedinUrl,
-                  },
-                  latency: Date.now() - elStart,
-                };
-              } else {
-                results.enrichlayer = {
-                  provider: 'EnrichLayer',
-                  success: false,
-                  error: profileResult.error || 'Profile not found',
-                  latency: Date.now() - elStart,
-                };
-              }
-            } else {
-              results.enrichlayer = {
-                provider: 'EnrichLayer',
-                success: false,
-                error: resolveResult.error || 'Could not resolve domain',
-                latency: Date.now() - elStart,
-              };
-            }
-          } catch (error: any) {
-            results.enrichlayer = {
-              provider: 'EnrichLayer',
-              success: false,
-              error: error.message,
-              latency: Date.now() - elStart,
             };
           }
         })()
@@ -176,52 +113,6 @@ export async function POST(request: NextRequest) {
               success: false,
               error: error.message,
               latency: Date.now() - hunterStart,
-            };
-          }
-        })()
-      );
-    }
-
-    if (process.env.APOLLO_API_KEY) {
-      promises.push(
-        (async () => {
-          const apolloStart = Date.now();
-          try {
-            const result = await enrichCompanyApollo(normalizedDomain);
-            results.apollo = {
-              provider: 'Apollo.io',
-              success: result.found,
-              data: result.found ? {
-                name: result.name,
-                description: result.description,
-                industry: result.industry,
-                category: result.keywords?.slice(0, 5).join(', ') || null,
-                employeeCount: result.employeeCount,
-                employeeRange: null,
-                foundedYear: result.foundedYear,
-                city: result.city,
-                state: result.state,
-                country: result.country,
-                location: [result.city, result.state, result.country].filter(Boolean).join(', '),
-                website: result.website,
-                linkedinUrl: result.linkedinUrl,
-                twitterUrl: result.twitterUrl,
-                facebookUrl: result.facebookUrl,
-                logoUrl: result.logoUrl,
-                phone: result.phone,
-                sicCodes: result.sicCodes,
-                naicsCodes: result.naicsCodes,
-              } : null,
-              latency: Date.now() - apolloStart,
-              error: result.found ? undefined : result.error,
-              raw: result.raw,
-            };
-          } catch (error: any) {
-            results.apollo = {
-              provider: 'Apollo.io',
-              success: false,
-              error: error.message,
-              latency: Date.now() - apolloStart,
             };
           }
         })()

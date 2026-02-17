@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { contacts } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
-import { getProfilePicture } from '@/lib/enrichlayer';
+import { enrichPersonPDL } from '@/lib/pdl';
 
 export async function GET(
   request: NextRequest,
@@ -27,33 +27,41 @@ export async function GET(
       });
     }
 
-    if (!contact.linkedinUrl) {
+    if (!contact.linkedinUrl && !contact.email) {
       return NextResponse.json({ 
         success: false, 
-        error: 'No LinkedIn URL available to fetch profile photo' 
+        error: 'No LinkedIn URL or email available to fetch profile photo' 
       });
     }
 
-    const result = await getProfilePicture(contact.linkedinUrl);
+    const result = await enrichPersonPDL(
+      '',
+      '',
+      '',
+      {
+        email: contact.email || undefined,
+        linkedinUrl: contact.linkedinUrl || undefined,
+      }
+    );
 
-    if (result.success && result.url) {
+    if (result?.found && result.photoUrl) {
       await db.update(contacts)
         .set({ 
-          photoUrl: result.url,
+          photoUrl: result.photoUrl,
           updatedAt: new Date()
         })
         .where(eq(contacts.id, id));
 
       return NextResponse.json({ 
         success: true, 
-        url: result.url,
+        url: result.photoUrl,
         cached: false 
       });
     }
 
     return NextResponse.json({ 
       success: false, 
-      error: result.error || 'Failed to fetch profile photo' 
+      error: 'No profile photo found via PDL' 
     });
   } catch (error) {
     console.error('[API] Profile photo fetch error:', error);
@@ -79,33 +87,41 @@ export async function POST(
       return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
     }
 
-    if (!contact.linkedinUrl) {
+    if (!contact.linkedinUrl && !contact.email) {
       return NextResponse.json({ 
         success: false, 
-        error: 'No LinkedIn URL available to fetch profile photo' 
+        error: 'No LinkedIn URL or email available to fetch profile photo' 
       });
     }
 
-    const result = await getProfilePicture(contact.linkedinUrl);
+    const result = await enrichPersonPDL(
+      '',
+      '',
+      '',
+      {
+        email: contact.email || undefined,
+        linkedinUrl: contact.linkedinUrl || undefined,
+      }
+    );
 
-    if (result.success && result.url) {
+    if (result?.found && result.photoUrl) {
       await db.update(contacts)
         .set({ 
-          photoUrl: result.url,
+          photoUrl: result.photoUrl,
           updatedAt: new Date()
         })
         .where(eq(contacts.id, id));
 
       return NextResponse.json({ 
         success: true, 
-        url: result.url,
+        url: result.photoUrl,
         refreshed: true 
       });
     }
 
     return NextResponse.json({ 
       success: false, 
-      error: result.error || 'Failed to fetch profile photo' 
+      error: 'No profile photo found via PDL' 
     });
   } catch (error) {
     console.error('[API] Profile photo refresh error:', error);

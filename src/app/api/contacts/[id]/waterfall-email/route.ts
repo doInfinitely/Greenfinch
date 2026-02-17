@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { contacts } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
-import { triggerWaterfallEmail } from '@/lib/apollo';
 import { requireSession, requireAdminAccess } from '@/lib/auth';
 import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
+import { findEmailByName } from '@/lib/findymail';
+import { findEmail as hunterFindEmail } from '@/lib/hunter';
+import { validateEmail as zerobounceValidate } from '@/lib/zerobounce';
 
 const checkRateLimit = rateLimitMiddleware(20, 60);
 
@@ -55,126 +57,76 @@ export async function POST(
       return NextResponse.json({ error: 'Contact has no name' }, { status: 400 });
     }
 
+    if (!contact.companyDomain) {
+      return NextResponse.json({ error: 'Contact has no company domain for email discovery' }, { status: 400 });
+    }
+
     const { firstName, lastName } = parseNameParts(contact.fullName);
 
-    console.log(`[WaterfallEmail] Triggering for contact: ${contact.fullName} (${id})`);
+    console.log(`[WaterfallEmail] Finding email for: ${contact.fullName} @ ${contact.companyDomain}`);
 
-    const result = await triggerWaterfallEmail({
-      apolloId: contact.providerId || undefined,
-      linkedinUrl: contact.linkedinUrl || undefined,
-      firstName,
-      lastName,
-      domain: contact.companyDomain || undefined,
-    });
+    let foundEmail: string | null = null;
+    let emailSource: string | null = null;
 
-    if (!result.success) {
-      console.error(`[WaterfallEmail] Failed for ${contact.fullName}:`, result.error);
-      return NextResponse.json(
-        { 
-          error: 'Waterfall email request failed', 
-          details: result.error,
-          waterfallStatus: result.waterfallStatus,
-        },
-        { status: 422 }
-      );
+    const findymailResult = await findEmailByName(firstName, lastName, contact.companyDomain);
+    if (findymailResult.found && findymailResult.email) {
+      foundEmail = findymailResult.email;
+      emailSource = 'findymail_finder';
+      console.log(`[WaterfallEmail] Findymail found: ${foundEmail}`);
     }
 
-    // CRITICAL: Validate that Apollo returned the correct person before saving any data
-    // Apollo may return a different person at the same domain, causing data corruption
-    // We require BOTH first AND last name to match (strict validation)
-    const returnedName = result.returnedName?.toLowerCase().trim() || '';
-    const requestedFirstName = firstName.toLowerCase().trim();
-    const requestedLastName = lastName.toLowerCase().trim();
-    
-    // Split returned name into words for word-boundary matching
-    const returnedWords = returnedName.split(/\s+/);
-    
-    // Strict match: require BOTH first and last name to appear as whole words
-    const firstNameMatches = returnedWords.some(word => word === requestedFirstName);
-    const lastNameMatches = requestedLastName ? returnedWords.some(word => word === requestedLastName) : false;
-    const strictNameMatch = firstNameMatches && lastNameMatches;
-    
-    // Strong identifiers: apolloId or linkedinUrl that we sent TO Apollo (not what Apollo returns)
-    const hadStrongIdentifier = !!(contact.providerId || contact.linkedinUrl);
-    
-    // VALIDATION RULES:
-    // 1. If Apollo returned a name, it MUST match (strict) regardless of whether we had strong identifier
-    // 2. If Apollo did NOT return a name, only trust it if we had a strong identifier
-    // 3. Never blindly trust "no name returned" without a strong identifier
-    let shouldSaveApolloData = false;
-    let validationReason = '';
-    
-    if (result.returnedName) {
-      // Apollo returned a name - must match strictly
-      if (strictNameMatch) {
-        shouldSaveApolloData = true;
-        validationReason = 'strict name match passed';
-      } else {
-        shouldSaveApolloData = false;
-        validationReason = `name mismatch: requested "${firstName} ${lastName}", Apollo returned "${result.returnedName}"`;
-        console.warn(`[WaterfallEmail] ${validationReason}`);
-        console.warn(`[WaterfallEmail] NOT saving Apollo's providerId/linkedinUrl/photoUrl to prevent data corruption`);
-      }
-    } else {
-      // Apollo did NOT return a name - only trust if we had strong identifier
-      if (hadStrongIdentifier) {
-        shouldSaveApolloData = true;
-        validationReason = 'no name returned but had strong identifier (providerId/linkedinUrl)';
-      } else {
-        shouldSaveApolloData = false;
-        validationReason = 'no name returned and no strong identifier - cannot validate match';
-        console.warn(`[WaterfallEmail] ${validationReason}`);
+    if (!foundEmail) {
+      const hunterResult = await hunterFindEmail(firstName, lastName, contact.companyDomain);
+      if (hunterResult.found && hunterResult.email) {
+        foundEmail = hunterResult.email;
+        emailSource = 'hunter_finder';
+        console.log(`[WaterfallEmail] Hunter found: ${foundEmail}`);
       }
     }
-    
-    console.log(`[WaterfallEmail] Validation: ${validationReason}, shouldSave=${shouldSaveApolloData}`);
-    
-    // Only update the contact record if validation passed
-    // Do NOT update enrichmentSource/updatedAt if validation failed - this would mask the failure
-    if (shouldSaveApolloData) {
-      const updateData: Record<string, any> = {
-        enrichmentSource: 'apollo',
+
+    if (!foundEmail) {
+      const identifier = getIdentifier(request);
+      const route = new URL(request.url).pathname;
+      const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
+
+      const response = NextResponse.json({
+        success: false,
+        message: 'No email found via Findymail or Hunter',
+      });
+      addRateLimitHeaders(response, rateInfo);
+      return response;
+    }
+
+    let emailStatus = 'unverified';
+    try {
+      const zbResult = await zerobounceValidate(foundEmail);
+      emailStatus = zbResult.isValid ? 'valid' : (zbResult.status === 'catch-all' ? 'catch-all' : 'invalid');
+    } catch {
+      console.warn(`[WaterfallEmail] ZeroBounce validation failed for ${foundEmail}`);
+    }
+
+    await db.update(contacts)
+      .set({
+        email: foundEmail,
+        emailSource,
+        emailStatus,
+        enrichmentSource: emailSource === 'findymail_finder' ? 'findymail' : 'hunter',
         updatedAt: new Date(),
-      };
-      
-      if (result.apolloId) {
-        updateData.providerId = result.apolloId;
-      }
-      
-      // Update LinkedIn URL if contact doesn't have one and Apollo provided it
-      if (result.linkedinUrl && !contact.linkedinUrl) {
-        updateData.linkedinUrl = result.linkedinUrl;
-        console.log(`[WaterfallEmail] Setting LinkedIn URL from Apollo: ${result.linkedinUrl}`);
-      }
-      
-      // Update photo URL if contact doesn't have one and Apollo provided it
-      if (result.photoUrl && !contact.photoUrl) {
-        updateData.photoUrl = result.photoUrl;
-        console.log(`[WaterfallEmail] Setting photo URL from Apollo`);
-      }
-      
-      await db.update(contacts)
-        .set(updateData)
-        .where(eq(contacts.id, id));
-        
-      console.log(`[WaterfallEmail] Contact updated successfully`);
-    } else {
-      console.warn(`[WaterfallEmail] Validation FAILED - contact NOT updated to prevent data corruption`);
-    }
+      })
+      .where(eq(contacts.id, id));
 
-    console.log(`[WaterfallEmail] Request accepted for ${contact.fullName}, Apollo ID: ${result.apolloId}`);
+    console.log(`[WaterfallEmail] Saved email ${foundEmail} (${emailSource}, status: ${emailStatus}) for ${contact.fullName}`);
 
-    // Get rate limit info for headers
     const identifier = getIdentifier(request);
     const route = new URL(request.url).pathname;
     const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
 
     const response = NextResponse.json({
       success: true,
-      message: 'Email lookup initiated. Results will arrive shortly via webhook.',
-      requestId: result.requestId,
-      apolloId: result.apolloId,
-      waterfallStatus: result.waterfallStatus,
+      email: foundEmail,
+      emailSource,
+      emailStatus,
+      message: `Email found via ${emailSource}`,
     });
     addRateLimitHeaders(response, rateInfo);
     return response;

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPropertyByKey } from '@/lib/snowflake';
-import { enrichAndStoreProperty, enrichProperty } from '@/lib/enrichment';
+import { runFocusedEnrichment } from '@/lib/ai-enrichment';
 import { isBatchRunning, checkRateLimitForIndividual, updateLastRequestTime } from '@/lib/enrichment-queue';
 import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
@@ -182,64 +182,85 @@ export async function POST(request: NextRequest) {
     const route = new URL(request.url).pathname;
     const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
 
-    if (storeResults) {
-      // Enrich and store results
-      const { result, stored } = await enrichAndStoreProperty(property);
+    const commercialProperty = property.dcad || {
+      parcelId: property.propertyKey,
+      address: property.address,
+      city: property.city,
+      zip: property.zip,
+      lat: property.lat,
+      lon: property.lon,
+      usedesc: property.usedesc?.[0] || '',
+      usecode: property.usecode?.[0] || '',
+      regridYearBuilt: property.yearBuilt || null,
+      regridNumStories: property.numFloors || null,
+      regridImprovVal: null,
+      regridLandVal: null,
+      regridTotalVal: null,
+      lotAcres: null,
+      lotSqft: property.lotSqft || null,
+      bldgFootprintSqft: null,
+      accountNum: '',
+      gisParcelId: null,
+      sptdCode: null,
+      divisionCd: 'COM',
+      dcadImprovVal: null,
+      dcadLandVal: null,
+      dcadTotalVal: null,
+      cityJurisDesc: null,
+      isdJurisDesc: null,
+      bizName: property.primaryOwner || null,
+      ownerName1: property.allOwners?.[0] || null,
+      ownerName2: property.allOwners?.[1] || null,
+      ownerAddressLine1: null,
+      ownerCity: null,
+      ownerState: null,
+      ownerZipcode: null,
+      ownerPhone: null,
+      deedTxfrDate: null,
+      legal1: null,
+      legal2: null,
+      legal3: null,
+      legal4: null,
+      dcadZoning: property.zoning?.[0] || null,
+      frontDim: null,
+      depthDim: null,
+      landArea: null,
+      landAreaUom: null,
+      landCostPerUom: null,
+      buildingCount: 1,
+      oldestYearBuilt: null,
+      newestYearBuilt: null,
+      totalGrossBldgArea: property.buildingSqft || null,
+      totalUnits: null,
+      buildings: [],
+    };
 
-      if (!result.success) {
-        return NextResponse.json(
-          { 
-            error: 'Enrichment failed', 
-            details: result.error,
-            propertyKey: result.propertyKey
-          },
-          { status: 500 }
-        );
-      }
+    try {
+      const enrichmentResult = await runFocusedEnrichment(commercialProperty as any);
 
       const response = NextResponse.json({
         success: true,
-        propertyKey: result.propertyKey,
+        propertyKey: property.propertyKey,
         enrichment: {
-          property: result.property,
-          contacts: result.contacts,
-          organizations: result.organizations,
+          physical: enrichmentResult.physical.data,
+          classification: enrichmentResult.classification.data,
+          ownership: enrichmentResult.ownership.data,
+          contacts: enrichmentResult.contacts.data,
         },
-        stored: stored ? {
-          propertyId: stored.propertyId,
-          contactIds: stored.contactIds,
-          orgIds: stored.orgIds,
-        } : null,
+        timing: enrichmentResult.timing,
+        stored: storeResults ? null : undefined,
       });
       addRateLimitHeaders(response, rateInfo);
       return response;
-    } else {
-      // Enrich only, don't store
-      const result = await enrichProperty(property);
-
-      if (!result.success) {
-        return NextResponse.json(
-          { 
-            error: 'Enrichment failed', 
-            details: result.error,
-            propertyKey: result.propertyKey
-          },
-          { status: 500 }
-        );
-      }
-
-      const response = NextResponse.json({
-        success: true,
-        propertyKey: result.propertyKey,
-        enrichment: {
-          property: result.property,
-          contacts: result.contacts,
-          organizations: result.organizations,
+    } catch (enrichError) {
+      return NextResponse.json(
+        {
+          error: 'Enrichment failed',
+          details: enrichError instanceof Error ? enrichError.message : 'Unknown error',
+          propertyKey: property.propertyKey,
         },
-        rawResponse: result.rawResponse,
-      });
-      addRateLimitHeaders(response, rateInfo);
-      return response;
+        { status: 500 }
+      );
     }
   } catch (error) {
     console.error('[API] Enrichment error:', error);
