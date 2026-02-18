@@ -517,7 +517,7 @@ export default function ContactDetailPage() {
     const originalEnrichedAt = contact.enrichedAt;
 
     startEnrichment({
-      type: 'contact_email',
+      type: 'contact',
       entityId: contactId,
       entityName: `${contact.fullName || 'Contact'} - Research`,
       apiEndpoint: `/api/contacts/${contactId}/enrich`,
@@ -901,7 +901,7 @@ export default function ContactDetailPage() {
               
               {/* Research Contact button - runs full cascade enrichment */}
               {(() => {
-                const enrichStatus = getEnrichmentStatus(contactId as string, 'contact_email');
+                const enrichStatus = getEnrichmentStatus(contactId as string, 'contact');
                 const isActive = enrichStatus.isActive || isFindingEmail;
                 const hasFailed = enrichStatus.status === 'failed';
                 
