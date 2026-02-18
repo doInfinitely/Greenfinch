@@ -75,6 +75,14 @@ export default function PropertyDetailPage() {
     profileImageUrl: string | null;
     displayName: string;
   } | null>(null);
+  const [pipelineData, setPipelineData] = useState<{
+    id?: string;
+    status: string;
+    dealValue: number | null;
+    ownerId: string | null;
+    owner: any;
+  } | null>(null);
+  const [pipelineLoaded, setPipelineLoaded] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -333,6 +341,8 @@ export default function PropertyDetailPage() {
     setEnrichmentStatus('not_enriched');
     setEnrichmentMessage('');
     setError(null);
+    setPipelineData(null);
+    setPipelineLoaded(false);
     if (pollTimerRef.current) {
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
@@ -370,6 +380,7 @@ export default function PropertyDetailPage() {
         const response = await fetch(`/api/properties/${propertyId}/pipeline`);
         if (response.ok) {
           const data = await response.json();
+          setPipelineData(data.pipeline || null);
           if (data.pipeline?.owner) {
             const owner = data.pipeline.owner;
             const displayName = [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Unknown';
@@ -382,6 +393,7 @@ export default function PropertyDetailPage() {
             });
           }
         }
+        setPipelineLoaded(true);
       } catch {}
     };
     fetchPipelineData();
@@ -487,6 +499,8 @@ export default function PropertyDetailPage() {
         isCurrentCustomer={isCurrentCustomer}
         propertyId={propertyId}
         assignDialogTrigger={assignDialogTrigger}
+        pipelineData={pipelineData}
+        pipelineLoaded={pipelineLoaded}
         onEnrichment={handleEnrichment}
         onShowAddToList={() => setShowAddToListModal(true)}
         onSetAssignDialogTrigger={setAssignDialogTrigger}

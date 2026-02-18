@@ -39,9 +39,17 @@ interface PipelineStatusProps {
   inline?: boolean;
   autoAssignOnFirstStatus?: boolean;
   hideOwnerControls?: boolean;
-  hideOwnerDisplay?: boolean; // Completely hide owner avatar/name (for when shown elsewhere)
-  triggerAssignDialog?: number; // Increment to open dialog from parent
-  isCustomer?: boolean; // Hide qualify/disqualify buttons when property is an existing customer
+  hideOwnerDisplay?: boolean;
+  triggerAssignDialog?: number;
+  isCustomer?: boolean;
+  initialData?: {
+    id?: string;
+    status: string;
+    dealValue: number | null;
+    ownerId: string | null;
+    owner: any;
+  } | null;
+  initialLoaded?: boolean;
 }
 
 const STATUS_COLORS: Record<PipelineStatusType, string> = {
@@ -90,7 +98,7 @@ interface OrgMember {
   canBeAssignedOwner?: boolean;
 }
 
-export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false, hideOwnerControls = false, hideOwnerDisplay = false, triggerAssignDialog = 0, isCustomer = false }: PipelineStatusProps) {
+export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false, hideOwnerControls = false, hideOwnerDisplay = false, triggerAssignDialog = 0, isCustomer = false, initialData, initialLoaded }: PipelineStatusProps) {
   const { orgRole } = useAuth();
   const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
   
@@ -100,8 +108,8 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     dealValue: number | null;
     ownerId: string | null;
     owner: Owner | null;
-  } | null>(null);
-  const [loading, setLoading] = useState(true);
+  } | null>(initialData as any || null);
+  const [loading, setLoading] = useState(initialLoaded !== undefined ? !initialLoaded : true);
   const [updating, setUpdating] = useState(false);
   const [showQualifyDialog, setShowQualifyDialog] = useState(false);
   const [showAssignDialog, setShowAssignDialog] = useState(false);
@@ -113,8 +121,16 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   const { toast } = useToast();
 
   useEffect(() => {
+    if (initialData !== undefined) {
+      setPipeline(initialData as any || null);
+      setLoading(false);
+    }
+  }, [initialData]);
+
+  useEffect(() => {
+    if (initialLoaded) return;
     fetchPipeline();
-  }, [propertyId]);
+  }, [propertyId, initialLoaded]);
 
   // Handle external trigger to open assign dialog
   useEffect(() => {
