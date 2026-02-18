@@ -97,6 +97,21 @@ export default function ContactDetailPage() {
     if (completedItem) {
       fetchContact();
     }
+
+    const failedItem = enrichmentItems.find(
+      item => 
+        item.entityId === contactId && 
+        item.status === 'failed' &&
+        (item.type === 'contact_phone' || item.type === 'contact_email' || item.type === 'contact')
+    );
+    
+    if (failedItem) {
+      if (failedItem.type === 'contact_phone') {
+        setIsFindingPhone(false);
+      } else {
+        setIsFindingEmail(false);
+      }
+    }
   }, [enrichmentItems, contactId, fetchContact]);
 
   const handleFlagLinkedIn = () => {
@@ -543,13 +558,13 @@ export default function ContactDetailPage() {
                   <AdminOnly>
                     <button
                       onClick={handleFindPhone}
-                      disabled={isPhoneActive || phoneHasFailed}
+                      disabled={isPhoneActive}
                       className={`inline-flex items-center px-3 py-2 text-white text-sm font-medium rounded-lg disabled:cursor-not-allowed ${
                         phoneHasFailed 
-                          ? 'bg-gray-400 hover:bg-gray-400' 
+                          ? 'bg-red-500 hover:bg-red-600' 
                           : 'bg-blue-600 hover:bg-blue-700 disabled:opacity-50'
                       }`}
-                      title={phoneHasFailed ? `Failed: ${phoneStatus.error || 'Unknown error'}` : undefined}
+                      title={phoneHasFailed ? `Failed: ${phoneStatus.error || 'Unknown error'} - Click to retry` : undefined}
                       data-testid="button-find-phone"
                     >
                       {isPhoneActive ? (
@@ -559,7 +574,7 @@ export default function ContactDetailPage() {
                       ) : (
                         <Phone className="w-4 h-4 mr-2" />
                       )}
-                      {isPhoneActive ? 'Looking up...' : phoneHasFailed ? 'Lookup Failed' : 'Find Phone'}
+                      {isPhoneActive ? 'Looking up...' : phoneHasFailed ? 'Retry Phone' : 'Find Phone'}
                     </button>
                   </AdminOnly>
                 );
@@ -574,13 +589,13 @@ export default function ContactDetailPage() {
                   <AdminOnly>
                     <button
                       onClick={handleResearchContact}
-                      disabled={isActive || hasFailed}
+                      disabled={isActive}
                       className={`inline-flex items-center px-3 py-2 text-white text-sm font-medium rounded-lg disabled:cursor-not-allowed ${
                         hasFailed 
-                          ? 'bg-gray-400 hover:bg-gray-400' 
+                          ? 'bg-red-500 hover:bg-red-600' 
                           : 'bg-purple-600 hover:bg-purple-700 disabled:opacity-50'
                       }`}
-                      title={hasFailed ? `Failed: ${enrichStatus.error || 'Unknown error'}` : undefined}
+                      title={hasFailed ? `Failed: ${enrichStatus.error || 'Unknown error'} - Click to retry` : undefined}
                       data-testid="button-research-contact"
                     >
                       {isActive ? (
@@ -590,7 +605,7 @@ export default function ContactDetailPage() {
                       ) : (
                         <Search className="w-4 h-4 mr-2" />
                       )}
-                      {isActive ? 'Researching...' : hasFailed ? 'Research Failed' : 'Research Contact'}
+                      {isActive ? 'Researching...' : hasFailed ? 'Retry Research' : 'Research Contact'}
                     </button>
                   </AdminOnly>
                 );
