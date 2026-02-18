@@ -74,6 +74,9 @@ export async function GET(
       address = parts.join(' ');
     }
 
+    const lotSqft = Number(dbProperty.lotSqft) || 0;
+    const lotAcres = lotSqft > 0 ? lotSqft / 43560 : 0;
+
     return NextResponse.json({
       property: {
         id: dbProperty.id,
@@ -88,6 +91,7 @@ export async function GET(
         lat: dbProperty.lat,
         lon: dbProperty.lon,
         lotSqft: dbProperty.lotSqft,
+        lotAcres,
         buildingSqft: dbProperty.buildingSqft,
         yearBuilt: dbProperty.yearBuilt,
         numFloors: dbProperty.numFloors,
@@ -98,6 +102,8 @@ export async function GET(
         commonName: dbProperty.commonName,
         commonNameConfidence: dbProperty.commonNameConfidence,
         regridOwner: dbProperty.regridOwner,
+        dcadOwnerName1: dbProperty.dcadOwnerName1,
+        dcadBizName: dbProperty.dcadBizName,
         beneficialOwner: dbProperty.beneficialOwner,
         beneficialOwnerConfidence: dbProperty.beneficialOwnerConfidence,
         beneficialOwnerType: dbProperty.beneficialOwnerType,
@@ -112,9 +118,18 @@ export async function GET(
         enrichmentSources: dbProperty.enrichmentSources,
         enrichmentStatus: dbProperty.enrichmentStatus,
         lastEnrichedAt: dbProperty.lastEnrichedAt,
-        rawParcelsJson: dbProperty.rawParcelsJson,
+        rawParcels: dbProperty.rawParcelsJson,
         calculatedBuildingClass: dbProperty.calculatedBuildingClass,
         buildingClassRationale: dbProperty.buildingClassRationale,
+        totalParval: dbProperty.dcadTotalVal,
+        totalImprovval: dbProperty.dcadImprovVal,
+        landval: dbProperty.dcadLandVal,
+        isParentProperty: dbProperty.isParentProperty,
+        parentPropertyKey: dbProperty.parentPropertyKey,
+        constituentAccountNums: dbProperty.constituentAccountNums,
+        constituentCount: dbProperty.constituentCount,
+        usedesc: dbProperty.usedescs || [],
+        usecode: dbProperty.usecodes || [],
       },
       contacts: dedupedContactRows.map(row => ({
         ...row.contact,
