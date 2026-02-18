@@ -402,19 +402,38 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       if (!features.length) return;
       
       const clusterId = features[0].properties?.cluster_id;
+      const pointCount = features[0].properties?.point_count || 0;
       const source = map.current.getSource('properties-cluster') as mapboxgl.GeoJSONSource;
       
-      source.getClusterExpansionZoom(clusterId, (err, zoom) => {
-        if (err || !map.current || zoom == null) return;
-        
-        const coordinates = (features[0].geometry as GeoJSON.Point).coordinates;
-        
-        map.current.easeTo({
-          center: coordinates as [number, number],
-          zoom: Math.min(zoom + 0.5, 17),
-          duration: 500,
+      if (pointCount <= 10) {
+        source.getClusterLeaves(clusterId, pointCount, 0, (err, leaves) => {
+          if (err || !map.current || !leaves || leaves.length === 0) return;
+          
+          const bounds = new mapboxgl.LngLatBounds();
+          leaves.forEach((leaf: any) => {
+            const coords = leaf.geometry.coordinates;
+            bounds.extend(coords as [number, number]);
+          });
+          
+          map.current.fitBounds(bounds, {
+            padding: { top: 80, bottom: 80, left: 40, right: 40 },
+            maxZoom: 17,
+            duration: 500,
+          });
         });
-      });
+      } else {
+        source.getClusterExpansionZoom(clusterId, (err, zoom) => {
+          if (err || !map.current || zoom == null) return;
+          
+          const coordinates = (features[0].geometry as GeoJSON.Point).coordinates;
+          
+          map.current.easeTo({
+            center: coordinates as [number, number],
+            zoom: Math.min(zoom + 0.5, 17),
+            duration: 500,
+          });
+        });
+      }
     });
 
     map.current.on('click', 'unclustered-point', (e) => {
