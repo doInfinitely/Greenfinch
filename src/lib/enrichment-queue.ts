@@ -724,6 +724,7 @@ async function searchForReplacement(
       )
     );
     for (const link of existingFormerLinks) {
+      if (!link.contactId) continue;
       const formerContact = await db.query.contacts.findFirst({ where: eq(contacts.id, link.contactId) });
       if (formerContact && normalizeName(formerContact.fullName) === normalizedNameVal) {
         console.log(`[ReplacementSearch] "${result.name}" matches a former contact on this property, skipping`);

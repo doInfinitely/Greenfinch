@@ -426,11 +426,12 @@ export async function enrichContactCascade(
     }
   }
   
-  // Step 2.4 — LinkedIn Reverse Lookup (Findymail) if we have email but no LinkedIn
-  if (verifiedEmail && !foundLinkedin) {
+  // Step 2.4 — LinkedIn Reverse Lookup (Findymail) if we have any email but no LinkedIn
+  const emailForReverseLookup = verifiedEmail || email;
+  if (emailForReverseLookup && !foundLinkedin) {
     try {
-      console.log(`[CascadeEnrichment] Step 2.4: Reverse email lookup for LinkedIn via Findymail: ${verifiedEmail}`);
-      const reverseResult = await findLinkedInByEmail(verifiedEmail);
+      console.log(`[CascadeEnrichment] Step 2.4: Reverse email lookup for LinkedIn via Findymail: ${emailForReverseLookup}`);
+      const reverseResult = await findLinkedInByEmail(emailForReverseLookup);
       
       if (reverseResult.found && reverseResult.linkedinUrl) {
         foundLinkedin = reverseResult.linkedinUrl;
@@ -456,7 +457,7 @@ export async function enrichContactCascade(
     const pdlResult = await enrichPersonPDL(firstName, lastName, companyDomain || '', {
       location: location || undefined,
       companyName: companyName || undefined,
-      email: verifiedEmail || undefined,
+      email: verifiedEmail || email || undefined,
       linkedinUrl: foundLinkedin || undefined,
     });
     

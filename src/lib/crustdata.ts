@@ -116,6 +116,11 @@ export async function enrichPersonCrustdata(params: {
             throw new Error('Rate limit hit');
           }
 
+          if (response.status >= 500) {
+            console.warn('[Crustdata] Server error (not retrying):', response.status, responseText.slice(0, 200));
+            return { found: false };
+          }
+
           if (!response.ok) {
             console.error('[Crustdata] Person enrichment error:', response.status, responseText);
             throw new Error(`Crustdata API error: ${response.status} - ${responseText}`);
@@ -142,15 +147,16 @@ export async function enrichPersonCrustdata(params: {
       return { ...EMPTY_PERSON_RESULT };
     }
 
-    const emails = person.emails || [];
-    const workEmail = emails.length > 0 ? emails[0] : null;
+    const rawEmails = person.emails || person.email_addresses || [];
+    const emails: string[] = rawEmails.map((e: any) => typeof e === 'string' ? e : e?.email || e?.value || e?.address).filter(Boolean);
+    const workEmail = emails.length > 0 ? emails[0] : (person.email || null);
 
     let linkedinUrl = person.linkedin_flagship_url || person.linkedin_profile_url || null;
     if (linkedinUrl && !linkedinUrl.startsWith('http')) {
       linkedinUrl = `https://${linkedinUrl}`;
     }
 
-    const personName = person.name || person.first_name ? `${person.first_name || ''} ${person.last_name || ''}`.trim() : null;
+    const personName = person.name || (person.first_name ? `${person.first_name} ${person.last_name || ''}`.trim() : null);
     const personTitle = person.title || person.current_position_title || person.headline || null;
     const titleClean = personTitle ? personTitle.split(/[;(]/)[0].replace(/\s*\(?\d{4}\s*[-–]\s*(Present|\d{4})\)?/g, '').trim() : null;
     const companyName = person.company_name || person.current_company_name || null;
@@ -236,6 +242,11 @@ export async function enrichCompanyCrustdata(domain: string): Promise<CrustdataC
             throw new Error('Rate limit hit');
           }
 
+          if (response.status >= 500) {
+            console.warn('[Crustdata] Company server error (not retrying):', response.status, responseText.slice(0, 200));
+            return { found: false };
+          }
+
           if (!response.ok) {
             console.error('[Crustdata] Company enrichment error:', response.status, responseText);
             throw new Error(`Crustdata API error: ${response.status} - ${responseText}`);
@@ -259,6 +270,16 @@ export async function enrichCompanyCrustdata(domain: string): Promise<CrustdataC
     const company = Array.isArray(result.data) ? result.data[0] : result.data;
 
     if (!company) {
+      return { ...EMPTY_COMPANY_RESULT };
+    }
+
+    if (company.status === 'enriching' || company.companies_to_be_enriched) {
+      console.log('[Crustdata] Company is still being enriched, not yet available');
+      return { ...EMPTY_COMPANY_RESULT };
+    }
+
+    if (!company.company_name) {
+      console.log('[Crustdata] Company response missing company_name field');
       return { ...EMPTY_COMPANY_RESULT };
     }
 

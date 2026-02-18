@@ -57,25 +57,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     }
 
-    const existing = await db.select().from(propertyViews)
-      .where(and(
-        eq(propertyViews.userId, session.user.id),
-        eq(propertyViews.propertyId, propertyId),
-        eq(propertyViews.clerkOrgId, orgId),
-      ));
-
-    if (existing.length > 0) {
-      await db.update(propertyViews)
-        .set({ lastViewedAt: new Date() })
-        .where(eq(propertyViews.id, existing[0].id));
-    } else {
-      await db.insert(propertyViews).values({
-        propertyId,
-        userId: session.user.id,
-        clerkOrgId: orgId,
-        lastViewedAt: new Date(),
-      });
-    }
+    await db.insert(propertyViews).values({
+      propertyId,
+      userId: session.user.id,
+      clerkOrgId: orgId,
+      lastViewedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: [propertyViews.userId, propertyViews.propertyId, propertyViews.clerkOrgId],
+      set: { lastViewedAt: new Date() },
+    });
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
