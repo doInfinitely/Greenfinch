@@ -1,6 +1,7 @@
 'use client';
 
 import { Phone } from 'lucide-react';
+import { formatPhoneNumber } from '@/lib/phone-format';
 import type { EnrichedPropertyData, EnrichmentStatusType } from './types';
 
 function SummaryWithSources({ 
@@ -80,7 +81,7 @@ export default function PropertyAbout({ enrichedProperty, enrichmentStatus }: Pr
                 data-testid="link-property-phone"
               >
                 <Phone className="w-4 h-4" />
-                {enrichedProperty.propertyPhone}
+                {formatPhoneNumber(enrichedProperty.propertyPhone)}
               </a>
             )}
           </div>
