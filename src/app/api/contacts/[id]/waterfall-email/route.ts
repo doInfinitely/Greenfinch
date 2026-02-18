@@ -7,6 +7,7 @@ import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHe
 import { findEmailByName } from '@/lib/findymail';
 import { findEmail as hunterFindEmail } from '@/lib/hunter';
 import { validateEmail as zerobounceValidate } from '@/lib/zerobounce';
+import { apiSuccess, apiError, apiNotFound, apiBadRequest, apiUnauthorized } from '@/lib/api-response';
 
 const checkRateLimit = rateLimitMiddleware(20, 60);
 
@@ -37,10 +38,7 @@ export async function POST(
     const { id } = await params;
 
     if (!id || !UUID_REGEX.test(id)) {
-      return NextResponse.json(
-        { error: 'Invalid contact ID format' },
-        { status: 400 }
-      );
+      return apiBadRequest('Invalid contact ID format');
     }
 
     const [contact] = await db
@@ -50,15 +48,15 @@ export async function POST(
       .limit(1);
 
     if (!contact) {
-      return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+      return apiNotFound('Contact not found');
     }
 
     if (!contact.fullName) {
-      return NextResponse.json({ error: 'Contact has no name' }, { status: 400 });
+      return apiBadRequest('Contact has no name');
     }
 
     if (!contact.companyDomain) {
-      return NextResponse.json({ error: 'Contact has no company domain for email discovery' }, { status: 400 });
+      return apiBadRequest('Contact has no company domain for email discovery');
     }
 
     const { firstName, lastName } = parseNameParts(contact.fullName);
@@ -85,16 +83,7 @@ export async function POST(
     }
 
     if (!foundEmail) {
-      const identifier = getIdentifier(request);
-      const route = new URL(request.url).pathname;
-      const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
-
-      const response = NextResponse.json({
-        success: false,
-        message: 'No email found via Findymail or Hunter',
-      });
-      addRateLimitHeaders(response, rateInfo);
-      return response;
+      return apiError('No email found via Findymail or Hunter', { status: 200 });
     }
 
     let emailStatus = 'unverified';
@@ -117,34 +106,24 @@ export async function POST(
 
     console.log(`[WaterfallEmail] Saved email ${foundEmail} (${emailSource}, status: ${emailStatus}) for ${contact.fullName}`);
 
-    const identifier = getIdentifier(request);
-    const route = new URL(request.url).pathname;
-    const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
-
-    const response = NextResponse.json({
-      success: true,
+    return apiSuccess({
       email: foundEmail,
       emailSource,
       emailStatus,
       message: `Email found via ${emailSource}`,
     });
-    addRateLimitHeaders(response, rateInfo);
-    return response;
   } catch (error) {
     console.error('[WaterfallEmail] API error:', error);
     
     if (error instanceof Error) {
       if (error.message === 'UNAUTHORIZED') {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        return apiUnauthorized();
       }
       if (error.message.startsWith('FORBIDDEN')) {
-        return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+        return apiError('Admin access required', { status: 403 });
       }
     }
     
-    return NextResponse.json(
-      { error: 'Failed to trigger email lookup' },
-      { status: 500 }
-    );
+    return apiError('Failed to trigger email lookup');
   }
 }

@@ -133,10 +133,21 @@ These routes have NO auth check — any unauthenticated request succeeds:
   - Contact page: Extracted ContactHeader, ContactInfo, AssociatedProperties, ContactOrganizations into `src/components/contact/`
   - Shared types defined in respective `types.ts` files
 
-### Phase 2 — Platform Hardening
-- [ ] **DATA-1**: Add enrichment cost tracking table and admin dashboard
-- [ ] **DATA-2**: Make rate limiting require Redis (no in-memory fallback for expensive endpoints)
-- [ ] **CODE-2**: Standardize API response envelope `{ success, data, error, meta }`
+### Phase 2 — Platform Hardening (Complete)
+- [x] **DATA-1**: Add enrichment cost tracking table and admin dashboard
+  - New `enrichment_cost_events` table in schema with provider, endpoint, cost, entity tracking
+  - `src/lib/cost-tracker.ts` with fire-and-forget logging helper
+  - Instrumented all paid API modules: PDL, Apollo, Hunter, Findymail, Crustdata, Gemini AI
+  - Admin API at `/api/admin/enrichment-costs` with aggregates by provider, daily/weekly/monthly trends
+  - Admin dashboard page at `/admin/costs` with spend cards, provider breakdown, trend table, recent events
+- [x] **DATA-2**: Make rate limiting require Redis (no in-memory fallback for expensive endpoints)
+  - `checkRateLimit()` now auto-detects expensive routes (enrich, waterfall, linkedin) and requires Redis
+  - Returns 503 with clear error if Redis is unavailable for expensive endpoints
+  - Standard endpoints (search, list) keep in-memory fallback behavior
+- [x] **CODE-2**: Standardize API response envelope `{ success, data, error, meta }`
+  - Created `src/lib/api-response.ts` with `apiSuccess()`, `apiError()`, `apiNotFound()`, `apiBadRequest()`, `apiUnauthorized()` helpers
+  - Migrated waterfall-email and waterfall-phone routes as initial adoption
+  - Remaining 70 routes can be migrated incrementally without breaking changes
 
 ### Phase 3 — Quality & Polish
 - [ ] **UX-1**: Add accessibility (aria labels, keyboard navigation, semantic headings)

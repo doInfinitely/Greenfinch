@@ -2,6 +2,7 @@ import { GoogleGenAI } from "@google/genai";
 import pLimit from "p-limit";
 import type { CommercialProperty, DCADBuilding } from "./snowflake";
 import { ASSET_CATEGORIES, CONCURRENCY, GEMINI_MODEL } from "./constants";
+import { trackCostFireAndForget } from '@/lib/cost-tracker';
 
 // Global rate limiter for Gemini API calls across all concurrent property enrichments
 const geminiLimit = pLimit(CONCURRENCY.GEMINI);
@@ -262,6 +263,13 @@ Return JSON:
   
   if (!text) {
     console.error('[FocusedEnrichment] Stage 1 failed after all retries - returning empty result');
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'classify-property',
+      entityType: 'property',
+      success: false,
+      errorMessage: 'Empty response after all retries',
+    });
     return {
       data: {
         physical: {
@@ -288,6 +296,14 @@ Return JSON:
   const sources = extractGroundedSources(response);
   const parsed = parseJsonResponse(text);
   
+  trackCostFireAndForget({
+    provider: 'gemini',
+    endpoint: 'classify-property',
+    entityType: 'property',
+    success: true,
+    metadata: { sourcesCount: sources.length },
+  });
+
   console.log(`[FocusedEnrichment] Stage 1 complete with ${sources.length} grounded sources`);
   
   return {
@@ -427,6 +443,13 @@ Return JSON:
     
     if (!text) {
       console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 2, returning defaults');
+      trackCostFireAndForget({
+        provider: 'gemini',
+        endpoint: 'identify-ownership',
+        entityType: 'property',
+        success: false,
+        errorMessage: 'Empty response from Gemini',
+      });
       return {
         data: {
           beneficialOwner: { name: null, type: null, confidence: 0 },
@@ -442,6 +465,14 @@ Return JSON:
     const sources = extractGroundedSources(response);
     const parsed = parseJsonResponse(text);
     
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'identify-ownership',
+      entityType: 'property',
+      success: true,
+      metadata: { sourcesCount: sources.length },
+    });
+
     console.log(`[FocusedEnrichment] Stage 2 complete with ${sources.length} grounded sources`);
     console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${parsed.propertyWebsite || 'none'}, phone: ${parsed.propertyPhone || 'none'}`);
     
@@ -462,6 +493,13 @@ Return JSON:
       sources,
     };
   } catch (error) {
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'identify-ownership',
+      entityType: 'property',
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     console.error(`[FocusedEnrichment] Stage 2 failed after retries: ${error instanceof Error ? error.message : error}`);
     return {
       data: {
@@ -553,6 +591,13 @@ contact_type values:
     
     if (!text) {
       console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 3, returning empty contacts');
+      trackCostFireAndForget({
+        provider: 'gemini',
+        endpoint: 'discover-contacts',
+        entityType: 'property',
+        success: false,
+        errorMessage: 'Empty response from Gemini',
+      });
       return {
         data: { contacts: [], organizations: [] },
         summary: '',
@@ -589,12 +634,27 @@ contact_type values:
     
     console.log(`[FocusedEnrichment] Stage 3 complete: ${contacts.length} contacts, ${organizations.length} orgs, ${sources.length} grounded sources`);
     
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'discover-contacts',
+      entityType: 'property',
+      success: true,
+      metadata: { contactsCount: contacts.length, orgsCount: organizations.length, sourcesCount: sources.length },
+    });
+
     return {
       data: { contacts, organizations },
       summary: parsed.summary || '',
       sources,
     };
   } catch (error) {
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'discover-contacts',
+      entityType: 'property',
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     console.error(`[FocusedEnrichment] Stage 3 failed after retries: ${error instanceof Error ? error.message : error}`);
     return {
       data: { contacts: [], organizations: [] },
@@ -710,8 +770,21 @@ ${rawSummary}`;
     
     const cleaned = response.text?.trim() || rawSummary;
     console.log(`[FocusedEnrichment] Summary cleaned: ${rawSummary.length} chars -> ${cleaned.length} chars`);
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'cleanup-summary',
+      entityType: 'property',
+      success: true,
+    });
     return cleaned;
   } catch (error) {
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'cleanup-summary',
+      entityType: 'property',
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     console.warn('[FocusedEnrichment] Summary cleanup failed, using raw summary:', error);
     // Fall back to basic cleanup - remove obvious system messages and citations
     return rawSummary

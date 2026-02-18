@@ -4,7 +4,8 @@ import { contacts } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import { enrichPersonPDL } from '@/lib/pdl';
 import { requireSession, requireAdminAccess } from '@/lib/auth';
-import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
+import { rateLimitMiddleware } from '@/lib/rate-limit';
+import { apiSuccess, apiError, apiNotFound, apiBadRequest, apiUnauthorized } from '@/lib/api-response';
 
 const checkRateLimit = rateLimitMiddleware(20, 60);
 
@@ -35,10 +36,7 @@ export async function POST(
     const { id } = await params;
 
     if (!id || !UUID_REGEX.test(id)) {
-      return NextResponse.json(
-        { error: 'Invalid contact ID format' },
-        { status: 400 }
-      );
+      return apiBadRequest('Invalid contact ID format');
     }
 
     const [contact] = await db
@@ -48,11 +46,11 @@ export async function POST(
       .limit(1);
 
     if (!contact) {
-      return NextResponse.json({ error: 'Contact not found' }, { status: 404 });
+      return apiNotFound('Contact not found');
     }
 
     if (!contact.fullName) {
-      return NextResponse.json({ error: 'Contact has no name' }, { status: 400 });
+      return apiBadRequest('Contact has no name');
     }
 
     const { firstName, lastName } = parseNameParts(contact.fullName);
@@ -70,16 +68,7 @@ export async function POST(
     );
 
     if (!result || !result.found) {
-      const identifier = getIdentifier(request);
-      const route = new URL(request.url).pathname;
-      const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
-
-      const response = NextResponse.json({
-        success: false,
-        message: 'No phone number found via PDL',
-      });
-      addRateLimitHeaders(response, rateInfo);
-      return response;
+      return apiError('No phone number found via PDL', { status: 200 });
     }
 
     if (result.mobilePhone) {
@@ -94,32 +83,22 @@ export async function POST(
       console.log(`[WaterfallPhone] Saved phone for ${contact.fullName}`);
     }
 
-    const identifier = getIdentifier(request);
-    const route = new URL(request.url).pathname;
-    const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
-
-    const response = NextResponse.json({
-      success: !!result.mobilePhone,
+    return apiSuccess({
       phone: result.mobilePhone || null,
       message: result.mobilePhone ? 'Phone found via PDL' : 'PDL matched but no phone available',
     });
-    addRateLimitHeaders(response, rateInfo);
-    return response;
   } catch (error) {
     console.error('[WaterfallPhone] API error:', error);
     
     if (error instanceof Error) {
       if (error.message === 'UNAUTHORIZED') {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+        return apiUnauthorized();
       }
       if (error.message.startsWith('FORBIDDEN')) {
-        return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+        return apiError('Admin access required', { status: 403 });
       }
     }
     
-    return NextResponse.json(
-      { error: 'Failed to trigger phone lookup' },
-      { status: 500 }
-    );
+    return apiError('Failed to trigger phone lookup');
   }
 }

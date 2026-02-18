@@ -946,6 +946,60 @@ export const lossReasonCodes = pgTable('loss_reason_codes', {
 export type LossReasonCode = typeof lossReasonCodes.$inferSelect;
 export type InsertLossReasonCode = typeof lossReasonCodes.$inferInsert;
 
+// Enrichment cost tracking
+export const ENRICHMENT_PROVIDERS = [
+  'pdl',
+  'apollo',
+  'hunter',
+  'findymail',
+  'crustdata',
+  'zerobounce',
+  'gemini',
+  'mapbox',
+  'serp',
+  'leadmagic',
+] as const;
+
+export type EnrichmentProvider = typeof ENRICHMENT_PROVIDERS[number];
+
+export const ENRICHMENT_PROVIDER_LABELS: Record<EnrichmentProvider, string> = {
+  pdl: 'People Data Labs',
+  apollo: 'Apollo.io',
+  hunter: 'Hunter.io',
+  findymail: 'Findymail',
+  crustdata: 'Crustdata',
+  zerobounce: 'ZeroBounce',
+  gemini: 'Google Gemini',
+  mapbox: 'Mapbox',
+  serp: 'SerpAPI',
+  leadmagic: 'LeadMagic',
+};
+
+export const enrichmentCostEvents = pgTable('enrichment_cost_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  provider: text('provider').notNull(),
+  endpoint: text('endpoint').notNull(),
+  creditsUsed: real('credits_used').default(1),
+  estimatedCostUsd: real('estimated_cost_usd'),
+  entityType: text('entity_type'),
+  entityId: text('entity_id'),
+  triggeredBy: text('triggered_by'),
+  clerkOrgId: text('clerk_org_id'),
+  statusCode: integer('status_code'),
+  success: boolean('success').default(true),
+  errorMessage: text('error_message'),
+  metadata: json('metadata'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  providerIdx: index('idx_enrichment_cost_provider').on(table.provider),
+  createdAtIdx: index('idx_enrichment_cost_created_at').on(table.createdAt),
+  entityIdx: index('idx_enrichment_cost_entity').on(table.entityType, table.entityId),
+  triggeredByIdx: index('idx_enrichment_cost_triggered_by').on(table.triggeredBy),
+}));
+
+export type EnrichmentCostEvent = typeof enrichmentCostEvents.$inferSelect;
+export type InsertEnrichmentCostEvent = typeof enrichmentCostEvents.$inferInsert;
+
 // Outreach method constants
 export const OUTREACH_METHODS = [
   'email',

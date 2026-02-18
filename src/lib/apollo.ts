@@ -10,6 +10,8 @@
  * See: https://docs.apollo.io/docs/enrich-phone-and-email-using-data-waterfall
  */
 
+import { trackCostFireAndForget } from '@/lib/cost-tracker';
+
 const APOLLO_API_URL = 'https://api.apollo.io/api/v1';
 
 /**
@@ -196,11 +198,27 @@ export async function enrichPersonApollo(
     if (!response.ok) {
       const errorMsg = data.error || `Apollo API error: ${response.status}`;
       console.log('[Apollo] API error:', errorMsg);
+      trackCostFireAndForget({
+        provider: 'apollo',
+        endpoint: 'people/match',
+        entityType: 'contact',
+        statusCode: response.status,
+        success: false,
+        errorMessage: errorMsg,
+      });
       return { found: false, error: errorMsg, raw: data };
     }
 
     if (!data.person) {
       console.log('[Apollo] No person found');
+      trackCostFireAndForget({
+        provider: 'apollo',
+        endpoint: 'people/match',
+        entityType: 'contact',
+        statusCode: response.status,
+        success: true,
+        metadata: { found: false },
+      });
       return { found: false, error: 'No match found', raw: data };
     }
 
@@ -253,8 +271,24 @@ export async function enrichPersonApollo(
       console.log('[Apollo] Phone numbers will be delivered via webhook');
     }
     
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'people/match',
+      entityType: 'contact',
+      statusCode: response.status,
+      success: true,
+      metadata: { found: true },
+    });
+
     return result;
   } catch (error: any) {
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'people/match',
+      entityType: 'contact',
+      success: false,
+      errorMessage: error.message,
+    });
     console.error('[Apollo] Request failed:', error.message);
     return { found: false, error: error.message };
   }
@@ -402,6 +436,14 @@ export async function triggerWaterfallPhone(params: {
     if (!response.ok) {
       const errorMsg = data.error || `Apollo API error: ${response.status}`;
       console.log('[Apollo] Waterfall phone error:', errorMsg);
+      trackCostFireAndForget({
+        provider: 'apollo',
+        endpoint: 'people/match waterfall',
+        entityType: 'contact',
+        statusCode: response.status,
+        success: false,
+        errorMessage: errorMsg,
+      });
       return { success: false, waterfallStatus: 'failed', error: errorMsg };
     }
 
@@ -422,6 +464,15 @@ export async function triggerWaterfallPhone(params: {
       console.log('[Apollo] Waterfall phone returned name:', returnedName);
     }
 
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'people/match waterfall',
+      entityType: 'contact',
+      statusCode: response.status,
+      success: true,
+      metadata: { waterfallStatus },
+    });
+
     return {
       success: waterfallStatus === 'accepted',
       requestId: data.request_id?.toString(),
@@ -431,6 +482,13 @@ export async function triggerWaterfallPhone(params: {
       returnedName: returnedName || undefined,
     };
   } catch (error: any) {
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'people/match waterfall',
+      entityType: 'contact',
+      success: false,
+      errorMessage: error.message,
+    });
     console.error('[Apollo] Waterfall phone request failed:', error.message);
     return { success: false, waterfallStatus: 'failed', error: error.message };
   }
@@ -508,6 +566,14 @@ export async function triggerWaterfallEmail(params: {
     if (!response.ok) {
       const errorMsg = data.error || `Apollo API error: ${response.status}`;
       console.log('[Apollo] Waterfall email error:', errorMsg);
+      trackCostFireAndForget({
+        provider: 'apollo',
+        endpoint: 'people/match waterfall',
+        entityType: 'contact',
+        statusCode: response.status,
+        success: false,
+        errorMessage: errorMsg,
+      });
       return { success: false, waterfallStatus: 'failed', error: errorMsg };
     }
 
@@ -539,6 +605,15 @@ export async function triggerWaterfallEmail(params: {
       });
     }
 
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'people/match waterfall',
+      entityType: 'contact',
+      statusCode: response.status,
+      success: true,
+      metadata: { waterfallStatus },
+    });
+
     return {
       success: waterfallStatus === 'accepted',
       requestId: data.request_id?.toString(),
@@ -550,6 +625,13 @@ export async function triggerWaterfallEmail(params: {
       returnedName: returnedName || undefined,
     };
   } catch (error: any) {
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'people/match waterfall',
+      entityType: 'contact',
+      success: false,
+      errorMessage: error.message,
+    });
     console.error('[Apollo] Waterfall email request failed:', error.message);
     return { success: false, waterfallStatus: 'failed', error: error.message };
   }
@@ -583,11 +665,27 @@ export async function enrichCompanyApollo(domain: string): Promise<ApolloCompany
     if (!response.ok) {
       const errorMsg = data.error || `Apollo API error: ${response.status}`;
       console.log('[Apollo] Org API error:', errorMsg);
+      trackCostFireAndForget({
+        provider: 'apollo',
+        endpoint: 'organizations/enrich',
+        entityType: 'company',
+        statusCode: response.status,
+        success: false,
+        errorMessage: errorMsg,
+      });
       return { found: false, error: errorMsg, raw: data };
     }
 
     if (!data.organization) {
       console.log('[Apollo] No organization found');
+      trackCostFireAndForget({
+        provider: 'apollo',
+        endpoint: 'organizations/enrich',
+        entityType: 'company',
+        statusCode: response.status,
+        success: true,
+        metadata: { found: false },
+      });
       return { found: false, error: 'No organization found', raw: data };
     }
 
@@ -622,8 +720,25 @@ export async function enrichCompanyApollo(domain: string): Promise<ApolloCompany
     };
 
     console.log('[Apollo] Organization found:', org.name, 'with', org.estimated_num_employees, 'employees');
+
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'organizations/enrich',
+      entityType: 'company',
+      statusCode: response.status,
+      success: true,
+      metadata: { found: true },
+    });
+
     return result;
   } catch (error: any) {
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'organizations/enrich',
+      entityType: 'company',
+      success: false,
+      errorMessage: error.message,
+    });
     console.error('[Apollo] Org request failed:', error.message);
     return { found: false, error: error.message };
   }
@@ -667,11 +782,27 @@ export async function enrichPersonByEmail(email: string): Promise<ApolloEnrichRe
     if (!response.ok) {
       const errorMsg = data.error || `Apollo API error: ${response.status}`;
       console.log('[Apollo] API error:', errorMsg);
+      trackCostFireAndForget({
+        provider: 'apollo',
+        endpoint: 'people/match',
+        entityType: 'contact',
+        statusCode: response.status,
+        success: false,
+        errorMessage: errorMsg,
+      });
       return { found: false, error: errorMsg, raw: data };
     }
 
     if (!data.person) {
       console.log('[Apollo] No person found for email:', email);
+      trackCostFireAndForget({
+        provider: 'apollo',
+        endpoint: 'people/match',
+        entityType: 'contact',
+        statusCode: response.status,
+        success: true,
+        metadata: { found: false },
+      });
       return { found: false, error: 'No match found', raw: data };
     }
 
@@ -706,8 +837,23 @@ export async function enrichPersonByEmail(email: string): Promise<ApolloEnrichRe
     };
 
     console.log('[Apollo] Match found by email:', person.name, 'at', person.organization?.name);
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'people/match',
+      entityType: 'contact',
+      statusCode: response.status,
+      success: true,
+      metadata: { found: true },
+    });
     return result;
   } catch (error: any) {
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'people/match',
+      entityType: 'contact',
+      success: false,
+      errorMessage: error.message,
+    });
     console.error('[Apollo] Email lookup failed:', error.message);
     return { found: false, error: error.message };
   }
@@ -750,11 +896,27 @@ export async function enrichPersonByLinkedIn(linkedinUrl: string): Promise<Apoll
     if (!response.ok) {
       const errorMsg = data.error || `Apollo API error: ${response.status}`;
       console.log('[Apollo] API error:', errorMsg);
+      trackCostFireAndForget({
+        provider: 'apollo',
+        endpoint: 'people/match',
+        entityType: 'contact',
+        statusCode: response.status,
+        success: false,
+        errorMessage: errorMsg,
+      });
       return { found: false, error: errorMsg, raw: data };
     }
 
     if (!data.person) {
       console.log('[Apollo] No person found for LinkedIn:', linkedinUrl);
+      trackCostFireAndForget({
+        provider: 'apollo',
+        endpoint: 'people/match',
+        entityType: 'contact',
+        statusCode: response.status,
+        success: true,
+        metadata: { found: false },
+      });
       return { found: false, error: 'No match found', raw: data };
     }
 
@@ -789,8 +951,23 @@ export async function enrichPersonByLinkedIn(linkedinUrl: string): Promise<Apoll
     };
 
     console.log('[Apollo] Match found by LinkedIn:', person.name, 'at', person.organization?.name);
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'people/match',
+      entityType: 'contact',
+      statusCode: response.status,
+      success: true,
+      metadata: { found: true },
+    });
     return result;
   } catch (error: any) {
+    trackCostFireAndForget({
+      provider: 'apollo',
+      endpoint: 'people/match',
+      entityType: 'contact',
+      success: false,
+      errorMessage: error.message,
+    });
     console.error('[Apollo] LinkedIn lookup failed:', error.message);
     return { found: false, error: error.message };
   }

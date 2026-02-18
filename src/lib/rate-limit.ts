@@ -6,6 +6,7 @@ export interface RateLimitResult {
   limit: number;
   remaining: number;
   resetAt: number;
+  redisUnavailable?: boolean;
 }
 
 // In-memory rate limit storage for when Redis is unavailable
@@ -24,37 +25,51 @@ const cleanupInMemoryRateLimits = () => {
 // Run cleanup every minute
 setInterval(cleanupInMemoryRateLimits, 60000);
 
+export interface RateLimitOptions {
+  requireRedis?: boolean;
+}
+
+function isExpensiveRoute(route: string): boolean {
+  return (
+    route.includes('/enrich') ||
+    route.includes('/validate-email') ||
+    route.includes('/waterfall-email') ||
+    route.includes('/waterfall-phone') ||
+    route.includes('/linkedin')
+  );
+}
+
 /**
  * Check rate limit using sliding window algorithm
  * @param identifier - User ID or IP address
  * @param route - API route name (e.g., '/api/contacts', '/api/enrich')
  * @param limit - Max requests allowed (default: 100)
  * @param windowSeconds - Time window in seconds (default: 60)
+ * @param options - Additional options (e.g., requireRedis)
  */
 export async function checkRateLimit(
   identifier: string,
   route: string,
   limit: number = 100,
-  windowSeconds: number = 60
+  windowSeconds: number = 60,
+  options?: RateLimitOptions
 ): Promise<RateLimitResult> {
-  const now = Math.floor(Date.now() / 1000); // Current timestamp in seconds
+  const now = Math.floor(Date.now() / 1000);
   const windowStart = now - windowSeconds;
   const resetAt = now + windowSeconds;
   const resetAtMs = resetAt * 1000;
 
   const key = `gf:ratelimit:${identifier}:${route}:${windowStart}`;
+  const mustUseRedis = options?.requireRedis ?? isExpensiveRoute(route);
 
-  // Try to use Redis if available
   if (isRedisConfigured()) {
     try {
       const redis = getRedis();
       if (redis) {
-        // Use INCR and EXPIRE for sliding window
         const count = await increment(key);
         
-        // Set expiry on first increment
         if (count === 1) {
-          await expire(key, windowSeconds + 1); // Add 1 second buffer
+          await expire(key, windowSeconds + 1);
         }
 
         const remaining = Math.max(0, limit - count);
@@ -68,16 +83,30 @@ export async function checkRateLimit(
         };
       }
     } catch (error) {
-      console.error('[RateLimit] Redis error, falling back to in-memory:', error);
-      // Fall through to in-memory handling
+      console.error('[RateLimit] Redis error:', error);
+      if (mustUseRedis) {
+        return {
+          success: false,
+          limit,
+          remaining: 0,
+          resetAt: resetAtMs,
+          redisUnavailable: true,
+        };
+      }
     }
+  } else if (mustUseRedis) {
+    return {
+      success: false,
+      limit,
+      remaining: 0,
+      resetAt: resetAtMs,
+      redisUnavailable: true,
+    };
   }
 
-  // In-memory fallback when Redis is unavailable
   const existingEntry = inMemoryRateLimits.get(key);
   
   if (!existingEntry || existingEntry.resetAt < now * 1000) {
-    // Create new entry
     inMemoryRateLimits.set(key, {
       count: 1,
       resetAt: resetAtMs,
@@ -91,7 +120,6 @@ export async function checkRateLimit(
     };
   }
 
-  // Increment existing entry
   existingEntry.count++;
   const remaining = Math.max(0, limit - existingEntry.count);
   const success = existingEntry.count <= limit;
@@ -185,8 +213,22 @@ export function rateLimitMiddleware(
       // Check rate limit
       const result = await checkRateLimit(identifier, route, effectiveLimit, windowSeconds);
 
-      // If rate limit exceeded, return 429 response
       if (!result.success) {
+        if (result.redisUnavailable) {
+          return new NextResponse(
+            JSON.stringify({
+              error: 'Service temporarily unavailable — rate limiting infrastructure is down',
+            }),
+            {
+              status: 503,
+              headers: {
+                'Retry-After': '30',
+                'Content-Type': 'application/json',
+              },
+            }
+          );
+        }
+
         const retryAfter = Math.ceil((result.resetAt - Date.now()) / 1000);
         
         return new NextResponse(

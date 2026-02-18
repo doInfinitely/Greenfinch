@@ -1,5 +1,6 @@
 import axios from 'axios';
 import pRetry from 'p-retry';
+import { trackCostFireAndForget } from '@/lib/cost-tracker';
 
 const HUNTER_API_BASE = 'https://api.hunter.io/v2';
 
@@ -130,6 +131,13 @@ export async function findEmail(
     totalCreditsUsed += 1;
 
     if (!response || !response.data?.email) {
+      trackCostFireAndForget({
+        provider: 'hunter',
+        endpoint: 'email-finder',
+        entityType: 'contact',
+        success: true,
+        metadata: { found: false },
+      });
       return {
         email: null,
         confidence: 0,
@@ -141,6 +149,14 @@ export async function findEmail(
     const data = response.data;
     const confidence = data.score / 100;
 
+    trackCostFireAndForget({
+      provider: 'hunter',
+      endpoint: 'email-finder',
+      entityType: 'contact',
+      success: true,
+      metadata: { found: true, confidence },
+    });
+
     return {
       email: data.email,
       confidence: confidence,
@@ -151,6 +167,14 @@ export async function findEmail(
   } catch (error: any) {
     if (error.response?.status === 402) {
       console.error('Hunter.io: Payment required - out of credits');
+      trackCostFireAndForget({
+        provider: 'hunter',
+        endpoint: 'email-finder',
+        entityType: 'contact',
+        statusCode: 402,
+        success: false,
+        errorMessage: 'Payment required - out of credits',
+      });
       return {
         email: null,
         confidence: 0,
@@ -159,6 +183,14 @@ export async function findEmail(
       };
     }
     
+    trackCostFireAndForget({
+      provider: 'hunter',
+      endpoint: 'email-finder',
+      entityType: 'contact',
+      statusCode: error.response?.status,
+      success: false,
+      errorMessage: error.message,
+    });
     console.error('Hunter.io API error:', error.message);
     return {
       email: null,
@@ -349,6 +381,13 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnri
     totalCreditsUsed += 1;
     
     if (!response || !response.data) {
+      trackCostFireAndForget({
+        provider: 'hunter',
+        endpoint: 'companies/find',
+        entityType: 'company',
+        success: true,
+        metadata: { found: false },
+      });
       return {
         success: false,
         data: null,
@@ -359,6 +398,14 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnri
     
     const d = response.data;
     
+    trackCostFireAndForget({
+      provider: 'hunter',
+      endpoint: 'companies/find',
+      entityType: 'company',
+      success: true,
+      metadata: { found: true },
+    });
+
     // Map Hunter.io response to Clearbit-compatible schema
     return {
       success: true,
@@ -415,6 +462,14 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnri
   } catch (error: any) {
     if (error.response?.status === 402) {
       console.error('Hunter.io: Payment required - out of credits');
+      trackCostFireAndForget({
+        provider: 'hunter',
+        endpoint: 'companies/find',
+        entityType: 'company',
+        statusCode: 402,
+        success: false,
+        errorMessage: 'Payment required - out of credits',
+      });
       return {
         success: false,
         data: null,
@@ -423,6 +478,14 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnri
       };
     }
     
+    trackCostFireAndForget({
+      provider: 'hunter',
+      endpoint: 'companies/find',
+      entityType: 'company',
+      statusCode: error.response?.status,
+      success: false,
+      errorMessage: error.message,
+    });
     console.error('Hunter.io Company Enrichment API error:', error.message);
     return {
       success: false,
@@ -452,14 +515,33 @@ export async function verifyEmail(email: string): Promise<{
     throw new Error('HUNTER_API_KEY not configured');
   }
 
-  const response = await axios.get(`${HUNTER_API_BASE}/email-verifier`, {
-    params: {
-      email: email,
-      api_key: apiKey,
-    },
-    timeout: 30000,
-  });
+  try {
+    const response = await axios.get(`${HUNTER_API_BASE}/email-verifier`, {
+      params: {
+        email: email,
+        api_key: apiKey,
+      },
+      timeout: 30000,
+    });
 
-  totalCreditsUsed += 1;
-  return response.data.data;
+    totalCreditsUsed += 1;
+    trackCostFireAndForget({
+      provider: 'hunter',
+      endpoint: 'email-verifier',
+      entityType: 'contact',
+      statusCode: response.status,
+      success: true,
+    });
+    return response.data.data;
+  } catch (error: any) {
+    trackCostFireAndForget({
+      provider: 'hunter',
+      endpoint: 'email-verifier',
+      entityType: 'contact',
+      statusCode: error.response?.status,
+      success: false,
+      errorMessage: error.message,
+    });
+    throw error;
+  }
 }

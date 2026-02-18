@@ -1,5 +1,6 @@
 import pRetry from 'p-retry';
 import pLimit from 'p-limit';
+import { trackCostFireAndForget } from '@/lib/cost-tracker';
 
 const PDL_API_BASE = 'https://api.peopledatalabs.com/v5';
 const CONCURRENCY = 2;
@@ -338,6 +339,13 @@ export async function enrichPersonPDL(
     );
 
     if (!result.found || !result.data) {
+      trackCostFireAndForget({
+        provider: 'pdl',
+        endpoint: options.useSearch ? 'person/search' : 'person/enrich',
+        entityType: 'contact',
+        success: true,
+        metadata: { found: false },
+      });
       return emptyPersonResult();
     }
 
@@ -376,6 +384,14 @@ export async function enrichPersonPDL(
       linkedinUrl = `https://${linkedinUrl}`;
     }
 
+    trackCostFireAndForget({
+      provider: 'pdl',
+      endpoint: options.useSearch ? 'person/search' : 'person/enrich',
+      entityType: 'contact',
+      success: true,
+      metadata: { found: true },
+    });
+
     return {
       found: true,
       confidence: isStrictMatch ? (result.data.likelihood / 10 || 0.8) : (result.data.likelihood / 10 || 0.5),
@@ -408,6 +424,13 @@ export async function enrichPersonPDL(
       raw: result.data,
     };
   } catch (error) {
+    trackCostFireAndForget({
+      provider: 'pdl',
+      endpoint: options.useSearch ? 'person/search' : 'person/enrich',
+      entityType: 'contact',
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     console.error('[PDL] Person enrichment failed:', error);
     return emptyPersonResult();
   }
@@ -474,6 +497,13 @@ export async function enrichCompanyPDL(domain: string): Promise<PDLCompanyResult
     );
 
     if (!result.found || !result.data) {
+      trackCostFireAndForget({
+        provider: 'pdl',
+        endpoint: 'company/enrich',
+        entityType: 'company',
+        success: true,
+        metadata: { found: false },
+      });
       return emptyCompanyResult();
     }
 
@@ -486,6 +516,14 @@ export async function enrichCompanyPDL(domain: string): Promise<PDLCompanyResult
 
     const employeeRange = company.size 
       || (company.employee_count ? getEmployeeRange(company.employee_count) : null);
+
+    trackCostFireAndForget({
+      provider: 'pdl',
+      endpoint: 'company/enrich',
+      entityType: 'company',
+      success: true,
+      metadata: { found: true },
+    });
 
     return {
       found: true,
@@ -511,6 +549,13 @@ export async function enrichCompanyPDL(domain: string): Promise<PDLCompanyResult
       raw: result.data,
     };
   } catch (error) {
+    trackCostFireAndForget({
+      provider: 'pdl',
+      endpoint: 'company/enrich',
+      entityType: 'company',
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     console.error('[PDL] Company enrichment failed:', error);
     return emptyCompanyResult();
   }

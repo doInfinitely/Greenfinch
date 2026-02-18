@@ -1,5 +1,6 @@
 import pRetry from 'p-retry';
 import pLimit from 'p-limit';
+import { trackCostFireAndForget } from '@/lib/cost-tracker';
 
 const CRUSTDATA_API_BASE = 'https://api.crustdata.com';
 const CONCURRENCY = 2;
@@ -151,6 +152,14 @@ export async function enrichPersonCrustdata(params: {
 
     console.log('[Crustdata] Person found:', person.first_name, person.last_name, 'at', person.current_company_name);
 
+    trackCostFireAndForget({
+      provider: 'crustdata',
+      endpoint: 'person/enrich',
+      entityType: 'contact',
+      success: true,
+      metadata: { found: true },
+    });
+
     return {
       found: true,
       title: person.current_position_title || null,
@@ -162,6 +171,13 @@ export async function enrichPersonCrustdata(params: {
       raw: result.data,
     };
   } catch (error) {
+    trackCostFireAndForget({
+      provider: 'crustdata',
+      endpoint: 'person/enrich',
+      entityType: 'contact',
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     console.error('[Crustdata] Person enrichment failed:', error);
     return { ...EMPTY_PERSON_RESULT };
   }
@@ -247,6 +263,14 @@ export async function enrichCompanyCrustdata(domain: string): Promise<CrustdataC
 
     console.log('[Crustdata] Company found:', company.company_name);
 
+    trackCostFireAndForget({
+      provider: 'crustdata',
+      endpoint: 'company/enrich',
+      entityType: 'company',
+      success: true,
+      metadata: { found: true },
+    });
+
     return {
       found: true,
       companyName: company.company_name || null,
@@ -263,6 +287,13 @@ export async function enrichCompanyCrustdata(domain: string): Promise<CrustdataC
       raw: result.data,
     };
   } catch (error) {
+    trackCostFireAndForget({
+      provider: 'crustdata',
+      endpoint: 'company/enrich',
+      entityType: 'company',
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
     console.error('[Crustdata] Company enrichment failed:', error);
     return { ...EMPTY_COMPANY_RESULT };
   }
