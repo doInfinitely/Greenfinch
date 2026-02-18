@@ -58,7 +58,7 @@ export interface PropertyDataAndClassification {
 export interface OwnershipInfo {
   beneficialOwner: {
     name: string | null;
-    type: "REIT" | "Private Equity" | "Family Office" | "Individual" | "Corporation" | null;
+    type: "REIT" | "Private Equity" | "Family Office" | "Individual" | "Corporation" | "Institutional" | "Syndicator" | null;
     confidence: number;
   };
   managementCompany: {
@@ -94,13 +94,18 @@ export interface DiscoveredOrganization {
   roles: string[];
 }
 
-function formatBuildings(buildings: DCADBuilding[] | null): string {
-  if (!buildings || buildings.length === 0) return "No building data available";
-  
-  return buildings.map((b, i) => {
+function formatBuildingsSummary(buildings: DCADBuilding[] | null, totalSqft: number | null): string {
+  if (!buildings || buildings.length === 0) return '';
+  if (buildings.length === 1) {
+    const b = buildings[0];
     const parts = [];
-    if (b.propertyName) parts.push(b.propertyName);
-    if (b.bldgClassDesc) parts.push(b.bldgClassDesc);
+    if (b.yearBuilt) parts.push(`built ${b.yearBuilt}`);
+    if (b.numStories) parts.push(`${b.numStories} stories`);
+    if (b.numUnits) parts.push(`${b.numUnits} units`);
+    return parts.length > 0 ? `\nBLDG: ${parts.join(', ')}` : '';
+  }
+  return '\nBLDGS:\n' + buildings.map((b, i) => {
+    const parts = [];
     if (b.grossBldgArea) parts.push(`${b.grossBldgArea.toLocaleString()} sqft`);
     if (b.yearBuilt) parts.push(`built ${b.yearBuilt}`);
     if (b.numStories) parts.push(`${b.numStories} stories`);
@@ -109,10 +114,25 @@ function formatBuildings(buildings: DCADBuilding[] | null): string {
   }).join('\n');
 }
 
-function formatCategorySchema(): string {
+function formatCompactCategories(): string {
   return Object.entries(ASSET_CATEGORIES)
-    .map(([cat, subs]) => `${cat}: ${subs.join(', ')}`)
-    .join('\n');
+    .map(([cat, subs]) => `${cat} (${subs.join(', ')})`)
+    .join(' | ');
+}
+
+function mapQualityGradeToClass(grade: string | null): { propertyClass: string | null; confidence: number } {
+  if (!grade) return { propertyClass: null, confidence: 0 };
+  const gradeNorm = grade.trim().toLowerCase();
+  const mapping: Record<string, { propertyClass: string; confidence: number }> = {
+    'excellent': { propertyClass: 'A', confidence: 0.8 },
+    'superior': { propertyClass: 'A+', confidence: 0.8 },
+    'good': { propertyClass: 'B', confidence: 0.7 },
+    'average': { propertyClass: 'C', confidence: 0.6 },
+    'fair': { propertyClass: 'C', confidence: 0.6 },
+    'poor': { propertyClass: 'D', confidence: 0.7 },
+    'unsound': { propertyClass: 'D', confidence: 0.7 },
+  };
+  return mapping[gradeNorm] || { propertyClass: null, confidence: 0 };
 }
 
 // AI-generated source domains to filter out from grounding results
@@ -157,6 +177,42 @@ function extractGroundedSources(response: any): GroundedSource[] {
   }
 }
 
+export interface ScoredSource extends GroundedSource {
+  trustTier: 'high' | 'medium' | 'low';
+}
+
+function scoreSource(source: GroundedSource, knownDomains: string[]): ScoredSource {
+  let hostname: string;
+  try {
+    hostname = new URL(source.url).hostname.toLowerCase();
+  } catch {
+    return { ...source, trustTier: 'low' };
+  }
+
+  if (knownDomains.some(d => hostname.includes(d)) || hostname.includes('linkedin.com')) {
+    return { ...source, trustTier: 'high' };
+  }
+  const mediumDomains = ['loopnet.com', 'costar.com', 'commercialcafe.com', 'crexi.com',
+    'bizjournals.com', 'dallasnews.com', 'dmagazine.com', 'prnewswire.com', 'globenewswire.com'];
+  if (mediumDomains.some(d => hostname.includes(d))) {
+    return { ...source, trustTier: 'medium' };
+  }
+  return { ...source, trustTier: 'low' };
+}
+
+export function scoreSources(sources: GroundedSource[], ownership: OwnershipInfo): ScoredSource[] {
+  const knownDomains: string[] = [];
+  if (ownership.managementCompany?.domain) {
+    knownDomains.push(ownership.managementCompany.domain.toLowerCase());
+  }
+  if (ownership.propertyWebsite) {
+    try {
+      knownDomains.push(new URL(ownership.propertyWebsite).hostname.toLowerCase());
+    } catch { /* skip */ }
+  }
+  return sources.map(s => scoreSource(s, knownDomains));
+}
+
 function parseJsonResponse(text: string): any {
   let cleanedText = text.trim();
   const jsonMatch = cleanedText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
@@ -169,98 +225,78 @@ function parseJsonResponse(text: string): any {
 export async function classifyAndVerifyProperty(property: CommercialProperty): Promise<StageResult<PropertyDataAndClassification>> {
   const client = getGeminiClient();
   const primaryOwner = property.bizName || property.ownerName1 || 'Unknown';
-  const currentLotSqft = property.lotSqft || (property.lotAcres ? property.lotAcres * 43560 : null);
-  const currentBldgSqft = property.totalGrossBldgArea || null;
-  
+  const totalSqft = property.totalGrossBldgArea || null;
+  const lotAcres = property.lotAcres || (property.lotSqft ? property.lotSqft / 43560 : null);
+  const lotAcresStr = lotAcres ? `${lotAcres.toFixed(1)} acres` : 'unknown';
+  const valStr = property.dcadTotalVal ? `$${(property.dcadTotalVal / 1000000).toFixed(1)}M` : '$0';
+
   const parentBuilding = property.buildings?.[0];
   const dcadQualityGrade = parentBuilding?.qualityGrade || null;
-  
-  // Format SPTD code for context (F10=Commercial, F20=Industrial, B11=Apartments)
+  const classEstimate = mapQualityGradeToClass(dcadQualityGrade);
+
   const sptdDescription = property.sptdCode === 'F10' ? 'Commercial' :
                           property.sptdCode === 'F20' ? 'Industrial' :
                           property.sptdCode === 'B11' ? 'Apartments/Multifamily' :
                           property.sptdCode || 'Unknown';
-  
+
+  const buildingInfo = formatBuildingsSummary(property.buildings, totalSqft);
+  const classLine = classEstimate.propertyClass
+    ? `\nDCAD CLASS ESTIMATE: ${classEstimate.propertyClass} (from quality grade "${dcadQualityGrade}"). Override only if research shows renovations or condition changes.`
+    : '';
+  const sizeLine = `DCAD SIZE: ${lotAcresStr} lot, ${totalSqft?.toLocaleString() || 'unknown'} sqft building`;
+
   const prompt = `Search the web to verify and classify this commercial property. Return ONLY valid JSON.
 
-PROPERTY DATA:
-Address: ${property.address}, ${property.city}, TX ${property.zip}
-DCAD Property Type: ${sptdDescription} (SPTD Code: ${property.sptdCode || 'Unknown'})
-Buildings: ${property.buildingCount || 0} buildings, ${property.totalGrossBldgArea?.toLocaleString() || 'unknown'} sqft total
-Zoning/Use: ${property.usedesc || 'Unknown'}
-Deed Owner: ${primaryOwner}
-Value: $${property.dcadTotalVal?.toLocaleString() || 0}
-Lot Size: ${currentLotSqft?.toLocaleString() || 'Unknown'} sqft
-DCAD Quality Grade: ${dcadQualityGrade || 'Unknown'}
+ADDRESS: ${property.address}, ${property.city}, TX ${property.zip}
+DCAD: ${property.sptdCode || '?'} ${sptdDescription} | ${property.buildingCount || 0} bldgs, ${totalSqft?.toLocaleString() || 'unknown'} sqft | ${valStr} | ${lotAcresStr} | Quality: ${dcadQualityGrade || 'Unknown'}
+OWNER: ${primaryOwner} | ZONING: ${property.usedesc || 'Unknown'}
+${sizeLine}
+Note: DCAD may show one parcel of a multi-parcel property. Confirm or correct with canonical totals.${buildingInfo}${classLine}
 
-BUILDING DETAILS:
-${formatBuildings(property.buildings)}
-
-CATEGORIES: ${formatCategorySchema()}
-
-BUILDING CLASS (use DCAD quality grade as primary indicator):
-- A (premium/new) = Excellent, Superior
-- B (good) = Good, Average+
-- C (older/value-add) = Average, Fair
-- D (distressed) = Poor, Unsound
+CATEGORIES: ${formatCompactCategories()}
 
 TASK: Search the web to find current information about this property. Look for anchor tenants, year built, renovations, and property details.
 
 Return JSON:
-{
-  "propertyName":"Descriptive name (e.g., 'Preston Center Plaza')",
-  "canonicalAddress":"Full address",
-  "category":"Category",
-  "subcategory":"Subcategory",
-  "confidence":0.0-1.0,
-  "property_class":"A+/A/B/C/D",
-  "property_class_confidence":0.0-1.0,
-  "lot_acres":number|null,
-  "lot_acres_confidence":0.0-1.0,
-  "net_sqft":number|null,
-  "net_sqft_confidence":0.0-1.0,
-  "summary":"2-3 sentences describing the property type, building class, key physical features (size, year built, condition), tenant mix, and any notable renovations or upgrades found during research."
-}`;
+{"name":"...","addr":"...","cat":"...","sub":"...","c":0.0,"class":"B","cc":0.0,"acres":0,"ac":0.0,"sqft":0,"sc":0.0,"summary":"2 sentences max."}`;
 
   console.log('[FocusedEnrichment] Stage 1: Classification and physical verification...');
-  
-  // Use retry wrapper with empty response detection
+
   let response: any;
   let text = '';
   const maxRetries = 3;
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${maxRetries}...`);
-    
+
     response = await geminiLimit(() => client.models.generateContent({
       model: GEMINI_MODEL,
       contents: prompt,
-      config: { 
-        temperature: 0.0,
-        // googleSearch: {} always grounds - no dynamic threshold supported in JS SDK
+      config: {
+        temperature: 0.1,
         tools: [{ googleSearch: {} }]
       }
     }));
-    
+
     text = response.text?.trim() || '';
     console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
-    
+
     if (text) {
-      break; // Got a valid response
+      break;
     }
-    
+
     console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 1 (attempt ${attempt})`);
     if (response.candidates) {
       console.warn('[FocusedEnrichment] Candidates:', JSON.stringify(response.candidates, null, 2).substring(0, 500));
     }
-    
+
     if (attempt < maxRetries) {
       const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
       console.log(`[FocusedEnrichment] Retrying Stage 1 in ${backoffMs}ms...`);
       await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
   }
-  
+
   if (!text) {
     console.error('[FocusedEnrichment] Stage 1 failed after all retries - returning empty result');
     trackCostFireAndForget({
@@ -292,10 +328,10 @@ Return JSON:
       sources: [],
     };
   }
-  
+
   const sources = extractGroundedSources(response);
   const parsed = parseJsonResponse(text);
-  
+
   trackCostFireAndForget({
     provider: 'gemini',
     endpoint: 'classify-property',
@@ -305,23 +341,28 @@ Return JSON:
   });
 
   console.log(`[FocusedEnrichment] Stage 1 complete with ${sources.length} grounded sources`);
-  
+
+  const aiClass = parsed.class ?? parsed.property_class ?? null;
+  const aiClassConfidence = parsed.cc ?? parsed.property_class_confidence ?? null;
+  const finalClass = aiClass || classEstimate.propertyClass;
+  const finalClassConfidence = aiClass ? (aiClassConfidence ?? 0.7) : classEstimate.confidence;
+
   return {
     data: {
       physical: {
-        lotAcres: parsed.lot_acres ?? null,
-        lotAcresConfidence: parsed.lot_acres_confidence ?? null,
-        netSqft: parsed.net_sqft ?? null,
-        netSqftConfidence: parsed.net_sqft_confidence ?? null,
+        lotAcres: parsed.acres ?? parsed.lot_acres ?? null,
+        lotAcresConfidence: parsed.ac ?? parsed.lot_acres_confidence ?? null,
+        netSqft: parsed.sqft ?? parsed.net_sqft ?? null,
+        netSqftConfidence: parsed.sc ?? parsed.net_sqft_confidence ?? null,
       },
       classification: {
-        propertyName: parsed.propertyName || '',
-        canonicalAddress: parsed.canonicalAddress || '',
-        category: parsed.category || '',
-        subcategory: parsed.subcategory || '',
-        confidence: parsed.confidence ?? 0,
-        propertyClass: parsed.property_class ?? null,
-        propertyClassConfidence: parsed.property_class_confidence ?? null,
+        propertyName: parsed.name ?? parsed.propertyName ?? '',
+        canonicalAddress: parsed.addr ?? parsed.canonicalAddress ?? '',
+        category: parsed.cat ?? parsed.category ?? '',
+        subcategory: parsed.sub ?? parsed.subcategory ?? '',
+        confidence: parsed.c ?? parsed.confidence ?? 0,
+        propertyClass: finalClass,
+        propertyClassConfidence: finalClassConfidence,
       },
     },
     summary: parsed.summary || '',
@@ -361,76 +402,78 @@ async function callGeminiWithTimeout<T>(
   throw lastError || new Error('All retry attempts failed');
 }
 
+function extractUsefulLegalInfo(property: CommercialProperty): string | null {
+  const legal = [property.legal1, property.legal2, property.legal3, property.legal4]
+    .filter(Boolean).join(' ');
+  if (!legal) return null;
+  const usefulPatterns = /plaza|center|tower|park|square|village|crossing|place|point|commons|mall|industrial|business/i;
+  return usefulPatterns.test(legal) ? legal : null;
+}
+
+function crossValidateOwnership(ownership: OwnershipInfo): OwnershipInfo {
+  if (ownership.managementCompany.domain && ownership.propertyWebsite) {
+    try {
+      const siteHost = new URL(ownership.propertyWebsite).hostname.toLowerCase();
+      const mgmtDomain = ownership.managementCompany.domain.toLowerCase();
+      if (!siteHost.includes(mgmtDomain) && !mgmtDomain.includes(siteHost)) {
+        if (ownership.managementCompany.confidence < 0.5) {
+          console.warn('[FocusedEnrichment] Low-confidence mgmt co with separate property website — verify');
+        }
+      }
+    } catch { /* invalid URL, skip */ }
+  }
+  return ownership;
+}
+
+const OWNER_TYPE_MAP: Record<string, OwnershipInfo['beneficialOwner']['type']> = {
+  'REIT': 'REIT',
+  'PE': 'Private Equity',
+  'Private Equity': 'Private Equity',
+  'Family Office': 'Family Office',
+  'Individual': 'Individual',
+  'Corporation': 'Corporation',
+  'Institutional': 'Institutional',
+  'Syndicator': 'Syndicator',
+};
+
 export async function identifyOwnership(
   property: CommercialProperty,
   classification: PropertyClassification
 ): Promise<StageResult<OwnershipInfo>> {
   const client = getGeminiClient();
-  const primaryOwner = property.bizName || property.ownerName1 || 'Unknown';
-  const allOwners = [property.ownerName1, property.ownerName2].filter(Boolean).join(', ') || 'Unknown';
-  
-  // Build owner info JSON for AI context
-  const ownerInfo = {
-    bizName: property.bizName || null,
-    ownerName1: property.ownerName1 || null,
-    ownerName2: property.ownerName2 || null,
-    ownerAddress: property.ownerAddressLine1 || null,
-    ownerCity: property.ownerCity || null,
-    ownerState: property.ownerState || null,
-    ownerZip: property.ownerZipcode || null,
-    ownerPhone: property.ownerPhone || null,
-    deedTransferDate: property.deedTxfrDate || null,
-  };
-  
-  // Combine legal description fields
-  const legalDescription = [
-    property.legal1,
-    property.legal2,
-    property.legal3,
-    property.legal4
-  ].filter(Boolean).join(' ') || null;
-  
-  const prompt = `Search the web to identify the ownership and management of this commercial property. Return ONLY valid JSON.
+  const deedOwner = property.bizName || property.ownerName1 || 'Unknown';
+  const secondaryOwner = property.ownerName2 || null;
+  const deedDate = property.deedTxfrDate || 'date unknown';
+  const legalInfo = extractUsefulLegalInfo(property);
+  const sqft = property.totalGrossBldgArea?.toLocaleString() || 'unknown';
 
-PROPERTY: ${classification.propertyName}
-ADDRESS: ${classification.canonicalAddress}
-TYPE: ${classification.category} - ${classification.subcategory}
-SIZE: ${property.totalGrossBldgArea?.toLocaleString() || 'unknown'} sqft
-VALUE: $${property.dcadTotalVal?.toLocaleString() || 0}
+  const prompt = `Find the ownership and management of this commercial property. Return ONLY valid JSON.
 
-DCAD OWNER RECORDS (from Dallas County Appraisal District):
-${JSON.stringify(ownerInfo, null, 2)}
+PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
+TYPE: ${classification.category} - ${classification.subcategory}, ${sqft} sqft
+DCAD DEED OWNER: ${deedOwner} (transferred ${deedDate})
+${secondaryOwner ? `DCAD SECONDARY: ${secondaryOwner}` : ''}
+${legalInfo ? `LEGAL: ${legalInfo}` : ''}
 
-${legalDescription ? `LEGAL DESCRIPTION: ${legalDescription}` : ''}
-
-TASK: Search the web to find:
-1. The beneficial owner (true owner behind any LLC/trust) and when they acquired the property
-2. The property management company (if third-party managed) and their specialty
-3. The property-specific website (NOT the management company website) - e.g., building website, apartment community site, shopping center site
-4. The property's main phone number
-
-Use the owner information above as a starting point for your research. The bizName and ownerName fields may contain LLCs, trusts, or holding companies - search to find the actual beneficial owner behind them.
+SEARCH SEQUENCE:
+1. Search "${classification.propertyName} ${property.city || 'Dallas'}" to find the property website and management company
+2. Search the management company website for this property listing to confirm and find leasing phone
+3. Search "${deedOwner} Texas" on OpenCorporates or TX Secretary of State to find the entity behind the LLC/trust
+4. Search for news about acquisitions or sales of ${classification.propertyName} around ${deedDate} to identify the beneficial owner
 
 Return JSON:
-{
-  "beneficialOwner":{"name":"Entity name or null","type":"REIT|Private Equity|Family Office|Individual|Corporation|null","confidence":0.0-1.0},
-  "managementCompany":{"name":"Company or null","domain":"website.com or null","confidence":0.0-1.0},
-  "propertyWebsite":"https://propertyname.com or null - property-specific website, NOT management company site",
-  "propertyPhone":"+1-XXX-XXX-XXXX or null - main leasing/property phone",
-  "summary":"2-3 sentences describing the beneficial owner (entity type and when acquired), the management company and their specialty/portfolio size if known, and any notable changes in ownership or management in recent years."
-}`;
+{"mgmt":{"name":"Co|null","domain":"co.com|null","c":0.0-1.0},"owner":{"name":"Entity|null","type":"REIT|PE|Family Office|Individual|Corporation|Institutional|Syndicator|null","c":0.0-1.0},"site":"https://property-site.com|null","phone":"+1XXXXXXXXXX|null","summary":"2 sentences max: who owns it, who manages it."}`;
 
   console.log('[FocusedEnrichment] Stage 2: Ownership identification...');
-  console.log(`[FocusedEnrichment] Stage 2 input - Property: ${classification.propertyName}, Owner: ${primaryOwner}`);
-  
+  console.log(`[FocusedEnrichment] Stage 2 input - Property: ${classification.propertyName}, Deed Owner: ${deedOwner}`);
+
   try {
     const response = await callGeminiWithTimeout(
       () => client.models.generateContent({
         model: GEMINI_MODEL,
         contents: prompt,
-        config: { 
-          temperature: 0.0,
-          // googleSearch: {} always grounds - no dynamic threshold supported in JS SDK
+        config: {
+          temperature: 0.1,
           tools: [{ googleSearch: {} }]
         }
       }),
@@ -440,7 +483,7 @@ Return JSON:
 
     const text = response.text?.trim() || '';
     console.log('[FocusedEnrichment] Stage 2 response length:', text.length, 'chars');
-    
+
     if (!text) {
       console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 2, returning defaults');
       trackCostFireAndForget({
@@ -461,10 +504,10 @@ Return JSON:
         sources: [],
       };
     }
-    
+
     const sources = extractGroundedSources(response);
     const parsed = parseJsonResponse(text);
-    
+
     trackCostFireAndForget({
       provider: 'gemini',
       endpoint: 'identify-ownership',
@@ -473,22 +516,30 @@ Return JSON:
       metadata: { sourcesCount: sources.length },
     });
 
-    console.log(`[FocusedEnrichment] Stage 2 complete with ${sources.length} grounded sources`);
-    console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${parsed.propertyWebsite || 'none'}, phone: ${parsed.propertyPhone || 'none'}`);
-    
-    // Log parsed keys when website/phone missing to help diagnose
-    if (!parsed.propertyWebsite || !parsed.propertyPhone) {
-      const keys = Object.keys(parsed || {});
-      console.log(`[FocusedEnrichment] Stage 2 parsed keys: ${keys.join(', ')}`);
-    }
-    
-    return {
-      data: {
-        beneficialOwner: parsed.beneficialOwner || { name: null, type: null, confidence: 0 },
-        managementCompany: parsed.managementCompany || { name: null, domain: null, confidence: 0 },
-        propertyWebsite: parsed.propertyWebsite || null,
-        propertyPhone: parsed.propertyPhone || null,
+    const ownerType = parsed.owner?.type ? (OWNER_TYPE_MAP[parsed.owner.type] || null) : null;
+
+    const ownershipData: OwnershipInfo = {
+      beneficialOwner: {
+        name: parsed.owner?.name ?? null,
+        type: ownerType,
+        confidence: parsed.owner?.c ?? 0,
       },
+      managementCompany: {
+        name: parsed.mgmt?.name ?? null,
+        domain: parsed.mgmt?.domain ?? null,
+        confidence: parsed.mgmt?.c ?? 0,
+      },
+      propertyWebsite: parsed.site ?? null,
+      propertyPhone: parsed.phone ?? null,
+    };
+
+    const validated = crossValidateOwnership(ownershipData);
+
+    console.log(`[FocusedEnrichment] Stage 2 complete with ${sources.length} grounded sources`);
+    console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${validated.propertyWebsite || 'none'}, phone: ${validated.propertyPhone || 'none'}, mgmt: ${validated.managementCompany.name || 'none'}`);
+
+    return {
+      data: validated,
       summary: parsed.summary || '',
       sources,
     };
@@ -514,71 +565,69 @@ Return JSON:
   }
 }
 
-export async function discoverContacts(
+export interface IdentifiedDecisionMaker {
+  name: string;
+  title: string | null;
+  company: string | null;
+  companyDomain: string | null;
+  role: string;
+  roleConfidence: number;
+  connectionEvidence: string;
+  contactType: 'individual' | 'general';
+}
+
+interface ContactEnrichmentResult {
+  email: string | null;
+  emailSource: 'ai_discovered' | null;
+  phone: string | null;
+  phoneLabel: 'direct_work' | 'office' | 'personal' | 'mobile' | null;
+  phoneConfidence: number | null;
+  location: string | null;
+  enrichmentSources: GroundedSource[];
+}
+
+async function identifyDecisionMakers(
   property: CommercialProperty,
   classification: PropertyClassification,
   ownership: OwnershipInfo
-): Promise<StageResult<{ contacts: DiscoveredContact[]; organizations: DiscoveredOrganization[] }>> {
+): Promise<StageResult<{ contacts: IdentifiedDecisionMaker[]; organizations: DiscoveredOrganization[] }>> {
   const client = getGeminiClient();
-  
-  const managementInfo = ownership.managementCompany?.name 
-    ? `${ownership.managementCompany.name} (${ownership.managementCompany.domain || 'no website'})`
-    : 'Unknown';
-  
-  const ownerInfo = ownership.beneficialOwner?.name || property.bizName || property.ownerName1 || 'Unknown';
-  
-  const prompt = `Search the web to find decision-maker contacts for this commercial property. Return ONLY valid JSON.
 
-PROPERTY: ${classification.propertyName}
+  const mgmtName = ownership.managementCompany?.name || null;
+  const mgmtDomain = ownership.managementCompany?.domain || null;
+  const mgmtInfo = mgmtName ? `${mgmtName} (${mgmtDomain || 'no website'})` : 'Unknown';
+  const ownerName = ownership.beneficialOwner?.name || property.bizName || property.ownerName1 || 'Unknown';
+  const propertySite = ownership.propertyWebsite || 'none';
+  const city = property.city || 'Dallas';
+
+  const prompt = `Find 3-5 decision-makers for this commercial property. Return ONLY valid JSON.
+
+PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
 TYPE: ${classification.category} - ${classification.subcategory}
-ADDRESS: ${classification.canonicalAddress}
-MANAGEMENT COMPANY: ${managementInfo}
-OWNER: ${ownerInfo}
+MGMT CO: ${mgmtInfo}
+OWNER: ${ownerName}
+PROPERTY SITE: ${propertySite}
 
-TASK: Search the web to find 3-5 contacts who make property decisions for THIS SPECIFIC PROPERTY at THIS ADDRESS:
-- Property managers responsible for THIS specific location in ${property.city || 'Dallas'}, Texas
-- Facilities managers/directors, maintenance supervisors, and property operations staff for THIS specific location in ${property.city || 'Dallas'}, Texas
-- Include leasig or owner contacts ONLY if directly connected to this property 
+SEARCH STRATEGY:
+1. ${mgmtDomain ? `Search ${mgmtDomain} for staff assigned to this property or this market` : `Search for the management company staff for this property`}
+2. Search "${classification.propertyName} property manager" and "${classification.propertyName} facilities manager"
+3. Search LinkedIn for property/facilities managers at ${mgmtName || 'the management company'} in ${city}
 
-CRITICAL: Only include organizations and contacts that are DIRECTLY involved with THIS property at THIS address. Prioritize high-value property management and facilities management contacts.
-DO NOT include: organizations from other states/cities, condo unit owners, HOA board members, residential tenants, or companies with similar names but different locations.
-
-CONTACT INFORMATION TO CAPTURE:
-- Email: Include ONLY if found from credible source (company website, LinkedIn, press release). Do NOT guess.
-- Phone: Include if found. Priority: direct work line > property office line > company main line. Label appropriately.
-  - "direct_work": Person's direct work phone number
-  - "office": Property or company office line
-  - "personal": Personal/cell phone (only if publicly listed for business purposes)
-- Location: City and state where the contact works (e.g., "Dallas, TX"). Must support that the person is directly associated with THIS property.
-
-VALIDATION REQUIREMENTS:
-- Confirm the name field contains a proper first and last name (not a company name or title)
-- Confirm the title field is a job title, not a name or company
-- Confirm the location supports that this person works at or near THIS property
-- Only include contacts with a title AND location that demonstrate direct association with the property
+Only return people verifiably connected to THIS property at THIS address as of 2025-2026.
 
 Return JSON:
-{
-  "contacts":[{"name":"Full Name","title":"Job Title","company":"Employer","company_domain":"domain.com","email":"found@email.com or null","phone":"+1-555-123-4567 or null","phone_label":"direct_work|office|personal|null","phone_confidence":0.0-1.0,"location":"City, ST or null","role":"property_manager|facilities_manager|owner|leasing|other","role_confidence":0.0-1.0,"priority_rank":1-8,"contact_type":"individual|general"}],
-  "organizations":[{"name":"Org name","domain":"domain.com","org_type":"owner|management|tenant|developer","roles":["property_manager","owner"]}],
-  "summary":"2-3 sentences describing the key decision-makers (property manager, facilities director, owner contact if available), their organization, specific roles and responsibilities at this property, and any notable decision-making authority or specializations they bring."
-}
+{"contacts":[{"name":"Full Name","title":"Title","company":"Co","domain":"co.com","role":"property_manager|facilities_manager|owner|leasing|other","rc":0.0-1.0,"evidence":"1 sentence linking them to this property","type":"individual|general"}],"orgs":[{"name":"Co","domain":"co.com","org_type":"owner|management|tenant|developer","roles":["property_manager"]}],"summary":"2 sentences max."}`;
 
-contact_type values:
-- "individual": A named person with a real first and last name (e.g., "John Smith", "Sarah Johnson")
-- "general": A generic/office contact, main line, or placeholder name (e.g., "Property Management Office", "Leasing Office", "Main Line", company name used as contact name)`;
+  console.log('[FocusedEnrichment] Stage 3a: Identifying decision-makers...');
+  console.log(`[FocusedEnrichment] Stage 3a input - Property: ${classification.propertyName}, Mgmt: ${mgmtInfo}`);
 
-  console.log('[FocusedEnrichment] Stage 3: Contact discovery...');
-  console.log(`[FocusedEnrichment] Stage 3 input - Property: ${classification.propertyName}, Mgmt: ${managementInfo}`);
-  
   try {
     const response = await callGeminiWithTimeout(
       () => client.models.generateContent({
         model: GEMINI_MODEL,
         contents: prompt,
-        config: { 
-          temperature: 0.0,
-          // googleSearch: {} always grounds - no dynamic threshold supported in JS SDK
+        config: {
+          temperature: 0.1,
           tools: [{ googleSearch: {} }]
         }
       }),
@@ -587,56 +636,46 @@ contact_type values:
     );
 
     const text = response.text?.trim() || '';
-    console.log('[FocusedEnrichment] Stage 3 response length:', text.length, 'chars');
-    
+    console.log('[FocusedEnrichment] Stage 3a response length:', text.length, 'chars');
+
     if (!text) {
-      console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 3, returning empty contacts');
+      console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 3a');
       trackCostFireAndForget({
         provider: 'gemini',
-        endpoint: 'discover-contacts',
+        endpoint: 'identify-decision-makers',
         entityType: 'property',
         success: false,
         errorMessage: 'Empty response from Gemini',
       });
-      return {
-        data: { contacts: [], organizations: [] },
-        summary: '',
-        sources: [],
-      };
+      return { data: { contacts: [], organizations: [] }, summary: '', sources: [] };
     }
-    
+
     const sources = extractGroundedSources(response);
     const parsed = parseJsonResponse(text);
-  
-    const contacts: DiscoveredContact[] = (parsed.contacts || []).map((c: any) => ({
+
+    const contacts: IdentifiedDecisionMaker[] = (parsed.contacts || []).map((c: any) => ({
       name: c.name || '',
       title: c.title ?? null,
       company: c.company ?? null,
-      companyDomain: c.company_domain ?? null,
-      email: c.email && c.email !== 'null' ? c.email : null,
-      emailSource: c.email && c.email !== 'null' ? 'ai_discovered' as const : null,
-      phone: c.phone && c.phone !== 'null' ? c.phone : null,
-      phoneLabel: c.phone_label && c.phone_label !== 'null' ? c.phone_label : null,
-      phoneConfidence: c.phone_confidence ?? null,
-      location: c.location && c.location !== 'null' ? c.location : null,
+      companyDomain: c.domain ?? null,
       role: c.role || 'other',
-      roleConfidence: c.role_confidence ?? 0.5,
-      priorityRank: c.priority_rank ?? 10,
-      contactType: c.contact_type === 'general' ? 'general' : 'individual',
+      roleConfidence: c.rc ?? 0.5,
+      connectionEvidence: c.evidence || '',
+      contactType: c.type === 'general' ? 'general' : 'individual',
     }));
-    
-    const organizations: DiscoveredOrganization[] = (parsed.organizations || []).map((o: any) => ({
+
+    const organizations: DiscoveredOrganization[] = (parsed.orgs || []).map((o: any) => ({
       name: o.name || '',
       domain: o.domain ?? null,
       orgType: o.org_type || 'other',
       roles: o.roles || [],
     }));
-    
-    console.log(`[FocusedEnrichment] Stage 3 complete: ${contacts.length} contacts, ${organizations.length} orgs, ${sources.length} grounded sources`);
-    
+
+    console.log(`[FocusedEnrichment] Stage 3a complete: ${contacts.length} contacts identified, ${organizations.length} orgs, ${sources.length} sources`);
+
     trackCostFireAndForget({
       provider: 'gemini',
-      endpoint: 'discover-contacts',
+      endpoint: 'identify-decision-makers',
       entityType: 'property',
       success: true,
       metadata: { contactsCount: contacts.length, orgsCount: organizations.length, sourcesCount: sources.length },
@@ -650,18 +689,191 @@ contact_type values:
   } catch (error) {
     trackCostFireAndForget({
       provider: 'gemini',
-      endpoint: 'discover-contacts',
+      endpoint: 'identify-decision-makers',
       entityType: 'property',
       success: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
-    console.error(`[FocusedEnrichment] Stage 3 failed after retries: ${error instanceof Error ? error.message : error}`);
+    console.error(`[FocusedEnrichment] Stage 3a failed: ${error instanceof Error ? error.message : error}`);
     return {
       data: { contacts: [], organizations: [] },
-      summary: `Failed to discover contacts: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      summary: `Failed to identify decision-makers: ${error instanceof Error ? error.message : 'Unknown error'}`,
       sources: [],
     };
   }
+}
+
+async function enrichContactDetails(
+  contact: IdentifiedDecisionMaker,
+  city: string
+): Promise<ContactEnrichmentResult> {
+  const client = getGeminiClient();
+
+  const companyInfo = contact.company
+    ? `${contact.company}${contact.companyDomain ? ` (${contact.companyDomain})` : ''}`
+    : 'unknown company';
+
+  const prompt = `Find contact info for ${contact.name}, ${contact.title || 'unknown title'} at ${companyInfo} in ${city}, TX. Return ONLY valid JSON.
+
+{"email":"found@email.com|null","phone":"+1XXXXXXXXXX|null","pl":"direct_work|office|personal|null","pc":0.0-1.0,"loc":"City, ST|null"}`;
+
+  try {
+    const response = await callGeminiWithTimeout(
+      () => client.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          temperature: 0.1,
+          tools: [{ googleSearch: {} }]
+        }
+      }),
+      30000,
+      2
+    );
+
+    const text = response.text?.trim() || '';
+    if (!text) {
+      trackCostFireAndForget({
+        provider: 'gemini',
+        endpoint: 'enrich-contact-details',
+        entityType: 'contact',
+        success: false,
+        errorMessage: 'Empty response',
+      });
+      return { email: null, emailSource: null, phone: null, phoneLabel: null, phoneConfidence: null, location: null, enrichmentSources: [] };
+    }
+
+    const sources = extractGroundedSources(response);
+    const parsed = parseJsonResponse(text);
+
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'enrich-contact-details',
+      entityType: 'contact',
+      success: true,
+      metadata: { sourcesCount: sources.length },
+    });
+
+    const email = parsed.email && parsed.email !== 'null' ? parsed.email : null;
+
+    return {
+      email,
+      emailSource: email ? 'ai_discovered' : null,
+      phone: parsed.phone && parsed.phone !== 'null' ? parsed.phone : null,
+      phoneLabel: parsed.pl && parsed.pl !== 'null' ? parsed.pl : null,
+      phoneConfidence: parsed.pc ?? null,
+      location: parsed.loc && parsed.loc !== 'null' ? parsed.loc : null,
+      enrichmentSources: sources,
+    };
+  } catch (error) {
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'enrich-contact-details',
+      entityType: 'contact',
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    console.warn(`[FocusedEnrichment] Stage 3b enrichment failed for ${contact.name}: ${error instanceof Error ? error.message : error}`);
+    return { email: null, emailSource: null, phone: null, phoneLabel: null, phoneConfidence: null, location: null, enrichmentSources: [] };
+  }
+}
+
+function normalizeName(name: string): string {
+  return name.toLowerCase().replace(/[^a-z]/g, '');
+}
+
+function deduplicateContacts(contacts: DiscoveredContact[]): DiscoveredContact[] {
+  const seen = new Map<string, number>();
+  const result: DiscoveredContact[] = [];
+
+  for (const contact of contacts) {
+    const key = normalizeName(contact.name);
+    if (!key) continue;
+
+    const existingIdx = seen.get(key);
+    if (existingIdx !== undefined) {
+      const existing = result[existingIdx];
+      if (!existing.email && contact.email) existing.email = contact.email;
+      if (!existing.phone && contact.phone) existing.phone = contact.phone;
+      if (!existing.title && contact.title) existing.title = contact.title;
+      if (!existing.company && contact.company) existing.company = contact.company;
+      if (contact.roleConfidence > existing.roleConfidence) {
+        existing.role = contact.role;
+        existing.roleConfidence = contact.roleConfidence;
+      }
+      console.log(`[FocusedEnrichment] Deduplicated contact: "${contact.name}" merged into "${existing.name}"`);
+    } else {
+      seen.set(key, result.length);
+      result.push({ ...contact });
+    }
+  }
+
+  return result;
+}
+
+export async function discoverContacts(
+  property: CommercialProperty,
+  classification: PropertyClassification,
+  ownership: OwnershipInfo
+): Promise<StageResult<{ contacts: DiscoveredContact[]; organizations: DiscoveredOrganization[] }> & { contactIdentificationMs: number; contactEnrichmentMs: number }> {
+  const city = property.city || 'Dallas';
+
+  const startIdentify = Date.now();
+  const identifyResult = await identifyDecisionMakers(property, classification, ownership);
+  const contactIdentificationMs = Date.now() - startIdentify;
+
+  const identifiedContacts = identifyResult.data.contacts;
+  console.log(`[FocusedEnrichment] Stage 3a took ${contactIdentificationMs}ms, identified ${identifiedContacts.length} contacts`);
+
+  const startEnrich = Date.now();
+  const enrichmentResults = await Promise.all(
+    identifiedContacts.map(contact => enrichContactDetails(contact, city))
+  );
+  const contactEnrichmentMs = Date.now() - startEnrich;
+
+  console.log(`[FocusedEnrichment] Stage 3b took ${contactEnrichmentMs}ms for ${identifiedContacts.length} contacts`);
+
+  const allSources = [...identifyResult.sources];
+  const rawContacts: DiscoveredContact[] = identifiedContacts.map((dm, idx) => {
+    const enrichment = enrichmentResults[idx];
+    allSources.push(...enrichment.enrichmentSources);
+
+    return {
+      name: dm.name,
+      title: dm.title,
+      company: dm.company,
+      companyDomain: dm.companyDomain,
+      email: enrichment.email,
+      emailSource: enrichment.emailSource,
+      phone: enrichment.phone,
+      phoneLabel: enrichment.phoneLabel,
+      phoneConfidence: enrichment.phoneConfidence,
+      location: enrichment.location,
+      role: dm.role,
+      roleConfidence: dm.roleConfidence,
+      priorityRank: idx + 1,
+      contactType: dm.contactType,
+    };
+  });
+
+  const contacts = deduplicateContacts(rawContacts);
+  contacts.forEach((c, i) => { c.priorityRank = i + 1; });
+
+  if (contacts.length < rawContacts.length) {
+    console.log(`[FocusedEnrichment] Deduplicated ${rawContacts.length} → ${contacts.length} contacts`);
+  }
+
+  const uniqueSources = allSources.filter((s, i, arr) =>
+    arr.findIndex(x => x.url === s.url) === i
+  ).slice(0, 10);
+
+  return {
+    data: { contacts, organizations: identifyResult.data.organizations },
+    summary: identifyResult.summary,
+    sources: uniqueSources,
+    contactIdentificationMs,
+    contactEnrichmentMs,
+  };
 }
 
 export interface FocusedEnrichmentResult {
@@ -675,6 +887,8 @@ export interface FocusedEnrichmentResult {
     classificationMs: number;
     ownershipMs: number;
     contactsMs: number;
+    contactIdentificationMs: number;
+    contactEnrichmentMs: number;
     totalMs: number;
   };
 }
@@ -703,13 +917,19 @@ export async function runFocusedEnrichment(property: CommercialProperty): Promis
   const ownershipMs = Date.now() - startOwnership;
   
   const startContacts = Date.now();
-  const contacts = await discoverContacts(property, classification.data, ownership.data);
+  const contactsResult = await discoverContacts(property, classification.data, ownership.data);
   const contactsMs = Date.now() - startContacts;
   
   const totalMs = Date.now() - startTotal;
 
-  console.log(`[FocusedEnrichment] All stages complete in ${totalMs}ms`);
+  console.log(`[FocusedEnrichment] All stages complete in ${totalMs}ms (3a: ${contactsResult.contactIdentificationMs}ms, 3b: ${contactsResult.contactEnrichmentMs}ms)`);
   
+  const contacts: StageResult<{ contacts: DiscoveredContact[]; organizations: DiscoveredOrganization[] }> = {
+    data: contactsResult.data,
+    summary: contactsResult.summary,
+    sources: contactsResult.sources,
+  };
+
   return {
     propertyKey: property.parcelId || property.accountNum,
     physical,
@@ -721,6 +941,8 @@ export async function runFocusedEnrichment(property: CommercialProperty): Promis
       classificationMs: 0,
       ownershipMs,
       contactsMs,
+      contactIdentificationMs: contactsResult.contactIdentificationMs,
+      contactEnrichmentMs: contactsResult.contactEnrichmentMs,
       totalMs
     }
   };

@@ -149,6 +149,13 @@ These routes have NO auth check — any unauthenticated request succeeds:
   - Migrated waterfall-email and waterfall-phone routes as initial adoption
   - Remaining 70 routes can be migrated incrementally without breaking changes
 
+### AI Enrichment Pipeline Refactor (Complete — Feb 2026)
+- [x] **Phase 1**: Split contact discovery into `identifyDecisionMakers` (WHO) + `enrichContactDetails` (per-person lookup) to prevent AI hallucinating contact info
+- [x] **Phase 2**: Restructured ownership identification — directed search sequence, legal description filtering, cross-validation utility, expanded owner types (Institutional, Syndicator)
+- [x] **Phase 3**: Source quality scoring utility (`scoreSources`) — high/medium/low trust tiers by domain reputation
+- [x] **Phase 4**: Compact Stage 1 prompts — abbreviated JSON keys with legacy fallback, DCAD quality-grade-to-class mapping in code, temperature 0.1
+- [x] **Phase 5**: Contact deduplication via name normalization with field merging, priority re-ranking
+
 ### Phase 3 — Quality & Polish
 - [ ] **UX-1**: Add accessibility (aria labels, keyboard navigation, semantic headings)
 - [ ] **CODE-1**: Add test coverage for cascade enrichment and key API routes
