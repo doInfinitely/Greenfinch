@@ -114,6 +114,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
               src="/greenfinch-logo.png"
               alt="Greenfinch"
               fill
+              sizes="32px"
               className="object-contain"
               priority
             />

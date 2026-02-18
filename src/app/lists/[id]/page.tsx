@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -88,6 +88,13 @@ export default function ListDetailPage() {
   const [isFindingPhones, setIsFindingPhones] = useState(false);
   const [isRemovingBulk, setIsRemovingBulk] = useState(false);
   const [showRemoveConfirmation, setShowRemoveConfirmation] = useState(false);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, []);
 
   // Fetch list metadata
   const { data: listData, isLoading: isListLoading, error: listError } = useQuery({
@@ -148,11 +155,24 @@ export default function ListDetailPage() {
   const isLoading = isListLoading || (!!listData && isItemsLoading);
   const error = listError?.message || null;
 
-  // Helper to refetch list data
-  const refetchListItems = () => {
+  const refetchListItems = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['/api/lists', id, 'items'] });
     queryClient.invalidateQueries({ queryKey: ['/api/lists', id] });
-  };
+  }, [queryClient, id]);
+
+  const startPollingRefresh = useCallback(() => {
+    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    let pollCount = 0;
+    const maxPolls = 4;
+    pollTimerRef.current = setInterval(() => {
+      pollCount++;
+      refetchListItems();
+      if (pollCount >= maxPolls) {
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    }, 5000);
+  }, [refetchListItems]);
 
   const handleRemoveItem = async (itemId: string) => {
     setRemovingItem(itemId);
@@ -290,7 +310,7 @@ export default function ListDetailPage() {
         title: 'Research started',
         description: `${queuedCount} propert${queuedCount !== 1 ? 'ies' : 'y'} queued for research.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
       });
-      setTimeout(() => refetchListItems(), 5000);
+      startPollingRefresh();
     } else if (errorCount > 0) {
       toast({
         title: 'Research failed',
@@ -339,7 +359,7 @@ export default function ListDetailPage() {
       description: `Searching for emails for ${queuedCount} contact${queuedCount !== 1 ? 's' : ''}.`,
     });
     
-    setTimeout(() => refetchListItems(), 5000);
+    startPollingRefresh();
   };
 
   const handleFindPhonesSelected = async () => {
@@ -384,7 +404,7 @@ export default function ListDetailPage() {
       description: `Searching for phones for ${queuedCount} contact${queuedCount !== 1 ? 's' : ''}.`,
     });
     
-    setTimeout(() => refetchListItems(), 5000);
+    startPollingRefresh();
   };
 
   const handleResearchAll = async () => {
@@ -443,8 +463,7 @@ export default function ListDetailPage() {
         title: 'Research started',
         description: `${queuedCount} propert${queuedCount !== 1 ? 'ies' : 'y'} queued for research.${errorCount > 0 ? ` ${errorCount} failed.` : ''}`,
       });
-      // Refresh list items after a delay
-      setTimeout(() => refetchListItems(), 5000);
+      startPollingRefresh();
     } else if (errorCount > 0) {
       toast({
         title: 'Research failed',
@@ -489,8 +508,7 @@ export default function ListDetailPage() {
       description: `Searching for emails for ${queuedCount} contact${queuedCount !== 1 ? 's' : ''}.`,
     });
     
-    // Refresh list items after a delay
-    setTimeout(() => refetchListItems(), 5000);
+    startPollingRefresh();
   };
 
   const handleFindPhones = async () => {
@@ -532,8 +550,7 @@ export default function ListDetailPage() {
       description: `Searching for phones for ${queuedCount} contact${queuedCount !== 1 ? 's' : ''}.`,
     });
     
-    // Refresh list items after a delay
-    setTimeout(() => refetchListItems(), 5000);
+    startPollingRefresh();
   };
 
   const toggleSelectAll = () => {

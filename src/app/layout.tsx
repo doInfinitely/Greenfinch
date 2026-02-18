@@ -38,18 +38,6 @@ export default function RootLayout({
   return (
     <ClerkProvider>
       <html lang="en" className="light" suppressHydrationWarning>
-        <head>
-          <script
-            dangerouslySetInnerHTML={{
-              __html: `
-                (function() {
-                  document.documentElement.classList.remove('dark');
-                  document.documentElement.classList.add('light');
-                })();
-              `,
-            }}
-          />
-        </head>
         <body className={`${inter.className} light`}>
           <Providers>{children}</Providers>
         </body>
