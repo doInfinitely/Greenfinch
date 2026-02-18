@@ -88,7 +88,7 @@ export default function PropertyHeader({
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex items-start justify-between gap-4 mb-4">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
           <div className="min-w-0 flex-1">
             {enrichedProperty?.commonName && (
               <div className="mb-1">

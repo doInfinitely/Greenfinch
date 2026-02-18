@@ -1268,40 +1268,53 @@ export default function ContactsPage() {
 
             <div className="md:hidden bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
               {contacts.map((contact) => (
-                <Link
+                <div
                   key={contact.id}
-                  href={`/contact/${contact.id}`}
-                  className="block p-4 hover:bg-gray-50 transition-colors"
+                  className={`flex items-start gap-3 p-4 transition-colors ${selectedContacts.has(contact.id) ? 'bg-green-50' : ''}`}
+                  data-testid={`mobile-contact-card-${contact.id}`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 truncate">
-                        {contact.fullName || 'Unknown'}
-                      </p>
-                      {contact.email && (
-                        <p className="text-sm text-green-600 truncate">{contact.email}</p>
-                      )}
-                      {contact.title && (
-                        <p className="text-xs text-gray-500 mt-1">{contact.title}</p>
-                      )}
-                    </div>
-                    <div className="flex flex-col items-end gap-1 shrink-0">
-                      {contact.emailStatus && (
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getEmailStatusColor(contact.emailStatus)}`}>
-                          {contact.emailStatus}
-                        </span>
-                      )}
-                    </div>
+                  <div className="pt-0.5 flex-shrink-0">
+                    <Checkbox
+                      checked={selectedContacts.has(contact.id)}
+                      onChange={(e) => handleSelectContact(contact.id, e.target.checked)}
+                      aria-label={`Select ${contact.fullName || 'contact'}`}
+                      data-testid={`mobile-checkbox-contact-${contact.id}`}
+                    />
                   </div>
-                  <div className="flex items-center gap-3 mt-2">
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {contact.propertyCount} properties
-                    </span>
-                    <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                      {contact.organizationCount} orgs
-                    </span>
-                  </div>
-                </Link>
+                  <Link
+                    href={`/contact/${contact.id}`}
+                    className="flex-1 min-w-0"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-gray-900 truncate">
+                          {contact.fullName || 'Unknown'}
+                        </p>
+                        {contact.email && (
+                          <p className="text-sm text-green-600 truncate">{contact.email}</p>
+                        )}
+                        {contact.title && (
+                          <p className="text-xs text-gray-500 mt-1">{contact.title}</p>
+                        )}
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        {contact.emailStatus && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getEmailStatusColor(contact.emailStatus)}`}>
+                            {contact.emailStatus}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                        {contact.propertyCount} properties
+                      </span>
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                        {contact.organizationCount} orgs
+                      </span>
+                    </div>
+                  </Link>
+                </div>
               ))}
             </div>
 
