@@ -100,7 +100,7 @@ export default function PropertyHeader({
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+        <div className="flex items-start justify-between gap-3 mb-4">
           <div className="min-w-0 flex-1 overflow-hidden">
             {enrichedProperty?.commonName && (
               <div className="mb-1">
@@ -139,7 +139,7 @@ export default function PropertyHeader({
             </div>
           </div>
           
-          <div className="flex-shrink-0 flex flex-wrap items-center gap-2">
+          <div className="flex-shrink-0 flex items-center gap-1.5">
             {pipelineOwner && (
               <TooltipProvider>
                 <Tooltip>
@@ -160,8 +160,6 @@ export default function PropertyHeader({
             
             {(() => {
               const queueStatus = getEnrichmentStatus(property.propertyKey, 'property');
-              const isEnrichmentActive = queueStatus.isActive;
-              const enrichmentHasFailed = queueStatus.status === 'failed';
               const isResearchComplete = enrichmentStatus === 'completed' || enrichmentStatus === 'enriched';
               
               if (isResearchComplete) {
@@ -180,35 +178,9 @@ export default function PropertyHeader({
                   </TooltipProvider>
                 );
               }
-              
-              return (
-                <AdminOnly>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={onEnrichment}
-                    disabled={isEnrichmentActive}
-                    className={
-                      enrichmentHasFailed 
-                        ? 'text-red-600 border-red-300 hover:bg-red-50' 
-                        : 'border-purple-500 text-purple-700'
-                    }
-                    title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'} - Click to retry` : undefined}
-                    data-testid="button-find-decision-makers"
-                  >
-                    {isEnrichmentActive ? (
-                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
-                    ) : enrichmentHasFailed ? (
-                      <XCircle className="w-4 h-4 mr-1" />
-                    ) : (
-                      <GreenfinchAgentIcon className="w-4 h-4 mr-1" />
-                    )}
-                    {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Retry Research' : 'Research'}
-                  </Button>
-                </AdminOnly>
-              );
+              return null;
             })()}
-            
+
             <Button
               variant="outline"
               size="icon"
@@ -257,6 +229,41 @@ export default function PropertyHeader({
         </div>
         
         <div className="flex flex-wrap items-center gap-2 mb-6">
+          {(() => {
+            const queueStatus = getEnrichmentStatus(property.propertyKey, 'property');
+            const isEnrichmentActive = queueStatus.isActive;
+            const enrichmentHasFailed = queueStatus.status === 'failed';
+            const isResearchComplete = enrichmentStatus === 'completed' || enrichmentStatus === 'enriched';
+            
+            if (isResearchComplete) return null;
+            
+            return (
+              <AdminOnly>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={onEnrichment}
+                  disabled={isEnrichmentActive}
+                  className={
+                    enrichmentHasFailed 
+                      ? 'text-red-600 border-red-300' 
+                      : 'border-purple-500 text-purple-700'
+                  }
+                  title={enrichmentHasFailed ? `Failed: ${queueStatus.error || 'Unknown error'} - Click to retry` : undefined}
+                  data-testid="button-find-decision-makers"
+                >
+                  {isEnrichmentActive ? (
+                    <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                  ) : enrichmentHasFailed ? (
+                    <XCircle className="w-4 h-4 mr-1" />
+                  ) : (
+                    <GreenfinchAgentIcon className="w-4 h-4 mr-1" />
+                  )}
+                  {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Retry Research' : 'Research'}
+                </Button>
+              </AdminOnly>
+            );
+          })()}
           <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls hideOwnerDisplay triggerAssignDialog={assignDialogTrigger} isCustomer={isCurrentCustomer} initialData={pipelineData} initialLoaded={pipelineLoaded} />
           <div className="border-l border-gray-200 h-6 mx-1 hidden sm:block" />
           <CustomerToggle propertyId={property.propertyKey} onToggle={onSetIsCurrentCustomer} initialIsCustomer={isCurrentCustomer} initialLoaded={customerLoaded} />
