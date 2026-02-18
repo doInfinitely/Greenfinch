@@ -122,13 +122,16 @@ These routes have NO auth check — any unauthenticated request succeeds:
 
 ## Remediation Plan (Feb 2026)
 
-### Phase 0 — Quick Wins (In Progress)
+### Phase 0 — Quick Wins (Complete)
 - [x] **PERF-3**: Replace setTimeout re-fetch with polling-based refresh after enrichment
 - [x] **UX-2**: Add loading skeletons to property and contact detail pages
 - [x] **INFRA-1**: Add `/api/health` endpoint for database/Redis monitoring
 
-### Phase 1 — Maintainability
-- [ ] **PERF-1**: Break up large monolithic page components into sub-components
+### Phase 1 — Maintainability (Complete)
+- [x] **PERF-1**: Break up large monolithic page components into sub-components
+  - Property page: Extracted PropertyHeader, PropertyStats, PropertyAbout, OwnershipSection, ContactsSection, FlagDialog, ServiceProviderDialog into `src/components/property/`
+  - Contact page: Extracted ContactHeader, ContactInfo, AssociatedProperties, ContactOrganizations into `src/components/contact/`
+  - Shared types defined in respective `types.ts` files
 
 ### Phase 2 — Platform Hardening
 - [ ] **DATA-1**: Add enrichment cost tracking table and admin dashboard
