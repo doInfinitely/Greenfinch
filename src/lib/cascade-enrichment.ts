@@ -28,6 +28,17 @@ import { searchLinkedInProfile } from './serp-linkedin';
 export type ConfidenceFlag = 'verified' | 'pdl_matched' | 'unverified' | 'email_only' | 'insufficient_input' | 'no_match';
 export type EmailSource = 'input_verified' | 'input_invalid' | 'findymail_finder' | 'hunter_finder' | null;
 
+function isVanityLinkedinUrl(url: string): boolean {
+  try {
+    const slug = url.replace(/\/$/, '').split('/in/')[1];
+    if (!slug) return false;
+    if (/^[A-Za-z0-9_-]{25,}$/.test(slug) && !/[-]/.test(slug)) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export interface OrganizationEnrichmentResult {
   found: boolean;
   providerId: string | null;
@@ -509,8 +520,13 @@ export async function enrichContactCascade(
       pdlData = pdlResult;
       
       if (!foundLinkedin && pdlResult.linkedinUrl) {
-        foundLinkedin = pdlResult.linkedinUrl;
-        console.log(`[CascadeEnrichment] PDL provided LinkedIn: ${foundLinkedin}`);
+        if (isVanityLinkedinUrl(pdlResult.linkedinUrl)) {
+          foundLinkedin = pdlResult.linkedinUrl;
+          console.log(`[CascadeEnrichment] PDL provided LinkedIn: ${foundLinkedin}`);
+        } else {
+          foundLinkedin = pdlResult.linkedinUrl;
+          console.log(`[CascadeEnrichment] PDL provided hashed LinkedIn (member ID): ${foundLinkedin} — will store but not send to Crustdata`);
+        }
       }
     } else {
       console.log('[CascadeEnrichment] PDL: no match found');
@@ -559,13 +575,18 @@ export async function enrichContactCascade(
     !pdlData || 
     !pdlData.companyDomain;
   
-  if (shouldRunCrustdata && (foundLinkedin || verifiedEmail)) {
+  const vanityLinkedin = foundLinkedin && isVanityLinkedinUrl(foundLinkedin) ? foundLinkedin : null;
+  if (foundLinkedin && !vanityLinkedin) {
+    console.log(`[CascadeEnrichment] LinkedIn URL is a hashed member ID (not vanity), skipping for Crustdata: ${foundLinkedin}`);
+  }
+  
+  if (shouldRunCrustdata && (vanityLinkedin || verifiedEmail)) {
     console.log('[CascadeEnrichment] Stage 4: Crustdata Verification (domain mismatch or PDL incomplete)...');
     
     try {
       const crustdataResult = await enrichPersonCrustdata({
-        linkedinUrl: foundLinkedin || undefined,
-        email: !foundLinkedin ? (verifiedEmail || undefined) : undefined,
+        linkedinUrl: vanityLinkedin || undefined,
+        email: !vanityLinkedin ? (verifiedEmail || undefined) : undefined,
       });
       
       if (crustdataResult.found) {
@@ -583,9 +604,9 @@ export async function enrichContactCascade(
   } else if (pdlDomainMatches) {
     confidenceFlag = 'pdl_matched';
     console.log('[CascadeEnrichment] Stage 4: Skipped — PDL domain matches input');
-  } else if (!foundLinkedin && !verifiedEmail) {
+  } else if (!vanityLinkedin && !verifiedEmail) {
     confidenceFlag = pdlData ? 'unverified' : 'no_match';
-    console.log('[CascadeEnrichment] Stage 4: Skipped — no LinkedIn or email for Crustdata');
+    console.log('[CascadeEnrichment] Stage 4: Skipped — no usable LinkedIn or email for Crustdata');
   }
   
   if (!pdlData && !crustdataData && !verifiedEmail) {
