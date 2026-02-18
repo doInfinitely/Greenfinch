@@ -733,7 +733,7 @@ export default function ListDetailPage() {
                   disabled={isResearchingAll || unresearchedCount === 0}
                   size="sm"
                   variant="outline"
-                  className="gap-2 border-purple-500 text-purple-700 dark:text-purple-400"
+                  className="gap-2 border-purple-500 text-purple-700"
                   data-testid="button-research-all"
                 >
                   {isResearchingAll ? (

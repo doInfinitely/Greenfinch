@@ -354,7 +354,7 @@ export default function PipelineBoard() {
 
   return (
     <AppSidebar>
-      <div className="h-full bg-background dark:bg-background flex flex-col">
+      <div className="h-full bg-background flex flex-col">
         <div className="sticky top-0 z-20 bg-background border-b px-4 py-3 md:px-6 md:py-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex-1 min-w-0">

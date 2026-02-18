@@ -268,12 +268,12 @@ export default function TeamManagement() {
   if (!isAdmin) {
     return (
       <AppSidebar>
-        <div className="h-full bg-gray-50 dark:bg-gray-950 p-6">
+        <div className="h-full bg-gray-50 p-6">
           <div className="max-w-2xl mx-auto text-center py-12">
-            <div className="w-16 h-16 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Shield className="w-8 h-8 text-gray-400" />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 mb-4">Access Denied</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h1>
             <p className="text-muted-foreground">
               You need admin permissions to access this page.
             </p>
@@ -285,11 +285,11 @@ export default function TeamManagement() {
 
   return (
     <AppSidebar>
-      <div className="h-full bg-gray-50 dark:bg-gray-950 p-6 overflow-y-auto">
+      <div className="h-full bg-gray-50 p-6 overflow-y-auto">
         <div className="max-w-5xl mx-auto">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Team</h1>
+              <h1 className="text-2xl font-bold text-gray-900">Team</h1>
               <p className="text-muted-foreground">Manage your organization's team members</p>
             </div>
             <div className="flex items-center gap-2">
@@ -452,7 +452,7 @@ export default function TeamManagement() {
                       <TableRow key={invitation.id} data-testid={`row-invitation-${invitation.id}`}>
                         <TableCell>
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 bg-gray-100 dark:bg-gray-800 rounded-full flex items-center justify-center">
+                            <div className="w-9 h-9 bg-gray-100 rounded-full flex items-center justify-center">
                               <Mail className="w-4 h-4 text-muted-foreground" />
                             </div>
                             <span className="text-foreground">{invitation.email}</span>

@@ -340,14 +340,14 @@ export default function AddContactModal({
         </div>
         
         {showDropdown && (
-          <div className="absolute z-10 w-full mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg max-h-64 overflow-y-auto">
+          <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-md shadow-lg max-h-64 overflow-y-auto">
             {searchResults.length > 0 ? (
               <>
                 {searchResults.map((contact) => (
                   <button
                     key={contact.id}
                     onClick={() => handleSelectContact(contact)}
-                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800 text-left transition-colors"
+                    className="w-full flex items-center gap-3 px-4 py-3 hover:bg-gray-50 text-left transition-colors"
                     data-testid={`contact-result-${contact.id}`}
                   >
                     <div className="flex-shrink-0 w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
@@ -358,9 +358,9 @@ export default function AddContactModal({
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-gray-900 dark:text-gray-100 truncate">{contact.fullName}</p>
+                      <p className="font-medium text-gray-900 truncate">{contact.fullName}</p>
                       {(contact.title || contact.location) && (
-                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                        <p className="text-sm text-gray-600 truncate">
                           {contact.title}{contact.title && contact.location && ' • '}{contact.location}
                         </p>
                       )}
@@ -379,7 +379,7 @@ export default function AddContactModal({
             
             <button
               onClick={handleCreateNew}
-              className="w-full flex items-center gap-3 px-4 py-3 border-t border-gray-200 dark:border-gray-700 hover:bg-green-50 dark:hover:bg-green-900/20 text-left transition-colors"
+              className="w-full flex items-center gap-3 px-4 py-3 border-t border-gray-200 hover:bg-green-50 text-left transition-colors"
               data-testid="button-create-new-contact"
             >
               <div className="flex-shrink-0 w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
@@ -394,7 +394,7 @@ export default function AddContactModal({
       {!showDropdown && searchQuery.length === 0 && (
         <div className="text-center py-8">
           <User className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-          <p className="text-gray-600 dark:text-gray-400 mb-4">
+          <p className="text-gray-600 mb-4">
             Search for an existing contact or create a new one
           </p>
           <Button
@@ -424,7 +424,7 @@ export default function AddContactModal({
       </button>
       
       {selectedContact && (
-        <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+        <div className="bg-gray-50 rounded-lg p-4">
           <div className="flex items-center gap-3">
             <div className="flex-shrink-0 w-12 h-12 bg-green-100 rounded-full flex items-center justify-center">
               {selectedContact.photoUrl ? (
@@ -434,7 +434,7 @@ export default function AddContactModal({
               )}
             </div>
             <div>
-              <p className="font-medium text-gray-900 dark:text-gray-100">{selectedContact.fullName}</p>
+              <p className="font-medium text-gray-900">{selectedContact.fullName}</p>
               {selectedContact.email && (
                 <p className="text-sm text-gray-500">{selectedContact.email}</p>
               )}
@@ -447,7 +447,7 @@ export default function AddContactModal({
       )}
       
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label className="text-sm font-medium text-gray-700">
           Relationship to Property *
         </label>
         <Select value={selectedRole} onValueChange={setSelectedRole}>
@@ -465,7 +465,7 @@ export default function AddContactModal({
       </div>
       
       {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 text-sm rounded-lg">
+        <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg">
           {error}
         </div>
       )}
@@ -502,7 +502,7 @@ export default function AddContactModal({
       </button>
       
       <div className="text-center">
-        <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
+        <h3 className="text-lg font-medium text-gray-900 mb-2">
           New Contact Information
         </h3>
         <p className="text-sm text-gray-500">
@@ -512,7 +512,7 @@ export default function AddContactModal({
       
       <div className="space-y-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
             <Mail className="w-4 h-4" />
             Email Address
           </label>
@@ -526,13 +526,13 @@ export default function AddContactModal({
         </div>
         
         <div className="flex items-center gap-4">
-          <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+          <div className="flex-1 h-px bg-gray-200" />
           <span className="text-sm text-gray-500">or</span>
-          <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+          <div className="flex-1 h-px bg-gray-200" />
         </div>
         
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+          <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
             <Linkedin className="w-4 h-4" />
             LinkedIn URL
           </label>
@@ -547,7 +547,7 @@ export default function AddContactModal({
       </div>
       
       {seedError && (
-        <div className="p-3 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 text-sm rounded-lg flex items-center gap-2">
+        <div className="p-3 bg-amber-50 text-amber-700 text-sm rounded-lg flex items-center gap-2">
           <span className="flex-shrink-0">
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -594,7 +594,7 @@ export default function AddContactModal({
       </button>
       
       {wasEnriched && (
-        <div className="p-3 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 text-sm rounded-lg flex items-center gap-2">
+        <div className="p-3 bg-green-50 text-green-700 text-sm rounded-lg flex items-center gap-2">
           <Check className="w-4 h-4" />
           Contact information enriched from database
         </div>
@@ -602,7 +602,7 @@ export default function AddContactModal({
       
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label className="text-sm font-medium text-gray-700">
             First Name *
           </label>
           <Input
@@ -614,7 +614,7 @@ export default function AddContactModal({
         </div>
         
         <div className="space-y-2">
-          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <label className="text-sm font-medium text-gray-700">
             Last Name *
           </label>
           <Input
@@ -627,7 +627,7 @@ export default function AddContactModal({
       </div>
       
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
           <Mail className="w-4 h-4" />
           Email
         </label>
@@ -641,7 +641,7 @@ export default function AddContactModal({
       </div>
       
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
           <Phone className="w-4 h-4" />
           Phone
         </label>
@@ -655,7 +655,7 @@ export default function AddContactModal({
       </div>
       
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
           <MapPin className="w-4 h-4" />
           Location
         </label>
@@ -669,7 +669,7 @@ export default function AddContactModal({
       </div>
       
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+        <label className="text-sm font-medium text-gray-700 flex items-center gap-2">
           <Linkedin className="w-4 h-4" />
           LinkedIn URL
         </label>
@@ -683,7 +683,7 @@ export default function AddContactModal({
       </div>
       
       <div className="space-y-2">
-        <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+        <label className="text-sm font-medium text-gray-700">
           Relationship to Property *
         </label>
         <Select value={selectedRole} onValueChange={setSelectedRole}>
@@ -701,7 +701,7 @@ export default function AddContactModal({
       </div>
       
       {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 text-sm rounded-lg">
+        <div className="p-3 bg-red-50 text-red-700 text-sm rounded-lg">
           {error}
         </div>
       )}

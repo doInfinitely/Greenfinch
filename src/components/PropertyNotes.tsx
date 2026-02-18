@@ -340,7 +340,7 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
     return parts.map((part, i) => {
       if (part.startsWith('@')) {
         return (
-          <span key={i} className="text-blue-600 dark:text-blue-400 font-medium">
+          <span key={i} className="text-blue-600 font-medium">
             {part}
           </span>
         );
@@ -360,8 +360,8 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
     <Card>
       <CardHeader className="pb-4 flex flex-row items-center justify-between space-y-0">
         <CardTitle className="text-base font-semibold flex items-center gap-2">
-          <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center flex-shrink-0">
-            <MessageSquare className="w-4 h-4 text-green-600 dark:text-green-400" />
+          <div className="w-8 h-8 bg-green-100 rounded-lg flex items-center justify-center flex-shrink-0">
+            <MessageSquare className="w-4 h-4 text-green-600" />
           </div>
           Notes
         </CardTitle>
@@ -372,7 +372,7 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
               Follow-up
             </Button>
           </PopoverTrigger>
-          <PopoverContent className="w-56 p-2 bg-white dark:bg-gray-900 border shadow-lg" align="end" data-testid="popover-followup-options">
+          <PopoverContent className="w-56 p-2 bg-white border shadow-lg" align="end" data-testid="popover-followup-options">
             <div className="space-y-1">
               <Button 
                 variant="ghost" 
@@ -406,7 +406,7 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
                     Custom date...
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-64 p-3 bg-white dark:bg-gray-900 border shadow-lg" align="start">
+                <PopoverContent className="w-64 p-3 bg-white border shadow-lg" align="start">
                   <div className="space-y-3">
                     <label className="text-sm font-medium">Select date</label>
                     <Input
@@ -433,16 +433,16 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
       </CardHeader>
       <CardContent className="space-y-4" data-testid="card-notes">
         {pendingActions.length > 0 && (
-          <div className="space-y-2 pb-3 border-b border-gray-100 dark:border-gray-800">
+          <div className="space-y-2 pb-3 border-b border-gray-100">
             <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pending Follow-ups</p>
             {pendingActions.map(action => (
               <div 
                 key={action.id} 
-                className="flex items-center justify-between gap-2 p-2 bg-yellow-50 dark:bg-yellow-900/20 rounded-md"
+                className="flex items-center justify-between gap-2 p-2 bg-yellow-50 rounded-md"
                 data-testid={`action-item-${action.id}`}
               >
                 <div className="flex items-center gap-2 min-w-0">
-                  <Clock className="w-4 h-4 text-yellow-600 dark:text-yellow-400 flex-shrink-0" />
+                  <Clock className="w-4 h-4 text-yellow-600 flex-shrink-0" />
                   <span className="text-sm truncate">
                     {format(new Date(action.dueAt), 'MMM d, yyyy')}
                   </span>
@@ -474,7 +474,7 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
             />
             {showMentionList && filteredTeam.length > 0 && (
               <div 
-                className="absolute z-50 left-0 mt-1 w-64 bg-white dark:bg-gray-900 border rounded-md shadow-lg max-h-48 overflow-y-auto"
+                className="absolute z-50 left-0 mt-1 w-64 bg-white border rounded-md shadow-lg max-h-48 overflow-y-auto"
                 data-testid="mention-list"
               >
                 {filteredTeam.slice(0, 5).map((member, idx) => (
@@ -514,10 +514,10 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
           <div className="space-y-4">
             {[1, 2].map((i) => (
               <div key={i} className="animate-pulse flex gap-3">
-                <div className="w-8 h-8 bg-gray-200 dark:bg-gray-700 rounded-full flex-shrink-0" />
+                <div className="w-8 h-8 bg-gray-200 rounded-full flex-shrink-0" />
                 <div className="flex-1 space-y-2">
-                  <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4" />
-                  <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/4" />
+                  <div className="h-4 bg-gray-200 rounded w-3/4" />
+                  <div className="h-3 bg-gray-200 rounded w-1/4" />
                 </div>
               </div>
             ))}
@@ -529,10 +529,10 @@ export default function PropertyNotes({ propertyId }: PropertyNotesProps) {
         ) : (
           <div className="space-y-4 max-h-64 overflow-y-auto">
             {notes.map((note) => (
-              <div key={note.id} className="flex gap-3 pb-3 border-b border-gray-100 dark:border-gray-800 last:border-b-0 last:pb-0">
+              <div key={note.id} className="flex gap-3 pb-3 border-b border-gray-100 last:border-b-0 last:pb-0">
                 <Avatar className="w-8 h-8 flex-shrink-0">
                   <AvatarImage src={note.user.profileImage || undefined} />
-                  <AvatarFallback className="text-xs bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400">
+                  <AvatarFallback className="text-xs bg-green-100 text-green-700">
                     {getUserInitials(note.user.firstName, note.user.lastName)}
                   </AvatarFallback>
                 </Avatar>

@@ -125,7 +125,7 @@ export default function NotificationBell() {
         </button>
       </PopoverTrigger>
       <PopoverContent 
-        className="w-80 p-0 bg-white dark:bg-gray-900 border shadow-lg" 
+        className="w-80 p-0 bg-white border shadow-lg" 
         align="end"
         data-testid="popover-notifications"
       >

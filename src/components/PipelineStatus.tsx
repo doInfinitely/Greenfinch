@@ -45,13 +45,13 @@ interface PipelineStatusProps {
 }
 
 const STATUS_COLORS: Record<PipelineStatusType, string> = {
-  new: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300',
-  qualified: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
-  attempted_contact: 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200',
-  active_opportunity: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  won: 'bg-green-200 text-green-900 dark:bg-green-800 dark:text-green-100',
-  lost: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  disqualified: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  new: 'bg-gray-100 text-gray-700',
+  qualified: 'bg-green-100 text-green-800',
+  attempted_contact: 'bg-yellow-100 text-yellow-800',
+  active_opportunity: 'bg-purple-100 text-purple-800',
+  won: 'bg-green-200 text-green-900',
+  lost: 'bg-red-100 text-red-800',
+  disqualified: 'bg-gray-100 text-gray-600',
 };
 
 const STATUS_ICONS: Record<PipelineStatusType, React.ReactNode> = {
@@ -332,7 +332,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     if (inline) {
       return (
         <div className="flex items-center gap-2">
-          <div className="h-9 w-24 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-md" />
+          <div className="h-9 w-24 bg-gray-100 animate-pulse rounded-md" />
         </div>
       );
     }
@@ -345,7 +345,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-10 bg-gray-100 dark:bg-gray-800 animate-pulse rounded-md" />
+          <div className="h-10 bg-gray-100 animate-pulse rounded-md" />
         </CardContent>
       </Card>
     );
@@ -369,7 +369,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         size="sm"
         onClick={() => updateStatus('qualified')}
         disabled={updating}
-        className="border-green-300 text-green-700 dark:border-green-700 dark:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/50"
+        className="border-green-300 text-green-700 hover:bg-green-50"
         data-testid="button-qualify"
       >
         <Check className="w-4 h-4 mr-1" />
@@ -380,7 +380,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         size="sm"
         onClick={() => updateStatus('disqualified')}
         disabled={updating}
-        className="border-red-300 text-red-600 dark:border-red-700 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/50"
+        className="border-red-300 text-red-600 hover:bg-red-50"
         data-testid="button-disqualify"
       >
         <X className="w-4 h-4 mr-1" />
@@ -404,7 +404,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
           <ChevronDown className="w-3 h-3 ml-1" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-40 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 shadow-lg z-[100]">
+      <DropdownMenuContent align="start" className="w-40 bg-white border-gray-200 shadow-lg z-[100]">
         <DropdownMenuItem
           onClick={() => updateStatus('qualified')}
           data-testid="menu-item-requalify"
@@ -524,7 +524,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
           setSelectedOwnerId('');
         }}
       />
-      <div className="relative z-50 w-full max-w-lg bg-white dark:bg-gray-900 rounded-lg shadow-lg p-6 mx-4">
+      <div className="relative z-50 w-full max-w-lg bg-white rounded-lg shadow-lg p-6 mx-4">
         <button
           type="button"
           className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100"
@@ -622,17 +622,17 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
             }
             setShowQualifyDialog(open);
           }}>
-            <DialogContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800" onCloseAutoFocus={(e) => e.preventDefault()}>
+            <DialogContent className="bg-white border-gray-200" onCloseAutoFocus={(e) => e.preventDefault()}>
               <DialogHeader>
-                <DialogTitle className="text-gray-900 dark:text-gray-100">
+                <DialogTitle className="text-gray-900">
                   {pendingStatus === 'qualified' ? 'Qualify Property' : 'Update Deal Value'}
                 </DialogTitle>
-                <DialogDescription className="text-gray-500 dark:text-gray-400">
+                <DialogDescription className="text-gray-500">
                   Enter the expected deal value for this property. This helps track your pipeline value.
                 </DialogDescription>
               </DialogHeader>
               <div className="py-4">
-                <Label htmlFor="dealValue" className="text-gray-700 dark:text-gray-300">Expected Deal Value</Label>
+                <Label htmlFor="dealValue" className="text-gray-700">Expected Deal Value</Label>
                 <div className="relative mt-2">
                   <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input
@@ -644,7 +644,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
                       const val = e.target.value.replace(/[^0-9]/g, '');
                       setDealValueInput(val ? parseInt(val, 10).toLocaleString() : '');
                     }}
-                    className="pl-8 bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-100"
+                    className="pl-8 bg-white border-gray-200 text-gray-900"
                     data-testid="input-deal-value"
                   />
                 </div>
@@ -743,17 +743,17 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
           }
           setShowQualifyDialog(open);
         }}>
-          <DialogContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DialogContent className="bg-white border-gray-200" onCloseAutoFocus={(e) => e.preventDefault()}>
             <DialogHeader>
-              <DialogTitle className="text-gray-900 dark:text-gray-100">
+              <DialogTitle className="text-gray-900">
                 {pendingStatus === 'qualified' ? 'Qualify Property' : 'Update Deal Value'}
               </DialogTitle>
-              <DialogDescription className="text-gray-500 dark:text-gray-400">
+              <DialogDescription className="text-gray-500">
                 Enter the expected deal value for this property. This helps track your pipeline value.
               </DialogDescription>
             </DialogHeader>
             <div className="py-4">
-              <Label htmlFor="dealValue" className="text-gray-700 dark:text-gray-300">Expected Deal Value</Label>
+              <Label htmlFor="dealValue" className="text-gray-700">Expected Deal Value</Label>
               <div className="relative mt-2">
                 <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
@@ -765,7 +765,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
                     const val = e.target.value.replace(/[^0-9]/g, '');
                     setDealValueInput(val ? parseInt(val, 10).toLocaleString() : '');
                   }}
-                  className="pl-8 bg-white dark:bg-gray-950 border-gray-200 dark:border-gray-800 text-gray-900 dark:text-gray-100"
+                  className="pl-8 bg-white border-gray-200 text-gray-900"
                   data-testid="input-deal-value"
                 />
               </div>
