@@ -493,6 +493,11 @@ export async function runCascadeEnrichmentOnSavedRecords(
         updateData.phone = result.phone;
         updateData.phoneConfidence = result.confidenceFlag === 'pdl_matched' ? 0.85 : 0.70;
         updateData.phoneSource = 'pdl';
+        if (result.mobilePhone && result.phone === result.mobilePhone) {
+          updateData.phoneLabel = 'mobile';
+        } else {
+          updateData.phoneLabel = 'direct_work';
+        }
       }
       if (result.mobilePhone) {
         updateData.enrichmentPhonePersonal = result.mobilePhone;
