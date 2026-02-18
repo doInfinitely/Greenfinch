@@ -53,3 +53,10 @@ The project is built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM 
 - **Clerk Auth**: User authentication, organization management, RBAC.
 - **Google Gemini**: AI-based property enrichment (`gemini-3-flash-preview` with search grounding).
 - **Upstash Redis**: Distributed caching and locking.
+
+## Planned Fixes
+- [ ] **ENRICHLAYER-1**: EnrichLayer profile photo API call is failing (site currently timing out). When their service is restored: add a 10s fetch timeout with `AbortController` to `getProfilePicture()` and all other EnrichLayer functions in `src/lib/enrichlayer.ts`, add a circuit breaker to skip calls after repeated failures, and ensure the contact detail page and enrichment queue gracefully handle the timeout without blocking other operations.
+
+## Deferred
+- **PERF-2**: Server-side map clustering (defer until scaling beyond Dallas MVP)
+- **CODE-3**: Dual ID unification (large migration, plan separately)
