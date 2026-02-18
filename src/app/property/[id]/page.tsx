@@ -83,6 +83,7 @@ export default function PropertyDetailPage() {
     owner: any;
   } | null>(null);
   const [pipelineLoaded, setPipelineLoaded] = useState(false);
+  const [customerLoaded, setCustomerLoaded] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -106,7 +107,8 @@ export default function PropertyDetailPage() {
         const response = await fetch(`/api/properties/${propertyId}/customer`);
         if (response.ok) {
           const data = await response.json();
-          setIsCurrentCustomer(data.isCustomer || false);
+          setIsCurrentCustomer(data.isCurrentCustomer || false);
+          setCustomerLoaded(true);
         }
       } catch (err) {
         console.error('Failed to fetch customer status:', err);
@@ -343,6 +345,7 @@ export default function PropertyDetailPage() {
     setError(null);
     setPipelineData(null);
     setPipelineLoaded(false);
+    setCustomerLoaded(false);
     if (pollTimerRef.current) {
       clearInterval(pollTimerRef.current);
       pollTimerRef.current = null;
@@ -501,6 +504,7 @@ export default function PropertyDetailPage() {
         assignDialogTrigger={assignDialogTrigger}
         pipelineData={pipelineData}
         pipelineLoaded={pipelineLoaded}
+        customerLoaded={customerLoaded}
         onEnrichment={handleEnrichment}
         onShowAddToList={() => setShowAddToListModal(true)}
         onSetAssignDialogTrigger={setAssignDialogTrigger}

@@ -58,6 +58,7 @@ interface PropertyHeaderProps {
     owner: any;
   } | null;
   pipelineLoaded?: boolean;
+  customerLoaded?: boolean;
   onEnrichment: () => void;
   onShowAddToList: () => void;
   onSetAssignDialogTrigger: (fn: (prev: number) => number) => void;
@@ -76,6 +77,7 @@ export default function PropertyHeader({
   assignDialogTrigger,
   pipelineData,
   pipelineLoaded,
+  customerLoaded,
   onEnrichment,
   onShowAddToList,
   onSetAssignDialogTrigger,
@@ -257,7 +259,7 @@ export default function PropertyHeader({
         <div className="flex flex-wrap items-center gap-2 mb-6">
           <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls hideOwnerDisplay triggerAssignDialog={assignDialogTrigger} isCustomer={isCurrentCustomer} initialData={pipelineData} initialLoaded={pipelineLoaded} />
           <div className="border-l border-gray-200 h-6 mx-1 hidden sm:block" />
-          <CustomerToggle propertyId={property.propertyKey} onToggle={onSetIsCurrentCustomer} />
+          <CustomerToggle propertyId={property.propertyKey} onToggle={onSetIsCurrentCustomer} initialIsCustomer={isCurrentCustomer} initialLoaded={customerLoaded} />
         </div>
 
         {enrichmentMessage && enrichmentStatus !== 'pending' && (

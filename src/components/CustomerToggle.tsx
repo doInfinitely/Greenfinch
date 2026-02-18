@@ -8,6 +8,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 interface CustomerToggleProps {
   propertyId: string;
   onToggle?: (isCustomer: boolean) => void;
+  initialIsCustomer?: boolean;
+  initialLoaded?: boolean;
 }
 
 interface SearchResult {
@@ -16,13 +18,15 @@ interface SearchResult {
   hasMore: boolean;
 }
 
-export default function CustomerToggle({ propertyId, onToggle }: CustomerToggleProps) {
+export default function CustomerToggle({ propertyId, onToggle, initialIsCustomer, initialLoaded }: CustomerToggleProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data, isLoading: isLoadingQuery } = useQuery<{ isCurrentCustomer: boolean }>({
     queryKey: ['/api/properties', propertyId, 'customer'],
     queryFn: () => fetch(`/api/properties/${propertyId}/customer`).then(r => r.json()),
+    initialData: initialLoaded ? { isCurrentCustomer: initialIsCustomer ?? false } : undefined,
+    staleTime: initialLoaded ? 30000 : 0,
   });
 
   const mutation = useMutation({
