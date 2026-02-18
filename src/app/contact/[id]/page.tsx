@@ -503,27 +503,24 @@ export default function ContactDetailPage() {
     });
   };
 
-  const handleFindEmail = async () => {
+  const handleResearchContact = async () => {
     if (!contact) return;
 
-    // Confirm before running enrichment
     const confirmed = window.confirm(
-      `Search for email address for ${contact.fullName || 'this contact'}?\n\nThis will use a paid API lookup service.`
+      `Run full research on ${contact.fullName || 'this contact'}?\n\nThis will search for email, LinkedIn, and other details using paid API services.`
     );
     if (!confirmed) return;
 
     setIsFindingEmail(true);
     setEmailMessage(null);
 
-    // Track the original enrichedAt timestamp to detect when webhook updates the contact
     const originalEnrichedAt = contact.enrichedAt;
 
-    // Start enrichment - polling runs in background via context even if user navigates away
     startEnrichment({
       type: 'contact_email',
       entityId: contactId,
-      entityName: `${contact.fullName || 'Contact'} - Email`,
-      apiEndpoint: `/api/contacts/${contactId}/waterfall-email`,
+      entityName: `${contact.fullName || 'Contact'} - Research`,
+      apiEndpoint: `/api/contacts/${contactId}/enrich`,
       pollForCompletion: {
         checkEndpoint: `/api/contacts/${contactId}`,
         checkField: 'contact.enrichedAt',
@@ -902,36 +899,33 @@ export default function ContactDetailPage() {
                 );
               })()}
               
-              {/* Find Email button - show if no email or email not validated (including null/undefined status) */}
+              {/* Research Contact button - runs full cascade enrichment */}
               {(() => {
-                const emailStatus = getEnrichmentStatus(contactId as string, 'contact_email');
-                const needsEmail = !contact.email || contact.emailValidationStatus !== 'valid';
-                const isEmailActive = emailStatus.isActive || isFindingEmail;
-                const emailHasFailed = emailStatus.status === 'failed';
-                
-                if (!needsEmail) return null;
+                const enrichStatus = getEnrichmentStatus(contactId as string, 'contact_email');
+                const isActive = enrichStatus.isActive || isFindingEmail;
+                const hasFailed = enrichStatus.status === 'failed';
                 
                 return (
                   <AdminOnly>
                     <button
-                      onClick={handleFindEmail}
-                      disabled={isEmailActive || emailHasFailed}
+                      onClick={handleResearchContact}
+                      disabled={isActive || hasFailed}
                       className={`inline-flex items-center px-3 py-2 text-white text-sm font-medium rounded-lg disabled:cursor-not-allowed ${
-                        emailHasFailed 
+                        hasFailed 
                           ? 'bg-gray-400 hover:bg-gray-400' 
                           : 'bg-purple-600 hover:bg-purple-700 disabled:opacity-50'
                       }`}
-                      title={emailHasFailed ? `Failed: ${emailStatus.error || 'Unknown error'}` : undefined}
-                      data-testid="button-find-email"
+                      title={hasFailed ? `Failed: ${enrichStatus.error || 'Unknown error'}` : undefined}
+                      data-testid="button-research-contact"
                     >
-                      {isEmailActive ? (
+                      {isActive ? (
                         <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      ) : emailHasFailed ? (
+                      ) : hasFailed ? (
                         <XCircle className="w-4 h-4 mr-2" />
                       ) : (
-                        <Mail className="w-4 h-4 mr-2" />
+                        <Search className="w-4 h-4 mr-2" />
                       )}
-                      {isEmailActive ? 'Looking up...' : emailHasFailed ? 'Lookup Failed' : 'Find Email'}
+                      {isActive ? 'Researching...' : hasFailed ? 'Research Failed' : 'Research Contact'}
                     </button>
                   </AdminOnly>
                 );
