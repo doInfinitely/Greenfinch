@@ -29,6 +29,7 @@ export default function LandingNav() {
                   src="/greenfinch-logo.png"
                   alt="greenfinch.ai"
                   fill
+                  sizes="40px"
                   className="object-contain"
                   priority
                 />

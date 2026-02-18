@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AdminOnly } from '@/components/PermissionGate';
@@ -182,8 +182,15 @@ export default function OrganizationDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
+  const enrichTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { startEnrichment } = useEnrichment();
   const { getEnrichmentStatus } = useEnrichmentQueue();
+
+  useEffect(() => {
+    return () => {
+      if (enrichTimerRef.current) clearTimeout(enrichTimerRef.current);
+    };
+  }, []);
 
   const handleEnrichOrganization = async () => {
     if (!organization) return;
@@ -200,7 +207,8 @@ export default function OrganizationDetailPage() {
         if (result.organization) {
           setOrganization(result.organization);
           setEnrichMessage('Research complete');
-          setTimeout(() => setEnrichMessage(null), 5000);
+          if (enrichTimerRef.current) clearTimeout(enrichTimerRef.current);
+          enrichTimerRef.current = setTimeout(() => setEnrichMessage(null), 5000);
         } else {
           setEnrichMessage(null);
         }

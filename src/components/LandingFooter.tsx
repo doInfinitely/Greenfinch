@@ -16,6 +16,7 @@ export default function LandingFooter() {
                   src="/greenfinch-logo.png"
                   alt="greenfinch.ai"
                   fill
+                  sizes="40px"
                   className="object-contain"
                   priority
                 />

@@ -73,7 +73,6 @@ export default function AdminPage() {
     try {
       const response = await fetch('/api/admin/enrich-status', { credentials: 'include' });
       const data = await response.json();
-      console.log('[Admin] Enrichment status:', data);
       setEnrichmentStatus(data);
     } catch (error) {
       console.error('Failed to fetch enrichment status:', error);
