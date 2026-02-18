@@ -99,6 +99,12 @@ export async function POST(
       updateData.phoneConfidence = result.confidenceFlag === 'pdl_matched' ? 0.85 : 0.70;
       updateData.phoneSource = 'pdl';
     }
+    if (result.mobilePhone) {
+      updateData.enrichmentPhonePersonal = result.mobilePhone;
+    }
+    if (result.workPhone) {
+      updateData.enrichmentPhoneWork = result.workPhone;
+    }
 
     if (result.title && !contact.title) {
       updateData.title = result.title;

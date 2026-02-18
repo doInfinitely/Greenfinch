@@ -497,6 +497,9 @@ export async function runCascadeEnrichmentOnSavedRecords(
       if (result.mobilePhone) {
         updateData.enrichmentPhonePersonal = result.mobilePhone;
       }
+      if (result.workPhone) {
+        updateData.enrichmentPhoneWork = result.workPhone;
+      }
       if (result.title && !contact.title) {
         updateData.title = result.title;
         updateData.titleConfidence = result.confidenceFlag === 'verified' ? 0.95 : 0.80;

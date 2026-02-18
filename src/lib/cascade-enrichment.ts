@@ -88,6 +88,7 @@ export interface ContactEnrichmentResult {
   
   phone: string | null;
   mobilePhone: string | null;
+  workPhone: string | null;
   title: string | null;
   
   company: string | null;
@@ -557,7 +558,10 @@ export async function enrichContactCascade(
   const finalCompanyDomain = crustdataData?.companyDomain || (pdlDomainMatches ? pdlData?.companyDomain : null) || companyDomain || null;
   const finalLinkedin = foundLinkedin || pdlData?.linkedinUrl || crustdataData?.linkedinUrl || null;
   const finalLocation = pdlData?.location || crustdataData?.location || location || null;
-  const finalPhone = pdlData?.mobilePhone || pdlData?.phonesJson?.[0] || null;
+  const personalPhone = pdlData?.mobilePhone || null;
+  const allPhones: string[] = Array.isArray(pdlData?.phonesJson) ? pdlData.phonesJson.filter((p: any): p is string => typeof p === 'string') : [];
+  const workPhone = allPhones.find(p => p !== personalPhone) || null;
+  const finalPhone = personalPhone || allPhones[0] || null;
   
   const result: ContactEnrichmentResult = {
     found: true,
@@ -576,7 +580,8 @@ export async function enrichContactCascade(
     emailStatus,
     
     phone: typeof finalPhone === 'string' ? finalPhone : null,
-    mobilePhone: pdlData?.mobilePhone || null,
+    mobilePhone: personalPhone,
+    workPhone,
     title: finalTitle,
     
     company: finalCompany,
@@ -644,6 +649,7 @@ function buildEmptyResult(fullName: string, firstName: string, lastName: string,
     emailStatus: null,
     phone: null,
     mobilePhone: null,
+    workPhone: null,
     title: null,
     company: null,
     companyDomain: null,

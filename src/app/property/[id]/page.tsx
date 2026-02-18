@@ -660,7 +660,12 @@ export default function PropertyDetailPage() {
       onSuccess: async () => {
         await fetchProperty();
         setEnrichmentStatus('enriched');
-        setEnrichmentMessage('Research complete - data has been refreshed');
+        setEnrichmentMessage('Research complete - contact enrichment running in background...');
+        setTimeout(async () => {
+          await fetchProperty();
+          setEnrichmentMessage('Research complete - all data refreshed');
+        }, 15000);
+        setTimeout(() => fetchProperty(), 30000);
       },
       onError: (error: string) => {
         setEnrichmentStatus('failed');
