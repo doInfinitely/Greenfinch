@@ -2,12 +2,14 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, ListPlus } from 'lucide-react';
+import { Plus, ListPlus, Mail, Phone, ExternalLink } from 'lucide-react';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import { Button } from '@/components/ui/button';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
 import { AdminOnly } from '@/components/PermissionGate';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
+import { formatPhoneNumber } from '@/lib/phone-format';
 import type { Contact } from './types';
 
 const ROLE_PRIORITY: Record<string, number> = {
@@ -47,20 +49,14 @@ function ContactAvatar({ photoUrl, name }: { photoUrl?: string | null; name: str
   return (
     <div className="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0">
       <span className="text-green-700 font-medium text-sm">
-        {name?.charAt(0) || '?'}
+        {name?.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase() || '?'}
       </span>
     </div>
   );
 }
 
-function ContactInfoIcons({ contact }: { contact: Contact }) {
-  return (
-    <div className="flex items-center gap-2" data-testid={`contact-info-icons-${contact.id}`}>
-      <EmailStatusIcon hasEmail={!!contact.email} status={contact.emailValidationStatus} />
-      <PhoneStatusIcon hasPhone={hasAnyPhone(contact)} isOfficeOnly={hasOnlyOfficeLine(contact)} />
-      <LinkedInStatusIcon hasLinkedIn={!!contact.linkedinUrl} />
-    </div>
-  );
+function getBestPhone(contact: Contact): string | null {
+  return contact.phone || contact.enrichmentPhoneWork || contact.enrichmentPhonePersonal || contact.aiPhone || null;
 }
 
 interface ContactsSectionProps {
@@ -98,10 +94,12 @@ export default function ContactsSection({
         <div className="space-y-3">
           {sortContactsByRelevance(contacts).map((contact, i) => {
             const isFormer = contact.relationshipStatus === 'former';
+            const bestPhone = getBestPhone(contact);
+            const formattedPhone = bestPhone ? formatPhoneNumber(bestPhone, contact.phoneExtension) : null;
             return (
               <div 
                 key={`${contact.id || contact.email}-${i}`} 
-                className={`p-4 rounded-lg transition-colors ${isFormer ? 'bg-gray-100 opacity-60' : 'bg-gray-50'} ${contact.id ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                className={`p-4 rounded-lg transition-colors ${isFormer ? 'bg-gray-100 opacity-70' : 'bg-gray-50'} ${contact.id ? 'cursor-pointer hover:bg-gray-100' : ''}`}
                 onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                 data-testid={`contact-row-${contact.id}`}
               >
@@ -122,31 +120,81 @@ export default function ContactsSection({
                       )}
                     </div>
                     
-                    {isFormer && contact.relationshipStatusReason && (
-                      <p className="text-xs text-red-600 mb-1">{contact.relationshipStatusReason}</p>
-                    )}
                     {contact.title && (
-                      <p className="text-sm text-gray-600 mb-1">{contact.title}</p>
+                      <p className="text-sm text-gray-600 mb-0.5">{contact.title}</p>
                     )}
                     {contact.employerName && (
-                      <p className="text-sm text-gray-500 mb-1">{contact.employerName}</p>
+                      <p className="text-sm text-gray-500 mb-1.5">{contact.employerName}</p>
                     )}
-                    
-                    <div className="flex items-center justify-between mt-2">
-                      <ContactInfoIcons contact={contact} />
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onSetContactForListModal(contact.id);
-                        }}
-                        className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors"
-                        title="Add to list"
-                        data-testid={`button-add-contact-to-list-${contact.id}`}
-                      >
-                        <ListPlus className="w-4 h-4" />
-                      </button>
+
+                    <div className="flex flex-wrap items-center gap-3 mt-1.5 text-sm">
+                      {contact.email && (
+                        <a
+                          href={`mailto:${contact.email}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 text-gray-600 hover:text-green-700 transition-colors"
+                          title={`Email ${contact.fullName}`}
+                          data-testid={`link-email-${contact.id}`}
+                        >
+                          <EmailStatusIcon hasEmail={true} status={contact.emailValidationStatus} size="sm" />
+                          <span className="truncate max-w-[200px]">{contact.email}</span>
+                        </a>
+                      )}
+                      {!contact.email && (
+                        <span className="inline-flex items-center gap-1 text-gray-400" data-testid={`no-email-${contact.id}`}>
+                          <EmailStatusIcon hasEmail={false} status={null} size="sm" />
+                        </span>
+                      )}
+
+                      {bestPhone && (
+                        <a
+                          href={`tel:${contact.normalizedPhone || bestPhone}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 text-gray-600 hover:text-green-700 transition-colors"
+                          title={`Call ${contact.fullName}`}
+                          data-testid={`link-phone-${contact.id}`}
+                        >
+                          <PhoneStatusIcon hasPhone={true} isOfficeOnly={hasOnlyOfficeLine(contact)} size="sm" />
+                          <span>{formattedPhone}</span>
+                        </a>
+                      )}
+                      {!bestPhone && (
+                        <span className="inline-flex items-center gap-1 text-gray-400" data-testid={`no-phone-${contact.id}`}>
+                          <PhoneStatusIcon hasPhone={false} size="sm" />
+                        </span>
+                      )}
+
+                      {contact.linkedinUrl && (
+                        <a
+                          href={contact.linkedinUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="inline-flex items-center gap-1 text-gray-600 hover:text-green-700 transition-colors"
+                          title="View LinkedIn profile"
+                          data-testid={`link-linkedin-${contact.id}`}
+                        >
+                          <img src={linkedinLogo.src} alt="LinkedIn" className="w-3.5 h-3.5" />
+                        </a>
+                      )}
+                      {!contact.linkedinUrl && (
+                        <span className="inline-flex items-center gap-1 text-gray-400" data-testid={`no-linkedin-${contact.id}`}>
+                          <LinkedInStatusIcon hasLinkedIn={false} size="sm" />
+                        </span>
+                      )}
                     </div>
                   </div>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onSetContactForListModal(contact.id);
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors flex-shrink-0"
+                    title="Add to list"
+                    data-testid={`button-add-contact-to-list-${contact.id}`}
+                  >
+                    <ListPlus className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             );

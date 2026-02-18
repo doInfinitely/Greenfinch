@@ -70,7 +70,14 @@ export interface Contact {
   normalizedEmail?: string | null;
   emailConfidence: number | null;
   phone: string | null;
+  normalizedPhone?: string | null;
   phoneConfidence: number | null;
+  phoneLabel?: string | null;
+  phoneExtension?: string | null;
+  aiPhone?: string | null;
+  aiPhoneLabel?: string | null;
+  enrichmentPhoneWork?: string | null;
+  enrichmentPhonePersonal?: string | null;
   title: string | null;
   titleConfidence: number | null;
   companyDomain: string | null;

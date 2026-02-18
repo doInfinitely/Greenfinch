@@ -55,7 +55,20 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'No profile photo found (cached)' });
     }
 
-    const result = await getProfilePicture(contact.linkedinUrl);
+    const PHOTO_TIMEOUT_MS = 5000;
+    let result: { success: boolean; url?: string; error?: string };
+    try {
+      result = await Promise.race([
+        getProfilePicture(contact.linkedinUrl),
+        new Promise<{ success: false; error: string }>((_, reject) =>
+          setTimeout(() => reject(new Error('EnrichLayer photo timeout')), PHOTO_TIMEOUT_MS)
+        ),
+      ]);
+    } catch (timeoutErr) {
+      console.warn(`[API] Profile photo timed out after ${PHOTO_TIMEOUT_MS}ms for contact ${id}`);
+      await cacheSet(cacheKey, { url: null }, PHOTO_NOT_FOUND_TTL);
+      return NextResponse.json({ success: false, error: 'Profile photo lookup timed out' });
+    }
 
     if (result.success && result.url) {
       await Promise.all([
@@ -109,7 +122,19 @@ export async function POST(
       });
     }
 
-    const result = await getProfilePicture(contact.linkedinUrl);
+    const PHOTO_TIMEOUT_MS = 5000;
+    let result: { success: boolean; url?: string; error?: string };
+    try {
+      result = await Promise.race([
+        getProfilePicture(contact.linkedinUrl),
+        new Promise<{ success: false; error: string }>((_, reject) =>
+          setTimeout(() => reject(new Error('EnrichLayer photo timeout')), PHOTO_TIMEOUT_MS)
+        ),
+      ]);
+    } catch {
+      console.warn(`[API] Profile photo refresh timed out for contact ${id}`);
+      return NextResponse.json({ success: false, error: 'Profile photo lookup timed out' });
+    }
 
     if (result.success && result.url) {
       const cacheKey = photoCacheKey(contact.linkedinUrl);

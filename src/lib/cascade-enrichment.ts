@@ -20,7 +20,7 @@
  */
 
 import { enrichCompanyPDL, enrichPersonPDL } from './pdl';
-import { enrichPersonCrustdata, enrichCompanyCrustdata } from './crustdata';
+import { enrichPersonCrustdata } from './crustdata';
 import { verifyEmail as verifyEmailFindymail, findEmailByName, findLinkedInByEmail } from './findymail';
 import { findEmail as findEmailHunter } from './hunter';
 import { searchLinkedInProfile } from './serp-linkedin';
@@ -191,11 +191,11 @@ function getEmployeeRange(count: number): string {
 }
 
 /**
- * Enrich an organization using: PDL → Crustdata
+ * Enrich an organization using PDL Company Enrichment API.
  */
 export async function enrichOrganizationCascade(domain: string): Promise<OrganizationEnrichmentResult> {
   const normalizedDomain = domain.toLowerCase().trim().replace(/^www\./, '');
-  console.log(`[CascadeEnrichment] Starting org enrichment (PDL → Crustdata) for domain: ${normalizedDomain}`);
+  console.log(`[CascadeEnrichment] Starting org enrichment (PDL) for domain: ${normalizedDomain}`);
   
   const emptyResult: OrganizationEnrichmentResult = {
     found: false,
@@ -225,10 +225,9 @@ export async function enrichOrganizationCascade(domain: string): Promise<Organiz
   };
   
   let pdlResult: any = null;
-  let crustdataResult: any = null;
   
   try {
-    console.log('[CascadeEnrichment] Stage 1: PDL Company Enrichment...');
+    console.log('[CascadeEnrichment] PDL Company Enrichment...');
     const pdl = await enrichCompanyPDL(normalizedDomain);
     
     if (pdl.found) {
@@ -241,60 +240,44 @@ export async function enrichOrganizationCascade(domain: string): Promise<Organiz
     console.warn('[CascadeEnrichment] PDL company enrichment failed:', error instanceof Error ? error.message : error);
   }
   
-  try {
-    console.log('[CascadeEnrichment] Stage 2: Crustdata Company Enrichment...');
-    const crustdata = await enrichCompanyCrustdata(normalizedDomain);
-    
-    if (crustdata.found) {
-      console.log(`[CascadeEnrichment] Crustdata found company: ${crustdata.companyName}`);
-      crustdataResult = crustdata;
-    } else {
-      console.log('[CascadeEnrichment] Crustdata: no match found');
-    }
-  } catch (error) {
-    console.warn('[CascadeEnrichment] Crustdata company enrichment failed:', error instanceof Error ? error.message : error);
-  }
-  
-  if (!pdlResult && !crustdataResult) {
+  if (!pdlResult) {
     console.log(`[CascadeEnrichment] No provider found match for domain: ${normalizedDomain}`);
     return emptyResult;
   }
   
   const result: OrganizationEnrichmentResult = {
     found: true,
-    providerId: pdlResult?.raw?.id || null,
-    enrichmentSource: pdlResult ? 'pdl' : 'crustdata',
+    providerId: pdlResult.raw?.id || null,
+    enrichmentSource: 'pdl',
     enrichedAt: new Date(),
     
-    name: crustdataResult?.companyName || pdlResult?.name || null,
-    description: pdlResult?.description || crustdataResult?.description || null,
-    industry: crustdataResult?.industry || pdlResult?.industry || null,
-    employeeCount: crustdataResult?.headcount || pdlResult?.employeeCount || null,
-    employeesRange: crustdataResult?.headcount 
-      ? getEmployeeRange(crustdataResult.headcount) 
-      : pdlResult?.employeeRange || null,
-    foundedYear: crustdataResult?.foundedYear || pdlResult?.foundedYear || null,
+    name: pdlResult.displayName || pdlResult.name || null,
+    description: pdlResult.description || null,
+    industry: pdlResult.industry || null,
+    employeeCount: pdlResult.employeeCount || null,
+    employeesRange: pdlResult.employeeRange || null,
+    foundedYear: pdlResult.foundedYear || null,
     
-    city: pdlResult?.city || crustdataResult?.city || null,
-    state: pdlResult?.state || crustdataResult?.state || null,
-    country: pdlResult?.country || crustdataResult?.country || null,
+    city: pdlResult.city || null,
+    state: pdlResult.state || null,
+    country: pdlResult.country || null,
     
-    website: pdlResult?.website || `https://${normalizedDomain}`,
-    linkedinUrl: crustdataResult?.linkedinUrl || pdlResult?.linkedinUrl || null,
-    twitterUrl: pdlResult?.twitterUrl || null,
-    facebookUrl: pdlResult?.facebookUrl || null,
-    logoUrl: pdlResult?.logoUrl || null,
-    phone: pdlResult?.phone || null,
+    website: pdlResult.website || `https://${normalizedDomain}`,
+    linkedinUrl: pdlResult.linkedinUrl || null,
+    twitterUrl: pdlResult.twitterUrl || null,
+    facebookUrl: pdlResult.facebookUrl || null,
+    logoUrl: pdlResult.logoUrl || null,
+    phone: pdlResult.phone || null,
     
-    sicCodes: pdlResult?.sicCode ? [pdlResult.sicCode] : null,
-    naicsCodes: pdlResult?.naicsCode ? [pdlResult.naicsCode] : null,
-    tags: pdlResult?.tags || null,
+    sicCodes: pdlResult.sicCode ? [pdlResult.sicCode] : null,
+    naicsCodes: pdlResult.naicsCode ? [pdlResult.naicsCode] : null,
+    tags: pdlResult.tags || null,
     
-    pdlRaw: pdlResult?.raw || null,
-    crustdataRaw: crustdataResult?.raw || null,
+    pdlRaw: pdlResult.raw || null,
+    crustdataRaw: null,
   };
   
-  console.log(`[CascadeEnrichment] Org enrichment complete for ${normalizedDomain}: ${result.name} (${result.enrichmentSource})`);
+  console.log(`[CascadeEnrichment] Org enrichment complete for ${normalizedDomain}: ${result.name} (pdl)`);
   return result;
 }
 
