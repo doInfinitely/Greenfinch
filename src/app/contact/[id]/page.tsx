@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { X, ExternalLink, Phone, XCircle, Search, Loader2, Pencil, Save } from 'lucide-react';
+import { X, ExternalLink, Phone, XCircle, Search, Loader2, Pencil, Save, CheckCircle2 } from 'lucide-react';
+import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
@@ -581,6 +582,26 @@ export default function ContactDetailPage() {
               })()}
               
               {(() => {
+                const hasValidatedEmail = !!contact.email && (
+                  contact.emailValidationStatus === 'valid' || 
+                  contact.emailValidationStatus === 'catch-all'
+                );
+                const hasLinkedIn = !!contact.linkedinUrl;
+                const isFullyResearched = hasValidatedEmail && hasLinkedIn;
+
+                if (isFullyResearched) {
+                  return (
+                    <span 
+                      className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg"
+                      title="This contact has been researched with AI"
+                      data-testid="badge-ai-researched"
+                    >
+                      <GreenfinchAgentIcon size={16} className="text-green-600" />
+                      AI Researched
+                    </span>
+                  );
+                }
+
                 const enrichStatus = getEnrichmentStatus(contactId as string, 'contact');
                 const isActive = enrichStatus.isActive || isFindingEmail;
                 const hasFailed = enrichStatus.status === 'failed';

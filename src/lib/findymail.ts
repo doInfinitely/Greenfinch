@@ -240,6 +240,88 @@ export async function findLinkedInByEmail(email: string): Promise<FindEmailResul
   }
 }
 
+interface FindymailPhoneResult {
+  phone?: string;
+  phones?: Array<{
+    phone: string;
+    type?: string;
+    label?: string;
+  }>;
+  contact?: {
+    name?: string;
+    phone?: string;
+    phones?: Array<{
+      phone: string;
+      type?: string;
+      label?: string;
+    }>;
+  };
+  error?: string;
+  message?: string;
+}
+
+export interface FindPhoneResult {
+  found: boolean;
+  phone?: string;
+  phones?: Array<{ phone: string; type?: string; label?: string }>;
+  raw?: any;
+  error?: string;
+}
+
+export async function findPhoneByLinkedIn(linkedinUrl: string): Promise<FindPhoneResult> {
+  const apiKey = process.env.FINDYMAIL_API_KEY;
+  if (!apiKey) {
+    throw new Error('FINDYMAIL_API_KEY is not configured');
+  }
+
+  console.log('[Findymail] Phone finder by LinkedIn:', linkedinUrl);
+
+  try {
+    const response = await fetch(`${FINDYMAIL_API_URL}/search/phone`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({
+        linkedin_url: linkedinUrl,
+      }),
+    });
+
+    const data: FindymailPhoneResult = await response.json();
+
+    console.log('[Findymail] Phone finder response status:', response.status);
+    console.log('[Findymail] Phone finder response body:', JSON.stringify(data).substring(0, 500));
+
+    if (!response.ok) {
+      const errorMsg = data.message || data.error || `API error: ${response.status}`;
+      console.log('[Findymail] Phone finder API error:', errorMsg);
+      return { found: false, error: errorMsg, raw: data };
+    }
+
+    const phone = data.phone || data.contact?.phone;
+    const phones = data.phones || data.contact?.phones || [];
+
+    if (!phone && phones.length === 0) {
+      console.log('[Findymail] No phone found');
+      return { found: false, error: 'No phone found', raw: data };
+    }
+
+    console.log('[Findymail] Phone found:', phone, 'Additional phones:', phones.length);
+
+    return {
+      found: true,
+      phone: phone || phones[0]?.phone,
+      phones: phones.length > 0 ? phones : (phone ? [{ phone }] : []),
+      raw: data,
+    };
+  } catch (error: any) {
+    console.error('[Findymail] Phone finder failed:', error.message);
+    return { found: false, error: error.message };
+  }
+}
+
 /**
  * Verify an email address using Findymail
  */

@@ -44,6 +44,7 @@ export interface Contact {
   phoneConfidence: number | null;
   phoneLabel: 'direct_work' | 'office' | 'personal' | 'mobile' | null;
   phoneSource: string | null;
+  phoneExtension: string | null;
   aiPhone: string | null;
   aiPhoneLabel: string | null;
   enrichmentPhoneWork: string | null;

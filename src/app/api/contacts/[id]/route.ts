@@ -103,6 +103,7 @@ export async function GET(
         enrichmentSource: contact.enrichmentSource,
         providerId: contact.providerId,
         phoneSource: contact.phoneSource,
+        phoneExtension: contact.phoneExtension,
         enrichmentPhoneWork: contact.enrichmentPhoneWork,
         enrichmentPhonePersonal: contact.enrichmentPhonePersonal,
         aiPhone: contact.aiPhone,

@@ -224,6 +224,8 @@ export const contacts = pgTable('contacts', {
   aiPhoneLabel: text('ai_phone_label'),
   aiPhoneConfidence: real('ai_phone_confidence'),
   
+  phoneExtension: text('phone_extension'),
+  
   enrichmentPhoneWork: text('enrichment_phone_work'),
   enrichmentPhonePersonal: text('enrichment_phone_personal'),
   

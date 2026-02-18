@@ -3,9 +3,12 @@ import { db } from '@/lib/db';
 import { contacts } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import { enrichPersonPDL } from '@/lib/pdl';
+import { findPhoneByLinkedIn } from '@/lib/findymail';
 import { requireSession, requireAdminAccess } from '@/lib/auth';
 import { rateLimitMiddleware } from '@/lib/rate-limit';
 import { apiSuccess, apiError, apiNotFound, apiBadRequest, apiUnauthorized } from '@/lib/api-response';
+import { normalizePhoneWithExtension } from '@/lib/phone-format';
+import { trackCostFireAndForget } from '@/lib/cost-tracker';
 
 const checkRateLimit = rateLimitMiddleware(20, 60);
 
@@ -57,35 +60,89 @@ export async function POST(
 
     console.log(`[WaterfallPhone] Looking up phone for: ${contact.fullName} (${id})`);
 
-    const result = await enrichPersonPDL(
-      firstName,
-      lastName,
-      contact.companyDomain || '',
-      {
-        email: contact.email || undefined,
-        linkedinUrl: contact.linkedinUrl || undefined,
-      }
-    );
+    let foundPhone: string | null = null;
+    let phoneSource: string | null = null;
+    let phoneLabel: string | null = null;
 
-    if (!result || !result.found) {
-      return apiError('No phone number found via PDL', { status: 200 });
+    if (contact.linkedinUrl) {
+      console.log(`[WaterfallPhone] Step 1: Trying Findymail phone finder with LinkedIn URL`);
+      try {
+        const findymailResult = await findPhoneByLinkedIn(contact.linkedinUrl);
+        
+        trackCostFireAndForget({
+          provider: 'findymail',
+          endpoint: 'search/phone',
+          entityType: 'contact',
+          entityId: id,
+          success: findymailResult.found,
+          metadata: { found: findymailResult.found },
+        });
+
+        if (findymailResult.found && findymailResult.phone) {
+          foundPhone = findymailResult.phone;
+          phoneSource = 'findymail_phone';
+          phoneLabel = 'mobile';
+          console.log(`[WaterfallPhone] Findymail phone found: ${foundPhone}`);
+        } else {
+          console.log(`[WaterfallPhone] Findymail phone not found, falling back to PDL`);
+        }
+      } catch (err: any) {
+        console.warn(`[WaterfallPhone] Findymail phone finder error (will try PDL):`, err.message);
+      }
+    } else {
+      console.log(`[WaterfallPhone] No LinkedIn URL, skipping Findymail phone finder`);
     }
 
-    if (result.mobilePhone) {
+    if (!foundPhone) {
+      console.log(`[WaterfallPhone] Step 2: Trying PDL for phone`);
+      const result = await enrichPersonPDL(
+        firstName,
+        lastName,
+        contact.companyDomain || '',
+        {
+          email: contact.email || undefined,
+          linkedinUrl: contact.linkedinUrl || undefined,
+        }
+      );
+
+      if (result?.found && result.mobilePhone) {
+        foundPhone = result.mobilePhone;
+        phoneSource = 'pdl';
+        phoneLabel = 'mobile';
+        console.log(`[WaterfallPhone] PDL phone found: ${foundPhone}`);
+      } else {
+        console.log(`[WaterfallPhone] PDL: no phone available`);
+      }
+    }
+
+    if (foundPhone) {
+      const { normalized, extension } = normalizePhoneWithExtension(foundPhone);
+
       await db.update(contacts)
         .set({
-          phone: result.mobilePhone,
-          enrichmentSource: 'pdl',
+          phone: normalized || foundPhone,
+          normalizedPhone: normalized || foundPhone,
+          phoneSource: phoneSource,
+          phoneLabel: phoneLabel,
+          phoneExtension: extension || null,
+          enrichedAt: new Date(),
           updatedAt: new Date(),
         })
         .where(eq(contacts.id, id));
 
-      console.log(`[WaterfallPhone] Saved phone for ${contact.fullName}`);
+      console.log(`[WaterfallPhone] Saved phone for ${contact.fullName} via ${phoneSource}${extension ? ` ext ${extension}` : ''}`);
+
+      return apiSuccess({
+        phone: normalized || foundPhone,
+        extension: extension || null,
+        source: phoneSource,
+        message: `Phone found via ${phoneSource}`,
+      });
     }
 
     return apiSuccess({
-      phone: result.mobilePhone || null,
-      message: result.mobilePhone ? 'Phone found via PDL' : 'PDL matched but no phone available',
+      phone: null,
+      message: 'No phone number found',
     });
   } catch (error) {
     console.error('[WaterfallPhone] API error:', error);

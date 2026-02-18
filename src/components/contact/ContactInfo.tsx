@@ -56,7 +56,7 @@ export default function ContactInfo({ contact }: ContactInfoProps) {
               <div className="flex items-center gap-2">
                 <PhoneStatusIcon hasPhone={true} isOfficeOnly={contact.phoneLabel === 'office'} />
                 <a href={`tel:${contact.normalizedPhone || contact.phone}`} className="text-gray-900 hover:text-green-600">
-                  {formatPhoneNumber(contact.phone || contact.normalizedPhone)}
+                  {formatPhoneNumber(contact.phone || contact.normalizedPhone, contact.phoneExtension)}
                 </a>
                 {contact.phoneLabel && PHONE_LABEL_CONFIG[contact.phoneLabel] && (
                   <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${PHONE_LABEL_CONFIG[contact.phoneLabel].color}`}>
