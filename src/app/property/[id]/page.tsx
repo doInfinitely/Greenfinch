@@ -358,14 +358,15 @@ export default function PropertyDetailPage() {
       credentials: 'include',
       body: JSON.stringify({ propertyId }),
     }).catch(() => {});
-  }, [propertyId, fetchProperty, fetchServiceProviders]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propertyId]);
 
   useEffect(() => {
     if (!propertyId) return;
     
     const fetchPipelineData = async () => {
       try {
-        const response = await fetch(`/api/pipeline/${propertyId}`);
+        const response = await fetch(`/api/properties/${propertyId}/pipeline`);
         if (response.ok) {
           const data = await response.json();
           if (data.pipeline?.owner) {
