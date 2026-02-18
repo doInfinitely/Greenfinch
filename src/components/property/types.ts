@@ -83,8 +83,10 @@ export interface Contact {
   source?: string;
   needsReview?: boolean;
   reviewReason?: string | null;
-  emailValidationStatus?: 'valid' | 'invalid' | 'pending' | 'not_validated';
+  emailValidationStatus?: 'valid' | 'invalid' | 'pending' | 'not_validated' | 'unknown' | 'catch-all';
   photoUrl?: string | null;
+  relationshipStatus?: 'active' | 'former' | null;
+  relationshipStatusReason?: string | null;
 }
 
 export interface Organization {

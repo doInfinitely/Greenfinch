@@ -37,6 +37,8 @@ export async function GET(
       .select({
         contact: contacts,
         role: propertyContacts.role,
+        relationshipStatus: propertyContacts.relationshipStatus,
+        relationshipStatusReason: propertyContacts.relationshipStatusReason,
       })
       .from(propertyContacts)
       .innerJoin(contacts, eq(contacts.id, propertyContacts.contactId))
@@ -44,12 +46,11 @@ export async function GET(
     
     console.log(`[PropertyAPI] Property ${dbProperty.id} (${dbProperty.commonName || 'unnamed'}) has ${propertyContactRows.length} raw contact rows`);
     
-    // Deduplicate contacts by contactId - each contact should appear only once per property
-    const uniqueContacts = new Map<string, { contact: typeof contacts.$inferSelect; role: string | null }>();
+    const uniqueContacts = new Map<string, { contact: typeof contacts.$inferSelect; role: string | null; relationshipStatus: string | null; relationshipStatusReason: string | null }>();
     for (const row of propertyContactRows) {
       const contactId = row.contact.id;
       if (!uniqueContacts.has(contactId)) {
-        uniqueContacts.set(contactId, { contact: row.contact, role: row.role });
+        uniqueContacts.set(contactId, { contact: row.contact, role: row.role, relationshipStatus: row.relationshipStatus, relationshipStatusReason: row.relationshipStatusReason });
       }
     }
     const dedupedContactRows = Array.from(uniqueContacts.values());
@@ -136,6 +137,8 @@ export async function GET(
       contacts: dedupedContactRows.map(row => ({
         ...row.contact,
         role: row.role,
+        relationshipStatus: row.relationshipStatus || 'active',
+        relationshipStatusReason: row.relationshipStatusReason || null,
       })),
       organizations: (() => {
         // Aggregate organizations with multiple roles into a single entry with roles array

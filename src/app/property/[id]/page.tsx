@@ -265,7 +265,7 @@ export default function PropertyDetailPage() {
         }
 
         if (data.contacts) {
-          setContacts(data.contacts.map((c: any) => ({
+          const mappedContacts = data.contacts.map((c: any) => ({
             id: c.id,
             fullName: c.fullName || c.normalizedName || 'Unknown',
             normalizedName: c.normalizedName,
@@ -289,7 +289,11 @@ export default function PropertyDetailPage() {
             reviewReason: c.reviewReason,
             emailValidationStatus: c.emailValidationStatus || 'not_validated',
             photoUrl: c.photoUrl || null,
-          })));
+            relationshipStatus: c.relationshipStatus || 'active',
+            relationshipStatusReason: c.relationshipStatusReason || null,
+          }));
+          setContacts(mappedContacts);
+          (window as any).__gf_contacts_snapshot = mappedContacts.map((c: any) => `${c.id}:${c.email}:${c.phone}:${c.linkedinUrl}:${c.emailValidationStatus}:${c.relationshipStatus}`).join('|');
         }
 
         if (data.organizations) {
@@ -353,7 +357,7 @@ export default function PropertyDetailPage() {
     setPipelineLoaded(false);
     setCustomerLoaded(false);
     if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
+      clearTimeout(pollTimerRef.current);
       pollTimerRef.current = null;
     }
   }, [propertyId]);
@@ -361,7 +365,7 @@ export default function PropertyDetailPage() {
   useEffect(() => {
     return () => {
       if (pollTimerRef.current) {
-        clearInterval(pollTimerRef.current);
+        clearTimeout(pollTimerRef.current);
         pollTimerRef.current = null;
       }
     };
@@ -428,18 +432,45 @@ export default function PropertyDetailPage() {
         setEnrichmentStatus('enriched');
         setEnrichmentMessage('Research complete - contact enrichment running in background...');
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+
         let pollCount = 0;
-        const maxPolls = 10;
-        const pollInterval = 5000;
-        pollTimerRef.current = setInterval(async () => {
-          pollCount++;
-          await fetchProperty({ silent: true });
-          if (pollCount >= maxPolls) {
-            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-            pollTimerRef.current = null;
+        let lastContactHash = '';
+        const maxDurationMs = 5 * 60 * 1000;
+        const startTime = Date.now();
+        let unchangedCount = 0;
+
+        const getNextDelay = (n: number) => Math.min(5000 * Math.pow(1.4, n), 30000);
+
+        const scheduleNextPoll = () => {
+          if (Date.now() - startTime > maxDurationMs) {
             setEnrichmentMessage('Research complete - all data refreshed');
+            return;
           }
-        }, pollInterval);
+          const delay = getNextDelay(pollCount);
+          pollTimerRef.current = setTimeout(async () => {
+            pollCount++;
+            const prevData = JSON.stringify(
+              (window as any).__gf_contacts_snapshot || ''
+            );
+            await fetchProperty({ silent: true });
+            const newData = JSON.stringify(
+              (window as any).__gf_contacts_snapshot || ''
+            );
+            if (newData !== prevData && newData !== '""') {
+              unchangedCount = 0;
+            } else {
+              unchangedCount++;
+            }
+            if (unchangedCount >= 3 && pollCount >= 6) {
+              setEnrichmentMessage('Research complete - all data refreshed');
+              pollTimerRef.current = null;
+              return;
+            }
+            scheduleNextPoll();
+          }, delay) as unknown as ReturnType<typeof setInterval>;
+        };
+        scheduleNextPoll();
       },
       onError: (error: string) => {
         setEnrichmentStatus('failed');

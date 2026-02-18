@@ -8,16 +8,9 @@ import { trackCostFireAndForget } from '@/lib/cost-tracker';
 const geminiLimit = pLimit(CONCURRENCY.GEMINI);
 
 function getGeminiClient(): GoogleGenAI {
-  if (process.env.GOOGLE_GENAI_API_KEY) {
-    return new GoogleGenAI({ apiKey: process.env.GOOGLE_GENAI_API_KEY });
-  }
-  const apiKey = process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+  const apiKey = process.env.GOOGLE_GENAI_API_KEY;
   if (!apiKey) {
-    throw new Error("No Gemini API key found");
-  }
-  const baseUrl = process.env.AI_INTEGRATIONS_GEMINI_BASE_URL;
-  if (baseUrl) {
-    return new GoogleGenAI({ apiKey, httpOptions: { apiVersion: "", baseUrl } });
+    throw new Error("GOOGLE_GENAI_API_KEY is not set");
   }
   return new GoogleGenAI({ apiKey });
 }
@@ -156,21 +149,44 @@ function isAIGeneratedSource(url: string): boolean {
 function extractGroundedSources(response: any): GroundedSource[] {
   try {
     const candidates = response.candidates || response.response?.candidates || [];
-    if (candidates.length === 0) return [];
+    if (candidates.length === 0) {
+      console.log('[GroundedSources] No candidates in response');
+      return [];
+    }
     
     const candidate = candidates[0];
     const groundingMetadata = candidate.groundingMetadata || candidate.grounding_metadata;
-    if (!groundingMetadata) return [];
+    if (!groundingMetadata) {
+      const candidateKeys = Object.keys(candidate || {});
+      console.log(`[GroundedSources] No groundingMetadata found. Candidate keys: ${candidateKeys.join(', ')}`);
+      return [];
+    }
     
-    const groundingChunks = groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || [];
+    const metadataKeys = Object.keys(groundingMetadata);
+    console.log(`[GroundedSources] Metadata keys: ${metadataKeys.join(', ')}`);
     
-    return groundingChunks
-      .filter((chunk: any) => chunk.web?.uri && !isAIGeneratedSource(chunk.web.uri))
+    const groundingChunks = groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || groundingMetadata.groundingChuncks || [];
+    
+    if (groundingChunks.length === 0) {
+      console.log('[GroundedSources] No grounding chunks found');
+      return [];
+    }
+    
+    const sources = groundingChunks
+      .filter((chunk: any) => {
+        const uri = chunk.web?.uri;
+        if (!uri) return false;
+        if (isAIGeneratedSource(uri)) return false;
+        return true;
+      })
       .map((chunk: any) => ({
         url: chunk.web.uri,
-        title: chunk.web.title || 'Source',
+        title: chunk.web.title || chunk.web.domain || 'Source',
       }))
-      .slice(0, 5);
+      .slice(0, 10);
+    
+    console.log(`[GroundedSources] Extracted ${sources.length} sources from ${groundingChunks.length} chunks`);
+    return sources;
   } catch (error) {
     console.warn('[FocusedEnrichment] Error extracting grounding sources:', error);
     return [];
@@ -727,7 +743,7 @@ async function enrichContactDetails(
           tools: [{ googleSearch: {} }]
         }
       }),
-      30000,
+      60000,
       2
     );
 
@@ -1015,5 +1031,83 @@ ${rawSummary}`;
       .replace(/error:.*?$/gim, '') // Remove error lines
       .replace(/\n{3,}/g, '\n\n') // Normalize whitespace
       .trim();
+  }
+}
+
+export async function searchForReplacementContact(
+  roleDesc: string,
+  company: string,
+  propertyAddress?: string
+): Promise<{ name: string | null; title: string | null; email: string | null; company: string } | null> {
+  const client = getGeminiClient();
+
+  const addressContext = propertyAddress ? ` at ${propertyAddress}` : '';
+  const prompt = `Search the web to find the current ${roleDesc}${addressContext} for ${company}. The previous person in this role has left. I need the name and title of their replacement. Return ONLY valid JSON.
+
+{"name":"Full Name|null","title":"Job Title|null","email":"email@domain.com|null","company":"${company}"}
+
+If you cannot find a replacement, return {"name":null}`;
+
+  try {
+    const response = await callGeminiWithTimeout(
+      () => client.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          temperature: 0.1,
+          tools: [{ googleSearch: {} }]
+        }
+      }),
+      45000,
+      1
+    );
+
+    const text = response.text?.trim() || '';
+    if (!text) {
+      trackCostFireAndForget({
+        provider: 'gemini',
+        endpoint: 'replacement-search',
+        entityType: 'contact',
+        success: false,
+        errorMessage: 'Empty response',
+      });
+      return null;
+    }
+
+    let parsed: any;
+    try {
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    } catch {
+      trackCostFireAndForget({
+        provider: 'gemini',
+        endpoint: 'replacement-search',
+        entityType: 'contact',
+        success: false,
+        errorMessage: 'Parse error',
+      });
+      return null;
+    }
+
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'replacement-search',
+      entityType: 'contact',
+      success: true,
+      metadata: { found: !!parsed?.name, role: roleDesc, company },
+    });
+
+    if (!parsed?.name) return null;
+    return { name: parsed.name, title: parsed.title || null, email: parsed.email || null, company: parsed.company || company };
+  } catch (error) {
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'replacement-search',
+      entityType: 'contact',
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    console.error(`[ReplacementSearch] Gemini error: ${error instanceof Error ? error.message : error}`);
+    return null;
   }
 }

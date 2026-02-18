@@ -404,6 +404,9 @@ export const propertyContacts = pgTable('property_contacts', {
   confidenceScore: real('confidence_score'),
   relationshipConfidence: text('relationship_confidence').default('high'),
   relationshipNote: text('relationship_note'),
+  relationshipStatus: text('relationship_status').default('active'),
+  relationshipStatusReason: text('relationship_status_reason'),
+  relationshipVerifiedAt: timestamp('relationship_verified_at'),
   discoveredAt: timestamp('discovered_at').defaultNow(),
 }, (table) => ({
   propertyContactIdx: index('idx_property_contacts').on(table.propertyId, table.contactId),

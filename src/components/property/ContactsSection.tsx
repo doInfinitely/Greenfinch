@@ -20,6 +20,9 @@ const ROLE_PRIORITY: Record<string, number> = {
 
 function sortContactsByRelevance(contacts: Contact[]): Contact[] {
   return [...contacts].sort((a, b) => {
+    const formerA = a.relationshipStatus === 'former' ? 1 : 0;
+    const formerB = b.relationshipStatus === 'former' ? 1 : 0;
+    if (formerA !== formerB) return formerA - formerB;
     const priorityA = ROLE_PRIORITY[a.role] || 99;
     const priorityB = ROLE_PRIORITY[b.role] || 99;
     return priorityA - priorityB;
@@ -93,50 +96,61 @@ export default function ContactsSection({
       </div>
       {contacts.length > 0 ? (
         <div className="space-y-3">
-          {sortContactsByRelevance(contacts).map((contact, i) => (
-            <div 
-              key={`${contact.id || contact.email}-${i}`} 
-              className={`p-4 bg-gray-50 rounded-lg transition-colors ${contact.id ? 'cursor-pointer hover:bg-gray-100' : ''}`}
-              onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
-              data-testid={`contact-row-${contact.id}`}
-            >
-              <div className="flex items-start space-x-3">
-                <ContactAvatar photoUrl={contact.photoUrl} name={contact.fullName || ''} />
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center flex-wrap gap-2 mb-1">
-                    <p className="font-medium text-gray-900">{contact.fullName}</p>
-                    {contact.role && (
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[contact.role] || ROLE_COLORS.other}`}>
-                        {ROLE_LABELS[contact.role] || contact.role}
-                      </span>
+          {sortContactsByRelevance(contacts).map((contact, i) => {
+            const isFormer = contact.relationshipStatus === 'former';
+            return (
+              <div 
+                key={`${contact.id || contact.email}-${i}`} 
+                className={`p-4 rounded-lg transition-colors ${isFormer ? 'bg-gray-100 opacity-60' : 'bg-gray-50'} ${contact.id ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
+                data-testid={`contact-row-${contact.id}`}
+              >
+                <div className="flex items-start space-x-3">
+                  <ContactAvatar photoUrl={contact.photoUrl} name={contact.fullName || ''} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center flex-wrap gap-2 mb-1">
+                      <p className={`font-medium ${isFormer ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{contact.fullName}</p>
+                      {contact.role && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[contact.role] || ROLE_COLORS.other}`}>
+                          {ROLE_LABELS[contact.role] || contact.role}
+                        </span>
+                      )}
+                      {isFormer && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
+                          Former
+                        </span>
+                      )}
+                    </div>
+                    
+                    {isFormer && contact.relationshipStatusReason && (
+                      <p className="text-xs text-red-600 mb-1">{contact.relationshipStatusReason}</p>
                     )}
-                  </div>
-                  
-                  {contact.title && (
-                    <p className="text-sm text-gray-600 mb-1">{contact.title}</p>
-                  )}
-                  {contact.employerName && (
-                    <p className="text-sm text-gray-500 mb-1">{contact.employerName}</p>
-                  )}
-                  
-                  <div className="flex items-center justify-between mt-2">
-                    <ContactInfoIcons contact={contact} />
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onSetContactForListModal(contact.id);
-                      }}
-                      className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors"
-                      title="Add to list"
-                      data-testid={`button-add-contact-to-list-${contact.id}`}
-                    >
-                      <ListPlus className="w-4 h-4" />
-                    </button>
+                    {contact.title && (
+                      <p className="text-sm text-gray-600 mb-1">{contact.title}</p>
+                    )}
+                    {contact.employerName && (
+                      <p className="text-sm text-gray-500 mb-1">{contact.employerName}</p>
+                    )}
+                    
+                    <div className="flex items-center justify-between mt-2">
+                      <ContactInfoIcons contact={contact} />
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onSetContactForListModal(contact.id);
+                        }}
+                        className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-full transition-colors"
+                        title="Add to list"
+                        data-testid={`button-add-contact-to-list-${contact.id}`}
+                      >
+                        <ListPlus className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div className="text-center py-8">

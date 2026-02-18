@@ -278,8 +278,7 @@ export async function verifyEmail(email: string): Promise<VerifyEmailResult> {
     let rawStatus = 'unknown';
     
     if (data.verified !== undefined) {
-      // New format: { verified: boolean }
-      normalizedStatus = data.verified ? 'valid' : 'invalid';
+      normalizedStatus = data.verified ? 'valid' : 'unknown';
       rawStatus = data.verified ? 'verified' : 'not_verified';
     } else if (data.status) {
       // Legacy format: { status: string }

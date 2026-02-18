@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
 
         if (saved.contactIds.length > 0 || saved.orgIds.length > 0) {
           console.log(`[API] Running cascade enrichment on saved records...`);
-          runCascadeEnrichmentOnSavedRecords(saved.contactIds, saved.orgIds).catch(err => {
+          runCascadeEnrichmentOnSavedRecords(saved.contactIds, saved.orgIds, saved.propertyId).catch(err => {
             console.error('[API] Background cascade enrichment error:', err);
           });
         }

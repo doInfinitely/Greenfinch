@@ -383,9 +383,35 @@ export async function saveEnrichmentResults(
   return { propertyId, contactIds: uniqueContactIds, orgIds: uniqueOrgIds };
 }
 
+function normalizeCompanyForComparison(name: string | null | undefined): string {
+  if (!name) return '';
+  return name.toLowerCase()
+    .replace(/\b(llc|llp|inc|corp|co|ltd|lp|group|holdings|partners|properties|management|company|enterprises|realty|real estate)\b/gi, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+function companiesMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return true;
+  const normA = normalizeCompanyForComparison(a);
+  const normB = normalizeCompanyForComparison(b);
+  if (!normA || !normB) return true;
+  if (normA === normB) return true;
+  if (normA.includes(normB) || normB.includes(normA)) return true;
+  return false;
+}
+
+function domainsMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return true;
+  const cleanA = a.toLowerCase().replace(/^www\./, '');
+  const cleanB = b.toLowerCase().replace(/^www\./, '');
+  return cleanA === cleanB;
+}
+
 export async function runCascadeEnrichmentOnSavedRecords(
   contactIds: string[],
-  orgIds: string[]
+  orgIds: string[],
+  propertyId?: string
 ): Promise<void> {
   for (const orgId of orgIds) {
     try {
@@ -571,9 +597,234 @@ export async function runCascadeEnrichmentOnSavedRecords(
         .where(eq(contacts.id, contactId));
 
       console.log(`[CascadeEnrichment] Contact enriched: ${contact.fullName} (${result.confidenceFlag})`);
+
+      if (propertyId && (result.pdlCompany || result.crustdataCompany)) {
+        try {
+          const enrichedCompany = result.crustdataCompany || result.pdlCompany;
+          const enrichedDomain = result.crustdataCompanyDomain || result.pdlCompanyDomain;
+          const aiCompany = contact.employerName;
+          const aiDomain = contact.companyDomain;
+
+          const nameMatch = companiesMatch(enrichedCompany, aiCompany);
+          const domainMatch = domainsMatch(enrichedDomain, aiDomain);
+
+          if (!nameMatch && !domainMatch) {
+            const enrichedTitle = result.crustdataTitle || result.pdlTitle;
+            const reason = `${contact.fullName} now at ${enrichedCompany}${enrichedTitle ? ` as ${enrichedTitle}` : ''} (was ${aiCompany || 'unknown'} for this property). Source: ${result.crustdataCompany ? 'Crustdata' : 'PDL'}`;
+            console.log(`[RoleVerification] MISMATCH: ${reason}`);
+
+            await db.update(propertyContacts)
+              .set({
+                relationshipStatus: 'former',
+                relationshipStatusReason: reason,
+                relationshipVerifiedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(propertyContacts.propertyId, propertyId),
+                  eq(propertyContacts.contactId, contactId)
+                )
+              );
+
+            const pcRow = await db.query.propertyContacts.findFirst({
+              where: and(
+                eq(propertyContacts.propertyId, propertyId),
+                eq(propertyContacts.contactId, contactId)
+              ),
+            });
+            const prop = await db.query.properties.findFirst({
+              where: eq(properties.id, propertyId),
+            });
+            searchForReplacement(
+              propertyId,
+              pcRow?.role || contact.title,
+              aiCompany,
+              aiDomain,
+              prop?.validatedAddress || prop?.regridAddress || undefined
+            ).catch(err => console.error('[RoleVerification] Replacement search error:', err));
+          } else {
+            await db.update(propertyContacts)
+              .set({
+                relationshipStatus: 'active',
+                relationshipVerifiedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(propertyContacts.propertyId, propertyId),
+                  eq(propertyContacts.contactId, contactId)
+                )
+              );
+          }
+        } catch (verifyErr) {
+          console.error(`[RoleVerification] Error verifying role for ${contact.fullName}:`, verifyErr);
+        }
+      }
     } catch (err) {
       console.error(`[CascadeEnrichment] Error enriching contact ${contactId}:`, err);
     }
+  }
+}
+
+const replacementSearchCooldown = new Map<string, number>();
+
+async function searchForReplacement(
+  propertyId: string,
+  formerRole: string | null,
+  formerCompany: string | null,
+  formerCompanyDomain: string | null,
+  propertyAddress?: string
+): Promise<void> {
+  if (!formerCompany && !formerCompanyDomain) return;
+  
+  const cooldownKey = `${propertyId}:${formerRole || 'default'}:${formerCompany || formerCompanyDomain}`;
+  const lastSearch = replacementSearchCooldown.get(cooldownKey) || 0;
+  if (Date.now() - lastSearch < 24 * 60 * 60 * 1000) {
+    console.log(`[ReplacementSearch] Skipping - cooldown active for ${cooldownKey}`);
+    return;
+  }
+  replacementSearchCooldown.set(cooldownKey, Date.now());
+
+  const roleDesc = formerRole || 'property manager';
+  const company = formerCompany || formerCompanyDomain || 'the company';
+  
+  console.log(`[ReplacementSearch] Searching for replacement ${roleDesc} at ${company} for property ${propertyId}`);
+  
+  try {
+    const { searchForReplacementContact } = await import('./ai-enrichment');
+    const result = await searchForReplacementContact(roleDesc, company, propertyAddress);
+
+    if (!result?.name) {
+      console.log('[ReplacementSearch] No replacement found');
+      return;
+    }
+
+    console.log(`[ReplacementSearch] Found potential replacement: ${result.name} - ${result.title || 'unknown title'}`);
+
+    const normalizedNameVal = normalizeName(result.name);
+    const normalizedEmailVal = result.email ? normalizeEmail(result.email) : null;
+
+    let existingContact = normalizedEmailVal
+      ? await db.query.contacts.findFirst({ where: eq(contacts.normalizedEmail, normalizedEmailVal) })
+      : null;
+
+    if (!existingContact && normalizedNameVal) {
+      const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, normalizedNameVal));
+      for (const c of candidates) {
+        if (companiesMatch(c.employerName, formerCompany) || domainsMatch(c.companyDomain, formerCompanyDomain)) {
+          existingContact = c;
+          break;
+        }
+      }
+    }
+
+    const existingFormerLinks = await db.select().from(propertyContacts).where(
+      and(
+        eq(propertyContacts.propertyId, propertyId),
+        eq(propertyContacts.relationshipStatus, 'former')
+      )
+    );
+    for (const link of existingFormerLinks) {
+      const formerContact = await db.query.contacts.findFirst({ where: eq(contacts.id, link.contactId) });
+      if (formerContact && normalizeName(formerContact.fullName) === normalizedNameVal) {
+        console.log(`[ReplacementSearch] "${result.name}" matches a former contact on this property, skipping`);
+        return;
+      }
+    }
+
+    let contactId: string;
+
+    if (existingContact) {
+      contactId = existingContact.id;
+      console.log(`[ReplacementSearch] Replacement matches existing contact: ${existingContact.fullName} (${contactId})`);
+    } else {
+      const [newContact] = await db.insert(contacts)
+        .values({
+          fullName: result.name,
+          normalizedName: normalizedNameVal,
+          email: result.email || null,
+          normalizedEmail: normalizedEmailVal,
+          title: result.title || null,
+          employerName: result.company || formerCompany,
+          companyDomain: formerCompanyDomain,
+          contactType: 'individual',
+          confidenceFlag: 'ai_only',
+          emailValidationStatus: result.email ? 'pending' : null,
+        })
+        .returning();
+      contactId = newContact.id;
+      console.log(`[ReplacementSearch] Created new replacement contact: ${result.name} (${contactId})`);
+    }
+
+    const existingLink = await db.query.propertyContacts.findFirst({
+      where: and(
+        eq(propertyContacts.propertyId, propertyId),
+        eq(propertyContacts.contactId, contactId)
+      ),
+    });
+
+    if (!existingLink) {
+      await db.insert(propertyContacts).values({
+        propertyId,
+        contactId,
+        role: formerRole || 'property_manager',
+        confidenceScore: 0.5,
+        relationshipConfidence: 'medium',
+        relationshipNote: `Replacement found via AI search after previous contact left role`,
+        relationshipStatus: 'active',
+        relationshipVerifiedAt: new Date(),
+      });
+      console.log(`[ReplacementSearch] Linked replacement ${result.name} to property ${propertyId}`);
+
+      try {
+        const cascadeResult = await enrichContactCascade({
+          fullName: result.name,
+          email: result.email || undefined,
+          companyDomain: formerCompanyDomain || undefined,
+          companyName: result.company || formerCompany || undefined,
+          title: result.title || undefined,
+          location: 'Dallas, TX',
+        });
+
+        if (cascadeResult.found) {
+          const updateData: Record<string, any> = {
+            updatedAt: new Date(),
+            confidenceFlag: cascadeResult.confidenceFlag,
+            enrichmentSource: cascadeResult.enrichmentSource,
+          };
+          if (cascadeResult.email) {
+            updateData.email = cascadeResult.email;
+            updateData.normalizedEmail = cascadeResult.email.toLowerCase();
+            updateData.emailSource = cascadeResult.emailSource;
+            updateData.emailValidationStatus = cascadeResult.emailStatus;
+          }
+          if (cascadeResult.linkedinUrl) updateData.linkedinUrl = cascadeResult.linkedinUrl;
+          if (cascadeResult.phone) updateData.phone = cascadeResult.phone;
+          if (cascadeResult.mobilePhone) updateData.enrichmentPhonePersonal = cascadeResult.mobilePhone;
+          if (cascadeResult.workPhone) updateData.enrichmentPhoneWork = cascadeResult.workPhone;
+          if (cascadeResult.title) updateData.title = cascadeResult.title;
+          if (cascadeResult.company) updateData.employerName = cascadeResult.company;
+
+          updateData.pdlTitle = cascadeResult.pdlTitle;
+          updateData.pdlCompany = cascadeResult.pdlCompany;
+          updateData.pdlCompanyDomain = cascadeResult.pdlCompanyDomain;
+          updateData.crustdataTitle = cascadeResult.crustdataTitle;
+          updateData.crustdataCompany = cascadeResult.crustdataCompany;
+          updateData.providerId = cascadeResult.providerId;
+
+          const cleanUpdate = Object.fromEntries(
+            Object.entries(updateData).filter(([_, v]) => v !== undefined)
+          );
+          await db.update(contacts).set(cleanUpdate).where(eq(contacts.id, contactId));
+          console.log(`[ReplacementSearch] Replacement enriched: ${result.name} (${cascadeResult.confidenceFlag})`);
+        }
+      } catch (enrichErr) {
+        console.error(`[ReplacementSearch] Error enriching replacement:`, enrichErr);
+      }
+    } else {
+      console.log(`[ReplacementSearch] Replacement ${result.name} already linked to property`);
+    }
+  } catch (error) {
+    console.error('[ReplacementSearch] Error:', error);
   }
 }
 
@@ -764,7 +1015,7 @@ async function processPropertyItem(
     
     if (saved.contactIds.length > 0 || saved.orgIds.length > 0) {
       console.log(`[EnrichmentQueue] Running cascade enrichment on ${saved.contactIds.length} contacts, ${saved.orgIds.length} orgs...`);
-      await runCascadeEnrichmentOnSavedRecords(saved.contactIds, saved.orgIds);
+      await runCascadeEnrichmentOnSavedRecords(saved.contactIds, saved.orgIds, saved.propertyId);
     }
     
     return { success: true };
