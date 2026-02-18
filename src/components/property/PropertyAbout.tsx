@@ -35,6 +35,13 @@ export default function PropertyAbout({ enrichedProperty, enrichmentStatus }: Pr
   
   if (!isResearched || !enrichedProperty) return null;
 
+  const hasContent = enrichedProperty.aiRationale || 
+    enrichedProperty.propertyWebsite || 
+    enrichedProperty.propertyPhone || 
+    enrichedProperty.lastEnrichedAt;
+  
+  if (!hasContent) return null;
+
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">About This Property</h2>

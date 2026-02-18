@@ -244,7 +244,8 @@ export default function PropertyDetailPage() {
             enrichmentSources: prop.enrichmentSources || null,
             lastEnrichedAt: prop.lastEnrichedAt || null,
           });
-          setEnrichmentStatus('enriched');
+          const dbStatus = prop.enrichmentStatus || 'pending';
+          setEnrichmentStatus(dbStatus === 'completed' || dbStatus === 'enriched' ? 'enriched' : dbStatus);
         }
 
         if (data.contacts) {
