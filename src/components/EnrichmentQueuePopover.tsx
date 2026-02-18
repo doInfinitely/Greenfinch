@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import { useEnrichmentQueue, EnrichmentQueueItem } from '@/contexts/EnrichmentQueueContext';
 import { useCelebration } from '@/contexts/CelebrationContext';
+import { normalizeOwnerName, normalizeAddress } from '@/lib/normalization';
 import { Loader2, CheckCircle, XCircle, ChevronRight, X } from 'lucide-react';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { Button } from '@/components/ui/button';
@@ -80,7 +81,7 @@ function QueueItem({ item, onRemove }: { item: EnrichmentQueueItem; onRemove: ()
               {TYPE_LABELS[item.type]}
             </span>
             <span className="text-sm font-medium text-gray-900 truncate" data-testid={`text-queue-item-name-${item.id}`}>
-              {item.entityName}
+              {item.type === 'property' ? normalizeAddress(item.entityName) : item.entityName}
             </span>
           </div>
           
