@@ -212,10 +212,16 @@ export default function PropertyDetailPage() {
 
         if (prop.isParentProperty && prop.constituentAccountNums?.length > 0) {
           try {
-            const constResponse = await fetch(`/api/properties/by-parcel/${prop.gisParcelId || prop.propertyKey}?type=constituents`);
+            const keys = prop.constituentAccountNums.join(',');
+            const constResponse = await fetch(`/api/properties?keys=${encodeURIComponent(keys)}`);
             if (constResponse.ok) {
               const constData = await constResponse.json();
-              setConstituentProperties(constData.properties || []);
+              setConstituentProperties((constData.properties || []).map((cp: any) => ({
+                propertyKey: cp.propertyKey,
+                commonName: cp.commonName || null,
+                buildingSqft: cp.buildingSqft || null,
+                dcadBizName: cp.dcadBizName || null,
+              })));
             }
           } catch {}
         }

@@ -128,6 +128,8 @@ export async function GET(
         parentPropertyKey: dbProperty.parentPropertyKey,
         constituentAccountNums: dbProperty.constituentAccountNums,
         constituentCount: dbProperty.constituentCount,
+        gisParcelId: dbProperty.dcadGisParcelId,
+        parcelCount: Array.isArray(dbProperty.rawParcelsJson) ? (dbProperty.rawParcelsJson as any[]).length : 1,
         usedesc: dbProperty.usedescs || [],
         usecode: dbProperty.usecodes || [],
       },
