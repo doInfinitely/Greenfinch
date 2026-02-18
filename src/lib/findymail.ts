@@ -9,12 +9,14 @@ const FINDYMAIL_API_URL = 'https://app.findymail.com/api';
 
 interface FindymailEmailResult {
   email?: string;
+  linkedin_url?: string;
   contact?: {
     name: string;
     first_name: string;
     last_name: string;
     email: string;
     job_title?: string;
+    linkedin_url?: string;
     linkedin?: string;
     phone?: string;
   };
@@ -101,14 +103,11 @@ export async function findEmailByName(
     const contact = data.contact;
 
     // Extract LinkedIn URL — prefer linkedin_url (vanity) over linkedin (may be hashed member ID)
-    const rawData = data as any;
-    const contactAny = contact as any;
-    let linkedinUrl = rawData.linkedin_url || contactAny?.linkedin_url || contact?.linkedin || rawData.linkedin_profile_url || null;
+    let linkedinUrl = data.linkedin_url || contact?.linkedin_url || contact?.linkedin || null;
     console.log('[Findymail] LinkedIn fields:', {
-      'data.linkedin_url': rawData.linkedin_url,
-      'contact.linkedin_url': contactAny?.linkedin_url,
+      'data.linkedin_url': data.linkedin_url,
+      'contact.linkedin_url': contact?.linkedin_url,
       'contact.linkedin': contact?.linkedin,
-      'data.linkedin_profile_url': rawData.linkedin_profile_url,
       selected: linkedinUrl,
     });
     if (linkedinUrl && !linkedinUrl.startsWith('http')) {
@@ -122,7 +121,7 @@ export async function findEmailByName(
       firstName: contact?.first_name || firstName,
       lastName: contact?.last_name || lastName,
       title: contact?.job_title,
-      linkedinUrl,
+      linkedinUrl: linkedinUrl || undefined,
       phone: contact?.phone,
       raw: data,
     };
@@ -223,14 +222,11 @@ export async function findLinkedInByEmail(email: string): Promise<FindEmailResul
     }
 
     const contact = data.contact;
-    const rawData = data as any;
-    const contactAny = contact as any;
-    let linkedinUrl = rawData.linkedin_url || contactAny?.linkedin_url || contact?.linkedin || rawData.linkedin_profile_url || null;
+    let linkedinUrl = data.linkedin_url || contact?.linkedin_url || contact?.linkedin || null;
     console.log('[Findymail] Reverse email LinkedIn fields:', {
-      'data.linkedin_url': rawData.linkedin_url,
-      'contact.linkedin_url': contactAny?.linkedin_url,
+      'data.linkedin_url': data.linkedin_url,
+      'contact.linkedin_url': contact?.linkedin_url,
       'contact.linkedin': contact?.linkedin,
-      'data.linkedin_profile_url': rawData.linkedin_profile_url,
       selected: linkedinUrl,
     });
     if (linkedinUrl && !linkedinUrl.startsWith('http')) {
