@@ -440,9 +440,9 @@ export async function getProfilePicture(linkedinUrl: string): Promise<ProfilePic
     await waitForRateLimit();
     
     const params = new URLSearchParams();
-    params.append('linkedin_profile_url', linkedinUrl);
+    params.append('profile_url', linkedinUrl);
 
-    const url = `${ENRICHLAYER_BASE_URL}/person/profile-pic?${params.toString()}`;
+    const url = `${ENRICHLAYER_BASE_URL}/person/profile-picture?${params.toString()}`;
     console.log(`[EnrichLayer] Fetching profile picture for: ${linkedinUrl}`);
 
     const response = await fetch(url, {
@@ -472,8 +472,7 @@ export async function getProfilePicture(linkedinUrl: string): Promise<ProfilePic
     const data = await response.json();
     console.log('[EnrichLayer] Profile picture response:', JSON.stringify(data));
 
-    // The endpoint returns { tmp_profile_pic_url: "..." }
-    const pictureUrl = data.tmp_profile_pic_url || data.profile_pic_url || data.url;
+    const pictureUrl = data.profile_pic_url || data.tmp_profile_pic_url || data.url;
     
     if (pictureUrl) {
       console.log(`[EnrichLayer] Successfully fetched profile picture`);
