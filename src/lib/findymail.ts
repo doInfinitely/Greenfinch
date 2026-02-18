@@ -100,8 +100,17 @@ export async function findEmailByName(
     const email = data.email || data.contact?.email;
     const contact = data.contact;
 
-    // Normalize LinkedIn URL
-    let linkedinUrl = contact?.linkedin;
+    // Extract LinkedIn URL — prefer linkedin_url (vanity) over linkedin (may be hashed member ID)
+    const rawData = data as any;
+    const contactAny = contact as any;
+    let linkedinUrl = rawData.linkedin_url || contactAny?.linkedin_url || contact?.linkedin || rawData.linkedin_profile_url || null;
+    console.log('[Findymail] LinkedIn fields:', {
+      'data.linkedin_url': rawData.linkedin_url,
+      'contact.linkedin_url': contactAny?.linkedin_url,
+      'contact.linkedin': contact?.linkedin,
+      'data.linkedin_profile_url': rawData.linkedin_profile_url,
+      selected: linkedinUrl,
+    });
     if (linkedinUrl && !linkedinUrl.startsWith('http')) {
       linkedinUrl = `https://${linkedinUrl}`;
     }
@@ -214,7 +223,16 @@ export async function findLinkedInByEmail(email: string): Promise<FindEmailResul
     }
 
     const contact = data.contact;
-    let linkedinUrl = contact?.linkedin || (data as any).linkedin_url || null;
+    const rawData = data as any;
+    const contactAny = contact as any;
+    let linkedinUrl = rawData.linkedin_url || contactAny?.linkedin_url || contact?.linkedin || rawData.linkedin_profile_url || null;
+    console.log('[Findymail] Reverse email LinkedIn fields:', {
+      'data.linkedin_url': rawData.linkedin_url,
+      'contact.linkedin_url': contactAny?.linkedin_url,
+      'contact.linkedin': contact?.linkedin,
+      'data.linkedin_profile_url': rawData.linkedin_profile_url,
+      selected: linkedinUrl,
+    });
     if (linkedinUrl && !linkedinUrl.startsWith('http')) {
       linkedinUrl = `https://${linkedinUrl}`;
     }
