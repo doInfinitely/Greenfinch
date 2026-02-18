@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
@@ -32,6 +32,7 @@ import PipelineStatus from '@/components/PipelineStatus';
 import CustomerToggle from '@/components/CustomerToggle';
 import PropertyNotes from '@/components/PropertyNotes';
 import PropertyActivity from '@/components/PropertyActivity';
+import PropertyDetailSkeleton from '@/components/PropertyDetailSkeleton';
 import { normalizeCommonName, toTitleCase } from '@/lib/normalization';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
@@ -302,6 +303,7 @@ export default function PropertyDetailPage() {
   const [isCurrentCustomer, setIsCurrentCustomer] = useState(false);
   const { startEnrichment } = useEnrichment();
   const { getEnrichmentStatus } = useEnrichmentQueue();
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Property flagging state
   const [showFlagDialog, setShowFlagDialog] = useState(false);
@@ -427,10 +429,12 @@ export default function PropertyDetailPage() {
     }
   }, [propertyId]);
 
-  const fetchProperty = useCallback(async () => {
+  const fetchProperty = useCallback(async (options?: { silent?: boolean }) => {
     if (!propertyId) return;
     
-    setIsLoading(true);
+    if (!options?.silent) {
+      setIsLoading(true);
+    }
     setError(null);
 
     try {
@@ -600,7 +604,20 @@ export default function PropertyDetailPage() {
     setEnrichmentMessage('');
     setError(null);
     setServiceProvidersList([]);
+    if (pollTimerRef.current) {
+      clearInterval(pollTimerRef.current);
+      pollTimerRef.current = null;
+    }
   }, [propertyId]);
+
+  useEffect(() => {
+    return () => {
+      if (pollTimerRef.current) {
+        clearInterval(pollTimerRef.current);
+        pollTimerRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (!propertyId) return;
@@ -661,11 +678,19 @@ export default function PropertyDetailPage() {
         await fetchProperty();
         setEnrichmentStatus('enriched');
         setEnrichmentMessage('Research complete - contact enrichment running in background...');
-        setTimeout(async () => {
-          await fetchProperty();
-          setEnrichmentMessage('Research complete - all data refreshed');
-        }, 15000);
-        setTimeout(() => fetchProperty(), 30000);
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+        let pollCount = 0;
+        const maxPolls = 10;
+        const pollInterval = 5000;
+        pollTimerRef.current = setInterval(async () => {
+          pollCount++;
+          await fetchProperty({ silent: true });
+          if (pollCount >= maxPolls) {
+            if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+            pollTimerRef.current = null;
+            setEnrichmentMessage('Research complete - all data refreshed');
+          }
+        }, pollInterval);
       },
       onError: (error: string) => {
         setEnrichmentStatus('failed');
@@ -835,14 +860,7 @@ export default function PropertyDetailPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading property details...</p>
-        </div>
-      </div>
-    );
+    return <PropertyDetailSkeleton />;
   }
 
   if (error) {

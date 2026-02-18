@@ -120,6 +120,29 @@ These routes have NO auth check — any unauthenticated request succeeds:
 ### LOW — Infrastructure
 - **INFRA-1**: No `/api/health` endpoint for monitoring database/Redis connectivity.
 
+## Remediation Plan (Feb 2026)
+
+### Phase 0 — Quick Wins (In Progress)
+- [x] **PERF-3**: Replace setTimeout re-fetch with polling-based refresh after enrichment
+- [x] **UX-2**: Add loading skeletons to property and contact detail pages
+- [x] **INFRA-1**: Add `/api/health` endpoint for database/Redis monitoring
+
+### Phase 1 — Maintainability
+- [ ] **PERF-1**: Break up large monolithic page components into sub-components
+
+### Phase 2 — Platform Hardening
+- [ ] **DATA-1**: Add enrichment cost tracking table and admin dashboard
+- [ ] **DATA-2**: Make rate limiting require Redis (no in-memory fallback for expensive endpoints)
+- [ ] **CODE-2**: Standardize API response envelope `{ success, data, error, meta }`
+
+### Phase 3 — Quality & Polish
+- [ ] **UX-1**: Add accessibility (aria labels, keyboard navigation, semantic headings)
+- [ ] **CODE-1**: Add test coverage for cascade enrichment and key API routes
+
+### Deferred
+- **PERF-2**: Server-side map clustering (defer until scaling beyond Dallas MVP)
+- **CODE-3**: Dual ID unification (large migration, plan separately)
+
 ## Future Exploration
 
 ### Refactor to use Clerk IDs everywhere

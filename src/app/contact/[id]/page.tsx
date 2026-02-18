@@ -22,6 +22,7 @@ import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import { formatPhoneNumber } from '@/lib/phone-format';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
 import AddToListModal from '@/components/AddToListModal';
+import ContactDetailSkeleton from '@/components/ContactDetailSkeleton';
 import { List } from 'lucide-react';
 
 interface LinkedInSearchResult {
@@ -533,15 +534,7 @@ export default function ContactDetailPage() {
   };
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <main className="w-full px-4 sm:px-6 py-6 sm:py-8">
-          <div className="flex items-center justify-center py-16">
-            <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-green-600"></div>
-          </div>
-        </main>
-      </div>
-    );
+    return <ContactDetailSkeleton />;
   }
 
   if (error || !contact) {
