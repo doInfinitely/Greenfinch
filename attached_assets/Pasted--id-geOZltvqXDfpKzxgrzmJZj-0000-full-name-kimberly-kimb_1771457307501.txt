@@ -1,0 +1,503 @@
+{
+  "id": "geOZltvqXDfpKzxgrzmJZj_0000",
+  "full_name": "kimberly kimberly patton",
+  "first_name": "kimberly",
+  "middle_initial": "k",
+  "middle_name": "kimberly",
+  "last_initial": "p",
+  "last_name": "patton",
+  "sex": null,
+  "birth_year": 1966,
+  "birth_date": "1966-04-08",
+  "linkedin_url": "linkedin.com/in/kimberly_patton",
+  "linkedin_username": "kimberly_patton",
+  "linkedin_id": "geOZlt",
+  "headline": null,
+  "facebook_url": "facebook.com/kimberly_patton",
+  "facebook_username": "kimberly_patton",
+  "facebook_id": "geOZlt",
+  "twitter_url": "twitter.com/kimberly_patton",
+  "twitter_username": "kimberly_patton",
+  "github_url": "github.com/kimberly_patton",
+  "github_username": "kimberly_patton",
+  "work_email": "kimberly_patton@hall-rios-and-miller.com",
+  "personal_emails": [
+    "kimberly_patton@me.com"
+  ],
+  "recommended_personal_email": "kimberly_patton@me.com",
+  "mobile_phone": "+15814854381",
+  "industry": "wireless",
+  "job_title": "tax adviser",
+  "job_title_role": null,
+  "job_title_sub_role": null,
+  "job_title_class": null,
+  "job_title_levels": [
+    "vp",
+    "vp",
+    "vp"
+  ],
+  "job_onet_code": null,
+  "job_onet_major_group": null,
+  "job_onet_minor_group": null,
+  "job_onet_broad_occupation": null,
+  "job_onet_specific_occupation": null,
+  "job_onet_specific_occupation_detail": null,
+  "job_company_id": "WjFS0JV5SpeFBTNNXNUGFhpOTuk4",
+  "job_company_name": "hall, rios and miller",
+  "job_company_website": "hall-rios-and-miller.com",
+  "job_company_size": "10001+",
+  "job_company_founded": 2000,
+  "job_company_industry": "wireless",
+  "job_company_industry_v2": "waste collection",
+  "job_company_linkedin_url": "linkedin.com/company/hall-rios-and-miller",
+  "job_company_linkedin_id": "76081381",
+  "job_company_facebook_url": "facebook.com/hall-rios-and-miller",
+  "job_company_twitter_url": "twitter.com/hall-rios-and-miller",
+  "job_company_type": "nonprofit",
+  "job_company_ticker": null,
+  "job_company_location_name": "east diana, quebec, canada",
+  "job_company_location_locality": "east diana",
+  "job_company_location_metro": "east diana",
+  "job_company_location_region": "quebec",
+  "job_company_location_geo": "62.1627635,124.325527",
+  "job_company_location_street_address": "11253 james lodge",
+  "job_company_location_address_line_2": "apt. 211",
+  "job_company_location_postal_code": "A9A 3A2",
+  "job_company_location_country": "canada",
+  "job_company_location_continent": "north america",
+  "job_company_employee_count": 74299,
+  "job_company_inferred_revenue": "$10B+",
+  "job_company_12mo_employee_growth_rate": null,
+  "job_company_total_funding_raised": null,
+  "job_last_changed": "2026-02-11",
+  "job_last_verified": "2026-02-11",
+  "job_start_date": "2018-10-31",
+  "job_summary": "tax adviser at hall, rios and miller",
+  "location_name": "east diana, quebec, canada",
+  "location_locality": "east diana",
+  "location_metro": "east diana",
+  "location_region": "quebec",
+  "location_country": "canada",
+  "location_continent": "north america",
+  "location_street_address": "11253 james lodge",
+  "location_address_line_2": "apt. 211",
+  "location_postal_code": "A9A 3A2",
+  "location_geo": "62.1627635,124.325527",
+  "location_last_updated": "2026-02-11",
+  "linkedin_connections": 9287,
+  "facebook_friends": 9287,
+  "inferred_salary": "150,000-250,000",
+  "inferred_years_experience": 1,
+  "summary": "tax adviser at hall, rios and miller",
+  "phone_numbers": [
+    "+12493405557"
+  ],
+  "phones": [
+    {
+      "number": "+12493405557",
+      "first_seen": "2019-03-25",
+      "last_seen": "2020-11-05",
+      "num_sources": 3
+    }
+  ],
+  "emails": [
+    {
+      "address": "ddavis1977@live.com",
+      "type": "professional",
+      "first_seen": "2026-01-23T04:42:55",
+      "last_seen": "2026-02-03T06:59:50",
+      "num_sources": 10
+    }
+  ],
+  "interests": [],
+  "skills": [],
+  "location_names": [
+    "north kristastad, texas, united states"
+  ],
+  "regions": [
+    "texas"
+  ],
+  "countries": [
+    "united states"
+  ],
+  "street_addresses": [
+    {
+      "name": "north kristastad, texas, united states",
+      "locality": "north kristastad",
+      "region": "texas",
+      "metro": "north kristastad",
+      "country": "united states",
+      "continent": "north america",
+      "street_address": "6649 heather ferry",
+      "address_line_2": "suite 777",
+      "postal_code": "66063",
+      "geo": "-55.8451755,-2.658256",
+      "first_seen": "2019-07-07",
+      "last_seen": "2019-09-09",
+      "num_sources": 2
+    }
+  ],
+  "experience": [
+    {
+      "company": {
+        "name": "hall, rios and miller",
+        "size": "10001+",
+        "id": "WjFS0JV5SpeFBTNNXNUGFhpOTuk4",
+        "founded": 2000,
+        "industry": "wireless",
+        "industry_v2": "waste collection",
+        "location": {
+          "name": "east diana, quebec, canada",
+          "locality": "east diana",
+          "region": "quebec",
+          "metro": "east diana",
+          "country": "canada",
+          "continent": "north america",
+          "street_address": "11253 james lodge",
+          "address_line_2": "apt. 211",
+          "postal_code": "A9A 3A2",
+          "geo": "62.1627635,124.325527"
+        },
+        "linkedin_url": "linkedin.com/company/hall-rios-and-miller",
+        "linkedin_id": "76081381",
+        "facebook_url": "facebook.com/hall-rios-and-miller",
+        "twitter_url": "twitter.com/hall-rios-and-miller",
+        "website": "hall-rios-and-miller.com",
+        "ticker": null,
+        "type": "nonprofit",
+        "raw": [
+          "hall, rios and miller"
+        ],
+        "fuzzy_match": null
+      },
+      "location_names": [
+        "east diana, quebec, canada"
+      ],
+      "end_date": "2019-10-22",
+      "start_date": "2018-10-31",
+      "title": {
+        "name": "tax adviser",
+        "raw": [
+          "tax adviser"
+        ],
+        "class": null,
+        "role": null,
+        "sub_role": null,
+        "levels": [
+          "vp",
+          "vp",
+          "vp"
+        ]
+      },
+      "is_primary": true,
+      "summary": "tax adviser at hall, rios and miller",
+      "num_sources": 10,
+      "first_seen": "2018-10-31",
+      "last_seen": "2019-10-22"
+    },
+    {
+      "company": {
+        "name": "rios inc",
+        "size": "10001+",
+        "id": "ISjSoC2ei2HrBC4maLPnRTzphyH0",
+        "founded": 1927,
+        "industry": "libraries",
+        "industry_v2": "it system training and support",
+        "location": {
+          "name": "cindyshire, ontario, canada",
+          "locality": "cindyshire",
+          "region": "ontario",
+          "metro": "cindyshire",
+          "country": "canada",
+          "continent": "north america",
+          "street_address": "426 bryant parkway",
+          "address_line_2": "apt. 597",
+          "postal_code": "A3A 3A8",
+          "geo": "68.361694,73.037565"
+        },
+        "linkedin_url": "linkedin.com/company/rios-inc",
+        "linkedin_id": "25871129",
+        "facebook_url": "facebook.com/rios-inc",
+        "twitter_url": "twitter.com/rios-inc",
+        "website": "rios-inc.com",
+        "ticker": null,
+        "type": "private",
+        "raw": [
+          "rios inc"
+        ],
+        "fuzzy_match": null
+      },
+      "location_names": [
+        "susanfurt, ontario, canada",
+        "lake laura, texas, united states",
+        "new andreastad, ontario, canada"
+      ],
+      "end_date": "2019-04-07",
+      "start_date": "2018-08-27",
+      "title": {
+        "name": "community arts worker",
+        "raw": [
+          "community arts worker"
+        ],
+        "class": null,
+        "role": null,
+        "sub_role": null,
+        "levels": [
+          "cxo"
+        ]
+      },
+      "is_primary": false,
+      "summary": "community arts worker at rios inc",
+      "num_sources": 2,
+      "first_seen": "2019-09-16",
+      "last_seen": "2019-04-07"
+    }
+  ],
+  "education": [
+    {
+      "school": {
+        "name": "bryant-martinez",
+        "type": "primary school",
+        "id": null,
+        "location": {
+          "name": "pearsonborough, quebec, canada",
+          "locality": "pearsonborough",
+          "region": "quebec",
+          "country": "canada",
+          "continent": "north america"
+        },
+        "linkedin_url": "linkedin.com/school/bryant-martinez",
+        "facebook_url": "facebook.com/bryant-martinez",
+        "twitter_url": "twitter.com/bryant-martinez",
+        "linkedin_id": "41079723",
+        "website": "bryant-martinez.edu",
+        "domain": "bryant-martinez.edu",
+        "raw": [
+          "bryant-martinez"
+        ]
+      },
+      "degrees": [
+        "master of liberal arts"
+      ],
+      "start_date": "2002-02-06",
+      "end_date": "2010-06-01",
+      "majors": [
+        "digital art",
+        "history"
+      ],
+      "minors": [
+        "pharmaceutical development",
+        "greek literature and culture",
+        "european modern languages"
+      ],
+      "gpa": 4.0,
+      "raw": [
+        "bryant-martinez"
+      ],
+      "summary": "master of liberal arts majoring in digital art, history"
+    }
+  ],
+  "profiles": [
+    {
+      "network": "vimeo",
+      "id": "hKmxpf",
+      "url": "vimeo.com/kimberlypatton",
+      "username": "kimberlypatton",
+      "num_sources": 4,
+      "first_seen": "2019-04-23",
+      "last_seen": "2018-04-13"
+    },
+    {
+      "network": "soundcloud",
+      "id": "SYrGxw",
+      "url": "soundcloud.com/kimberly_patton",
+      "username": "kimberly_patton",
+      "num_sources": 10,
+      "first_seen": "2019-01-27",
+      "last_seen": "2020-09-25"
+    },
+    {
+      "network": "linkedin",
+      "id": "geOZlt",
+      "url": "linkedin.com/in/kimberly_patton",
+      "username": "kimberly_patton",
+      "num_sources": 10,
+      "first_seen": "2018-10-31",
+      "last_seen": "2019-10-22"
+    },
+    {
+      "network": "facebook",
+      "id": "geOZlt",
+      "url": "facebook.com/kimberly_patton",
+      "username": "kimberly_patton",
+      "num_sources": 10,
+      "first_seen": "2018-10-31",
+      "last_seen": "2019-10-22"
+    },
+    {
+      "network": "twitter",
+      "id": "geOZlt",
+      "url": "twitter.com/kimberly_patton",
+      "username": "kimberly_patton",
+      "num_sources": 10,
+      "first_seen": "2018-10-31",
+      "last_seen": "2019-10-22"
+    },
+    {
+      "network": "github",
+      "id": "geOZlt",
+      "url": "github.com/kimberly_patton",
+      "username": "kimberly_patton",
+      "num_sources": 10,
+      "first_seen": "2018-10-31",
+      "last_seen": "2019-10-22"
+    }
+  ],
+  "name_aliases": [
+    "k.p"
+  ],
+  "possible_emails": [],
+  "possible_profiles": [
+    {
+      "network": "wordpress",
+      "id": "jobfdp",
+      "url": "wordpress.com/kimberly_patton",
+      "username": "kimberly_patton",
+      "num_sources": 2,
+      "first_seen": "2019-07-27",
+      "last_seen": "2020-12-14"
+    },
+    {
+      "network": "meetup",
+      "id": "AKQZxJ",
+      "url": "meetup.com/k_p_75",
+      "username": "k_p_75",
+      "num_sources": 6,
+      "first_seen": "2018-12-05",
+      "last_seen": "2020-10-18"
+    }
+  ],
+  "possible_phones": [
+    {
+      "number": "+12686024811",
+      "first_seen": "2018-07-24",
+      "last_seen": "2020-11-03",
+      "num_sources": 7
+    },
+    {
+      "number": "+16049242736",
+      "first_seen": "2018-06-23",
+      "last_seen": "2019-09-12",
+      "num_sources": 5
+    },
+    {
+      "number": "+12368990911",
+      "first_seen": "2019-06-18",
+      "last_seen": "2020-02-05",
+      "num_sources": 6
+    }
+  ],
+  "possible_street_addresses": [
+    {
+      "name": "williamview, california, united states",
+      "locality": "williamview",
+      "region": "california",
+      "metro": "williamview",
+      "country": "united states",
+      "continent": "north america",
+      "street_address": "66379 andrea lane",
+      "address_line_2": "apt. 214",
+      "postal_code": "67722",
+      "geo": "-7.793674,138.869920",
+      "first_seen": "2019-04-10",
+      "last_seen": "2020-12-28",
+      "num_sources": 4
+    },
+    {
+      "name": "port cassandra, ontario, canada",
+      "locality": "port cassandra",
+      "region": "ontario",
+      "metro": "port cassandra",
+      "country": "canada",
+      "continent": "north america",
+      "street_address": "0596 reginald cove",
+      "address_line_2": "apt. 562",
+      "postal_code": "A7A 7A3",
+      "geo": "41.883778,59.471652",
+      "first_seen": "2018-03-18",
+      "last_seen": "2021-10-04",
+      "num_sources": 1
+    },
+    {
+      "name": "saraport, british columbia, canada",
+      "locality": "saraport",
+      "region": "british columbia",
+      "metro": "saraport",
+      "country": "canada",
+      "continent": "north america",
+      "street_address": "5971 cody cove suite 171",
+      "address_line_2": "suite 093",
+      "postal_code": "A7A 1A7",
+      "geo": "-77.8454585,-82.076514",
+      "first_seen": "2018-02-11",
+      "last_seen": "2020-09-04",
+      "num_sources": 2
+    }
+  ],
+  "possible_location_names": [
+    "williamview, california, united states",
+    "port cassandra, ontario, canada",
+    "saraport, british columbia, canada"
+  ],
+  "possible_birth_dates": [
+    "1967-04-08T00:00:00"
+  ],
+  "job_history": [
+    {
+      "company_id": "hall-rios-and-miller",
+      "company_name": "hall, rios and miller",
+      "title": "tax adviser",
+      "first_seen": "2018-10-31",
+      "last_seen": "2019-10-22",
+      "num_sources": 10
+    },
+    {
+      "company_id": "rios-inc",
+      "company_name": "rios inc",
+      "title": "community arts worker",
+      "first_seen": "2019-09-16",
+      "last_seen": "2019-04-07",
+      "num_sources": 2
+    }
+  ],
+  "certifications": [
+    {
+      "organization": "wilson and sons",
+      "start_date": "2017-01-03",
+      "end_date": "2013-04-25",
+      "name": "retail manager"
+    }
+  ],
+  "languages": [
+    {
+      "name": "sindhi",
+      "proficiency": 3
+    },
+    {
+      "name": "zulu",
+      "proficiency": 5
+    },
+    {
+      "name": "jarai",
+      "proficiency": 1
+    },
+    {
+      "name": "yiddish",
+      "proficiency": 4
+    }
+  ],
+  "first_seen": "2018-02-20",
+  "num_sources": 39,
+  "num_records": 5,
+  "dataset_version": "v33.1"
+}
