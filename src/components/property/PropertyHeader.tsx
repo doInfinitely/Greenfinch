@@ -89,7 +89,7 @@ export default function PropertyHeader({
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
         <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 overflow-hidden">
             {enrichedProperty?.commonName && (
               <div className="mb-1">
                 <h1 className="text-2xl font-bold text-gray-900 break-words">
@@ -127,7 +127,7 @@ export default function PropertyHeader({
             </div>
           </div>
           
-          <div className="flex-shrink-0 flex items-center gap-2">
+          <div className="flex-shrink-0 flex flex-wrap items-center gap-2">
             {pipelineOwner && (
               <TooltipProvider>
                 <Tooltip>
@@ -246,7 +246,7 @@ export default function PropertyHeader({
         
         <div className="flex flex-wrap items-center gap-2 mb-6">
           <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls hideOwnerDisplay triggerAssignDialog={assignDialogTrigger} isCustomer={isCurrentCustomer} />
-          <div className="border-l border-gray-200 h-6 mx-1" />
+          <div className="border-l border-gray-200 h-6 mx-1 hidden sm:block" />
           <CustomerToggle propertyId={property.propertyKey} onToggle={onSetIsCurrentCustomer} />
         </div>
 
