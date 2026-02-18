@@ -436,7 +436,10 @@ export async function enrichPersonPDL(
   }
 }
 
-export async function enrichCompanyPDL(domain: string): Promise<PDLCompanyResult> {
+export async function enrichCompanyPDL(
+  domain: string,
+  options: { name?: string; linkedinUrl?: string; locality?: string; region?: string } = {}
+): Promise<PDLCompanyResult> {
   const apiKey = process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY;
   
   if (!apiKey) {
@@ -453,8 +456,12 @@ export async function enrichCompanyPDL(domain: string): Promise<PDLCompanyResult
             pretty: 'true',
             titlecase: 'true',
           });
+          if (options.name) params.set('name', options.name);
+          if (options.linkedinUrl) params.set('profile', options.linkedinUrl);
+          if (options.locality) params.set('locality', options.locality);
+          if (options.region) params.set('region', options.region);
 
-          console.log('[PDL] Company enrich request:', domain);
+          console.log('[PDL] Company enrich request:', domain, options.name ? `(name: ${options.name})` : '');
 
           const response = await fetch(`${PDL_API_BASE}/company/enrich?${params}`, {
             method: 'GET',

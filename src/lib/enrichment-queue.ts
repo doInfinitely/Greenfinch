@@ -421,7 +421,10 @@ export async function runCascadeEnrichmentOnSavedRecords(
       if (!org || !org.domain || org.enrichmentStatus === 'enriched') continue;
 
       console.log(`[CascadeEnrichment] Enriching org: ${org.name} (${org.domain})`);
-      const result = await enrichOrganizationCascade(org.domain);
+      const result = await enrichOrganizationCascade(org.domain, {
+        name: org.name || undefined,
+        linkedinUrl: org.linkedinUrl || undefined,
+      });
 
       if (result.found) {
         const updateData: Record<string, any> = {

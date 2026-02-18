@@ -107,7 +107,7 @@ export default function ContactsSection({
                   <ContactAvatar photoUrl={contact.photoUrl} name={contact.fullName || ''} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center flex-wrap gap-2 mb-1">
-                      <p className={`font-medium ${isFormer ? 'text-gray-500 line-through' : 'text-gray-900'}`}>{contact.fullName}</p>
+                      <p className={`font-medium ${isFormer ? 'text-gray-500 line-through' : 'text-gray-900'}`} data-testid={`text-contact-name-${contact.id}`}>{contact.fullName}</p>
                       {contact.role && (
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[contact.role] || ROLE_COLORS.other}`}>
                           {ROLE_LABELS[contact.role] || contact.role}
@@ -132,7 +132,7 @@ export default function ContactsSection({
                         <a
                           href={`mailto:${contact.email}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 text-gray-600 hover:text-green-700 transition-colors"
+                          className="inline-flex items-center gap-1 text-gray-600 hover:underline transition-colors"
                           title={`Email ${contact.fullName}`}
                           data-testid={`link-email-${contact.id}`}
                         >
@@ -150,7 +150,7 @@ export default function ContactsSection({
                         <a
                           href={`tel:${contact.normalizedPhone || bestPhone}`}
                           onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 text-gray-600 hover:text-green-700 transition-colors"
+                          className="inline-flex items-center gap-1 text-gray-600 hover:underline transition-colors"
                           title={`Call ${contact.fullName}`}
                           data-testid={`link-phone-${contact.id}`}
                         >
@@ -170,7 +170,7 @@ export default function ContactsSection({
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={(e) => e.stopPropagation()}
-                          className="inline-flex items-center gap-1 text-gray-600 hover:text-green-700 transition-colors"
+                          className="inline-flex items-center gap-1 text-gray-600 hover:underline transition-colors"
                           title="View LinkedIn profile"
                           data-testid={`link-linkedin-${contact.id}`}
                         >

@@ -1,11 +1,45 @@
 'use client';
 
+import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Flag, Globe, Phone, Mail } from 'lucide-react';
 import { SiLinkedin, SiX, SiFacebook } from 'react-icons/si';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
 import { toTitleCase } from '@/lib/normalization';
 import type { Property, EnrichedPropertyData, Organization } from './types';
+
+function ExpandableDescription({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  const ref = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (ref.current) {
+      setClamped(ref.current.scrollHeight > ref.current.clientHeight + 2);
+    }
+  }, [text]);
+
+  return (
+    <div className="mt-2">
+      <p
+        ref={ref}
+        className={`text-sm text-gray-600 ${expanded ? '' : 'line-clamp-2'}`}
+        data-testid="text-org-description"
+      >
+        {text}
+      </p>
+      {clamped && (
+        <button
+          onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+          className="text-xs text-green-600 hover:underline mt-0.5"
+          data-testid="button-toggle-description"
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
+  );
+}
 
 interface OwnershipSectionProps {
   property: Property;
@@ -186,7 +220,7 @@ export default function OwnershipSection({
                     )}
 
                     {org.description && (
-                      <p className="text-sm text-gray-600 mt-2 line-clamp-2">{org.description}</p>
+                      <ExpandableDescription text={org.description} />
                     )}
 
                     {org.tags && org.tags.length > 0 && (

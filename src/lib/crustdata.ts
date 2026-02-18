@@ -13,6 +13,7 @@ export interface CrustdataPersonResult {
   companyDomain: string | null;
   workEmail: string | null;
   linkedinUrl: string | null;
+  profilePictureUrl: string | null;
   location: string | null;
   raw?: any;
 }
@@ -40,6 +41,7 @@ const EMPTY_PERSON_RESULT: CrustdataPersonResult = {
   companyDomain: null,
   workEmail: null,
   linkedinUrl: null,
+  profilePictureUrl: null,
   location: null,
 };
 
@@ -172,6 +174,8 @@ export async function enrichPersonCrustdata(params: {
       metadata: { found: true },
     });
 
+    const profilePictureUrl = person.profile_picture_url || person.profile_pic_url || person.photo_url || null;
+
     return {
       found: true,
       title: titleClean,
@@ -179,6 +183,7 @@ export async function enrichPersonCrustdata(params: {
       companyDomain,
       workEmail,
       linkedinUrl,
+      profilePictureUrl,
       location: person.location || null,
       raw: result.data,
     };

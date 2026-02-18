@@ -65,7 +65,6 @@ export async function enrichOrganizationByDomain(
     };
   }
   
-  // Use cascade enrichment: Apollo → EnrichLayer → PDL
   const cascadeResult = await enrichOrganizationCascade(domain);
   
   if (!cascadeResult.found) {

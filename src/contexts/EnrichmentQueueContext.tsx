@@ -55,7 +55,7 @@ const EnrichmentQueueContext = createContext<EnrichmentQueueContextType | undefi
 
 const STORAGE_KEY = 'greenfinch_enrichment_queue';
 const SESSION_KEY = 'greenfinch_enrichment_session';
-const MAX_ITEMS = 20;
+const MAX_ITEMS = 50;
 const EXPIRY_HOURS = 24;
 
 function generateId(): string {
@@ -72,7 +72,11 @@ function cleanExpiredItems(items: EnrichmentQueueItem[]): EnrichmentQueueItem[] 
 }
 
 function limitItems(items: EnrichmentQueueItem[]): EnrichmentQueueItem[] {
-  return items.slice(0, MAX_ITEMS);
+  if (items.length <= MAX_ITEMS) return items;
+  const active = items.filter(i => i.status === 'pending' || i.status === 'processing' || i.status === 'polling');
+  const terminal = items.filter(i => i.status === 'completed' || i.status === 'failed');
+  const terminalToKeep = terminal.slice(0, Math.max(0, MAX_ITEMS - active.length));
+  return [...active, ...terminalToKeep];
 }
 
 export function EnrichmentQueueProvider({ children }: { children: ReactNode }) {
