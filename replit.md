@@ -1,121 +1,132 @@
 # greenfinch.ai - Commercial Property Prospecting Tool
 
 ## Overview
-greenfinch.ai is a commercial property prospecting tool that provides sales representatives with commercial property information and validated contact details for decision-makers. It integrates Regrid parcel data, Mapbox POI enrichment, and email validation through LeadMagic, presented on interactive maps. The platform aims to streamline commercial real estate prospecting through a comprehensive, data-driven approach, with an MVP focused on a specific Dallas ZIP code and a vision for nationwide expansion.
+greenfinch.ai is an AI-native commercial real estate prospecting CRM. It aggregates parcel data, enriches properties using AI, and provides multi-source contact enrichment. The system offers property intelligence, validated contact information, pipeline management, and multi-view filtering, aiming to build a proprietary data flywheel. The MVP targets ZIP 75225 in Dallas, TX, with an architecture designed for nationwide expansion.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language
 - Use only Standard Regrid fields (avoid Premium fields like zoning_type, zoning_subtype, homestead_exemption)
 - Use Mapbox for maps with separate logic testing
-- Use Replit Auth for authentication
+- Use Clerk Auth for authentication (migrated from Replit Auth)
 - Use zoning-only classification (rule-based, no AI) for commercial/multifamily detection
 - Use Mapbox POI enrichment for category/subcategory assignment
 - Design for nationwide expansion (MVP scope: ZIP 75225 in Dallas, TX)
-- Light mode only: Dark mode is disabled; the app always serves light mode design regardless of device preferences
+- Light mode only: Dark mode is fully disabled; all `dark:` CSS classes removed from app code; `tailwind.config.ts` has `darkMode: "class"` but `layout.tsx` force-removes the `dark` class and forces `light` class on the HTML element
+- No changes to EnrichLayer integration until their site is back up (currently timing out)
 
 ## System Architecture
 
 ### Framework
 - **Framework**: Next.js 16 with App Router
 - **Styling**: Tailwind CSS v3
-- **Database ORM**: Drizzle ORM with PostgreSQL
+- **Database ORM**: Drizzle ORM with PostgreSQL (Neon-backed)
 - **Runtime**: Node.js 20
+- **State Management**: Redis (Upstash) for distributed caching/locking, with in-memory fallback
 
-### Project Structure
-The project uses a standard Next.js structure with `/src/app` for API routes and UI pages, `/src/components` for reusable React components, and `/src/lib` for backend logic, database interactions, and utility functions.
+### Core Design Principles
+- **Modular Project Structure**: Organized by feature and concern (`app/`, `components/`, `lib/`).
+- **Data-Driven UI**: Interactive maps (Mapbox GL), dashboards, and detailed views for properties and contacts.
+- **Robust Authentication**: Clerk Auth with Role-Based Access Control (RBAC) via Clerk Organizations, supporting legacy Replit Auth migration. Authentication checks are implemented per-route.
+- **Multi-stage Enrichment Pipelines**:
+    - **Contact Enrichment**: A 5-stage cascade (Findymail/Hunter email → PDL person → SERP LinkedIn fallback → Crustdata verification) with raw response storage and confidence flags.
+    - **Organization Enrichment**: 2-stage (PDL Company → Crustdata Company).
+    - **Property AI Enrichment**: Uses Google Gemini AI with search grounding for property data and beneficial owner identification.
+- **Asynchronous Processing**: Non-blocking enrichment queue system with Redis for background processing, distributed locking, and caching.
+- **Performance Optimizations**: Cursor pagination for APIs, Redis-based rate limiting, client-side debouncing, and optimized PostgreSQL indexing.
+- **User Engagement Features**: In-app notification system supporting @mentions and follow-up action reminders. Unread property indicators provide visual cues for new properties.
+- **Responsive Design**: UI components are designed to adapt for mobile and desktop, including swipe hints and flexible layouts.
+- **UI/UX Standards**: Consistent navigation, clear actionable elements, and explicit opaque backgrounds for all overlay UI elements.
+- **Property Classification**: Utilizes Texas PTAD state property type codes for commercial and multifamily classification.
+- **Parcel Aggregation**: Properties are aggregated by GIS_PARCEL_ID to represent physical complexes.
 
-### Data Sources
-- **Snowflake**: Used for ingesting Regrid parcel data into PostgreSQL.
-- **PostgreSQL**: The primary operational database, storing enriched property records, contacts, organizations, and user-generated lists.
+## Key File Sizes (maintainability reference)
+- `src/app/property/[id]/page.tsx` — 2,148 lines
+- `src/app/contact/[id]/page.tsx` — 1,216 lines
+- `src/lib/enrichment-queue.ts` — 1,006 lines
+- `src/lib/schema.ts` — 983 lines (25+ tables)
+- `src/components/MapView.tsx` — 936 lines
+- `src/lib/cascade-enrichment.ts` — 693 lines
+- `src/lib/pdl.ts` — 551 lines
 
-### Authentication System
-- **Clerk Auth**: Implements authentication using Clerk SDK with Next.js proxy.
-- **Migration Support**: Legacy Replit Auth users are automatically migrated to Clerk.
-- **Role-Based Access Control**: Uses Clerk Organizations for role management with defined roles and permissions for internal and external users.
+## API Surface (71 routes total)
 
-### UI/UX Decisions
-- **Navigation**: AppSidebar component with grouped navigation sections: Prospecting, Pipeline, Admin, Internal, Help.
-- **Interactive Maps**: Utilizes Mapbox for displaying property data, clusters, and interactive elements.
-- **Dashboard**: Features a tab-based interface for map and list views with synchronized property lists and a search bar.
-- **Property Details**: Dedicated pages for detailed property information, contacts, and organizations, with hidden sections when beneficial owner data is enriched.
-- **Clickable Records**: Contact and organization cards/rows are fully clickable with chevron indicators for mobile UX.
-- **Property Filters**: Collapsible filter panel with sections for size, category/subcategory, building class, HVAC types, and linked records.
-- **Mobile Responsiveness**: Pipeline board uses CSS snap scrolling with swipe hints on mobile. Filter selects use shadcn Select components for consistent styling. Property page action buttons use flex-wrap for mobile stacking.
-- **Dropdown/Overlay Backgrounds**: All dropdown menus, select menus, popovers, dialogs, and overlay elements MUST have explicit opaque backgrounds (e.g., `bg-popover`, `bg-card`, or `bg-white dark:bg-gray-900`). Never use transparent backgrounds for floating/overlay UI elements.
+### Routes WITH authentication (25 routes)
+These routes call `requireSession()`, `getAuth()`, or `auth()`:
+- `/api/admin/deduplicate`
+- `/api/contacts/[id]` (GET/PATCH/DELETE)
+- `/api/contacts/[id]/enrich`, `/api/contacts/[id]/waterfall-email`, `/api/contacts/[id]/waterfall-phone`
+- `/api/notifications`
+- `/api/org-admin/analytics`
+- `/api/org/members`, `/api/org/members/[id]`, `/api/org/members/[id]/role`
+- `/api/org/invitations`, `/api/org/invitations/[id]`
+- `/api/org/team`
+- `/api/pipeline/board`, `/api/pipeline/dashboard`, `/api/pipeline/[id]`, `/api/pipeline/[id]/claim`, `/api/pipeline/activity`
+- `/api/properties/[id]/actions`, `/api/properties/[id]/activity`, `/api/properties/[id]/customer`, `/api/properties/[id]/notes`, `/api/properties/[id]/pipeline`
+- `/api/properties/search`
+- `/api/properties/views`
 
-### Technical Implementations
-- **Property Classification**: Uses Texas PTAD state property type codes for classification of commercial and multifamily properties, excluding single-family, vacant land, and others.
-- **Parcel Aggregation**: Properties are aggregated by GIS_PARCEL_ID to represent physical complexes, handling parent-constituent relationships.
-- **Map Management**: A dedicated `DashboardMap` controller manages Mapbox GL lifecycle and state.
-- **Search Functionality**: Integrates Mapbox Search Box API for POI, address, and location searches.
-- **Cascade Enrichment Architecture**: Multi-provider enrichment pipelines with raw response storage and confidence flags.
-  - **Contact Pipeline (5 stages)**: Input Validation → Email/LinkedIn Discovery (Findymail Verify → Findymail Finder → Hunter Finder → Findymail Reverse Email) → PDL Person Enrichment → SERP LinkedIn Discovery (Google search fallback via SerpAPI when no LinkedIn found) → Crustdata Verification (conditional on domain mismatch).
-  - **Organization Pipeline (2 stages)**: PDL Company Enrichment → Crustdata Company Enrichment.
-  - **Confidence Flags**: "verified" (Crustdata confirmed) | "pdl_matched" (PDL domain matched input) | "unverified" (PDL domain mismatch, no Crustdata) | "email_only" (only email found).
-  - **Email Source Tracking**: "input_verified" | "input_invalid" | "findymail_finder" | "hunter_finder".
-  - **Domain Alias Matching**: Built-in alias table + fuzzy TLD-stripped comparison for Crustdata trigger logic.
-  - **Raw Response Storage**: pdl_raw_response and crustdata_raw_response stored as JSONB on contacts and organizations for auditability.
-  - **PDL Validation**: min_likelihood=7, requires full_name + job_title + job_company_name + job_company_website; discards incomplete matches.
-  - **Crustdata Trigger**: Fires when PDL company domain doesn't match input domain, or PDL returned no data. Requires LinkedIn URL or verified email.
-- **Email Validation Rules**: Prioritizes ZeroBounce with NeverBounce as fallback. Catch-all emails are invalid, and personal email providers trigger further business email enrichment.
-- **Enrichment Queue System**: A non-blocking queue system allows background processing of enrichment tasks with UI progress updates and persistence.
-- **Horizontal Scaling Infrastructure**: Redis-backed distributed state management using Upstash for cross-instance coordination.
-  - **Redis State**: Enrichment queue, caches (ZeroBounce, Mapbox POI, Google Places) use Redis with in-memory fallback when Redis unavailable.
-  - **Distributed Locking**: Uses Redis SETNX pattern with unique tokens for batch enrichment locks (5-minute timeout). Fail-closed on Redis errors to prevent concurrent access.
-  - **Cache TTLs**: ZeroBounce 1hr, Mapbox POI 24hr, Google Places 24hr, SERP LinkedIn 24hr.
-  - **Key Prefixes**: `gf:cache:`, `gf:queue:`, `gf:lock:` for namespace isolation (helpers auto-prefix).
-- **API Performance Optimizations**:
-  - **Cursor Pagination**: Contacts and properties APIs use cursor-based pagination for stable, efficient pagination on large datasets. Base64-encoded cursors contain id and sort value.
-  - **Rate Limiting**: Redis-based fixed window rate limiting protects expensive endpoints (enrichment, validation, waterfall) with 20 req/min limit. Falls back to in-memory when Redis unavailable.
-  - **Client Debouncing**: useDebounce hook (300ms default) applied to search inputs and filter components to reduce API calls.
-  - **Connection Pool Tuning**: PostgreSQL pool configured with max=20 connections, 30s idle timeout, 5s connection timeout.
-- **Database Performance**: Indexes on properties.zip, properties.assetSubcategory, properties.enrichmentStatus, and composite indexes on contactOrganizations for relationship lookups. N+1 queries fixed via batch fetching with inArray() in contacts and analytics APIs.
-- **Organization Domain Enrichment**: Automates enrichment for organizations using Hunter.io and EnrichLayer, including parent company discovery and industry classification.
-- **AI Enrichment Rules**: Employs `gemini-3-flash-preview` with search grounding for property enrichment, excluding condo/HOA and focusing on management companies and developers. Building and lot square footage are calculated with source tracking and precedence rules.
-- **Notifications System**: In-app notification system supporting @ mentions in notes and follow-up action reminders.
-  - **@ Mentions**: Users can @mention team members in property notes. Mentioned users receive in-app notifications.
-  - **Follow-up Actions**: Schedule follow-ups for properties with quick options (tomorrow 9am, next week 9am) or custom dates.
-  - **Notification Bell**: Located in the global app header (next to enrichment queue). Shows unread count with real-time polling (60s). Accessible from any page.
-  - **Notification Types**: `mention` (when mentioned in notes), `action_due` (reminder for due actions), `action_assigned` (when assigned a follow-up by another user).
-- **Add Contact to Property**: Allows users to add contacts and create contact-property relationships directly from property detail pages.
-  - **4-Step Wizard Modal**: Search existing contacts with autocomplete → associate with role selection, OR create new contacts via Apollo enrichment.
-  - **Apollo Enrichment**: Supports lookup by email or LinkedIn URL using Apollo People Match API. Prefills contact form with enriched data.
-  - **ZeroBounce Validation**: New contact emails are validated with ZeroBounce and status is stored with the contact.
-  - **Deduplication**: Server-side checks prevent duplicate contacts by normalized email or LinkedIn URL. Returns existing contact ID with suggestion to use associate endpoint.
-  - **Relationship Roles**: Contacts are linked to properties via propertyContacts junction table with role field (uses ROLE_LABELS constants).
-  - **Targeted Refresh**: Uses fetchProperty() instead of full page reload for better UX after adding contacts.
-- **Unread Property Indicators**: Tracks which properties each user has viewed, showing visual indicators for unviewed ("new") properties.
-  - **View Tracking**: When a user opens a property detail page, a view record is created/updated in `property_views` table (scoped by user + org).
-  - **Blue Dot Indicators**: Unviewed properties show a blue dot and bolder text in both list view (desktop table and mobile cards) and PropertyList panel view.
-  - **Mark as New**: Users can mark a property as "new" again via the property detail page dropdown menu (deletes the view record).
-  - **View Status Filter**: PropertyFilters includes a "View Status" section with All / New Only / Viewed options for client-side filtering.
-  - **API**: `GET/POST/DELETE /api/properties/views` for batch view status checks, recording views, and removing view records.
+### Routes WITHOUT authentication (46 routes)
+These routes have NO auth check — any unauthenticated request succeeds:
+- **Admin (11 unprotected!)**: `/api/admin/enrich-batch`, `/api/admin/enrich-status`, `/api/admin/ingest`, `/api/admin/stats`, `/api/admin/test-enrichment`, `/api/admin/discover-columns`, `/api/admin/compare/*` (3), `/api/admin/database`, `/api/admin/database/export`, `/api/admin/ingestion-settings`
+- **Auth/Config**: `/api/auth/user`, `/api/config`
+- **Contacts**: `/api/contacts` (list), `/api/contacts/search`, `/api/contacts/create`, `/api/contacts/associate`, `/api/contacts/enrich`, `/api/contacts/[id]/linkedin`, `/api/contacts/[id]/linkedin/flag`, `/api/contacts/[id]/profile-photo`
+- **Properties**: `/api/properties` (list), `/api/properties/geojson`, `/api/properties/filter-options`, `/api/properties/by-parcel/*`, `/api/properties/[id]`, `/api/properties/[id]/flag`, `/api/properties/[id]/service-providers`
+- **Enrichment**: `/api/enrich` (property AI enrichment)
+- **Other**: `/api/geocode/reverse`, `/api/lists/*` (3), `/api/organizations/*` (5), `/api/parcels/resolve`, `/api/service-providers/search`, `/api/tiles/regrid/*`, `/api/typeahead`, `/api/user/settings`, `/api/waitlist`, `/api/webhooks/apollo`
 
 ## External Dependencies
-- **Snowflake**: For Regrid parcel data access and ingestion.
-- **Mapbox**: For interactive mapping, geocoding, and Point of Interest (POI) enrichment.
-- **Findymail**: Email finding (by name+domain), email verification, and reverse email-to-LinkedIn lookup.
-- **Hunter.io**: Email finding (by name+domain) as fallback to Findymail, and organization domain enrichment.
-- **People Data Labs (PDL)**: Primary person enrichment (phone, identity, location, title) and company enrichment. Env vars: PDL_API_KEY / PEOPLEDATALABS_API_KEY.
-- **Crustdata**: Verification layer for contacts (100% accuracy in testing) and supplementary company enrichment. Uses LinkedIn URL or email as input.
-- **SerpAPI**: Google search-based LinkedIn profile discovery. Used as fallback when Findymail, Hunter, and PDL fail to find a LinkedIn URL. Results cached in Redis for 24hrs. Env var: SERP_API_KEY.
-- **LeadMagic**: Provides email validation services.
-- **EnrichLayer**: For LinkedIn-sourced company and contact data (profile photos, company profiles, industry classification).
-- **Clerk Auth**: Handles user authentication and legacy user migration.
-- **Google Gemini**: Utilized for AI-based property enrichment, including contact discovery and beneficial owner identification.
+- **Snowflake**: Regrid parcel data ingestion.
+- **Mapbox**: Interactive mapping, geocoding, POI enrichment.
+- **Findymail**: Email finding, verification, reverse email lookup, phone lookup.
+- **Hunter.io**: Email finding, organization domain enrichment.
+- **People Data Labs (PDL)**: Primary person and company enrichment. Returns `mobile_phone` (personal) and `phone_numbers` array (work phones extracted).
+- **Crustdata**: Contact and company verification layer.
+- **SerpAPI**: Google search-based LinkedIn profile discovery (fallback).
+- **Apollo.io**: People match API for contact creation.
+- **ZeroBounce**: Primary email validation.
+- **LeadMagic**: Secondary email validation.
+- **EnrichLayer**: LinkedIn-sourced company/contact data (currently unreachable — do not modify).
+- **Clerk Auth**: User authentication, organization management, RBAC.
+- **Google Gemini**: AI-based property enrichment (`gemini-3-flash-preview` with search grounding).
+- **Upstash Redis**: Distributed caching and locking.
+
+## Known Issues & Technical Debt (Feb 2026 Audit)
+
+### CRITICAL — Security
+- **AUTH-1**: 46 of 71 API routes have no authentication. All 11 admin routes (batch enrichment, database export, ingestion) are completely unprotected. No global Next.js `middleware.ts` exists for Clerk auth enforcement.
+  - **Fix**: Add `src/middleware.ts` with Clerk's `clerkMiddleware()` to protect all `/api/*` routes, with explicit public exceptions only for `/api/auth/user`, `/api/config`, `/api/waitlist`, and `/api/webhooks/*`.
+
+### HIGH — Performance & Scalability
+- **PERF-1**: Large monolithic page components (property page 2,148 lines, contact page 1,216 lines). Difficult to maintain and review.
+  - **Fix**: Extract into focused sub-components.
+- **PERF-2**: Client-side GeoJSON clustering loads all property coordinates. Will degrade on mobile with thousands of properties beyond Dallas MVP.
+  - **Fix**: Server-side clustering via PostGIS or Mapbox vector tiles.
+- **PERF-3**: Property page uses `setTimeout` at 15s/30s for delayed re-fetch after background cascade enrichment. Fragile timing.
+  - **Fix**: Server-sent events or polling with completion detection.
+
+### MEDIUM — Data Quality & Enrichment
+- **DATA-1**: No centralized enrichment cost tracking or daily spend cap across all paid APIs.
+- **DATA-2**: Rate limiting falls back to in-memory when Redis unavailable, meaning limits reset on restart.
+
+### MEDIUM — UX
+- **UX-1**: No accessibility (a11y) patterns. No aria labels, keyboard navigation, or screen reader support.
+- **UX-2**: No loading skeletons on property/contact detail pages.
+
+### MEDIUM — Code Quality
+- **CODE-1**: No test coverage anywhere in the project. Enrichment pipeline logic would benefit most.
+- **CODE-2**: Inconsistent API response patterns. No shared response envelope or error format.
+- **CODE-3**: Dual ID system (Clerk ID vs DB UUID) for user references across pipeline, notes, actions.
+
+### LOW — Infrastructure
+- **INFRA-1**: No `/api/health` endpoint for monitoring database/Redis connectivity.
 
 ## Future Exploration
 
 ### Refactor to use Clerk IDs everywhere
-Currently the system uses separate database user IDs (`dbUserId`) alongside Clerk user IDs for certain operations like pipeline owner assignments. Consider refactoring to use Clerk IDs consistently across all operations for simpler ID handling. This would require:
-- Migrating database `users.id` to use Clerk user IDs as primary key
-- Updating all foreign key references (pipeline.ownerId, notes.userId, actions.assignedTo, etc.)
-- Removing dual-ID handling in org/members API and related components
+Currently the system uses separate database user IDs (`dbUserId`) alongside Clerk user IDs for certain operations like pipeline owner assignments. Consider refactoring to use Clerk IDs consistently across all operations for simpler ID handling.
 
 ### Admin CSV Enrichment Page (PDL Integration)
-Build an admin-only page that allows bulk person enrichment via CSV upload:
-- Upload CSV with columns: name, company domain, location (+ other optional columns)
-- Select enrichment provider (e.g., People Data Labs)
-- Parse CSV and call PDL Person Enrichment API for each row
-- Display enriched results in a table with export functionality
-- Will require PDL API key to be added as a secret
+Build an admin-only page that allows bulk person enrichment via CSV upload with PDL API.
+
+### Server-Side Map Clustering
+Implement PostGIS-based server-side clustering as property data scales beyond Dallas MVP.
