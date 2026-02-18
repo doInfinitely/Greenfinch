@@ -196,7 +196,7 @@ export async function PATCH(
     const { fullName, title, email, phone, linkedinUrl } = body;
 
     // Validate at least one field is being updated
-    if (!fullName && title === undefined && email === undefined && phone === undefined && linkedinUrl === undefined) {
+    if (fullName === undefined && title === undefined && email === undefined && phone === undefined && linkedinUrl === undefined) {
       return NextResponse.json(
         { error: 'No fields to update' },
         { status: 400 }
@@ -233,34 +233,31 @@ export async function PATCH(
     };
 
     if (fullName !== undefined) {
-      updateData.fullName = fullName || null; // Treat empty string as null
+      updateData.fullName = fullName || null;
+      updateData.normalizedName = fullName ? fullName.toLowerCase().replace(/[^a-z0-9]/g, '') : null;
     }
     if (title !== undefined) {
-      updateData.title = title || null; // Treat empty string as null
+      updateData.title = title || null;
     }
     if (email !== undefined) {
-      updateData.email = email || null; // Treat empty string as null
+      updateData.email = email || null;
+      updateData.normalizedEmail = email ? email.toLowerCase().trim() : null;
       updateData.emailValidationStatus = email ? 'manual' : null;
     }
     if (phone !== undefined) {
       let formattedPhone: string | null = null;
+      let e164Phone: string | null = null;
       if (phone) {
-        // Try to parse and format the phone number
         const parsed = parsePhoneNumberFromString(phone, 'US');
         if (parsed && parsed.isValid()) {
-          // Format as +1 (XXX) XXX-XXXX for US numbers
-          formattedPhone = parsed.formatNational();
-          if (parsed.country === 'US') {
-            formattedPhone = `+1 ${formattedPhone}`;
-          } else {
-            formattedPhone = parsed.formatInternational();
-          }
+          formattedPhone = parsed.formatInternational();
+          e164Phone = parsed.format('E.164');
         } else {
-          // Invalid phone number
           return NextResponse.json({ error: 'Invalid phone number format' }, { status: 400 });
         }
       }
       updateData.phone = formattedPhone;
+      updateData.normalizedPhone = e164Phone;
       updateData.phoneSource = formattedPhone ? 'manual' : null;
     }
     if (linkedinUrl !== undefined) {

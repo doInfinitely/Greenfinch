@@ -276,11 +276,6 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       const featureId = feature.id;
       const llUuid = feature.properties?.ll_uuid || (typeof featureId === 'string' ? featureId : null);
       
-      // Debug logging - remove after testing
-      if (!llUuid && featureId !== hoveredParcelId.current) {
-        console.log('[Parcel Debug] Feature:', { id: featureId, idType: typeof featureId, props: Object.keys(feature.properties || {}) });
-      }
-      
       if (hoveredParcelId.current !== null && hoveredParcelId.current !== featureId) {
         try {
           map.current.setFeatureState(
