@@ -156,6 +156,7 @@ export default function EnrichmentQueuePopover() {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const prevCompletedCountRef = useRef(0);
   const prevActiveCountRef = useRef(0);
+  const justCompletedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const hasItems = items.length > 0;
   const hasCompletedItems = items.some(item => item.status === 'completed' || item.status === 'failed');
@@ -166,6 +167,13 @@ export default function EnrichmentQueuePopover() {
   // Hydration effect - wait for component to fully mount before allowing celebrations
   useEffect(() => {
     setIsHydrated(true);
+  }, []);
+  
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (justCompletedTimerRef.current) clearTimeout(justCompletedTimerRef.current);
+    };
   }, []);
   
   // Set the origin ref for the celebration animation
@@ -194,7 +202,8 @@ export default function EnrichmentQueuePopover() {
     // Trigger justCompleted animation when all items finish (activeCount goes from >0 to 0)
     if (prevActiveCountRef.current > 0 && activeCount === 0 && hasItems) {
       setJustCompleted(true);
-      setTimeout(() => setJustCompleted(false), 2000);
+      if (justCompletedTimerRef.current) clearTimeout(justCompletedTimerRef.current);
+      justCompletedTimerRef.current = setTimeout(() => setJustCompleted(false), 2000);
     }
     
     prevCompletedCountRef.current = completedCount;

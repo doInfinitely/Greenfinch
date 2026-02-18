@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Building2, Save, Check } from 'lucide-react';
 import { SERVICE_CATEGORIES, SERVICE_CATEGORY_LABELS } from '@/lib/schema';
 
@@ -20,9 +20,17 @@ export default function SettingsPage() {
   const [companyName, setCompanyName] = useState('');
   const [companyDomain, setCompanyDomain] = useState('');
   const [selectedServices, setSelectedServices] = useState<string[]>([]);
+  
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     fetchSettings();
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    };
   }, []);
 
   const fetchSettings = async () => {
@@ -71,7 +79,8 @@ export default function SettingsPage() {
       }
 
       setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+      if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+      savedTimerRef.current = setTimeout(() => setSaved(false), 3000);
     } catch (err) {
       setError('Failed to save settings. Please try again.');
       console.error('Save error:', err);

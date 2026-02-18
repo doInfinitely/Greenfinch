@@ -539,7 +539,7 @@ export default function PipelineBoard() {
                                         <Button
                                           variant="ghost"
                                           size="icon"
-                                          className="text-green-600 h-9 w-9 md:h-8 md:w-8"
+                                          className="text-green-600"
                                           onClick={(e) => handleQuickStatus(item, 'won', e)}
                                           title="Mark as Won"
                                           data-testid={`button-won-${item.propertyId}`}
@@ -549,7 +549,7 @@ export default function PipelineBoard() {
                                         <Button
                                           variant="ghost"
                                           size="icon"
-                                          className="text-red-500 h-9 w-9 md:h-8 md:w-8"
+                                          className="text-red-500"
                                           onClick={(e) => handleQuickStatus(item, 'lost', e)}
                                           title="Mark as Lost"
                                           data-testid={`button-lost-${item.propertyId}`}

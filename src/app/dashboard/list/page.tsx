@@ -151,6 +151,9 @@ export default function ListPage() {
         params.set('contactId', filters.contactId);
       }
       const response = await fetch(`/api/properties/search?${params.toString()}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch properties');
+      }
       return response.json();
     },
     staleTime: 30000,

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Filter } from 'lucide-react';
 import { TableSkeleton } from '@/components/PageSkeleton';
 import { Button } from '@/components/ui/button';
@@ -51,6 +52,7 @@ const CONTACT_COUNT_BUCKETS = [
 ];
 
 export default function OrganizationsPage() {
+  const router = useRouter();
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -448,7 +450,7 @@ export default function OrganizationsPage() {
                       <tr 
                         key={org.id} 
                         className={`hover:bg-gray-50 ${org.id ? 'cursor-pointer' : ''}`}
-                        onClick={() => org.id && (window.location.href = `/organization/${org.id}`)}
+                        onClick={() => org.id && router.push(`/organization/${org.id}`)}
                         data-testid={`org-row-${org.id}`}
                       >
                         <td className="px-6 py-4 whitespace-nowrap">

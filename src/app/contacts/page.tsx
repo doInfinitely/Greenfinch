@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
@@ -114,6 +115,7 @@ interface AddToListState {
 }
 
 export default function ContactsPage() {
+  const router = useRouter();
   const { toast } = useToast();
   const { startEnrichment } = useEnrichment();
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -1095,7 +1097,7 @@ export default function ContactsPage() {
                           </td>
                           <td 
                             className="px-4 py-3"
-                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
                             <div className="flex items-center gap-2">
                               <div className="flex-1 min-w-0">
@@ -1126,7 +1128,7 @@ export default function ContactsPage() {
                           </td>
                           <td 
                             className="px-4 py-3 whitespace-nowrap"
-                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
                             {contact.email ? (
                               <a
@@ -1143,7 +1145,7 @@ export default function ContactsPage() {
                           </td>
                           <td 
                             className="px-4 py-3"
-                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
                             {(() => {
                               const phones = getPhoneNumbers(contact);
@@ -1171,7 +1173,7 @@ export default function ContactsPage() {
                           </td>
                           <td 
                             className="px-4 py-3 whitespace-nowrap"
-                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
                             {contact.title ? (
                               <span className="text-sm text-gray-900 truncate max-w-[200px] block">{contact.title}</span>
@@ -1181,7 +1183,7 @@ export default function ContactsPage() {
                           </td>
                           <td 
                             className="px-4 py-3 whitespace-nowrap"
-                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
                             {contact.employerName ? (
                               <span className="text-sm text-gray-900 truncate max-w-[180px] block">{contact.employerName}</span>
@@ -1191,7 +1193,7 @@ export default function ContactsPage() {
                           </td>
                           <td 
                             className="px-4 py-3 whitespace-nowrap"
-                            onClick={() => contact.id && (window.location.href = `/contact/${contact.id}`)}
+                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
                             {contact.location ? (
                               <span className="text-sm text-gray-600 truncate max-w-[150px] block">{contact.location}</span>
