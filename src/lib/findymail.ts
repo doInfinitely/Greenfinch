@@ -214,7 +214,7 @@ export async function findLinkedInByEmail(email: string): Promise<FindEmailResul
     }
 
     const contact = data.contact;
-    let linkedinUrl = contact?.linkedin;
+    let linkedinUrl = contact?.linkedin || (data as any).linkedin_url || null;
     if (linkedinUrl && !linkedinUrl.startsWith('http')) {
       linkedinUrl = `https://${linkedinUrl}`;
     }

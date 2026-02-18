@@ -82,7 +82,7 @@ export async function enrichPersonCrustdata(params: {
           if (params.linkedinUrl) {
             queryParams.append('linkedin_profile_url', params.linkedinUrl);
           } else if (params.email) {
-            queryParams.append('email', params.email);
+            queryParams.append('business_email', params.email);
           }
 
           console.log('[Crustdata] Person enrich request:', Object.fromEntries(queryParams));
@@ -145,12 +145,18 @@ export async function enrichPersonCrustdata(params: {
     const emails = person.emails || [];
     const workEmail = emails.length > 0 ? emails[0] : null;
 
-    let linkedinUrl = person.linkedin_profile_url || null;
+    let linkedinUrl = person.linkedin_flagship_url || person.linkedin_profile_url || null;
     if (linkedinUrl && !linkedinUrl.startsWith('http')) {
       linkedinUrl = `https://${linkedinUrl}`;
     }
 
-    console.log('[Crustdata] Person found:', person.first_name, person.last_name, 'at', person.current_company_name);
+    const personName = person.name || person.first_name ? `${person.first_name || ''} ${person.last_name || ''}`.trim() : null;
+    const personTitle = person.title || person.current_position_title || person.headline || null;
+    const titleClean = personTitle ? personTitle.split(/[;(]/)[0].replace(/\s*\(?\d{4}\s*[-–]\s*(Present|\d{4})\)?/g, '').trim() : null;
+    const companyName = person.company_name || person.current_company_name || null;
+    const companyDomain = person.company_website_domain || person.current_company_domain || null;
+
+    console.log('[Crustdata] Person found:', personName, 'at', companyName, '| title:', titleClean);
 
     trackCostFireAndForget({
       provider: 'crustdata',
@@ -162,9 +168,9 @@ export async function enrichPersonCrustdata(params: {
 
     return {
       found: true,
-      title: person.current_position_title || null,
-      companyName: person.current_company_name || null,
-      companyDomain: person.current_company_domain || null,
+      title: titleClean,
+      companyName,
+      companyDomain,
       workEmail,
       linkedinUrl,
       location: person.location || null,

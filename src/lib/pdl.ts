@@ -357,7 +357,7 @@ export async function enrichPersonPDL(
     const personCompanyName = person.job_company_name || job.job_company_name || null;
     const personCompanyWebsite = job.job_company_website || person.job_company_website || null;
 
-    if (!personFullName || !personTitle || !personCompanyName || !personCompanyWebsite) {
+    if (!personFullName || !personTitle || !personCompanyName) {
       console.log('[PDL] Incomplete match - missing required fields:', {
         full_name: !!personFullName,
         job_title: !!personTitle,
