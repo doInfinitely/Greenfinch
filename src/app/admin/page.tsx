@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
+import { AlertTriangle, Check, X, Merge, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface Stats {
   totalProperties: number;
@@ -41,6 +42,31 @@ interface IngestionResult {
   error?: string;
 }
 
+interface PotentialDuplicateContact {
+  id: string;
+  fullName: string;
+  email: string | null;
+  title: string | null;
+  employerName: string | null;
+  companyDomain: string | null;
+  phone: string | null;
+  linkedinUrl: string | null;
+  emailValidationStatus: string | null;
+  source: string | null;
+}
+
+interface PotentialDuplicate {
+  id: string;
+  contactIdA: string;
+  contactIdB: string;
+  matchType: string;
+  matchKey: string;
+  status: string;
+  createdAt: string;
+  contactA: PotentialDuplicateContact | null;
+  contactB: PotentialDuplicateContact | null;
+}
+
 export default function AdminPage() {
   const { toast } = useToast();
   const [stats, setStats] = useState<Stats | null>(null);
@@ -56,6 +82,11 @@ export default function AdminPage() {
   const [onlyUnenriched, setOnlyUnenriched] = useState(true);
   const [enrichmentStatus, setEnrichmentStatus] = useState<EnrichmentStatus | null>(null);
   const [isStartingEnrichment, setIsStartingEnrichment] = useState(false);
+
+  const [potentialDuplicates, setPotentialDuplicates] = useState<PotentialDuplicate[]>([]);
+  const [isLoadingDuplicates, setIsLoadingDuplicates] = useState(false);
+  const [showDuplicates, setShowDuplicates] = useState(false);
+  const [processingDupId, setProcessingDupId] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -93,6 +124,48 @@ export default function AdminPage() {
       console.error('Failed to fetch ingestion settings:', error);
     }
   }, []);
+
+  const fetchPotentialDuplicates = useCallback(async () => {
+    setIsLoadingDuplicates(true);
+    try {
+      const response = await fetch('/api/admin/potential-duplicates?status=pending', { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        setPotentialDuplicates(data.data || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch potential duplicates:', error);
+    } finally {
+      setIsLoadingDuplicates(false);
+    }
+  }, []);
+
+  const handleDuplicateAction = async (flagId: string, action: 'merge' | 'dismiss', keepContactId?: string) => {
+    setProcessingDupId(flagId);
+    try {
+      const response = await fetch('/api/admin/potential-duplicates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ flagId, action, keepContactId }),
+      });
+      const data = await response.json();
+      if (data.success) {
+        toast({
+          title: action === 'merge' ? 'Contacts Merged' : 'Duplicate Dismissed',
+          description: action === 'merge' ? 'Contacts have been merged successfully.' : 'This pair has been dismissed.',
+        });
+        fetchPotentialDuplicates();
+        fetchStats();
+      } else {
+        toast({ title: 'Error', description: data.error || 'Action failed', variant: 'destructive' });
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to process action', variant: 'destructive' });
+    } finally {
+      setProcessingDupId(null);
+    }
+  };
 
   useEffect(() => {
     fetchStats();
@@ -249,6 +322,64 @@ export default function AdminPage() {
             isLoading={isLoadingStats}
             color="teal"
           />
+        </div>
+
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+          <button
+            onClick={() => {
+              setShowDuplicates(!showDuplicates);
+              if (!showDuplicates && potentialDuplicates.length === 0) {
+                fetchPotentialDuplicates();
+              }
+            }}
+            className="w-full flex items-center justify-between"
+            data-testid="button-toggle-duplicates"
+          >
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              <h2 className="text-lg font-semibold text-gray-900">Potential Duplicates</h2>
+              {potentialDuplicates.length > 0 && (
+                <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 rounded-full">
+                  {potentialDuplicates.length}
+                </span>
+              )}
+            </div>
+            {showDuplicates ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+          </button>
+
+          {showDuplicates && (
+            <div className="mt-4">
+              <p className="text-sm text-gray-600 mb-4">
+                These contacts share the same name and company domain/employer but were not auto-merged. Review and merge or dismiss each pair.
+              </p>
+
+              {isLoadingDuplicates ? (
+                <div className="flex items-center justify-center py-8">
+                  <svg className="animate-spin h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  </svg>
+                </div>
+              ) : potentialDuplicates.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Check className="w-8 h-8 mx-auto mb-2 text-green-500" />
+                  <p className="text-sm">No potential duplicates to review</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {potentialDuplicates.map((dup) => (
+                    <DuplicateCard
+                      key={dup.id}
+                      duplicate={dup}
+                      isProcessing={processingDupId === dup.id}
+                      onMerge={(keepId) => handleDuplicateAction(dup.id, 'merge', keepId)}
+                      onDismiss={() => handleDuplicateAction(dup.id, 'dismiss')}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -493,6 +624,101 @@ function StatCard({
       ) : (
         <p className="text-2xl font-bold">{value?.toLocaleString() ?? 0}</p>
       )}
+    </div>
+  );
+}
+
+function ContactSummary({ contact, label }: { contact: PotentialDuplicateContact; label: string }) {
+  return (
+    <div className="flex-1 bg-gray-50 rounded-lg p-3" data-testid={`contact-summary-${contact.id}`}>
+      <p className="text-xs font-medium text-gray-500 mb-1">{label}</p>
+      <p className="text-sm font-semibold text-gray-900">{contact.fullName}</p>
+      {contact.title && <p className="text-xs text-gray-600">{contact.title}</p>}
+      {contact.employerName && <p className="text-xs text-gray-600">{contact.employerName}</p>}
+      {contact.companyDomain && <p className="text-xs text-gray-500">{contact.companyDomain}</p>}
+      {contact.email && (
+        <p className="text-xs text-gray-600 mt-1">
+          {contact.email}
+          {contact.emailValidationStatus && (
+            <span className={`ml-1 px-1 py-0.5 rounded text-[10px] ${
+              contact.emailValidationStatus === 'valid' ? 'bg-green-100 text-green-700' :
+              contact.emailValidationStatus === 'invalid' ? 'bg-red-100 text-red-700' :
+              'bg-gray-100 text-gray-600'
+            }`}>
+              {contact.emailValidationStatus}
+            </span>
+          )}
+        </p>
+      )}
+      {contact.phone && <p className="text-xs text-gray-600">{contact.phone}</p>}
+      {contact.source && <p className="text-[10px] text-gray-400 mt-1">Source: {contact.source}</p>}
+    </div>
+  );
+}
+
+function DuplicateCard({
+  duplicate,
+  isProcessing,
+  onMerge,
+  onDismiss,
+}: {
+  duplicate: PotentialDuplicate;
+  isProcessing: boolean;
+  onMerge: (keepId: string) => void;
+  onDismiss: () => void;
+}) {
+  if (!duplicate.contactA || !duplicate.contactB) return null;
+
+  const matchLabel = duplicate.matchType === 'name_domain' ? 'Name + Domain' : 'Name + Employer';
+
+  return (
+    <div className="border border-amber-200 bg-amber-50/50 rounded-lg p-4" data-testid={`duplicate-card-${duplicate.id}`}>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full">
+            {matchLabel}
+          </span>
+          <span className="text-xs text-gray-500">
+            {new Date(duplicate.createdAt).toLocaleDateString()}
+          </span>
+        </div>
+        <button
+          onClick={onDismiss}
+          disabled={isProcessing}
+          className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1 disabled:opacity-50"
+          data-testid={`button-dismiss-${duplicate.id}`}
+        >
+          <X className="w-3 h-3" />
+          Dismiss
+        </button>
+      </div>
+
+      <div className="flex gap-3 mb-3">
+        <ContactSummary contact={duplicate.contactA} label="Contact A" />
+        <div className="flex items-center">
+          <Merge className="w-4 h-4 text-gray-400" />
+        </div>
+        <ContactSummary contact={duplicate.contactB} label="Contact B" />
+      </div>
+
+      <div className="flex gap-2">
+        <button
+          onClick={() => onMerge(duplicate.contactIdA)}
+          disabled={isProcessing}
+          className="flex-1 text-xs px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          data-testid={`button-keep-a-${duplicate.id}`}
+        >
+          {isProcessing ? 'Processing...' : `Keep "${duplicate.contactA.fullName}"`}
+        </button>
+        <button
+          onClick={() => onMerge(duplicate.contactIdB)}
+          disabled={isProcessing}
+          className="flex-1 text-xs px-3 py-1.5 bg-green-600 text-white rounded-md hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+          data-testid={`button-keep-b-${duplicate.id}`}
+        >
+          {isProcessing ? 'Processing...' : `Keep "${duplicate.contactB.fullName}"`}
+        </button>
+      </div>
     </div>
   );
 }

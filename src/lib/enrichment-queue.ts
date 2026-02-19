@@ -7,7 +7,7 @@ import { runFocusedEnrichment, cleanupAISummary } from './ai-enrichment';
 import type { FocusedEnrichmentResult, DiscoveredContact, DiscoveredOrganization } from './ai-enrichment';
 import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
-import { findExistingContactByIdentifiers } from './deduplication';
+import { findExistingContactByIdentifiers, flagPotentialDuplicateById, normalizeName as normalizeNameDedup, normalizeDomain as normalizeDomainDedup } from './deduplication';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
 import { CONCURRENCY } from './constants';
@@ -378,6 +378,20 @@ export async function saveEnrichmentResults(
           contactId = found.id;
         }
         console.log(`[SaveEnrichment] Created contact: ${contact.name} (${contactId})`);
+
+        const nnDedup = normalizeNameDedup(contact.name);
+        const ndDedup = normalizeDomainDedup(contact.companyDomain);
+        if (nnDedup) {
+          const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, nnDedup));
+          for (const c of candidates) {
+            if (c.id === contactId) continue;
+            if (ndDedup && normalizeDomainDedup(c.companyDomain) === ndDedup) {
+              await flagPotentialDuplicateById(c.id, contactId, 'name_domain', `${nnDedup}::${ndDedup}`);
+            } else if (contact.company && c.employerName && c.employerName.toLowerCase().trim() === contact.company.toLowerCase().trim()) {
+              await flagPotentialDuplicateById(c.id, contactId, 'name_employer', `${nnDedup}::${contact.company.toLowerCase().trim()}`);
+            }
+          }
+        }
       }
 
       contactIds.push(contactId);

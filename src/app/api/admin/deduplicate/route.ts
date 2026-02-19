@@ -1,8 +1,8 @@
 /**
  * Admin API: Deduplication
  * 
- * Merges duplicate organizations (by domain) and contacts (by name+domain)
- * Keeps the most recently Apollo-enriched record
+ * Auto-merges contacts by email/LinkedIn. Flags name/domain matches for admin review.
+ * Keeps the most recently Apollo-enriched record.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -18,9 +18,8 @@ export async function GET(request: NextRequest) {
     await requireSession();
     await requireAdminAccess();
     
-    // Preview mode - show what would be merged
     const orgDuplicates = await findDuplicateOrganizations();
-    const contactDuplicates = await findDuplicateContacts();
+    const { autoMerge, potentialDuplicates } = await findDuplicateContacts();
     
     return NextResponse.json({
       preview: true,
@@ -32,7 +31,7 @@ export async function GET(request: NextRequest) {
         deleteCount: g.deleteIds.length,
         deleteNames: g.items.filter(i => g.deleteIds.includes(i.id)).map(i => i.name),
       })),
-      contacts: contactDuplicates.map(g => ({
+      contactsAutoMerge: autoMerge.map(g => ({
         key: g.key,
         count: g.items.length,
         keepId: g.keepId,
@@ -40,11 +39,13 @@ export async function GET(request: NextRequest) {
         deleteCount: g.deleteIds.length,
         deleteNames: g.items.filter(i => g.deleteIds.includes(i.id)).map(i => i.fullName),
       })),
+      contactsPotentialDuplicates: potentialDuplicates,
       summary: {
         organizationGroupsToMerge: orgDuplicates.length,
         organizationsToDelete: orgDuplicates.reduce((sum, g) => sum + g.deleteIds.length, 0),
-        contactGroupsToMerge: contactDuplicates.length,
-        contactsToDelete: contactDuplicates.reduce((sum, g) => sum + g.deleteIds.length, 0),
+        contactGroupsToAutoMerge: autoMerge.length,
+        contactsToAutoMerge: autoMerge.reduce((sum, g) => sum + g.deleteIds.length, 0),
+        potentialDuplicatesToFlag: potentialDuplicates.length,
       },
     });
   } catch (error) {
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
       success: true,
       organizationsMerged: result.organizationsMerged,
       contactsMerged: result.contactsMerged,
+      potentialDuplicatesFlagged: result.potentialDuplicatesFlagged,
       errors: result.errors,
     });
   } catch (error) {

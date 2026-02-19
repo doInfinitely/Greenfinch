@@ -17,7 +17,8 @@ import {
   contactOrganizations,
   contactLinkedinFlags,
   dataIssues,
-  listItems 
+  listItems,
+  potentialDuplicates as potentialDuplicatesTable,
 } from './schema';
 import { eq, sql, and, or, isNotNull } from 'drizzle-orm';
 
@@ -96,18 +97,24 @@ export async function findDuplicateOrganizations(): Promise<DuplicateGroup<typeo
   return duplicates;
 }
 
+interface FindDuplicatesResult {
+  autoMerge: DuplicateGroup<typeof contacts.$inferSelect>[];
+  potentialDuplicates: { contactIdA: string; contactIdB: string; matchType: string; matchKey: string }[];
+}
+
 /**
  * Find duplicate contacts by:
- * 1. Same email (validated or any normalized email)
- * 2. Same LinkedIn profile slug
- * 3. Same name + similar domain
+ * 1. Same email → auto-merge
+ * 2. Same LinkedIn profile slug → auto-merge
+ * 3. Same name + similar domain → flag as potential duplicate (admin review)
  * 
- * Returns merged groups avoiding double-counting contacts.
+ * Returns auto-merge groups and potential duplicates separately.
  */
-export async function findDuplicateContacts(): Promise<DuplicateGroup<typeof contacts.$inferSelect>[]> {
+export async function findDuplicateContacts(): Promise<FindDuplicatesResult> {
   const allContacts = await db.select().from(contacts);
   const processedIds = new Set<string>();
-  const duplicates: DuplicateGroup<typeof contacts.$inferSelect>[] = [];
+  const autoMerge: DuplicateGroup<typeof contacts.$inferSelect>[] = [];
+  const potentialDuplicates: { contactIdA: string; contactIdB: string; matchType: string; matchKey: string }[] = [];
   
   const emailMap = new Map<string, (typeof contacts.$inferSelect)[]>();
   for (const contact of allContacts) {
@@ -123,7 +130,7 @@ export async function findDuplicateContacts(): Promise<DuplicateGroup<typeof con
   for (const [email, contactList] of emailMap) {
     if (contactList.length > 1) {
       contactList.sort(sortContactsByPriority);
-      duplicates.push({
+      autoMerge.push({
         key: `email::${email}`,
         items: contactList,
         keepId: contactList[0].id,
@@ -155,7 +162,7 @@ export async function findDuplicateContacts(): Promise<DuplicateGroup<typeof con
   for (const [slug, contactList] of linkedinMap) {
     if (contactList.length > 1) {
       contactList.sort(sortContactsByPriority);
-      duplicates.push({
+      autoMerge.push({
         key: `linkedin::${slug}`,
         items: contactList,
         keepId: contactList[0].id,
@@ -184,16 +191,52 @@ export async function findDuplicateContacts(): Promise<DuplicateGroup<typeof con
   for (const [key, contactList] of nameMap) {
     if (contactList.length > 1) {
       contactList.sort(sortContactsByPriority);
-      duplicates.push({
-        key: `name::${key}`,
-        items: contactList,
-        keepId: contactList[0].id,
-        deleteIds: contactList.slice(1).map(c => c.id),
-      });
+      const primary = contactList[0];
+      for (const dup of contactList.slice(1)) {
+        potentialDuplicates.push({
+          contactIdA: primary.id,
+          contactIdB: dup.id,
+          matchType: 'name_domain',
+          matchKey: key,
+        });
+        processedIds.add(dup.id);
+      }
+      processedIds.add(primary.id);
     }
   }
   
-  return duplicates;
+  const employerMap = new Map<string, (typeof contacts.$inferSelect)[]>();
+  for (const contact of allContacts) {
+    if (processedIds.has(contact.id)) continue;
+    
+    const normalizedName = normalizeName(contact.fullName);
+    const employer = contact.employerName?.toLowerCase().trim();
+    
+    if (!normalizedName || !employer) continue;
+    
+    const key = `${normalizedName}::${employer}`;
+    if (!employerMap.has(key)) {
+      employerMap.set(key, []);
+    }
+    employerMap.get(key)!.push(contact);
+  }
+  
+  for (const [key, contactList] of employerMap) {
+    if (contactList.length > 1) {
+      contactList.sort(sortContactsByPriority);
+      const primary = contactList[0];
+      for (const dup of contactList.slice(1)) {
+        potentialDuplicates.push({
+          contactIdA: primary.id,
+          contactIdB: dup.id,
+          matchType: 'name_employer',
+          matchKey: key,
+        });
+      }
+    }
+  }
+  
+  return { autoMerge, potentialDuplicates };
 }
 
 function sortContactsByPriority(a: typeof contacts.$inferSelect, b: typeof contacts.$inferSelect): number {
@@ -329,26 +372,52 @@ export async function mergeContacts(duplicates: DuplicateGroup<typeof contacts.$
 }
 
 /**
- * Run full deduplication on all organizations and contacts
+ * Run full deduplication on all organizations and contacts.
+ * Auto-merges email/LinkedIn matches. Flags name/domain matches for admin review.
  */
-export async function runDeduplication(): Promise<DeduplicationResult> {
+export async function runDeduplication(): Promise<DeduplicationResult & { potentialDuplicatesFlagged: number }> {
   console.log('[Dedup] Starting deduplication...');
   
-  // Find and merge duplicate organizations
   const orgDuplicates = await findDuplicateOrganizations();
   console.log(`[Dedup] Found ${orgDuplicates.length} organization duplicate groups`);
   const orgResult = await mergeOrganizations(orgDuplicates);
   
-  // Find and merge duplicate contacts
-  const contactDuplicates = await findDuplicateContacts();
-  console.log(`[Dedup] Found ${contactDuplicates.length} contact duplicate groups`);
-  const contactResult = await mergeContacts(contactDuplicates);
+  const { autoMerge, potentialDuplicates } = await findDuplicateContacts();
+  console.log(`[Dedup] Found ${autoMerge.length} contact auto-merge groups, ${potentialDuplicates.length} potential duplicates to flag`);
+  const contactResult = await mergeContacts(autoMerge);
+
+  let flagged = 0;
+  for (const pd of potentialDuplicates) {
+    try {
+      const existing = await db.select().from(potentialDuplicatesTable).where(
+        and(
+          or(
+            and(eq(potentialDuplicatesTable.contactIdA, pd.contactIdA), eq(potentialDuplicatesTable.contactIdB, pd.contactIdB)),
+            and(eq(potentialDuplicatesTable.contactIdA, pd.contactIdB), eq(potentialDuplicatesTable.contactIdB, pd.contactIdA))
+          ),
+          eq(potentialDuplicatesTable.status, 'pending')
+        )
+      );
+      if (existing.length === 0) {
+        await db.insert(potentialDuplicatesTable).values({
+          contactIdA: pd.contactIdA,
+          contactIdB: pd.contactIdB,
+          matchType: pd.matchType,
+          matchKey: pd.matchKey,
+        });
+        flagged++;
+      }
+    } catch (err) {
+      console.error(`[Dedup] Failed to flag potential duplicate: ${err}`);
+    }
+  }
   
-  console.log(`[Dedup] Complete: ${orgResult.merged} orgs merged, ${contactResult.merged} contacts merged`);
+  console.log(`[Dedup] Complete: ${orgResult.merged} orgs merged, ${contactResult.merged} contacts merged, ${flagged} potential duplicates flagged`);
   
   return {
     organizationsMerged: orgResult.merged,
     contactsMerged: contactResult.merged,
+    potentialDuplicatesFlagged: flagged,
     errors: [...orgResult.errors, ...contactResult.errors],
   };
 }
@@ -467,8 +536,9 @@ export async function findExistingContactByIdentifiers(
     const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, normalizedName));
     for (const c of candidates) {
       if (normalizeDomain(c.companyDomain) === normalizedDomain) {
-        console.log(`[Dedup] Matched existing contact by name+domain: ${normalizedName}@${normalizedDomain} -> ${c.fullName} (${c.id})`);
-        return c;
+        console.log(`[Dedup] Name+domain match found but NOT auto-merging (flagging): ${normalizedName}@${normalizedDomain} -> ${c.fullName} (${c.id})`);
+        await flagPotentialDuplicate(c.id, null, 'name_domain', `${normalizedName}::${normalizedDomain}`, identifiers);
+        return null;
       }
     }
   }
@@ -478,11 +548,77 @@ export async function findExistingContactByIdentifiers(
     const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, normalizedName));
     for (const c of candidates) {
       if (c.employerName && c.employerName.toLowerCase().trim() === employerLower) {
-        console.log(`[Dedup] Matched existing contact by name+employer: ${normalizedName}@${employerLower} -> ${c.fullName} (${c.id})`);
-        return c;
+        console.log(`[Dedup] Name+employer match found but NOT auto-merging (flagging): ${normalizedName}@${employerLower} -> ${c.fullName} (${c.id})`);
+        await flagPotentialDuplicate(c.id, null, 'name_employer', `${normalizedName}::${employerLower}`, identifiers);
+        return null;
       }
     }
   }
 
   return null;
+}
+
+export async function flagPotentialDuplicateById(
+  existingContactId: string,
+  newContactId: string,
+  matchType: string,
+  matchKey: string,
+) {
+  try {
+    const existing = await db.select().from(potentialDuplicatesTable).where(
+      and(
+        or(
+          and(eq(potentialDuplicatesTable.contactIdA, existingContactId), eq(potentialDuplicatesTable.contactIdB, newContactId)),
+          and(eq(potentialDuplicatesTable.contactIdA, newContactId), eq(potentialDuplicatesTable.contactIdB, existingContactId))
+        ),
+        eq(potentialDuplicatesTable.status, 'pending')
+      )
+    );
+    if (existing.length === 0) {
+      await db.insert(potentialDuplicatesTable).values({
+        contactIdA: existingContactId,
+        contactIdB: newContactId,
+        matchType,
+        matchKey,
+      });
+      console.log(`[Dedup] Created potential duplicate flag: ${matchType} / ${matchKey} (${existingContactId} vs ${newContactId})`);
+    }
+  } catch (err) {
+    console.error(`[Dedup] Error flagging potential duplicate by ID: ${err}`);
+  }
+}
+
+async function flagPotentialDuplicate(
+  existingContactId: string,
+  newContactId: string | null,
+  matchType: string,
+  matchKey: string,
+  identifiers: ContactIdentifiers,
+) {
+  try {
+    if (!newContactId) {
+      console.log(`[Dedup] Flagging potential duplicate for admin review: ${matchType} / ${matchKey} (existing: ${existingContactId}, new contact not yet created)`);
+      return;
+    }
+    const existing = await db.select().from(potentialDuplicatesTable).where(
+      and(
+        or(
+          and(eq(potentialDuplicatesTable.contactIdA, existingContactId), eq(potentialDuplicatesTable.contactIdB, newContactId)),
+          and(eq(potentialDuplicatesTable.contactIdA, newContactId), eq(potentialDuplicatesTable.contactIdB, existingContactId))
+        ),
+        eq(potentialDuplicatesTable.status, 'pending')
+      )
+    );
+    if (existing.length === 0) {
+      await db.insert(potentialDuplicatesTable).values({
+        contactIdA: existingContactId,
+        contactIdB: newContactId,
+        matchType,
+        matchKey,
+      });
+      console.log(`[Dedup] Created potential duplicate flag: ${matchType} / ${matchKey}`);
+    }
+  } catch (err) {
+    console.error(`[Dedup] Error flagging potential duplicate: ${err}`);
+  }
 }
