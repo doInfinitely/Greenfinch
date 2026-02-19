@@ -67,7 +67,7 @@ export const CONCURRENCY = {
   SERP: 10,             // SERP API for LinkedIn lookups
   HUNTER: 3,            // Hunter.io email discovery - very low rate limit
   NEVERBOUNCE: 5,       // NeverBounce email validation
-  PROPERTIES: 50,       // Concurrent property enrichments (up from 20) - downstream APIs self-throttle via rate-limiter.ts
+  PROPERTIES: 15,       // Concurrent property enrichments - balanced for Gemini throughput; downstream APIs self-throttle via rate-limiter.ts
 };
 
 const mvpZipEnv = process.env.MVP_ZIP || '75225';

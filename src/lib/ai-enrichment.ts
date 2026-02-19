@@ -401,8 +401,13 @@ async function callGeminiWithTimeout<T>(
           console.log(`[FocusedEnrichment] Rate limiter queue wait: ${queueWait}ms`);
         }
         const apiStart = Date.now();
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          setTimeout(() => reject(new Error(`Gemini API timeout after ${timeoutMs}ms (attempt ${attempt})`)), timeoutMs);
+        });
+
         try {
-          const result = await fn();
+          const result = await Promise.race([fn(), timeoutPromise]);
           console.log(`[FocusedEnrichment] Gemini API responded in ${Date.now() - apiStart}ms (total with queue: ${Date.now() - overallStart}ms)`);
           return result;
         } catch (apiErr) {
@@ -411,11 +416,7 @@ async function callGeminiWithTimeout<T>(
         }
       };
 
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Gemini API timeout after ${timeoutMs}ms (attempt ${attempt})`)), timeoutMs);
-      });
-
-      const result = await Promise.race([rateLimiters.gemini.execute(wrappedFn), timeoutPromise]);
+      const result = await rateLimiters.gemini.execute(wrappedFn);
       return result;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -589,7 +590,7 @@ Return JSON:
         propertyWebsite: null,
         propertyPhone: null,
       },
-      summary: `Failed to identify ownership: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      summary: '',
       sources: [],
     };
   }
@@ -630,7 +631,7 @@ async function identifyDecisionMakers(
   const propertySite = ownership.propertyWebsite || 'none';
   const city = property.city || 'Dallas';
 
-  const prompt = `Find 3-5 people directly involved in managing THIS specific property. Return ONLY valid JSON.
+  const prompt = `Find 3 people directly involved in managing THIS specific property. Return ONLY valid JSON.
 
 PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
 TYPE: ${classification.category} - ${classification.subcategory}
@@ -740,7 +741,7 @@ Return JSON:
     console.error(`[FocusedEnrichment] Stage 3a failed: ${error instanceof Error ? error.message : error}`);
     return {
       data: { contacts: [], organizations: [] },
-      summary: `Failed to identify decision-makers: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      summary: '',
       sources: [],
     };
   }
@@ -991,15 +992,29 @@ export async function runFocusedEnrichment(property: CommercialProperty): Promis
   };
 }
 
-/**
- * Clean up AI research summary by:
- * 1. Removing internal system references (e.g., "gemini timed out after 120000ms")
- * 2. Editing for style and clarity
- * 3. Removing citation numbers like [1], [2], etc.
- * 4. Producing a polished, user-facing summary
- */
+function stripInternalMessages(text: string): string {
+  return text
+    .replace(/\[[\d,\s]+\]/g, '')
+    .replace(/Failed to identify[\w\s-]*?:.*?(?=\.|$)/gim, '')
+    .replace(/Gemini\s*API\s*timeout\s*after\s*\d+ms.*?(?=\.|$)/gi, '')
+    .replace(/gemini.*?timed?\s*out.*?\d+ms/gi, '')
+    .replace(/Error:.*?$/gim, '')
+    .replace(/\(attempt\s*\d+\)/gi, '')
+    .replace(/TypeError:.*?$/gim, '')
+    .replace(/fetch failed.*?$/gim, '')
+    .replace(/\.\s*\./g, '.')
+    .replace(/\s{2,}/g, ' ')
+    .replace(/\n{2,}/g, '\n')
+    .trim();
+}
+
 export async function cleanupAISummary(rawSummary: string): Promise<string> {
   if (!rawSummary || rawSummary.trim().length === 0) {
+    return '';
+  }
+  
+  const preCleaned = stripInternalMessages(rawSummary);
+  if (!preCleaned || preCleaned.length < 10) {
     return '';
   }
   
@@ -1018,22 +1033,20 @@ Edit the following research summary into a flowing, natural paragraph:
 IMPORTANT: Return ONLY the polished paragraph. No explanations, no markdown, no quotes.
 
 Raw summary to polish:
-${rawSummary}`;
+${preCleaned}`;
 
   try {
-    const response = await rateLimiters.gemini.execute(() => 
-      callGeminiWithTimeout(
-        () => client.models.generateContent({
-          model: GEMINI_MODEL,
-          contents: prompt,
-          config: { temperature: 0.1 }
-        }),
-        30000,
-        1
-      )
+    const response = await callGeminiWithTimeout(
+      () => client.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: { temperature: 0.1 }
+      }),
+      30000,
+      1
     );
     
-    const cleaned = response.text?.trim() || rawSummary;
+    const cleaned = response.text?.trim() || preCleaned;
     console.log(`[FocusedEnrichment] Summary cleaned: ${rawSummary.length} chars -> ${cleaned.length} chars`);
     trackCostFireAndForget({
       provider: 'gemini',
@@ -1050,14 +1063,8 @@ ${rawSummary}`;
       success: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
-    console.warn('[FocusedEnrichment] Summary cleanup failed, using raw summary:', error);
-    // Fall back to basic cleanup - remove obvious system messages and citations
-    return rawSummary
-      .replace(/\[[\d,\s]+\]/g, '') // Remove citation numbers
-      .replace(/gemini.*?timed out.*?ms/gi, '') // Remove timeout messages
-      .replace(/error:.*?$/gim, '') // Remove error lines
-      .replace(/\n{3,}/g, '\n\n') // Normalize whitespace
-      .trim();
+    console.warn('[FocusedEnrichment] Summary cleanup failed, using regex fallback:', error instanceof Error ? error.message : error);
+    return stripInternalMessages(rawSummary);
   }
 }
 
