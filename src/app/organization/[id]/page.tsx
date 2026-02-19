@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
-import { Loader2, XCircle, MoreVertical, FileJson, Users, Building2, Phone, Mail, Globe, Calendar, Briefcase, ExternalLink } from 'lucide-react';
+import { Loader2, XCircle, MoreVertical, FileJson, Users, Building2, Phone, Mail, Globe, Calendar, Briefcase } from 'lucide-react';
 import { SiLinkedin, SiFacebook, SiCrunchbase, SiInstagram, SiYoutube, SiGithub, SiPinterest, SiReddit, SiTelegram, SiSnapchat } from 'react-icons/si';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
@@ -442,10 +442,13 @@ export default function OrganizationDetailPage() {
   }
 
   const socialLinks = useMemo(() => {
+    const SOCIAL_KEY_NORMALIZE: Record<string, string> = { x: 'twitter' };
     const links: Array<{ platform: string; url: string }> = [];
     if (brandData?.socials) {
-      Object.entries(brandData.socials).forEach(([platform, url]) => {
-        if (url) links.push({ platform, url });
+      Object.entries(brandData.socials).forEach(([rawPlatform, url]) => {
+        if (!url) return;
+        const platform = SOCIAL_KEY_NORMALIZE[rawPlatform] || rawPlatform;
+        links.push({ platform, url });
       });
     }
     if (!links.find(l => l.platform === 'linkedin') && organization.linkedinHandle) {
