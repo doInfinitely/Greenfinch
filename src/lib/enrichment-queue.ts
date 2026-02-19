@@ -7,6 +7,7 @@ import { runFocusedEnrichment, cleanupAISummary } from './ai-enrichment';
 import type { FocusedEnrichmentResult, DiscoveredContact, DiscoveredOrganization } from './ai-enrichment';
 import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
+import { findExistingContactByIdentifiers } from './deduplication';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
 import { CONCURRENCY } from './constants';
@@ -305,11 +306,12 @@ export async function saveEnrichmentResults(
       const normalized = normalizeEmail(contact.email);
       const normalizedNameVal = normalizeName(contact.name);
 
-      let existingContact = normalized
-        ? await db.query.contacts.findFirst({
-            where: eq(contacts.normalizedEmail, normalized),
-          })
-        : null;
+      let existingContact = await findExistingContactByIdentifiers({
+        email: contact.email,
+        name: contact.name,
+        companyDomain: contact.companyDomain,
+        employerName: contact.company,
+      });
 
       let contactId: string;
 
@@ -619,6 +621,7 @@ export async function runCascadeEnrichmentOnSavedRecords(
       updateData.crustdataWorkEmail = result.crustdataWorkEmail;
       updateData.crustdataLinkedinUrl = result.crustdataLinkedinUrl;
       updateData.crustdataLocation = result.crustdataLocation;
+      updateData.crustdataPersonId = result.crustdataPersonId;
       updateData.crustdataEnriched = result.crustdataEnriched;
       if (result.crustdataEnriched) {
         updateData.crustdataEnrichedAt = new Date();
@@ -765,19 +768,12 @@ async function searchForReplacement(
     const normalizedNameVal = normalizeName(result.name);
     const normalizedEmailVal = result.email ? normalizeEmail(result.email) : null;
 
-    let existingContact = normalizedEmailVal
-      ? await db.query.contacts.findFirst({ where: eq(contacts.normalizedEmail, normalizedEmailVal) })
-      : null;
-
-    if (!existingContact && normalizedNameVal) {
-      const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, normalizedNameVal));
-      for (const c of candidates) {
-        if (companiesMatch(c.employerName, formerCompany) || domainsMatch(c.companyDomain, formerCompanyDomain)) {
-          existingContact = c;
-          break;
-        }
-      }
-    }
+    let existingContact = await findExistingContactByIdentifiers({
+      email: result.email,
+      name: result.name,
+      companyDomain: formerCompanyDomain,
+      employerName: result.company || formerCompany,
+    });
 
     const existingFormerLinks = await db.select().from(propertyContacts).where(
       and(

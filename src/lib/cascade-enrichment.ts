@@ -134,6 +134,7 @@ export interface ContactEnrichmentResult {
   crustdataLinkedinUrl: string | null;
   crustdataProfilePictureUrl: string | null;
   crustdataLocation: string | null;
+  crustdataPersonId: number | null;
   crustdataEnriched: boolean;
   
   employerLeftDetected: boolean;
@@ -745,6 +746,7 @@ export async function enrichContactCascade(
     crustdataLinkedinUrl: crustdataData?.linkedinUrl || null,
     crustdataProfilePictureUrl: crustdataData?.profilePictureUrl || null,
     crustdataLocation: crustdataData?.location || null,
+    crustdataPersonId: crustdataData?.personId || null,
     crustdataEnriched: !!crustdataData,
     
     employerLeftDetected,
@@ -811,6 +813,7 @@ function buildEmptyResult(fullName: string, firstName: string, lastName: string,
     crustdataLinkedinUrl: null,
     crustdataProfilePictureUrl: null,
     crustdataLocation: null,
+    crustdataPersonId: null,
     crustdataEnriched: false,
     employerLeftDetected: false,
     employerLeftReason: null,

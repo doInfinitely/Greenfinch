@@ -15,6 +15,8 @@ import {
   propertyContacts, 
   propertyOrganizations, 
   contactOrganizations,
+  contactLinkedinFlags,
+  dataIssues,
   listItems 
 } from './schema';
 import { eq, sql, and, or, isNotNull } from 'drizzle-orm';
@@ -96,8 +98,9 @@ export async function findDuplicateOrganizations(): Promise<DuplicateGroup<typeo
 
 /**
  * Find duplicate contacts by:
- * 1. Same validated email
- * 2. Same name + similar domain
+ * 1. Same email (validated or any normalized email)
+ * 2. Same LinkedIn profile slug
+ * 3. Same name + similar domain
  * 
  * Returns merged groups avoiding double-counting contacts.
  */
@@ -106,10 +109,9 @@ export async function findDuplicateContacts(): Promise<DuplicateGroup<typeof con
   const processedIds = new Set<string>();
   const duplicates: DuplicateGroup<typeof contacts.$inferSelect>[] = [];
   
-  // First pass: Group by validated email
   const emailMap = new Map<string, (typeof contacts.$inferSelect)[]>();
   for (const contact of allContacts) {
-    if (contact.emailValidationStatus === 'valid' && contact.normalizedEmail) {
+    if (contact.normalizedEmail) {
       const normalizedEmail = contact.normalizedEmail.toLowerCase().trim();
       if (!emailMap.has(normalizedEmail)) {
         emailMap.set(normalizedEmail, []);
@@ -118,7 +120,6 @@ export async function findDuplicateContacts(): Promise<DuplicateGroup<typeof con
     }
   }
   
-  // Process email-based duplicates first
   for (const [email, contactList] of emailMap) {
     if (contactList.length > 1) {
       contactList.sort(sortContactsByPriority);
@@ -132,7 +133,38 @@ export async function findDuplicateContacts(): Promise<DuplicateGroup<typeof con
     }
   }
   
-  // Second pass: Group by normalized name + normalized domain (skip already processed)
+  const linkedinMap = new Map<string, (typeof contacts.$inferSelect)[]>();
+  for (const contact of allContacts) {
+    if (processedIds.has(contact.id)) continue;
+    const slugs = [
+      normalizeLinkedinSlug(contact.linkedinUrl),
+      normalizeLinkedinSlug(contact.pdlLinkedinUrl),
+      normalizeLinkedinSlug(contact.crustdataLinkedinUrl),
+    ].filter(Boolean) as string[];
+    const primarySlug = slugs[0];
+    if (!primarySlug) continue;
+    if (!linkedinMap.has(primarySlug)) {
+      linkedinMap.set(primarySlug, []);
+    }
+    const existing = linkedinMap.get(primarySlug)!;
+    if (!existing.find(c => c.id === contact.id)) {
+      existing.push(contact);
+    }
+  }
+  
+  for (const [slug, contactList] of linkedinMap) {
+    if (contactList.length > 1) {
+      contactList.sort(sortContactsByPriority);
+      duplicates.push({
+        key: `linkedin::${slug}`,
+        items: contactList,
+        keepId: contactList[0].id,
+        deleteIds: contactList.slice(1).map(c => c.id),
+      });
+      contactList.forEach(c => processedIds.add(c.id));
+    }
+  }
+  
   const nameMap = new Map<string, (typeof contacts.$inferSelect)[]>();
   for (const contact of allContacts) {
     if (processedIds.has(contact.id)) continue;
@@ -241,23 +273,47 @@ export async function mergeContacts(duplicates: DuplicateGroup<typeof contacts.$
     try {
       console.log(`[Dedup] Merging ${group.deleteIds.length} duplicate contacts into ${group.keepId} (key: ${group.key})`);
       
+      const keepLinks = await db.select().from(propertyContacts).where(eq(propertyContacts.contactId, group.keepId));
+      const keepPropertyIds = new Set(keepLinks.map(l => l.propertyId));
+
       for (const deleteId of group.deleteIds) {
-        // Update property_contacts references
-        await db.update(propertyContacts)
-          .set({ contactId: group.keepId })
-          .where(eq(propertyContacts.contactId, deleteId));
+        const dupeLinks = await db.select().from(propertyContacts).where(eq(propertyContacts.contactId, deleteId));
+        for (const link of dupeLinks) {
+          if (keepPropertyIds.has(link.propertyId)) {
+            await db.delete(propertyContacts).where(eq(propertyContacts.id, link.id));
+          } else {
+            await db.update(propertyContacts)
+              .set({ contactId: group.keepId })
+              .where(eq(propertyContacts.id, link.id));
+            keepPropertyIds.add(link.propertyId);
+          }
+        }
         
-        // Update contact_organizations references
-        await db.update(contactOrganizations)
-          .set({ contactId: group.keepId })
-          .where(eq(contactOrganizations.contactId, deleteId));
+        const dupeOrgLinks = await db.select().from(contactOrganizations).where(eq(contactOrganizations.contactId, deleteId));
+        const keepOrgLinks = await db.select().from(contactOrganizations).where(eq(contactOrganizations.contactId, group.keepId));
+        const keepOrgIds = new Set(keepOrgLinks.map(l => l.orgId));
+        for (const link of dupeOrgLinks) {
+          if (keepOrgIds.has(link.orgId)) {
+            await db.delete(contactOrganizations).where(eq(contactOrganizations.id, link.id));
+          } else {
+            await db.update(contactOrganizations)
+              .set({ contactId: group.keepId })
+              .where(eq(contactOrganizations.id, link.id));
+          }
+        }
         
-        // Update list_items references
         await db.update(listItems)
           .set({ itemId: group.keepId })
           .where(eq(listItems.itemId, deleteId));
         
-        // Delete the duplicate contact
+        await db.update(contactLinkedinFlags)
+          .set({ contactId: group.keepId })
+          .where(eq(contactLinkedinFlags.contactId, deleteId));
+        
+        await db.update(dataIssues)
+          .set({ contactId: group.keepId })
+          .where(eq(dataIssues.contactId, deleteId));
+        
         await db.delete(contacts).where(eq(contacts.id, deleteId));
         
         merged++;
@@ -338,5 +394,95 @@ export async function findExistingContact(
     }
   }
   
+  return null;
+}
+
+function normalizeLinkedinSlug(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const match = url.match(/\/in\/([^/?#]+)/);
+  return match ? match[1].toLowerCase() : null;
+}
+
+interface ContactIdentifiers {
+  email?: string | null;
+  linkedinUrl?: string | null;
+  name?: string | null;
+  companyDomain?: string | null;
+  employerName?: string | null;
+  crustdataPersonId?: number | null;
+}
+
+export async function findExistingContactByIdentifiers(
+  identifiers: ContactIdentifiers
+): Promise<(typeof contacts.$inferSelect) | null> {
+  const normalizedEmail = identifiers.email?.toLowerCase().trim() || null;
+  const linkedinSlug = normalizeLinkedinSlug(identifiers.linkedinUrl);
+  const normalizedName = normalizeName(identifiers.name);
+  const normalizedDomain = normalizeDomain(identifiers.companyDomain);
+
+  if (!normalizedEmail && !linkedinSlug && !normalizedName) return null;
+
+  if (normalizedEmail) {
+    const byEmail = await db.query.contacts.findFirst({
+      where: eq(contacts.normalizedEmail, normalizedEmail),
+    });
+    if (byEmail) {
+      console.log(`[Dedup] Matched existing contact by email: ${normalizedEmail} -> ${byEmail.fullName} (${byEmail.id})`);
+      return byEmail;
+    }
+  }
+
+  if (linkedinSlug) {
+    const allContacts = await db.select().from(contacts).where(
+      or(
+        isNotNull(contacts.linkedinUrl),
+        isNotNull(contacts.pdlLinkedinUrl),
+        isNotNull(contacts.crustdataLinkedinUrl)
+      )
+    );
+    for (const c of allContacts) {
+      const slugs = [
+        normalizeLinkedinSlug(c.linkedinUrl),
+        normalizeLinkedinSlug(c.pdlLinkedinUrl),
+        normalizeLinkedinSlug(c.crustdataLinkedinUrl),
+      ];
+      if (slugs.includes(linkedinSlug)) {
+        console.log(`[Dedup] Matched existing contact by LinkedIn: ${linkedinSlug} -> ${c.fullName} (${c.id})`);
+        return c;
+      }
+    }
+  }
+
+  if (identifiers.crustdataPersonId) {
+    const byCrustId = await db.query.contacts.findFirst({
+      where: eq(contacts.crustdataPersonId, identifiers.crustdataPersonId),
+    });
+    if (byCrustId) {
+      console.log(`[Dedup] Matched existing contact by Crustdata person ID: ${identifiers.crustdataPersonId} -> ${byCrustId.fullName} (${byCrustId.id})`);
+      return byCrustId;
+    }
+  }
+
+  if (normalizedName && normalizedDomain) {
+    const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, normalizedName));
+    for (const c of candidates) {
+      if (normalizeDomain(c.companyDomain) === normalizedDomain) {
+        console.log(`[Dedup] Matched existing contact by name+domain: ${normalizedName}@${normalizedDomain} -> ${c.fullName} (${c.id})`);
+        return c;
+      }
+    }
+  }
+
+  if (normalizedName && identifiers.employerName) {
+    const employerLower = identifiers.employerName.toLowerCase().trim();
+    const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, normalizedName));
+    for (const c of candidates) {
+      if (c.employerName && c.employerName.toLowerCase().trim() === employerLower) {
+        console.log(`[Dedup] Matched existing contact by name+employer: ${normalizedName}@${employerLower} -> ${c.fullName} (${c.id})`);
+        return c;
+      }
+    }
+  }
+
   return null;
 }

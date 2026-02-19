@@ -18,6 +18,7 @@ export interface CrustdataExperience {
 
 export interface CrustdataPersonResult {
   found: boolean;
+  personId: number | null;
   title: string | null;
   companyName: string | null;
   companyDomain: string | null;
@@ -47,6 +48,7 @@ export interface CrustdataCompanyResult {
 
 const EMPTY_PERSON_RESULT: CrustdataPersonResult = {
   found: false,
+  personId: null,
   title: null,
   companyName: null,
   companyDomain: null,
@@ -256,6 +258,7 @@ export async function enrichPersonCrustdata(params: {
 
     return {
       found: true,
+      personId: person.person_id || null,
       title: titleClean,
       companyName,
       companyDomain,

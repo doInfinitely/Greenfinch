@@ -300,6 +300,7 @@ export const contacts = pgTable('contacts', {
   crustdataWorkEmail: text('crustdata_work_email'),
   crustdataLinkedinUrl: text('crustdata_linkedin_url'),
   crustdataLocation: text('crustdata_location'),
+  crustdataPersonId: integer('crustdata_person_id'),
   crustdataEnriched: boolean('crustdata_enriched').default(false),
   crustdataEnrichedAt: timestamp('crustdata_enriched_at'),
   findymailVerified: boolean('findymail_verified'),
