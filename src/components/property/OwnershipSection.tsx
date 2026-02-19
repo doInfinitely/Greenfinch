@@ -223,18 +223,6 @@ export default function OwnershipSection({
                       <ExpandableDescription text={capitalizeSentences(org.description)} />
                     )}
 
-                    {org.tags && org.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-2">
-                        {org.tags.slice(0, 5).map((tag) => (
-                          <span key={tag} className="inline-block px-1.5 py-0.5 text-xs rounded bg-gray-100 text-gray-500">
-                            {tag}
-                          </span>
-                        ))}
-                        {org.tags.length > 5 && (
-                          <span className="text-xs text-gray-400">+{org.tags.length - 5} more</span>
-                        )}
-                      </div>
-                    )}
                   </div>
                   <button
                     onClick={(e) => {
