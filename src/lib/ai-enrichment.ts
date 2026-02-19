@@ -138,29 +138,46 @@ function isAIGeneratedSource(url: string): boolean {
 
 function extractGroundedSources(response: any): GroundedSource[] {
   try {
-    const candidates = response.candidates || response.response?.candidates || [];
-    if (candidates.length === 0) {
-      console.log('[GroundedSources] No candidates in response');
+    const candidates = response?.candidates || response?.response?.candidates || response?.data?.candidates;
+    if (!candidates || !Array.isArray(candidates) || candidates.length === 0) {
+      try {
+        const snippet = JSON.stringify(response, null, 2)?.substring(0, 500);
+        console.log(`[GroundedSources] No candidates array. Response type: ${response?.constructor?.name}. Snippet: ${snippet}`);
+      } catch {
+        console.log(`[GroundedSources] No candidates array. Response type: ${typeof response}, constructor: ${response?.constructor?.name}`);
+      }
       return [];
     }
     
     const candidate = candidates[0];
     const groundingMetadata = candidate.groundingMetadata || candidate.grounding_metadata;
     if (!groundingMetadata) {
-      const candidateKeys = Object.keys(candidate || {});
-      console.log(`[GroundedSources] No groundingMetadata found. Candidate keys: ${candidateKeys.join(', ')}`);
+      try {
+        const candidateSnippet = JSON.stringify(candidate, null, 2)?.substring(0, 500);
+        console.log(`[GroundedSources] No groundingMetadata. Candidate snippet: ${candidateSnippet}`);
+      } catch {
+        const candidateKeys = Object.keys(candidate || {});
+        console.log(`[GroundedSources] No groundingMetadata. Candidate keys: ${candidateKeys.join(', ')}`);
+      }
       return [];
     }
     
-    const metadataKeys = Object.keys(groundingMetadata);
-    console.log(`[GroundedSources] Metadata keys: ${metadataKeys.join(', ')}`);
+    const groundingChunks = groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || [];
     
-    const groundingChunks = groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || groundingMetadata.groundingChuncks || [];
-    
-    if (groundingChunks.length === 0) {
-      console.log('[GroundedSources] No grounding chunks found');
+    if (!groundingChunks || groundingChunks.length === 0) {
+      const metadataKeys = Object.keys(groundingMetadata);
+      console.log(`[GroundedSources] No grounding chunks found. Metadata keys: ${metadataKeys.join(', ')}`);
+      
+      if (groundingMetadata.groundingSupports?.length > 0) {
+        console.log(`[GroundedSources] Has ${groundingMetadata.groundingSupports.length} groundingSupports but no chunks`);
+      }
+      if (groundingMetadata.webSearchQueries?.length > 0) {
+        console.log(`[GroundedSources] webSearchQueries: ${JSON.stringify(groundingMetadata.webSearchQueries)}`);
+      }
       return [];
     }
+    
+    console.log(`[GroundedSources] Found ${groundingChunks.length} grounding chunks, first chunk keys: ${Object.keys(groundingChunks[0] || {}).join(', ')}`);
     
     const sources = groundingChunks
       .filter((chunk: any) => {
@@ -178,7 +195,7 @@ function extractGroundedSources(response: any): GroundedSource[] {
     console.log(`[GroundedSources] Extracted ${sources.length} sources from ${groundingChunks.length} chunks`);
     return sources;
   } catch (error) {
-    console.warn('[FocusedEnrichment] Error extracting grounding sources:', error);
+    console.warn('[GroundedSources] Error extracting grounding sources:', error);
     return [];
   }
 }
@@ -378,7 +395,7 @@ Return JSON:
 
 async function callGeminiWithTimeout<T>(
   fn: () => Promise<T>,
-  timeoutMs: number = 60000,
+  timeoutMs: number = 600000,
   retries: number = 2
 ): Promise<T> {
   let lastError: Error | null = null;
@@ -501,7 +518,7 @@ Return JSON:
           tools: [{ googleSearch: {} }]
         }
       }),
-      120000,
+      600000,
       2
     );
 
@@ -668,7 +685,7 @@ Return JSON:
           tools: [{ googleSearch: {} }]
         }
       }),
-      120000,
+      600000,
       2
     );
 
@@ -757,7 +774,7 @@ async function enrichContactDetails(
           tools: [{ googleSearch: {} }]
         }
       }),
-      60000,
+      600000,
       2
     );
 
@@ -1028,7 +1045,7 @@ ${preCleaned}`;
         contents: prompt,
         config: { temperature: 0.1 }
       }),
-      30000,
+      600000,
       1
     );
     
@@ -1078,7 +1095,7 @@ If you cannot find a replacement, return {"name":null}`;
           tools: [{ googleSearch: {} }]
         }
       }),
-      45000,
+      600000,
       1
     );
 

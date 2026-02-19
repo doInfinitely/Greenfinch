@@ -38,7 +38,7 @@ The project is built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM 
 - **AI Enrichment Pipeline Refinements**: Split contact discovery, restructured ownership identification, source quality scoring, compact Stage 1 prompts, and contact deduplication.
 - **Contact Relationship Verification**: Compares current employer data against AI-discovered companies to verify relationships, marks 'former' contacts, and triggers replacement searches when job changes are detected. Smart polling with exponential backoff for enrichment status.
 - **Per-Service Rate Limiting**: Centralized `ServiceRateLimiter` (token bucket + concurrency) in `src/lib/rate-limiter.ts` with `withRetry` for 429 errors. Configs: Gemini 900 RPM/50 concurrent, Findymail 250 concurrent, Crustdata 14 RPM/5 concurrent, PDL Person 90 RPM/30 concurrent, PDL Company 90 RPM/30 concurrent. Property concurrency set to 15.
-- **Gemini Timeout Fix**: `callGeminiWithTimeout` timeout only covers actual API call time (not queue wait). Internal error messages stripped from user-facing summaries via `stripInternalMessages()` regex fallback.
+- **Gemini Timeout Fix**: `callGeminiWithTimeout` timeout only covers actual API call time (not queue wait). Internal error messages stripped from user-facing summaries via `stripInternalMessages()` regex fallback. Default timeout 600s (10min) for all Gemini calls.
 
 ## External Dependencies
 - **Snowflake**: Regrid parcel data ingestion.
