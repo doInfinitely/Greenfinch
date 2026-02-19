@@ -185,7 +185,12 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       },
       paint: {
         'circle-color': '#22c55e',
-        'circle-radius': 8,
+        'circle-radius': [
+          'interpolate', ['linear'], ['zoom'],
+          14, 6,
+          16, 8,
+          18, 10,
+        ],
         'circle-stroke-width': 2,
         'circle-stroke-color': '#ffffff',
       },
@@ -242,7 +247,23 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       },
     });
 
+    if (map.current.getLayer('unclustered-point')) {
+      map.current.moveLayer('unclustered-point');
+    }
+    if (map.current.getLayer('clusters')) {
+      map.current.moveLayer('clusters');
+    }
+    if (map.current.getLayer('cluster-count')) {
+      map.current.moveLayer('cluster-count');
+    }
+
     map.current.on('click', 'parcels-fill', async (e) => {
+      if (!map.current) return;
+      const markerFeatures = map.current.queryRenderedFeatures(e.point, {
+        layers: map.current.getLayer('unclustered-point') ? ['unclustered-point'] : [],
+      });
+      if (markerFeatures && markerFeatures.length > 0) return;
+
       if (e.features && e.features.length > 0) {
         const feature = e.features[0];
         const llUuid = feature.properties?.ll_uuid || (typeof feature.id === 'string' ? feature.id : null);
@@ -565,6 +586,16 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
             'line-width': 1.5,
           },
         });
+
+        if (map.current.getLayer('unclustered-point')) {
+          map.current.moveLayer('unclustered-point');
+        }
+        if (map.current.getLayer('clusters')) {
+          map.current.moveLayer('clusters');
+        }
+        if (map.current.getLayer('cluster-count')) {
+          map.current.moveLayer('cluster-count');
+        }
       }
     }
     

@@ -541,7 +541,12 @@ export class DashboardMap {
   };
 
   private onParcelClick = async (e: mapboxgl.MapLayerMouseEvent) => {
-    if (!e.features?.length || !this.config.onPropertyClick) return;
+    if (!e.features?.length || !this.config.onPropertyClick || !this.map) return;
+
+    const markerFeatures = this.map.queryRenderedFeatures(e.point, {
+      layers: this.map.getLayer('property-points') ? ['property-points'] : [],
+    });
+    if (markerFeatures && markerFeatures.length > 0) return;
     
     const feature = e.features[0];
     const props = feature.properties || {};
