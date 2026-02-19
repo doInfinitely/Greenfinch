@@ -357,14 +357,18 @@ export async function enrichPersonPDL(
     const personCompanyName = person.job_company_name || job.job_company_name || null;
     const personCompanyWebsite = job.job_company_website || person.job_company_website || null;
 
-    if (!personFullName || !personTitle || !personCompanyName) {
-      console.log('[PDL] Incomplete match - missing required fields:', {
-        full_name: !!personFullName,
+    if (!personFullName) {
+      console.log('[PDL] Incomplete match - no full_name in response');
+      return emptyPersonResult();
+    }
+
+    if (!personTitle || !personCompanyName) {
+      console.log('[PDL] Partial match - person found but missing current employment:', {
+        full_name: personFullName,
         job_title: !!personTitle,
         job_company_name: !!personCompanyName,
         job_company_website: !!personCompanyWebsite,
       });
-      return emptyPersonResult();
     }
     
     const resultData = {

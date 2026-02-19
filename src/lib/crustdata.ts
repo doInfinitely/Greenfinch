@@ -6,6 +6,16 @@ const CRUSTDATA_API_BASE = 'https://api.crustdata.com';
 const CONCURRENCY = 2;
 const limit = pLimit(CONCURRENCY);
 
+export interface CrustdataExperience {
+  title: string | null;
+  companyName: string | null;
+  companyDomain: string | null;
+  companyLinkedinUrl: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  isCurrent: boolean;
+}
+
 export interface CrustdataPersonResult {
   found: boolean;
   title: string | null;
@@ -15,6 +25,7 @@ export interface CrustdataPersonResult {
   linkedinUrl: string | null;
   profilePictureUrl: string | null;
   location: string | null;
+  experiences: CrustdataExperience[];
   raw?: any;
 }
 
@@ -43,6 +54,7 @@ const EMPTY_PERSON_RESULT: CrustdataPersonResult = {
   linkedinUrl: null,
   profilePictureUrl: null,
   location: null,
+  experiences: [],
 };
 
 const EMPTY_COMPANY_RESULT: CrustdataCompanyResult = {
@@ -176,6 +188,30 @@ export async function enrichPersonCrustdata(params: {
 
     const profilePictureUrl = person.profile_picture_url || person.profile_pic_url || person.photo_url || null;
 
+    const rawExperiences = person.past_experiences || person.experiences || person.positions || [];
+    const experiences: CrustdataExperience[] = rawExperiences.map((exp: any) => {
+      let expCompanyLinkedinUrl = exp.company_linkedin_url || exp.company_linkedin_profile_url || null;
+      if (expCompanyLinkedinUrl && !expCompanyLinkedinUrl.startsWith('http')) {
+        expCompanyLinkedinUrl = `https://${expCompanyLinkedinUrl}`;
+      }
+      const endDateRaw = exp.end_date || exp.end_year || null;
+      const endDateStr = endDateRaw ? String(endDateRaw) : null;
+      const isCurrentExp = exp.is_current === true || 
+        (endDateStr && /present/i.test(endDateStr)) ||
+        (!endDateRaw && !exp.end_year && !exp.end_month);
+      return {
+        title: exp.title || exp.job_title || null,
+        companyName: exp.company_name || exp.organization_name || null,
+        companyDomain: exp.company_website_domain || exp.company_domain || null,
+        companyLinkedinUrl: expCompanyLinkedinUrl,
+        startDate: exp.start_date || (exp.start_year ? String(exp.start_year) : null),
+        endDate: endDateStr,
+        isCurrent: !!isCurrentExp,
+      };
+    });
+
+    console.log(`[Crustdata] Employment history: ${experiences.length} positions found`);
+
     return {
       found: true,
       title: titleClean,
@@ -185,6 +221,7 @@ export async function enrichPersonCrustdata(params: {
       linkedinUrl,
       profilePictureUrl,
       location: person.location || null,
+      experiences,
       raw: result.data,
     };
   } catch (error) {

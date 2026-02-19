@@ -135,6 +135,9 @@ export interface ContactEnrichmentResult {
   crustdataProfilePictureUrl: string | null;
   crustdataLocation: string | null;
   crustdataEnriched: boolean;
+  
+  employerLeftDetected: boolean;
+  employerLeftReason: string | null;
 }
 
 const DOMAIN_ALIASES: Record<string, string[]> = {
@@ -167,6 +170,24 @@ function domainsMatch(domain1: string | null, domain2: string | null): boolean {
   const base2 = d2.replace(/\.(com|org|net|io|co|ai|app|dev)$/i, '');
   if (base1 === base2 && base1.length > 3) return true;
   
+  return false;
+}
+
+function normalizeCompanyForComparison(name: string | null | undefined): string {
+  if (!name) return '';
+  return name.toLowerCase()
+    .replace(/\b(llc|llp|inc|corp|co|ltd|lp|group|holdings|partners|properties|management|company|enterprises|realty|real estate)\b/gi, '')
+    .replace(/[^a-z0-9]/g, '')
+    .trim();
+}
+
+function companiesMatch(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  const normA = normalizeCompanyForComparison(a);
+  const normB = normalizeCompanyForComparison(b);
+  if (!normA || !normB) return false;
+  if (normA === normB) return true;
+  if (normA.includes(normB) || normB.includes(normA)) return true;
   return false;
 }
 
@@ -552,15 +573,23 @@ export async function enrichContactCascade(
   // ═══════════════════════════════════════════════════════════════
   let crustdataData: any = null;
   let confidenceFlag: ConfidenceFlag = 'no_match';
+  let employerLeftDetected = false;
+  let employerLeftReason: string | null = null;
   
-  const pdlDomainMatches = pdlData ? domainsMatch(pdlData.companyDomain, companyDomain ?? null) : false;
+  const pdlHasCompany = pdlData && pdlData.companyName && pdlData.companyDomain;
+  const pdlDomainMatches = pdlHasCompany ? domainsMatch(pdlData.companyDomain, companyDomain ?? null) : false;
+  const pdlCompanyEmpty = pdlData && !pdlData.companyName;
   const shouldRunCrustdata = 
     !pdlDomainMatches || 
     !pdlData || 
-    !pdlData.companyDomain;
+    !pdlData.companyDomain ||
+    pdlCompanyEmpty;
   
   if (shouldRunCrustdata && (foundLinkedin || verifiedEmail)) {
-    console.log('[CascadeEnrichment] Stage 4: Crustdata Verification (domain mismatch or PDL incomplete)...');
+    const reason = pdlCompanyEmpty 
+      ? 'PDL returned no current employer — checking Crustdata for employment history'
+      : 'domain mismatch or PDL incomplete';
+    console.log(`[CascadeEnrichment] Stage 4: Crustdata Verification (${reason})...`);
     
     try {
       const crustdataResult = await enrichPersonCrustdata({
@@ -572,6 +601,47 @@ export async function enrichContactCascade(
         console.log(`[CascadeEnrichment] Crustdata verified: ${crustdataResult.title} at ${crustdataResult.companyName}`);
         crustdataData = crustdataResult;
         confidenceFlag = 'verified';
+        
+        if (companyDomain || companyName) {
+          const crustdataCurrentCompanyMatches = 
+            domainsMatch(crustdataResult.companyDomain, companyDomain ?? null) ||
+            companiesMatch(crustdataResult.companyName, companyName ?? null);
+          
+          if (!crustdataCurrentCompanyMatches) {
+            const wasEmployedThere = crustdataResult.experiences.some(exp => {
+              if (exp.isCurrent) return false;
+              const nameMatch = companiesMatch(exp.companyName, companyName ?? null);
+              const domainMatch = domainsMatch(exp.companyDomain, companyDomain ?? null);
+              return nameMatch || domainMatch;
+            });
+            
+            if (wasEmployedThere) {
+              const pastExp = crustdataResult.experiences.find(exp => {
+                if (exp.isCurrent) return false;
+                return companiesMatch(exp.companyName, companyName ?? null) || domainsMatch(exp.companyDomain, companyDomain ?? null);
+              });
+              employerLeftDetected = true;
+              employerLeftReason = `${fullName} previously worked at ${companyName || companyDomain}${pastExp?.endDate ? ` (left ${pastExp.endDate})` : ''}, now at ${crustdataResult.companyName || 'unknown'}. Source: Crustdata employment history`;
+              console.log(`[CascadeEnrichment] EMPLOYER LEFT DETECTED: ${employerLeftReason}`);
+            } else if (pdlCompanyEmpty && crustdataResult.companyName && !crustdataCurrentCompanyMatches) {
+              employerLeftDetected = true;
+              employerLeftReason = `${fullName} now at ${crustdataResult.companyName} (was ${companyName || companyDomain} for this property). PDL shows no current employer, Crustdata shows different company. Source: Crustdata`;
+              console.log(`[CascadeEnrichment] EMPLOYER LEFT DETECTED (new company): ${employerLeftReason}`);
+            }
+          }
+        }
+        
+        if (!crustdataData.companyName && pdlCompanyEmpty && (companyDomain || companyName)) {
+          const wasEmployedThere = crustdataResult.experiences.some(exp => {
+            if (exp.isCurrent) return false;
+            return companiesMatch(exp.companyName, companyName ?? null) || domainsMatch(exp.companyDomain, companyDomain ?? null);
+          });
+          if (wasEmployedThere) {
+            employerLeftDetected = true;
+            employerLeftReason = `${fullName} previously worked at ${companyName || companyDomain} but appears to no longer be employed there. Both PDL and Crustdata show no current employer. Source: Crustdata employment history`;
+            console.log(`[CascadeEnrichment] EMPLOYER LEFT DETECTED (unemployed): ${employerLeftReason}`);
+          }
+        }
       } else {
         console.log('[CascadeEnrichment] Crustdata: no match found');
         confidenceFlag = pdlData ? 'unverified' : (verifiedEmail ? 'email_only' : 'no_match');
@@ -672,6 +742,9 @@ export async function enrichContactCascade(
     crustdataProfilePictureUrl: crustdataData?.profilePictureUrl || null,
     crustdataLocation: crustdataData?.location || null,
     crustdataEnriched: !!crustdataData,
+    
+    employerLeftDetected,
+    employerLeftReason,
   };
   
   console.log(`[CascadeEnrichment] Contact enrichment complete for ${fullName}: confidence=${confidenceFlag}, source=${result.enrichmentSource}`);
@@ -735,5 +808,7 @@ function buildEmptyResult(fullName: string, firstName: string, lastName: string,
     crustdataProfilePictureUrl: null,
     crustdataLocation: null,
     crustdataEnriched: false,
+    employerLeftDetected: false,
+    employerLeftReason: null,
   };
 }

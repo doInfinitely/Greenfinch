@@ -601,20 +601,14 @@ export async function runCascadeEnrichmentOnSavedRecords(
 
       console.log(`[CascadeEnrichment] Contact enriched: ${contact.fullName} (${result.confidenceFlag})`);
 
-      if (propertyId && (result.pdlCompany || result.crustdataCompany)) {
+      if (propertyId && (result.pdlCompany || result.crustdataCompany || result.employerLeftDetected)) {
         try {
-          const enrichedCompany = result.crustdataCompany || result.pdlCompany;
-          const enrichedDomain = result.crustdataCompanyDomain || result.pdlCompanyDomain;
           const aiCompany = contact.employerName;
           const aiDomain = contact.companyDomain;
 
-          const nameMatch = companiesMatch(enrichedCompany, aiCompany);
-          const domainMatch = domainsMatch(enrichedDomain, aiDomain);
-
-          if (!nameMatch && !domainMatch) {
-            const enrichedTitle = result.crustdataTitle || result.pdlTitle;
-            const reason = `${contact.fullName} now at ${enrichedCompany}${enrichedTitle ? ` as ${enrichedTitle}` : ''} (was ${aiCompany || 'unknown'} for this property). Source: ${result.crustdataCompany ? 'Crustdata' : 'PDL'}`;
-            console.log(`[RoleVerification] MISMATCH: ${reason}`);
+          if (result.employerLeftDetected) {
+            const reason = result.employerLeftReason || `${contact.fullName} no longer appears to be at ${aiCompany || 'the company'}`;
+            console.log(`[RoleVerification] EMPLOYER LEFT: ${reason}`);
 
             await db.update(propertyContacts)
               .set({
@@ -646,17 +640,59 @@ export async function runCascadeEnrichmentOnSavedRecords(
               prop?.validatedAddress || prop?.regridAddress || undefined
             ).catch(err => console.error('[RoleVerification] Replacement search error:', err));
           } else {
-            await db.update(propertyContacts)
-              .set({
-                relationshipStatus: 'active',
-                relationshipVerifiedAt: new Date(),
-              })
-              .where(
-                and(
+            const enrichedCompany = result.crustdataCompany || result.pdlCompany;
+            const enrichedDomain = result.crustdataCompanyDomain || result.pdlCompanyDomain;
+
+            const nameMatch = companiesMatch(enrichedCompany, aiCompany);
+            const domainMatch = domainsMatch(enrichedDomain, aiDomain);
+
+            if (!nameMatch && !domainMatch) {
+              const enrichedTitle = result.crustdataTitle || result.pdlTitle;
+              const reason = `${contact.fullName} now at ${enrichedCompany}${enrichedTitle ? ` as ${enrichedTitle}` : ''} (was ${aiCompany || 'unknown'} for this property). Source: ${result.crustdataCompany ? 'Crustdata' : 'PDL'}`;
+              console.log(`[RoleVerification] MISMATCH: ${reason}`);
+
+              await db.update(propertyContacts)
+                .set({
+                  relationshipStatus: 'former',
+                  relationshipStatusReason: reason,
+                  relationshipVerifiedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(propertyContacts.propertyId, propertyId),
+                    eq(propertyContacts.contactId, contactId)
+                  )
+                );
+
+              const pcRow = await db.query.propertyContacts.findFirst({
+                where: and(
                   eq(propertyContacts.propertyId, propertyId),
                   eq(propertyContacts.contactId, contactId)
-                )
-              );
+                ),
+              });
+              const prop = await db.query.properties.findFirst({
+                where: eq(properties.id, propertyId),
+              });
+              searchForReplacement(
+                propertyId,
+                pcRow?.role || contact.title,
+                aiCompany,
+                aiDomain,
+                prop?.validatedAddress || prop?.regridAddress || undefined
+              ).catch(err => console.error('[RoleVerification] Replacement search error:', err));
+            } else {
+              await db.update(propertyContacts)
+                .set({
+                  relationshipStatus: 'active',
+                  relationshipVerifiedAt: new Date(),
+                })
+                .where(
+                  and(
+                    eq(propertyContacts.propertyId, propertyId),
+                    eq(propertyContacts.contactId, contactId)
+                  )
+                );
+            }
           }
         } catch (verifyErr) {
           console.error(`[RoleVerification] Error verifying role for ${contact.fullName}:`, verifyErr);
