@@ -409,6 +409,38 @@ export default function OrganizationDetailPage() {
     fetchBrandData();
   }, [organization?.domain]);
 
+  const socialLinks = useMemo(() => {
+    if (!organization) return [];
+    const SOCIAL_KEY_NORMALIZE: Record<string, string> = { x: 'twitter' };
+    const links: Array<{ platform: string; url: string }> = [];
+    if (brandData?.socials) {
+      Object.entries(brandData.socials).forEach(([rawPlatform, url]) => {
+        if (!url) return;
+        const platform = SOCIAL_KEY_NORMALIZE[rawPlatform] || rawPlatform;
+        links.push({ platform, url });
+      });
+    }
+    if (!links.find(l => l.platform === 'linkedin') && organization.linkedinHandle) {
+      links.push({ platform: 'linkedin', url: `https://www.linkedin.com/company/${organization.linkedinHandle}` });
+    }
+    if (!links.find(l => l.platform === 'twitter') && organization.twitterHandle) {
+      links.push({ platform: 'twitter', url: `https://twitter.com/${organization.twitterHandle}` });
+    }
+    if (!links.find(l => l.platform === 'facebook') && organization.facebookHandle) {
+      links.push({ platform: 'facebook', url: `https://facebook.com/${organization.facebookHandle}` });
+    }
+    if (!links.find(l => l.platform === 'crunchbase') && organization.crunchbaseHandle) {
+      links.push({ platform: 'crunchbase', url: `https://www.crunchbase.com/organization/${organization.crunchbaseHandle}` });
+    }
+    return links;
+  }, [organization, brandData]);
+
+  const logoSrc = organization ? (brandData?.logo || organization.logoUrl) : null;
+  const brandColors = brandData?.colors || [];
+  const primaryBrandColor = brandColors.length > 0 ? brandColors[0].hex : null;
+  const industryDisplay = organization ? [organization.industry, organization.subIndustry].filter(Boolean).join(' - ') : '';
+  const companyTypeLabel = organization?.orgType ? (COMPANY_TYPE_LABELS[organization.orgType.toLowerCase()] || organization.orgType) : null;
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -440,39 +472,6 @@ export default function OrganizationDetailPage() {
       </div>
     );
   }
-
-  const socialLinks = useMemo(() => {
-    const SOCIAL_KEY_NORMALIZE: Record<string, string> = { x: 'twitter' };
-    const links: Array<{ platform: string; url: string }> = [];
-    if (brandData?.socials) {
-      Object.entries(brandData.socials).forEach(([rawPlatform, url]) => {
-        if (!url) return;
-        const platform = SOCIAL_KEY_NORMALIZE[rawPlatform] || rawPlatform;
-        links.push({ platform, url });
-      });
-    }
-    if (!links.find(l => l.platform === 'linkedin') && organization.linkedinHandle) {
-      links.push({ platform: 'linkedin', url: `https://www.linkedin.com/company/${organization.linkedinHandle}` });
-    }
-    if (!links.find(l => l.platform === 'twitter') && organization.twitterHandle) {
-      links.push({ platform: 'twitter', url: `https://twitter.com/${organization.twitterHandle}` });
-    }
-    if (!links.find(l => l.platform === 'facebook') && organization.facebookHandle) {
-      links.push({ platform: 'facebook', url: `https://facebook.com/${organization.facebookHandle}` });
-    }
-    if (!links.find(l => l.platform === 'crunchbase') && organization.crunchbaseHandle) {
-      links.push({ platform: 'crunchbase', url: `https://www.crunchbase.com/organization/${organization.crunchbaseHandle}` });
-    }
-    return links;
-  }, [organization, brandData]);
-
-  const logoSrc = brandData?.logo || organization.logoUrl;
-  const brandColors = brandData?.colors || [];
-  const primaryBrandColor = brandColors.length > 0 ? brandColors[0].hex : null;
-  
-  const industryDisplay = [organization.industry, organization.subIndustry].filter(Boolean).join(' - ');
-  
-  const companyTypeLabel = organization.orgType ? (COMPANY_TYPE_LABELS[organization.orgType.toLowerCase()] || organization.orgType) : null;
 
   const handleExportOrganizationData = () => {
     // Prepare organization data for export
