@@ -395,13 +395,30 @@ async function callGeminiWithTimeout<T>(
   
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
+      const overallStart = Date.now();
+      console.log(`[FocusedEnrichment] API call attempt ${attempt}/${retries}, timeout=${timeoutMs}ms...`);
+
+      const wrappedFn = async () => {
+        const queueWait = Date.now() - overallStart;
+        if (queueWait > 1000) {
+          console.log(`[FocusedEnrichment] Rate limiter queue wait: ${queueWait}ms`);
+        }
+        const apiStart = Date.now();
+        try {
+          const result = await fn();
+          console.log(`[FocusedEnrichment] Gemini API responded in ${Date.now() - apiStart}ms (total with queue: ${Date.now() - overallStart}ms)`);
+          return result;
+        } catch (apiErr) {
+          console.warn(`[FocusedEnrichment] Gemini API error after ${Date.now() - apiStart}ms: ${apiErr instanceof Error ? apiErr.message : apiErr}`);
+          throw apiErr;
+        }
+      };
+
       const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(`Gemini API timeout after ${timeoutMs}ms`)), timeoutMs);
+        setTimeout(() => reject(new Error(`Gemini API timeout after ${timeoutMs}ms (attempt ${attempt})`)), timeoutMs);
       });
-      
-      console.log(`[FocusedEnrichment] API call attempt ${attempt}/${retries}...`);
-      // Use global gemini rate limiter to control concurrent API calls
-      const result = await Promise.race([geminiLimit(fn), timeoutPromise]);
+
+      const result = await Promise.race([geminiLimit(wrappedFn), timeoutPromise]);
       return result;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -493,7 +510,7 @@ Return JSON:
           tools: [{ googleSearch: {} }]
         }
       }),
-      90000,
+      120000,
       2
     );
 
@@ -660,7 +677,7 @@ Return JSON:
           tools: [{ googleSearch: {} }]
         }
       }),
-      90000,
+      120000,
       2
     );
 
@@ -979,7 +996,7 @@ export async function runFocusedEnrichment(property: CommercialProperty): Promis
 
 /**
  * Clean up AI research summary by:
- * 1. Removing internal system references (e.g., "gemini timed out after 90000ms")
+ * 1. Removing internal system references (e.g., "gemini timed out after 120000ms")
  * 2. Editing for style and clarity
  * 3. Removing citation numbers like [1], [2], etc.
  * 4. Producing a polished, user-facing summary
