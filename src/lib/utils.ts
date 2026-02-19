@@ -25,14 +25,14 @@ export function formatCurrencyFull(value: number | string): string {
   }).format(num);
 }
 
-export function formatLotSize(sqft: number | null): string {
-  if (!sqft) return '-';
+export function formatLotSize(sqft: number | null | undefined): string {
+  if (sqft === null || sqft === undefined) return '-';
   const acres = sqft / 43560;
   return `${acres.toFixed(1)} ac`;
 }
 
-export function formatBuildingSqft(sqft: number | null): string {
-  if (!sqft) return '-';
+export function formatBuildingSqft(sqft: number | null | undefined): string {
+  if (sqft === null || sqft === undefined) return '-';
   if (sqft >= 1000) {
     const k = sqft / 1000;
     return sqft < 19000 ? `${k.toFixed(1)}k` : `${Math.round(k)}k`;
