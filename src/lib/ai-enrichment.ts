@@ -1,11 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
-import pLimit from "p-limit";
 import type { CommercialProperty, DCADBuilding } from "./snowflake";
-import { ASSET_CATEGORIES, CONCURRENCY, GEMINI_MODEL } from "./constants";
+import { ASSET_CATEGORIES, GEMINI_MODEL } from "./constants";
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
-
-// Global rate limiter for Gemini API calls across all concurrent property enrichments
-const geminiLimit = pLimit(CONCURRENCY.GEMINI);
+import { rateLimiters } from './rate-limiter';
 
 function getGeminiClient(): GoogleGenAI {
   const apiKey = process.env.GOOGLE_GENAI_API_KEY;
@@ -285,7 +282,7 @@ Return JSON:
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${maxRetries}...`);
 
-    response = await geminiLimit(() => client.models.generateContent({
+    response = await rateLimiters.gemini.execute(() => client.models.generateContent({
       model: GEMINI_MODEL,
       contents: prompt,
       config: {
@@ -418,7 +415,7 @@ async function callGeminiWithTimeout<T>(
         setTimeout(() => reject(new Error(`Gemini API timeout after ${timeoutMs}ms (attempt ${attempt})`)), timeoutMs);
       });
 
-      const result = await Promise.race([geminiLimit(wrappedFn), timeoutPromise]);
+      const result = await Promise.race([rateLimiters.gemini.execute(wrappedFn), timeoutPromise]);
       return result;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
@@ -1024,7 +1021,7 @@ Raw summary to polish:
 ${rawSummary}`;
 
   try {
-    const response = await geminiLimit(() => 
+    const response = await rateLimiters.gemini.execute(() => 
       callGeminiWithTimeout(
         () => client.models.generateContent({
           model: GEMINI_MODEL,

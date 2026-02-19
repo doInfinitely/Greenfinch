@@ -59,15 +59,15 @@ export const CONFIDENCE = {
  */
 export const GEMINI_MODEL = "gemini-3-flash-preview" as const;
 
-// Concurrency limits for parallel API calls
-// Gemini Flash can handle hundreds of requests per minute
-// SERP API, Hunter, NeverBounce have lower limits
+// Concurrency limits for parallel processing
+// Per-service rate limits (RPM, concurrent) are now managed by ServiceRateLimiter in rate-limiter.ts
+// These constants only control property-level parallelism and legacy concurrency caps
 export const CONCURRENCY = {
-  GEMINI: 50,           // Main AI enrichment - Gemini Flash is fast
+  GEMINI: 50,           // Kept for reference; actual limit is in rate-limiter.ts (900 RPM, 50 concurrent)
   SERP: 10,             // SERP API for LinkedIn lookups
   HUNTER: 3,            // Hunter.io email discovery - very low rate limit
   NEVERBOUNCE: 5,       // NeverBounce email validation
-  PROPERTIES: 20,       // Concurrent property enrichments
+  PROPERTIES: 50,       // Concurrent property enrichments (up from 20) - downstream APIs self-throttle via rate-limiter.ts
 };
 
 const mvpZipEnv = process.env.MVP_ZIP || '75225';

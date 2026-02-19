@@ -5,6 +5,8 @@
  * API Documentation: https://app.findymail.com/docs/
  */
 
+import { rateLimiters, withRetry } from './rate-limiter';
+
 const FINDYMAIL_API_URL = 'https://app.findymail.com/api';
 
 interface FindymailEmailResult {
@@ -70,61 +72,67 @@ export async function findEmailByName(
   console.log('[Findymail] Find email by name:', { name: fullName, domain });
 
   try {
-    const response = await fetch(`${FINDYMAIL_API_URL}/search/name`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        name: fullName,
-        domain: domain,
-      }),
-    });
+    return await withRetry(() => rateLimiters.findymail.execute(async () => {
+      const response = await fetch(`${FINDYMAIL_API_URL}/search/name`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          name: fullName,
+          domain: domain,
+        }),
+      });
 
-    const data: FindymailEmailResult = await response.json();
-    
-    console.log('[Findymail] Response status:', response.status);
-    console.log('[Findymail] Response body:', JSON.stringify(data).substring(0, 500));
+      if (response.status === 429) {
+        throw new Error('Rate limit hit');
+      }
 
-    if (!response.ok) {
-      const errorMsg = (data as any).message || (data as any).error || `API error: ${response.status}`;
-      console.log('[Findymail] API error:', errorMsg);
-      return { found: false, error: errorMsg, raw: data };
-    }
+      const data: FindymailEmailResult = await response.json();
+      
+      console.log('[Findymail] Response status:', response.status);
+      console.log('[Findymail] Response body:', JSON.stringify(data).substring(0, 500));
 
-    if (!data.email && !data.contact?.email) {
-      console.log('[Findymail] No email found');
-      return { found: false, error: 'No email found', raw: data };
-    }
+      if (!response.ok) {
+        const errorMsg = (data as any).message || (data as any).error || `API error: ${response.status}`;
+        console.log('[Findymail] API error:', errorMsg);
+        return { found: false, error: errorMsg, raw: data };
+      }
 
-    const email = data.email || data.contact?.email;
-    const contact = data.contact;
+      if (!data.email && !data.contact?.email) {
+        console.log('[Findymail] No email found');
+        return { found: false, error: 'No email found', raw: data };
+      }
 
-    // Extract LinkedIn URL — prefer linkedin_url (vanity) over linkedin (may be hashed member ID)
-    let linkedinUrl = data.linkedin_url || contact?.linkedin_url || contact?.linkedin || null;
-    console.log('[Findymail] LinkedIn fields:', {
-      'data.linkedin_url': data.linkedin_url,
-      'contact.linkedin_url': contact?.linkedin_url,
-      'contact.linkedin': contact?.linkedin,
-      selected: linkedinUrl,
-    });
-    if (linkedinUrl && !linkedinUrl.startsWith('http')) {
-      linkedinUrl = `https://${linkedinUrl}`;
-    }
+      const email = data.email || data.contact?.email;
+      const contact = data.contact;
 
-    return {
-      found: true,
-      email,
-      fullName: contact?.name || fullName,
-      firstName: contact?.first_name || firstName,
-      lastName: contact?.last_name || lastName,
-      title: contact?.job_title,
-      linkedinUrl: linkedinUrl || undefined,
-      phone: contact?.phone,
-      raw: data,
-    };
+      // Extract LinkedIn URL — prefer linkedin_url (vanity) over linkedin (may be hashed member ID)
+      let linkedinUrl = data.linkedin_url || contact?.linkedin_url || contact?.linkedin || null;
+      console.log('[Findymail] LinkedIn fields:', {
+        'data.linkedin_url': data.linkedin_url,
+        'contact.linkedin_url': contact?.linkedin_url,
+        'contact.linkedin': contact?.linkedin,
+        selected: linkedinUrl,
+      });
+      if (linkedinUrl && !linkedinUrl.startsWith('http')) {
+        linkedinUrl = `https://${linkedinUrl}`;
+      }
+
+      return {
+        found: true,
+        email,
+        fullName: contact?.name || fullName,
+        firstName: contact?.first_name || firstName,
+        lastName: contact?.last_name || lastName,
+        title: contact?.job_title,
+        linkedinUrl: linkedinUrl || undefined,
+        phone: contact?.phone,
+        raw: data,
+      };
+    }), { maxRetries: 3, baseDelayMs: 2000, serviceName: 'Findymail' });
   } catch (error: any) {
     console.error('[Findymail] Find by name failed:', error.message);
     return { found: false, error: error.message };
@@ -143,46 +151,52 @@ export async function findEmailByLinkedIn(linkedinUrl: string): Promise<FindEmai
   console.log('[Findymail] Find email by LinkedIn:', linkedinUrl);
 
   try {
-    const response = await fetch(`${FINDYMAIL_API_URL}/search/linkedin`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        linkedin: linkedinUrl,
-      }),
-    });
+    return await withRetry(() => rateLimiters.findymail.execute(async () => {
+      const response = await fetch(`${FINDYMAIL_API_URL}/search/linkedin`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          linkedin: linkedinUrl,
+        }),
+      });
 
-    const data: FindymailEmailResult = await response.json();
-    
-    console.log('[Findymail] Response status:', response.status);
-    console.log('[Findymail] Response body:', JSON.stringify(data).substring(0, 500));
+      if (response.status === 429) {
+        throw new Error('Rate limit hit');
+      }
 
-    if (!response.ok) {
-      const errorMsg = (data as any).message || (data as any).error || `API error: ${response.status}`;
-      return { found: false, error: errorMsg, raw: data };
-    }
+      const data: FindymailEmailResult = await response.json();
+      
+      console.log('[Findymail] Response status:', response.status);
+      console.log('[Findymail] Response body:', JSON.stringify(data).substring(0, 500));
 
-    if (!data.email && !data.contact?.email) {
-      return { found: false, error: 'No email found', raw: data };
-    }
+      if (!response.ok) {
+        const errorMsg = (data as any).message || (data as any).error || `API error: ${response.status}`;
+        return { found: false, error: errorMsg, raw: data };
+      }
 
-    const email = data.email || data.contact?.email;
-    const contact = data.contact;
+      if (!data.email && !data.contact?.email) {
+        return { found: false, error: 'No email found', raw: data };
+      }
 
-    return {
-      found: true,
-      email,
-      fullName: contact?.name,
-      firstName: contact?.first_name,
-      lastName: contact?.last_name,
-      title: contact?.job_title,
-      linkedinUrl,
-      phone: contact?.phone,
-      raw: data,
-    };
+      const email = data.email || data.contact?.email;
+      const contact = data.contact;
+
+      return {
+        found: true,
+        email,
+        fullName: contact?.name,
+        firstName: contact?.first_name,
+        lastName: contact?.last_name,
+        title: contact?.job_title,
+        linkedinUrl,
+        phone: contact?.phone,
+        raw: data,
+      };
+    }), { maxRetries: 3, baseDelayMs: 2000, serviceName: 'Findymail' });
   } catch (error: any) {
     console.error('[Findymail] Find by LinkedIn failed:', error.message);
     return { found: false, error: error.message };
@@ -201,53 +215,59 @@ export async function findLinkedInByEmail(email: string): Promise<FindEmailResul
   console.log('[Findymail] Reverse email lookup:', email);
 
   try {
-    const response = await fetch(`${FINDYMAIL_API_URL}/search/reverse-email`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({ email }),
-    });
+    return await withRetry(() => rateLimiters.findymail.execute(async () => {
+      const response = await fetch(`${FINDYMAIL_API_URL}/search/reverse-email`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
 
-    const data: FindymailEmailResult = await response.json();
-    
-    console.log('[Findymail] Reverse email response status:', response.status);
-    console.log('[Findymail] Reverse email response body:', JSON.stringify(data).substring(0, 500));
+      if (response.status === 429) {
+        throw new Error('Rate limit hit');
+      }
 
-    if (!response.ok) {
-      const errorMsg = (data as any).message || (data as any).error || `API error: ${response.status}`;
-      return { found: false, error: errorMsg, raw: data };
-    }
+      const data: FindymailEmailResult = await response.json();
+      
+      console.log('[Findymail] Reverse email response status:', response.status);
+      console.log('[Findymail] Reverse email response body:', JSON.stringify(data).substring(0, 500));
 
-    const contact = data.contact;
-    let linkedinUrl = data.linkedin_url || contact?.linkedin_url || contact?.linkedin || null;
-    console.log('[Findymail] Reverse email LinkedIn fields:', {
-      'data.linkedin_url': data.linkedin_url,
-      'contact.linkedin_url': contact?.linkedin_url,
-      'contact.linkedin': contact?.linkedin,
-      selected: linkedinUrl,
-    });
-    if (linkedinUrl && !linkedinUrl.startsWith('http')) {
-      linkedinUrl = `https://${linkedinUrl}`;
-    }
+      if (!response.ok) {
+        const errorMsg = (data as any).message || (data as any).error || `API error: ${response.status}`;
+        return { found: false, error: errorMsg, raw: data };
+      }
 
-    if (!linkedinUrl) {
-      return { found: false, error: 'No LinkedIn URL found', raw: data };
-    }
+      const contact = data.contact;
+      let linkedinUrl = data.linkedin_url || contact?.linkedin_url || contact?.linkedin || null;
+      console.log('[Findymail] Reverse email LinkedIn fields:', {
+        'data.linkedin_url': data.linkedin_url,
+        'contact.linkedin_url': contact?.linkedin_url,
+        'contact.linkedin': contact?.linkedin,
+        selected: linkedinUrl,
+      });
+      if (linkedinUrl && !linkedinUrl.startsWith('http')) {
+        linkedinUrl = `https://${linkedinUrl}`;
+      }
 
-    return {
-      found: true,
-      email: contact?.email || email,
-      fullName: contact?.name,
-      firstName: contact?.first_name,
-      lastName: contact?.last_name,
-      title: contact?.job_title,
-      linkedinUrl,
-      phone: contact?.phone,
-      raw: data,
-    };
+      if (!linkedinUrl) {
+        return { found: false, error: 'No LinkedIn URL found', raw: data };
+      }
+
+      return {
+        found: true,
+        email: contact?.email || email,
+        fullName: contact?.name,
+        firstName: contact?.first_name,
+        lastName: contact?.last_name,
+        title: contact?.job_title,
+        linkedinUrl,
+        phone: contact?.phone,
+        raw: data,
+      };
+    }), { maxRetries: 3, baseDelayMs: 2000, serviceName: 'Findymail' });
   } catch (error: any) {
     console.error('[Findymail] Reverse email lookup failed:', error.message);
     return { found: false, error: error.message };
@@ -291,45 +311,51 @@ export async function findPhoneByLinkedIn(linkedinUrl: string): Promise<FindPhon
   console.log('[Findymail] Phone finder by LinkedIn:', linkedinUrl);
 
   try {
-    const response = await fetch(`${FINDYMAIL_API_URL}/search/phone`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({
-        linkedin_url: linkedinUrl,
-      }),
-    });
+    return await withRetry(() => rateLimiters.findymail.execute(async () => {
+      const response = await fetch(`${FINDYMAIL_API_URL}/search/phone`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({
+          linkedin_url: linkedinUrl,
+        }),
+      });
 
-    const data: FindymailPhoneResult = await response.json();
+      if (response.status === 429) {
+        throw new Error('Rate limit hit');
+      }
 
-    console.log('[Findymail] Phone finder response status:', response.status);
-    console.log('[Findymail] Phone finder response body:', JSON.stringify(data).substring(0, 500));
+      const data: FindymailPhoneResult = await response.json();
 
-    if (!response.ok) {
-      const errorMsg = data.message || data.error || `API error: ${response.status}`;
-      console.log('[Findymail] Phone finder API error:', errorMsg);
-      return { found: false, error: errorMsg, raw: data };
-    }
+      console.log('[Findymail] Phone finder response status:', response.status);
+      console.log('[Findymail] Phone finder response body:', JSON.stringify(data).substring(0, 500));
 
-    const phone = data.phone || data.contact?.phone;
-    const phones = data.phones || data.contact?.phones || [];
+      if (!response.ok) {
+        const errorMsg = data.message || data.error || `API error: ${response.status}`;
+        console.log('[Findymail] Phone finder API error:', errorMsg);
+        return { found: false, error: errorMsg, raw: data };
+      }
 
-    if (!phone && phones.length === 0) {
-      console.log('[Findymail] No phone found');
-      return { found: false, error: 'No phone found', raw: data };
-    }
+      const phone = data.phone || data.contact?.phone;
+      const phones = data.phones || data.contact?.phones || [];
 
-    console.log('[Findymail] Phone found:', phone, 'Additional phones:', phones.length);
+      if (!phone && phones.length === 0) {
+        console.log('[Findymail] No phone found');
+        return { found: false, error: 'No phone found', raw: data };
+      }
 
-    return {
-      found: true,
-      phone: phone || phones[0]?.phone,
-      phones: phones.length > 0 ? phones : (phone ? [{ phone }] : []),
-      raw: data,
-    };
+      console.log('[Findymail] Phone found:', phone, 'Additional phones:', phones.length);
+
+      return {
+        found: true,
+        phone: phone || phones[0]?.phone,
+        phones: phones.length > 0 ? phones : (phone ? [{ phone }] : []),
+        raw: data,
+      };
+    }), { maxRetries: 3, baseDelayMs: 2000, serviceName: 'Findymail' });
   } catch (error: any) {
     console.error('[Findymail] Phone finder failed:', error.message);
     return { found: false, error: error.message };
@@ -348,54 +374,60 @@ export async function verifyEmail(email: string): Promise<VerifyEmailResult> {
   console.log('[Findymail] Verify email:', email);
 
   try {
-    const response = await fetch(`${FINDYMAIL_API_URL}/verify`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-      },
-      body: JSON.stringify({ email }),
-    });
+    return await withRetry(() => rateLimiters.findymail.execute(async () => {
+      const response = await fetch(`${FINDYMAIL_API_URL}/verify`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+        body: JSON.stringify({ email }),
+      });
 
-    const data: FindymailVerifyResult & { message?: string; error?: string } = await response.json();
-    
-    console.log('[Findymail] Verify response status:', response.status);
-    console.log('[Findymail] Verify response body:', JSON.stringify(data));
-
-    if (!response.ok) {
-      const errorMsg = data.message || data.error || `API error: ${response.status}`;
-      return { success: false, status: 'unknown', error: errorMsg, raw: data };
-    }
-
-    // Normalize status to our standard values
-    // Findymail returns { verified: true/false } format
-    let normalizedStatus: 'valid' | 'invalid' | 'catch-all' | 'unknown' = 'unknown';
-    let rawStatus = 'unknown';
-    
-    if (data.verified !== undefined) {
-      normalizedStatus = data.verified ? 'valid' : 'unknown';
-      rawStatus = data.verified ? 'verified' : 'not_verified';
-    } else if (data.status) {
-      // Legacy format: { status: string }
-      rawStatus = data.status;
-      if (data.status === 'valid') {
-        normalizedStatus = 'valid';
-      } else if (data.status === 'invalid') {
-        normalizedStatus = 'invalid';
-      } else if (data.status === 'risky') {
-        normalizedStatus = 'catch-all';
+      if (response.status === 429) {
+        throw new Error('Rate limit hit');
       }
-    }
 
-    return {
-      success: true,
-      status: normalizedStatus,
-      rawStatus: rawStatus,
-      raw: data,
-    };
+      const data: FindymailVerifyResult & { message?: string; error?: string } = await response.json();
+      
+      console.log('[Findymail] Verify response status:', response.status);
+      console.log('[Findymail] Verify response body:', JSON.stringify(data));
+
+      if (!response.ok) {
+        const errorMsg = data.message || data.error || `API error: ${response.status}`;
+        return { success: false, status: 'unknown' as const, error: errorMsg, raw: data };
+      }
+
+      // Normalize status to our standard values
+      // Findymail returns { verified: true/false } format
+      let normalizedStatus: 'valid' | 'invalid' | 'catch-all' | 'unknown' = 'unknown';
+      let rawStatus = 'unknown';
+      
+      if (data.verified !== undefined) {
+        normalizedStatus = data.verified ? 'valid' : 'unknown';
+        rawStatus = data.verified ? 'verified' : 'not_verified';
+      } else if (data.status) {
+        // Legacy format: { status: string }
+        rawStatus = data.status;
+        if (data.status === 'valid') {
+          normalizedStatus = 'valid';
+        } else if (data.status === 'invalid') {
+          normalizedStatus = 'invalid';
+        } else if (data.status === 'risky') {
+          normalizedStatus = 'catch-all';
+        }
+      }
+
+      return {
+        success: true,
+        status: normalizedStatus,
+        rawStatus: rawStatus,
+        raw: data,
+      };
+    }), { maxRetries: 3, baseDelayMs: 2000, serviceName: 'Findymail' });
   } catch (error: any) {
     console.error('[Findymail] Verify failed:', error.message);
-    return { success: false, status: 'unknown', error: error.message };
+    return { success: false, status: 'unknown' as const, error: error.message };
   }
 }

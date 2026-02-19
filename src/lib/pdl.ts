@@ -1,10 +1,7 @@
-import pRetry from 'p-retry';
-import pLimit from 'p-limit';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
+import { rateLimiters, withRetry } from './rate-limiter';
 
 const PDL_API_BASE = 'https://api.peopledatalabs.com/v5';
-const CONCURRENCY = 2;
-const limit = pLimit(CONCURRENCY);
 
 export interface PDLPersonResult {
   found: boolean;
@@ -169,9 +166,8 @@ export async function enrichPersonPDL(
   }
 
   try {
-    const result = await limit(() =>
-      pRetry(
-        async () => {
+    const result = await withRetry(
+      () => rateLimiters.pdlPerson.execute(async () => {
           if (options.useSearch) {
             const mustClauses: any[] = [];
             
@@ -329,13 +325,8 @@ export async function enrichPersonPDL(
           const data = JSON.parse(responseText);
           console.log('[PDL] Enrich found person:', data.data?.full_name || data.full_name, 'likelihood:', data.likelihood);
           return { found: true, data };
-        },
-        {
-          retries: 2,
-          minTimeout: 1000,
-          maxTimeout: 5000,
-        }
-      )
+        }),
+      { maxRetries: 3, baseDelayMs: 3000, serviceName: 'PDL Person' }
     );
 
     if (!result.found || !result.data) {
@@ -465,9 +456,8 @@ export async function enrichCompanyPDL(
   }
 
   try {
-    const result = await limit(() =>
-      pRetry(
-        async () => {
+    const result = await withRetry(
+      () => rateLimiters.pdlCompany.execute(async () => {
           const params = new URLSearchParams({
             website: domain,
             pretty: 'true',
@@ -511,13 +501,8 @@ export async function enrichCompanyPDL(
           const data = await response.json();
           console.log('[PDL] Company found:', data.name);
           return { found: true, data };
-        },
-        {
-          retries: 2,
-          minTimeout: 1000,
-          maxTimeout: 5000,
-        }
-      )
+        }),
+      { maxRetries: 3, baseDelayMs: 3000, serviceName: 'PDL Company' }
     );
 
     if (!result.found || !result.data) {

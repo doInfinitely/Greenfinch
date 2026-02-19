@@ -1,10 +1,7 @@
-import pRetry from 'p-retry';
-import pLimit from 'p-limit';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
+import { rateLimiters, withRetry } from './rate-limiter';
 
 const CRUSTDATA_API_BASE = 'https://api.crustdata.com';
-const CONCURRENCY = 2;
-const limit = pLimit(CONCURRENCY);
 
 export interface CrustdataExperience {
   title: string | null;
@@ -91,9 +88,8 @@ export async function enrichPersonCrustdata(params: {
   }
 
   try {
-    const result = await limit(() =>
-      pRetry(
-        async () => {
+    const result = await withRetry(
+      () => rateLimiters.crustdata.execute(async () => {
           const queryParams = new URLSearchParams();
           if (params.linkedinUrl) {
             queryParams.append('linkedin_profile_url', params.linkedinUrl);
@@ -144,13 +140,12 @@ export async function enrichPersonCrustdata(params: {
 
           const data = JSON.parse(responseText);
           return { found: true, data };
-        },
-        {
-          retries: 2,
-          minTimeout: 1000,
-          maxTimeout: 5000,
-        }
-      )
+        }),
+      {
+        maxRetries: 3,
+        baseDelayMs: 5000,
+        serviceName: 'Crustdata Person',
+      }
     );
 
     if (!result.found || !result.data) {
@@ -291,9 +286,8 @@ export async function enrichCompanyCrustdata(domain: string): Promise<CrustdataC
   }
 
   try {
-    const result = await limit(() =>
-      pRetry(
-        async () => {
+    const result = await withRetry(
+      () => rateLimiters.crustdata.execute(async () => {
           const queryParams = new URLSearchParams({
             company_domain: domain,
           });
@@ -341,13 +335,12 @@ export async function enrichCompanyCrustdata(domain: string): Promise<CrustdataC
 
           const data = JSON.parse(responseText);
           return { found: true, data };
-        },
-        {
-          retries: 2,
-          minTimeout: 1000,
-          maxTimeout: 5000,
-        }
-      )
+        }),
+      {
+        maxRetries: 3,
+        baseDelayMs: 5000,
+        serviceName: 'Crustdata Company',
+      }
     );
 
     if (!result.found || !result.data) {
