@@ -307,7 +307,7 @@ export default function ListPage() {
         ) : (
           <>
             <div className="hidden md:block overflow-x-auto">
-              <table className="w-full min-w-[1000px]">
+              <table className="w-full min-w-[900px]">
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-3 text-left w-10">
@@ -326,7 +326,7 @@ export default function ListPage() {
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contacts</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Orgs</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lot</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">Location</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -414,8 +414,8 @@ export default function ListPage() {
                       <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
                         {formatLotSize(p.lotSqft)}
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-500 whitespace-nowrap" onClick={() => handleRowClick(p.propertyKey)}>
-                        {p.city}, {p.state}
+                      <td className="px-4 py-4 text-sm text-gray-500 min-w-[120px]" onClick={() => handleRowClick(p.propertyKey)}>
+                        {[p.city, p.state].filter(Boolean).join(', ')}
                       </td>
                     </tr>
                   ))}

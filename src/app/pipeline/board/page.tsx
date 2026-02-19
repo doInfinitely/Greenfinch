@@ -211,6 +211,7 @@ export default function PipelineBoard() {
 
   const handleDragOver = useCallback((e: React.DragEvent, status: PipelineStatus) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
     setDragOverColumn(status);
   }, []);
@@ -267,8 +268,12 @@ export default function PipelineBoard() {
     }
   }, [fetchBoardData, toast]);
 
-  const handleDragLeave = useCallback(() => {
-    setDragOverColumn(null);
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    const currentTarget = e.currentTarget as HTMLElement;
+    const relatedTarget = e.relatedTarget as HTMLElement | null;
+    if (!relatedTarget || !currentTarget.contains(relatedTarget)) {
+      setDragOverColumn(null);
+    }
   }, []);
 
   const handleDrop = useCallback(async (e: React.DragEvent, newStatus: PipelineStatus) => {
@@ -470,9 +475,12 @@ export default function PipelineBoard() {
                         </Badge>
                       </div>
                       
-                      <div className={`flex-1 overflow-y-auto px-2 md:px-3 pb-2 space-y-2 transition-colors ${
-                        isDropTarget ? 'bg-primary/5' : ''
-                      }`}>
+                      <div
+                        className={`flex-1 overflow-y-auto px-2 md:px-3 pb-2 space-y-2 transition-colors ${
+                          isDropTarget ? 'bg-primary/5' : ''
+                        }`}
+                        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+                      >
                         {(data?.items[status]?.length || 0) > 0 ? (
                           data?.items[status].map((item) => {
                             const days = getDaysInStage(item.statusChangedAt);
@@ -487,6 +495,7 @@ export default function PipelineBoard() {
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, item)}
                                 onDragEnd={handleDragEnd}
+                                onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; }}
                                 className={`block ${updating === item.id ? 'opacity-50 pointer-events-none' : ''}`}
                                 data-testid={`card-property-${item.propertyKey || item.propertyId}`}
                               >
