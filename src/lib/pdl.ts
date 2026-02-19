@@ -550,7 +550,7 @@ export async function enrichCompanyPDL(
       city: company.location?.locality || company.location?.name?.split(',')[0]?.trim() || null,
       state: company.location?.region || null,
       country: company.location?.country || null,
-      sicCode: company.sic?.[0]?.sic_code?.toString() || null,
+      sicCode: company.sic?.[0]?.sic_code?.toString() || company.sic?.[0]?.toString() || null,
       naicsCode: company.naics?.[0]?.naics_code?.toString() || company.naics?.[0]?.toString() || null,
       tags: company.tags || null,
       phone: company.phone || null,
