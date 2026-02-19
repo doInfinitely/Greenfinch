@@ -1,12 +1,13 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
-import { Loader2, XCircle, MoreVertical, FileJson, Users, Building2, Phone, Mail } from 'lucide-react';
+import { Loader2, XCircle, MoreVertical, FileJson, Users, Building2, Phone, Mail, Globe, Calendar, Briefcase, ExternalLink } from 'lucide-react';
+import { SiLinkedin, SiFacebook, SiCrunchbase, SiInstagram, SiYoutube, SiGithub, SiPinterest, SiReddit, SiTelegram, SiSnapchat } from 'react-icons/si';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
@@ -20,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { ROLE_LABELS, ROLE_COLORS, formatRoleLabel } from '@/lib/constants';
 import { capitalizeSentences } from '@/lib/normalization';
+import { decode } from 'blurhash';
 
 // Helper to title-case ALL CAPS names for better display
 function formatPropertyName(name: string | null): string | null {
@@ -128,6 +130,115 @@ const ORG_TYPE_COLORS: Record<string, string> = {
   other: 'bg-gray-100 text-gray-700',
 };
 
+const COMPANY_TYPE_LABELS: Record<string, string> = {
+  'private': 'Private',
+  'public': 'Public',
+  'nonprofit': 'Nonprofit',
+  'government': 'Government',
+  'personal': 'Personal',
+  'education': 'Education',
+};
+
+interface BrandData {
+  name: string | null;
+  domain: string;
+  logo: string | null;
+  blurhash: string | null;
+  colors: Array<{ r: number; g: number; b: number; hex: string }>;
+  socials: Record<string, string>;
+}
+
+const SOCIAL_ICON_MAP: Record<string, { icon: typeof SiLinkedin; label: string; color: string }> = {
+  linkedin: { icon: SiLinkedin, label: 'LinkedIn', color: '#0A66C2' },
+  twitter: { icon: (props: any) => (
+    <svg {...props} fill="currentColor" viewBox="0 0 24 24">
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+    </svg>
+  ) as any, label: 'X (Twitter)', color: '#000000' },
+  facebook: { icon: SiFacebook, label: 'Facebook', color: '#1877F2' },
+  instagram: { icon: SiInstagram, label: 'Instagram', color: '#E4405F' },
+  youtube: { icon: SiYoutube, label: 'YouTube', color: '#FF0000' },
+  github: { icon: SiGithub, label: 'GitHub', color: '#181717' },
+  pinterest: { icon: SiPinterest, label: 'Pinterest', color: '#BD081C' },
+  reddit: { icon: SiReddit, label: 'Reddit', color: '#FF4500' },
+  telegram: { icon: SiTelegram, label: 'Telegram', color: '#26A5E4' },
+  snapchat: { icon: SiSnapchat, label: 'Snapchat', color: '#FFFC00' },
+  crunchbase: { icon: SiCrunchbase, label: 'Crunchbase', color: '#0288D1' },
+};
+
+function BlurhashImage({ 
+  blurhash, 
+  src, 
+  alt, 
+  className,
+  width = 64,
+  height = 64,
+}: { 
+  blurhash: string | null; 
+  src: string; 
+  alt: string; 
+  className?: string;
+  width?: number;
+  height?: number;
+}) {
+  const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    if (!blurhash || loaded || !canvasRef.current) return;
+    try {
+      const pixels = decode(blurhash, 32, 32);
+      const ctx = canvasRef.current.getContext('2d');
+      if (!ctx) return;
+      const imageData = ctx.createImageData(32, 32);
+      imageData.data.set(pixels);
+      ctx.putImageData(imageData, 0, 0);
+    } catch (e) {
+      console.warn('[BlurhashImage] Failed to decode blurhash:', e);
+    }
+  }, [blurhash, loaded]);
+
+  if (error) return null;
+
+  return (
+    <div className={`relative overflow-hidden ${className || ''}`} style={{ width, height }}>
+      {blurhash && !loaded && (
+        <canvas
+          ref={canvasRef}
+          width={32}
+          height={32}
+          className="absolute inset-0 w-full h-full rounded-lg"
+          style={{ imageRendering: 'auto' }}
+        />
+      )}
+      <img
+        src={src}
+        alt={alt}
+        className={`w-full h-full object-contain rounded-lg transition-opacity duration-300 ${loaded ? 'opacity-100' : 'opacity-0'}`}
+        onLoad={() => setLoaded(true)}
+        onError={() => setError(true)}
+        data-testid="img-org-brand-logo"
+      />
+    </div>
+  );
+}
+
+function BrandColorBar({ colors }: { colors: Array<{ hex: string }> }) {
+  if (!colors.length) return null;
+  return (
+    <div className="flex h-1.5 rounded-full overflow-hidden" data-testid="brand-color-bar">
+      {colors.slice(0, 5).map((color, i) => (
+        <div
+          key={i}
+          className="flex-1"
+          style={{ backgroundColor: color.hex }}
+        />
+      ))}
+    </div>
+  );
+}
+
 function getEmailStatusColor(status: string | null): string {
   switch (status?.toLowerCase()) {
     case 'valid':
@@ -216,6 +327,7 @@ export default function OrganizationDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
+  const [brandData, setBrandData] = useState<BrandData | null>(null);
   const enrichTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { startEnrichment } = useEnrichment();
   const { getEnrichmentStatus } = useEnrichmentQueue();
@@ -281,6 +393,22 @@ export default function OrganizationDetailPage() {
     fetchOrganization();
   }, [orgId]);
 
+  useEffect(() => {
+    if (!organization?.domain) return;
+    const fetchBrandData = async () => {
+      try {
+        const res = await fetch(`/api/brand/${encodeURIComponent(organization.domain!)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setBrandData(data);
+        }
+      } catch (e) {
+        console.warn('[Brand] Failed to fetch brand data:', e);
+      }
+    };
+    fetchBrandData();
+  }, [organization?.domain]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
@@ -313,20 +441,35 @@ export default function OrganizationDetailPage() {
     );
   }
 
-  const linkedinUrl = organization.linkedinHandle 
-    ? `https://www.linkedin.com/company/${organization.linkedinHandle}` 
-    : null;
-  const twitterUrl = organization.twitterHandle 
-    ? `https://twitter.com/${organization.twitterHandle}` 
-    : null;
-  const facebookUrl = organization.facebookHandle 
-    ? `https://facebook.com/${organization.facebookHandle}` 
-    : null;
-  const crunchbaseUrl = organization.crunchbaseHandle 
-    ? `https://www.crunchbase.com/organization/${organization.crunchbaseHandle}` 
-    : null;
+  const socialLinks = useMemo(() => {
+    const links: Array<{ platform: string; url: string }> = [];
+    if (brandData?.socials) {
+      Object.entries(brandData.socials).forEach(([platform, url]) => {
+        if (url) links.push({ platform, url });
+      });
+    }
+    if (!links.find(l => l.platform === 'linkedin') && organization.linkedinHandle) {
+      links.push({ platform: 'linkedin', url: `https://www.linkedin.com/company/${organization.linkedinHandle}` });
+    }
+    if (!links.find(l => l.platform === 'twitter') && organization.twitterHandle) {
+      links.push({ platform: 'twitter', url: `https://twitter.com/${organization.twitterHandle}` });
+    }
+    if (!links.find(l => l.platform === 'facebook') && organization.facebookHandle) {
+      links.push({ platform: 'facebook', url: `https://facebook.com/${organization.facebookHandle}` });
+    }
+    if (!links.find(l => l.platform === 'crunchbase') && organization.crunchbaseHandle) {
+      links.push({ platform: 'crunchbase', url: `https://www.crunchbase.com/organization/${organization.crunchbaseHandle}` });
+    }
+    return links;
+  }, [organization, brandData]);
+
+  const logoSrc = brandData?.logo || organization.logoUrl;
+  const brandColors = brandData?.colors || [];
+  const primaryBrandColor = brandColors.length > 0 ? brandColors[0].hex : null;
   
   const industryDisplay = [organization.industry, organization.subIndustry].filter(Boolean).join(' - ');
+  
+  const companyTypeLabel = organization.orgType ? (COMPANY_TYPE_LABELS[organization.orgType.toLowerCase()] || organization.orgType) : null;
 
   const handleExportOrganizationData = () => {
     // Prepare organization data for export
@@ -380,67 +523,95 @@ export default function OrganizationDetailPage() {
             Back
           </button>
 
-          <div className="flex items-start gap-4">
-            {organization.logoUrl && (
-              <img 
-                src={organization.logoUrl} 
-                alt={`${organization.name} logo`}
-                className="w-16 h-16 rounded-lg object-contain bg-white border border-gray-200 p-1"
-                data-testid="img-org-logo"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).style.display = 'none';
-                }}
-              />
+          <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+            {brandColors.length > 0 && (
+              <BrandColorBar colors={brandColors} />
             )}
-            <div className="flex-1">
-              <h1 className="text-2xl font-bold text-gray-900" data-testid="text-org-name">
-                {organization.name || 'Unnamed Organization'}
-              </h1>
-              {organization.legalName && organization.legalName !== organization.name && (
-                <p className="text-sm text-gray-500">{organization.legalName}</p>
-              )}
-              <div className="flex items-center gap-3 mt-2 flex-wrap">
-                {organization.orgType && (
-                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ORG_TYPE_COLORS[organization.orgType] || ORG_TYPE_COLORS.other}`}>
-                    {organization.orgType}
-                  </span>
+            <div className="p-5">
+              <div className="flex items-start gap-4">
+                {logoSrc ? (
+                  <BlurhashImage
+                    blurhash={brandData?.blurhash || null}
+                    src={logoSrc}
+                    alt={`${organization.name} logo`}
+                    className="flex-shrink-0 rounded-lg bg-white border border-gray-100 p-1"
+                    width={64}
+                    height={64}
+                  />
+                ) : (
+                  <div className="w-16 h-16 flex-shrink-0 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
+                    <Building2 className="w-7 h-7 text-gray-400" />
+                  </div>
                 )}
-                {organization.domain && (
-                  <a
-                    href={`https://${organization.domain}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-green-600 hover:text-green-700 hover:underline text-sm"
-                    data-testid="link-org-domain"
-                  >
-                    {organization.domain}
-                  </a>
-                )}
-                {linkedinUrl && (
-                  <a
-                    href={linkedinUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:opacity-80 transition-opacity"
-                    title="LinkedIn"
-                    data-testid="link-org-linkedin"
-                  >
-                    <img src={linkedinLogo.src} alt="LinkedIn" className="w-4 h-4" />
-                  </a>
-                )}
-                {twitterUrl && (
-                  <a
-                    href={twitterUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sky-500 hover:text-sky-600"
-                    title="Twitter/X"
-                  >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
-                      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
-                    </svg>
-                  </a>
-                )}
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h1 className="text-2xl font-bold text-gray-900" data-testid="text-org-name">
+                        {organization.name || 'Unnamed Organization'}
+                      </h1>
+                      {organization.legalName && organization.legalName !== organization.name && (
+                        <p className="text-sm text-gray-500">{organization.legalName}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-2 flex-wrap">
+                    {companyTypeLabel && (
+                      <span 
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium ${primaryBrandColor ? '' : 'bg-blue-50 text-blue-700'}`}
+                        style={primaryBrandColor ? { 
+                          backgroundColor: `${primaryBrandColor}15`, 
+                          color: primaryBrandColor 
+                        } : undefined}
+                        data-testid="badge-org-type"
+                      >
+                        <Briefcase className="w-3 h-3" />
+                        {companyTypeLabel}
+                      </span>
+                    )}
+                    {organization.foundedYear && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-600" data-testid="badge-founded-year">
+                        <Calendar className="w-3 h-3" />
+                        Founded {organization.foundedYear}
+                      </span>
+                    )}
+                    {organization.domain && (
+                      <a
+                        href={`https://${organization.domain}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-green-600 hover:text-green-700 hover:underline text-sm"
+                        data-testid="link-org-domain"
+                      >
+                        <Globe className="w-3.5 h-3.5" />
+                        {organization.domain}
+                      </a>
+                    )}
+                  </div>
+
+                  {socialLinks.length > 0 && (
+                    <div className="flex items-center gap-2 mt-3" data-testid="social-links">
+                      {socialLinks.map(({ platform, url }) => {
+                        const socialConfig = SOCIAL_ICON_MAP[platform];
+                        if (!socialConfig) return null;
+                        const IconComp = socialConfig.icon;
+                        return (
+                          <a
+                            key={platform}
+                            href={url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="transition-opacity hover:opacity-70"
+                            title={socialConfig.label}
+                            data-testid={`link-social-${platform}`}
+                          >
+                            <IconComp className="w-4 h-4" style={{ color: socialConfig.color }} />
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -477,9 +648,6 @@ export default function OrganizationDetailPage() {
             <div className="bg-white rounded-lg border border-gray-200 p-4">
               <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-1">Location</p>
               <p className="text-sm font-medium text-gray-900" data-testid="text-org-location">{organization.location}</p>
-              {organization.foundedYear && (
-                <p className="text-xs text-gray-500 mt-1">Founded: {organization.foundedYear}</p>
-              )}
             </div>
           )}
         </div>

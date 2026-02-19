@@ -60,6 +60,7 @@
     "@upstash/redis": "^1.36.1",
     "adm-zip": "^0.5.16",
     "axios": "^1.13.2",
+    "blurhash": "^2.0.5",
     "canvas-confetti": "^1.9.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
