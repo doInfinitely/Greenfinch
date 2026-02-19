@@ -205,8 +205,42 @@ export async function saveEnrichmentResults(
 
   console.log(`[SaveEnrichment] Updated property ${propertyKey} with enrichment data`);
 
+  const allOrgs = [...discoveredOrgs];
+  const existingDomains = new Set(discoveredOrgs.map(o => o.domain?.trim().toLowerCase()).filter(Boolean));
+  const existingNames = new Set(discoveredOrgs.map(o => o.name?.trim().toLowerCase()).filter(Boolean));
+
+  if (ownership.managementCompany?.name && ownership.managementCompany.confidence > 0) {
+    const mgmtDomain = ownership.managementCompany.domain?.trim().toLowerCase() || null;
+    const mgmtName = ownership.managementCompany.name.trim().toLowerCase();
+    if ((!mgmtDomain || !existingDomains.has(mgmtDomain)) && !existingNames.has(mgmtName)) {
+      console.log(`[SaveEnrichment] Synthesizing org from Stage 2 mgmt: ${ownership.managementCompany.name}`);
+      allOrgs.push({
+        name: ownership.managementCompany.name,
+        domain: ownership.managementCompany.domain || null,
+        orgType: 'management',
+        roles: ['property_manager'],
+      });
+      if (mgmtDomain) existingDomains.add(mgmtDomain);
+      existingNames.add(mgmtName);
+    }
+  }
+
+  if (ownership.beneficialOwner?.name && ownership.beneficialOwner.confidence > 0) {
+    const ownerName = ownership.beneficialOwner.name.trim().toLowerCase();
+    if (!existingNames.has(ownerName)) {
+      console.log(`[SaveEnrichment] Synthesizing org from Stage 2 owner: ${ownership.beneficialOwner.name}`);
+      allOrgs.push({
+        name: ownership.beneficialOwner.name,
+        domain: null,
+        orgType: ownership.beneficialOwner.type || 'owner',
+        roles: ['owner'],
+      });
+      existingNames.add(ownerName);
+    }
+  }
+
   const orgIds: string[] = [];
-  for (const org of discoveredOrgs) {
+  for (const org of allOrgs) {
     try {
       const normalizedDomain = org.domain?.trim().toLowerCase() || null;
 
