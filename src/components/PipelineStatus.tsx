@@ -623,64 +623,62 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
           {isQualified && !hideOwnerDisplay && ownerDisplay}
         </div>
         {assignDialog}
-        {showQualifyDialog && (
-          <Dialog open={showQualifyDialog} onOpenChange={(open) => {
-            if (!open) {
-              setDealValueInput('');
-              setPendingStatus(null);
-            }
-            setShowQualifyDialog(open);
-          }}>
-            <DialogContent className="bg-white border-gray-200" onCloseAutoFocus={(e) => e.preventDefault()}>
-              <DialogHeader>
-                <DialogTitle className="text-gray-900">
-                  {pendingStatus === 'qualified' ? 'Qualify Property' : 'Update Deal Value'}
-                </DialogTitle>
-                <DialogDescription className="text-gray-500">
-                  Enter the expected deal value for this property. This helps track your pipeline value.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="py-4">
-                <Label htmlFor="dealValue" className="text-gray-700">Expected Deal Value</Label>
-                <div className="relative mt-2">
-                  <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                  <Input
-                    id="dealValue"
-                    type="text"
-                    placeholder="10,000"
-                    value={dealValueInput}
-                    onChange={(e) => {
-                      const val = e.target.value.replace(/[^0-9]/g, '');
-                      setDealValueInput(val ? parseInt(val, 10).toLocaleString() : '');
-                    }}
-                    className="pl-8 bg-white border-gray-200 text-gray-900"
-                    data-testid="input-deal-value"
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setShowQualifyDialog(false);
-                    setDealValueInput('');
-                    setPendingStatus(null);
+        <Dialog open={showQualifyDialog} onOpenChange={(open) => {
+          if (!open) {
+            setDealValueInput('');
+            setPendingStatus(null);
+          }
+          setShowQualifyDialog(open);
+        }}>
+          <DialogContent className="bg-white border-gray-200" onCloseAutoFocus={(e) => e.preventDefault()}>
+            <DialogHeader>
+              <DialogTitle className="text-gray-900">
+                {pendingStatus === 'qualified' ? 'Qualify Property' : 'Update Deal Value'}
+              </DialogTitle>
+              <DialogDescription className="text-gray-500">
+                Enter the expected deal value for this property. This helps track your pipeline value.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4">
+              <Label htmlFor="dealValue" className="text-gray-700">Expected Deal Value</Label>
+              <div className="relative mt-2">
+                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  id="dealValue"
+                  type="text"
+                  placeholder="10,000"
+                  value={dealValueInput}
+                  onChange={(e) => {
+                    const val = e.target.value.replace(/[^0-9]/g, '');
+                    setDealValueInput(val ? parseInt(val, 10).toLocaleString() : '');
                   }}
-                  data-testid="button-cancel-deal-value"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleQualifySubmit}
-                  disabled={!dealValueInput}
-                  data-testid="button-confirm-deal-value"
-                >
-                  {pendingStatus === 'qualified' ? 'Qualify' : 'Update'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-        )}
+                  className="pl-8 bg-white border-gray-200 text-gray-900"
+                  data-testid="input-deal-value"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowQualifyDialog(false);
+                  setDealValueInput('');
+                  setPendingStatus(null);
+                }}
+                data-testid="button-cancel-deal-value"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleQualifySubmit}
+                disabled={!dealValueInput}
+                data-testid="button-confirm-deal-value"
+              >
+                {pendingStatus === 'qualified' ? 'Qualify' : 'Update'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </>
     );
   }
@@ -744,64 +742,62 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         </CardContent>
       </Card>
 
-      {showQualifyDialog && (
-        <Dialog open={showQualifyDialog} onOpenChange={(open) => {
-          if (!open) {
-            setDealValueInput('');
-            setPendingStatus(null);
-          }
-          setShowQualifyDialog(open);
-        }}>
-          <DialogContent className="bg-white border-gray-200" onCloseAutoFocus={(e) => e.preventDefault()}>
-            <DialogHeader>
-              <DialogTitle className="text-gray-900">
-                {pendingStatus === 'qualified' ? 'Qualify Property' : 'Update Deal Value'}
-              </DialogTitle>
-              <DialogDescription className="text-gray-500">
-                Enter the expected deal value for this property. This helps track your pipeline value.
-              </DialogDescription>
-            </DialogHeader>
-            <div className="py-4">
-              <Label htmlFor="dealValue" className="text-gray-700">Expected Deal Value</Label>
-              <div className="relative mt-2">
-                <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  id="dealValue"
-                  type="text"
-                  placeholder="10,000"
-                  value={dealValueInput}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/[^0-9]/g, '');
-                    setDealValueInput(val ? parseInt(val, 10).toLocaleString() : '');
-                  }}
-                  className="pl-8 bg-white border-gray-200 text-gray-900"
-                  data-testid="input-deal-value"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowQualifyDialog(false);
-                  setDealValueInput('');
-                  setPendingStatus(null);
+      <Dialog open={showQualifyDialog} onOpenChange={(open) => {
+        if (!open) {
+          setDealValueInput('');
+          setPendingStatus(null);
+        }
+        setShowQualifyDialog(open);
+      }}>
+        <DialogContent className="bg-white border-gray-200" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">
+              {pendingStatus === 'qualified' ? 'Qualify Property' : 'Update Deal Value'}
+            </DialogTitle>
+            <DialogDescription className="text-gray-500">
+              Enter the expected deal value for this property. This helps track your pipeline value.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label htmlFor="dealValue" className="text-gray-700">Expected Deal Value</Label>
+            <div className="relative mt-2">
+              <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+              <Input
+                id="dealValue"
+                type="text"
+                placeholder="10,000"
+                value={dealValueInput}
+                onChange={(e) => {
+                  const val = e.target.value.replace(/[^0-9]/g, '');
+                  setDealValueInput(val ? parseInt(val, 10).toLocaleString() : '');
                 }}
-                data-testid="button-cancel-deal-value"
-              >
-                Cancel
-              </Button>
-              <Button
-                onClick={handleQualifySubmit}
-                disabled={!dealValueInput}
-                data-testid="button-confirm-deal-value"
-              >
-                {pendingStatus === 'qualified' ? 'Qualify' : 'Update'}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
+                className="pl-8 bg-white border-gray-200 text-gray-900"
+                data-testid="input-deal-value"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowQualifyDialog(false);
+                setDealValueInput('');
+                setPendingStatus(null);
+              }}
+              data-testid="button-cancel-deal-value"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleQualifySubmit}
+              disabled={!dealValueInput}
+              data-testid="button-confirm-deal-value"
+            >
+              {pendingStatus === 'qualified' ? 'Qualify' : 'Update'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

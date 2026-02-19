@@ -6,7 +6,27 @@ import { X } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
-const Dialog = DialogPrimitive.Root
+function useDialogBodyCleanup(open: boolean | undefined) {
+  React.useEffect(() => {
+    if (open) return;
+    const timer = setTimeout(() => {
+      const noDialogsOpen = !document.querySelector('[data-state="open"][role="dialog"]');
+      if (noDialogsOpen && typeof document !== 'undefined') {
+        document.body.style.pointerEvents = '';
+        document.body.style.overflow = '';
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [open]);
+}
+
+const Dialog = React.forwardRef<
+  React.ElementRef<typeof DialogPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Root>
+>(({ open, ...props }, _ref) => {
+  useDialogBodyCleanup(open);
+  return <DialogPrimitive.Root open={open} {...props} />;
+}) as typeof DialogPrimitive.Root;
 
 const DialogTrigger = DialogPrimitive.Trigger
 
