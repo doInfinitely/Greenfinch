@@ -328,6 +328,7 @@ export default function OrganizationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
   const [brandData, setBrandData] = useState<BrandData | null>(null);
+  const [brandLoading, setBrandLoading] = useState(false);
   const enrichTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { startEnrichment } = useEnrichment();
   const { getEnrichmentStatus } = useEnrichmentQueue();
@@ -395,6 +396,7 @@ export default function OrganizationDetailPage() {
 
   useEffect(() => {
     if (!organization?.domain) return;
+    setBrandLoading(true);
     const fetchBrandData = async () => {
       try {
         const res = await fetch(`/api/brand/${encodeURIComponent(organization.domain!)}`);
@@ -404,6 +406,8 @@ export default function OrganizationDetailPage() {
         }
       } catch (e) {
         console.warn('[Brand] Failed to fetch brand data:', e);
+      } finally {
+        setBrandLoading(false);
       }
     };
     fetchBrandData();
@@ -540,11 +544,13 @@ export default function OrganizationDetailPage() {
                     width={64}
                     height={64}
                   />
-                ) : (
+                ) : brandLoading ? (
+                  <div className="w-16 h-16 flex-shrink-0 rounded-lg bg-gray-100 border border-gray-200 animate-pulse" />
+                ) : !organization.domain ? (
                   <div className="w-16 h-16 flex-shrink-0 rounded-lg bg-gray-100 border border-gray-200 flex items-center justify-center">
                     <Building2 className="w-7 h-7 text-gray-400" />
                   </div>
-                )}
+                ) : null}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-start justify-between gap-2">
                     <div>

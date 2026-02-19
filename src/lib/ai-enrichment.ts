@@ -616,7 +616,7 @@ async function identifyDecisionMakers(
   const propertySite = ownership.propertyWebsite || 'none';
   const city = property.city || 'Dallas';
 
-  const prompt = `Find 3-5 decision-makers for this commercial property. Return ONLY valid JSON.
+  const prompt = `Find 3-5 people directly involved in managing THIS specific property. Return ONLY valid JSON.
 
 PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
 TYPE: ${classification.category} - ${classification.subcategory}
@@ -624,12 +624,25 @@ MGMT CO: ${mgmtInfo}
 OWNER: ${ownerName}
 PROPERTY SITE: ${propertySite}
 
-SEARCH STRATEGY:
-1. ${mgmtDomain ? `Search ${mgmtDomain} for staff assigned to this property or this market` : `Search for the management company staff for this property`}
-2. Search "${classification.propertyName} property manager" and "${classification.propertyName} facilities manager"
-3. Search LinkedIn for property/facilities managers at ${mgmtName || 'the management company'} in ${city}
+SEARCH STRATEGY (in priority order):
+1. ${mgmtDomain ? `Search ${mgmtDomain} for staff assigned to this property or the ${city} market` : `Search for the management company staff for this property`}
+2. Search "${classification.propertyName} property manager" and "${classification.propertyName} leasing"
+3. Search LinkedIn for property managers, leasing agents, or regional managers at ${mgmtName || 'the management company'} in ${city}
 
-Only return people verifiably connected to THIS property at THIS address as of 2025-2026.
+PRIORITY ROLES (return these first):
+- On-site property manager or community manager for this specific property
+- Leasing agent or leasing manager for this property or portfolio
+- Regional/district manager overseeing this property's area
+- Asset manager responsible for this property
+- Facilities/maintenance director for this property
+
+DO NOT RETURN:
+- C-suite executives (CEO, CFO, COO, CTO, CMO) unless they are the direct property owner
+- Corporate HR, marketing, or IT staff
+- People at corporate headquarters with no direct tie to this property or market
+- National-level VPs unless they specifically oversee the ${city} region
+
+Only return people verifiably connected to THIS property at THIS address or its local market as of 2025-2026.
 
 Return JSON:
 {"contacts":[{"name":"Full Name","title":"Title","company":"Co","domain":"co.com","role":"property_manager|facilities_manager|owner|leasing|other","rc":0.0-1.0,"evidence":"1 sentence linking them to this property","type":"individual|general"}],"orgs":[{"name":"Co","domain":"co.com","org_type":"owner|management|tenant|developer","roles":["property_manager"]}],"summary":"2 sentences max."}`;
