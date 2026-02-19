@@ -306,8 +306,8 @@ export default function ListPage() {
           </div>
         ) : (
           <>
-            <div className="hidden md:block">
-              <table className="w-full">
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full min-w-[900px]">
                 <thead className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-3 text-left w-10">
@@ -414,7 +414,7 @@ export default function ListPage() {
                       <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
                         {formatLotSize(p.lotSqft)}
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-500" onClick={() => handleRowClick(p.propertyKey)}>
+                      <td className="px-4 py-4 text-sm text-gray-500 whitespace-nowrap" onClick={() => handleRowClick(p.propertyKey)}>
                         {p.city}, {p.state}
                       </td>
                     </tr>
