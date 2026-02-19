@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Flag, Globe, Phone, Mail } from 'lucide-react';
 import { SiLinkedin, SiX, SiFacebook } from 'react-icons/si';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
-import { toTitleCase } from '@/lib/normalization';
+import { toTitleCase, capitalizeSentences } from '@/lib/normalization';
 import type { Property, EnrichedPropertyData, Organization } from './types';
 
 function ExpandableDescription({ text }: { text: string }) {
@@ -220,7 +220,7 @@ export default function OwnershipSection({
                     )}
 
                     {org.description && (
-                      <ExpandableDescription text={org.description} />
+                      <ExpandableDescription text={capitalizeSentences(org.description)} />
                     )}
 
                     {org.tags && org.tags.length > 0 && (

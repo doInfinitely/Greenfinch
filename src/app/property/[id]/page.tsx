@@ -542,10 +542,12 @@ export default function PropertyDetailPage() {
         pipelineData={pipelineData}
         pipelineLoaded={pipelineLoaded}
         customerLoaded={customerLoaded}
+        googleMapsApiKey={googleMapsApiKey}
         onEnrichment={handleEnrichment}
         onShowAddToList={() => setShowAddToListModal(true)}
         onSetAssignDialogTrigger={setAssignDialogTrigger}
         onSetIsCurrentCustomer={setIsCurrentCustomer}
+        onExpandStreetView={() => setExpandedMapType('street')}
       />
 
       <main className="max-w-7xl mx-auto px-4 py-6">

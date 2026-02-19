@@ -62,8 +62,18 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 0 }:
         const location = new google.maps.LatLng(lat, lon);
 
         const searchRadii = [50, 150, 300, 500];
+
+        const isLikelyIndoor = (data: google.maps.StreetViewPanoramaData): boolean => {
+          const desc = data.location?.description?.toLowerCase() || '';
+          const indoorKeywords = ['lobby', 'interior', 'inside', 'room', 'floor', 'hallway', 'office', 'suite', 'unit', 'apt'];
+          if (indoorKeywords.some(kw => desc.includes(kw))) return true;
+
+          if (data.links && data.links.length === 0) return true;
+
+          return false;
+        };
         
-        const tryPanorama = (radiusIndex: number) => {
+        const tryPanorama = (radiusIndex: number, skipPanoIds: Set<string> = new Set()) => {
           if (!mounted || !containerRef.current) return;
           if (radiusIndex >= searchRadii.length) {
             setStatus('unavailable');
@@ -71,11 +81,24 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 0 }:
           }
           
           sv.getPanorama(
-            { location, radius: searchRadii[radiusIndex], source: google.maps.StreetViewSource.OUTDOOR },
+            {
+              location,
+              radius: searchRadii[radiusIndex],
+              source: google.maps.StreetViewSource.OUTDOOR,
+              preference: google.maps.StreetViewPreference.NEAREST,
+            },
             (data, panoStatus) => {
               if (!mounted || !containerRef.current) return;
 
               if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
+                const panoId = data.location.pano || '';
+
+                if (skipPanoIds.has(panoId) || isLikelyIndoor(data)) {
+                  skipPanoIds.add(panoId);
+                  tryPanorama(radiusIndex + 1, skipPanoIds);
+                  return;
+                }
+
                 const panoLocation = data.location.latLng;
                 const computedHeading = google.maps.geometry?.spherical?.computeHeading(
                   panoLocation,
@@ -98,7 +121,7 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 0 }:
 
                 setStatus('ready');
               } else {
-                tryPanorama(radiusIndex + 1);
+                tryPanorama(radiusIndex + 1, skipPanoIds);
               }
             }
           );

@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { ROLE_LABELS, ROLE_COLORS, formatRoleLabel } from '@/lib/constants';
+import { capitalizeSentences } from '@/lib/normalization';
 
 // Helper to title-case ALL CAPS names for better display
 function formatPropertyName(name: string | null): string | null {
@@ -169,6 +170,39 @@ function consolidatePropertiesForDisplay(propsToConsolidate: PropertyRelation[])
     ...entry.property,
     allRoles: Array.from(entry.roles),
   }));
+}
+
+function ExpandableOrgDescription({ text }: { text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  const ref = useRef<HTMLParagraphElement>(null);
+
+  useEffect(() => {
+    if (ref.current) {
+      setClamped(ref.current.scrollHeight > ref.current.clientHeight + 2);
+    }
+  }, [text]);
+
+  return (
+    <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
+      <p
+        ref={ref}
+        className={`text-gray-700 text-sm leading-relaxed ${expanded ? '' : 'line-clamp-3'}`}
+        data-testid="text-org-description"
+      >
+        {text}
+      </p>
+      {clamped && (
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="text-xs text-green-600 hover:underline mt-1"
+          data-testid="button-toggle-description"
+        >
+          {expanded ? 'Show less' : 'Show more'}
+        </button>
+      )}
+    </div>
+  );
 }
 
 export default function OrganizationDetailPage() {
@@ -413,11 +447,7 @@ export default function OrganizationDetailPage() {
         </div>
 
         {organization.description && (
-          <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-            <p className="text-gray-700 text-sm leading-relaxed" data-testid="text-org-description">
-              {organization.description}
-            </p>
-          </div>
+          <ExpandableOrgDescription text={capitalizeSentences(organization.description)} />
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">

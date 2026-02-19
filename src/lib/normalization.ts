@@ -121,6 +121,11 @@ export function normalizeCounty(county: string | null | undefined): string {
   return county.split(/\s+/).map(toTitleCase).join(' ');
 }
 
+export function capitalizeSentences(text: string | null | undefined): string {
+  if (!text) return '';
+  return text.replace(/(^|[.!?]\s+)([a-z])/g, (_, prefix, char) => prefix + char.toUpperCase());
+}
+
 export function normalizeAllFields(data: {
   address?: string | null;
   owner?: string | null;
