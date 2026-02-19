@@ -647,17 +647,27 @@ export async function runCascadeEnrichmentOnSavedRecords(
             console.log(`[RoleVerification] EMPLOYER LEFT: ${formerReason}`);
             markedFormer = true;
           } else {
+            const hasCrustdataCompany = !!result.crustdataCompany;
             const enrichedCompany = result.crustdataCompany || result.pdlCompany;
             const enrichedDomain = result.crustdataCompanyDomain || result.pdlCompanyDomain;
 
             const nameMatch = companiesMatch(enrichedCompany, aiCompany);
             const domainMatch = domainsMatch(enrichedDomain, aiDomain);
 
-            if (!nameMatch && !domainMatch) {
+            if (!nameMatch && !domainMatch && enrichedCompany) {
               const enrichedTitle = result.crustdataTitle || result.pdlTitle;
-              formerReason = `${contact.fullName} now at ${enrichedCompany}${enrichedTitle ? ` as ${enrichedTitle}` : ''} (was ${aiCompany || 'unknown'} for this property). Source: ${result.crustdataCompany ? 'Crustdata' : 'PDL'}`;
-              console.log(`[RoleVerification] MISMATCH: ${formerReason}`);
-              markedFormer = true;
+              const pdlTitle = result.pdlTitle || '';
+              const isVolunteerOrBoard = /\b(volunteer|board member|commissioner|advisory|trustee|fellow|adjunct)\b/i.test(pdlTitle);
+
+              if (!hasCrustdataCompany && isVolunteerOrBoard) {
+                console.log(`[RoleVerification] Skipping PDL-only mismatch — PDL title "${pdlTitle}" appears to be a volunteer/board role, not primary employment`);
+              } else if (!hasCrustdataCompany && result.crustdataTitle && companiesMatch(result.crustdataTitle, contact.title)) {
+                console.log(`[RoleVerification] Skipping PDL-only mismatch — Crustdata title "${result.crustdataTitle}" matches AI title, but Crustdata has no company. PDL company "${enrichedCompany}" may not be primary employer`);
+              } else {
+                formerReason = `${contact.fullName} now at ${enrichedCompany}${enrichedTitle ? ` as ${enrichedTitle}` : ''} (was ${aiCompany || 'unknown'} for this property). Source: ${hasCrustdataCompany ? 'Crustdata' : 'PDL'}`;
+                console.log(`[RoleVerification] MISMATCH: ${formerReason}`);
+                markedFormer = true;
+              }
             }
           }
 
