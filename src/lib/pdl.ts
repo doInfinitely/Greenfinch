@@ -290,7 +290,7 @@ export async function enrichPersonPDL(
             params.append('profile', options.linkedinUrl);
           }
           
-          params.append('min_likelihood', '7');
+          params.append('min_likelihood', '6');
           params.append('pretty', 'true');
           params.append('titlecase', 'true');
 
