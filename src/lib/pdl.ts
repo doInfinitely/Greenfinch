@@ -350,12 +350,23 @@ export async function enrichPersonPDL(
     }
 
     const person = result.data.data || result.data;
-    const job = person.job_company_name ? person : (person.experience?.[0] || {});
+
+    const latestExp = person.experience?.[0] || {};
+    const expTitle = latestExp.title?.name || latestExp.job_title || null;
+    const expCompanyName = latestExp.company?.name || latestExp.job_company_name || null;
+    const expCompanyWebsite = latestExp.company?.website || latestExp.job_company_website || null;
+    const expTitleRole = latestExp.title?.role || null;
+    const expTitleLevels = latestExp.title?.levels || null;
+    const expTitleClass = latestExp.title?.class || null;
+    const expTitleSubRole = latestExp.title?.sub_role || null;
 
     const personFullName = person.full_name || null;
-    const personTitle = person.job_title || job.job_title || null;
-    const personCompanyName = person.job_company_name || job.job_company_name || null;
-    const personCompanyWebsite = job.job_company_website || person.job_company_website || null;
+    const personTitle = person.job_title || expTitle || null;
+    const personCompanyName = person.job_company_name || expCompanyName || null;
+    const personCompanyWebsite = person.job_company_website || expCompanyWebsite || null;
+
+    const professionalEmail = person.emails?.find((e: any) => e.type === 'professional')?.address || null;
+    const resolvedWorkEmail = person.work_email || professionalEmail || null;
 
     if (!personFullName) {
       console.log('[PDL] Incomplete match - no full_name in response');
@@ -368,6 +379,8 @@ export async function enrichPersonPDL(
         job_title: !!personTitle,
         job_company_name: !!personCompanyName,
         job_company_website: !!personCompanyWebsite,
+        usedExperienceFallback: !person.job_company_name && !!expCompanyName,
+        experienceCount: person.experience?.length || 0,
       });
     }
     
@@ -402,18 +415,18 @@ export async function enrichPersonPDL(
       firstName: person.first_name || null,
       lastName: person.last_name || null,
       fullName: personFullName,
-      email: person.work_email || person.personal_emails?.[0] || null,
-      workEmail: person.work_email || null,
+      email: resolvedWorkEmail || person.personal_emails?.[0] || null,
+      workEmail: resolvedWorkEmail,
       personalEmails: person.personal_emails || null,
       emailsJson: person.emails || null,
       phonesJson: person.phone_numbers || null,
       mobilePhone: person.mobile_phone || null,
       linkedinUrl,
       title: personTitle,
-      titleRole: person.job_title_role || null,
-      titleLevels: person.job_title_levels || null,
-      titleClass: person.job_title_class || null,
-      titleSubRole: person.job_title_sub_role || null,
+      titleRole: person.job_title_role || expTitleRole || null,
+      titleLevels: person.job_title_levels || expTitleLevels || null,
+      titleClass: person.job_title_class || expTitleClass || null,
+      titleSubRole: person.job_title_sub_role || expTitleSubRole || null,
       companyName: personCompanyName,
       companyDomain: resultData.companyDomain,
       location: person.location_name || null,
