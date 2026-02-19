@@ -785,6 +785,24 @@ export const contactLinkedinFlags = pgTable('contact_linkedin_flags', {
   contactFlagIdx: index('idx_contact_linkedin_flags').on(table.contactId),
 }));
 
+// Potential duplicate contacts - flagged for admin review
+export const potentialDuplicates = pgTable('potential_duplicates', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  contactIdA: uuid('contact_id_a').references(() => contacts.id).notNull(),
+  contactIdB: uuid('contact_id_b').references(() => contacts.id).notNull(),
+  matchType: text('match_type').notNull(), // 'name_domain' | 'name_employer'
+  matchKey: text('match_key').notNull(),
+  confidence: real('confidence').default(0.5),
+  status: text('status').default('pending'), // 'pending' | 'merged' | 'dismissed'
+  resolvedByUserId: text('resolved_by_user_id'),
+  resolvedAt: timestamp('resolved_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  statusIdx: index('idx_potential_duplicates_status').on(table.status),
+  contactAIdx: index('idx_potential_duplicates_contact_a').on(table.contactIdA),
+  contactBIdx: index('idx_potential_duplicates_contact_b').on(table.contactIdB),
+}));
+
 // Notifications - for @ mentions and action reminders
 export const notifications = pgTable('notifications', {
   id: uuid('id').primaryKey().defaultRandom(),
