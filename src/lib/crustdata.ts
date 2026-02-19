@@ -173,8 +173,15 @@ export async function enrichPersonCrustdata(params: {
     const personName = person.name || (person.first_name ? `${person.first_name} ${person.last_name || ''}`.trim() : null);
     const personTitle = person.title || person.current_position_title || person.headline || null;
     const titleClean = personTitle ? personTitle.split(/[;(]/)[0].replace(/\s*\(?\d{4}\s*[-–]\s*(Present|\d{4})\)?/g, '').trim() : null;
-    const companyName = person.company_name || person.current_company_name || null;
-    const companyDomain = person.company_website_domain || person.current_company_domain || null;
+
+    const currentEmployer = Array.isArray(person.current_employers) && person.current_employers.length > 0
+      ? person.current_employers[0]
+      : null;
+    const companyName = person.company_name || person.current_company_name || currentEmployer?.employer_name || null;
+    const currentEmployerDomains = currentEmployer?.domains || currentEmployer?.employer_company_website_domain;
+    const companyDomain = person.company_website_domain || person.current_company_domain 
+      || (Array.isArray(currentEmployerDomains) ? currentEmployerDomains[0] : currentEmployerDomains) 
+      || null;
 
     console.log('[Crustdata] Person found:', personName, 'at', companyName, '| title:', titleClean);
 
@@ -188,27 +195,62 @@ export async function enrichPersonCrustdata(params: {
 
     const profilePictureUrl = person.profile_picture_url || person.profile_pic_url || person.photo_url || null;
 
-    const rawExperiences = person.past_experiences || person.experiences || person.positions || [];
-    const experiences: CrustdataExperience[] = rawExperiences.map((exp: any) => {
-      let expCompanyLinkedinUrl = exp.company_linkedin_url || exp.company_linkedin_profile_url || null;
+    const mapEmployerToExperience = (emp: any, isCurrent: boolean): CrustdataExperience => {
+      let expCompanyLinkedinUrl = emp.company_linkedin_url || emp.company_linkedin_profile_url || null;
+      const linkedinId = emp.employer_linkedin_id;
+      if (!expCompanyLinkedinUrl && linkedinId) {
+        expCompanyLinkedinUrl = `https://www.linkedin.com/company/${linkedinId}`;
+      }
       if (expCompanyLinkedinUrl && !expCompanyLinkedinUrl.startsWith('http')) {
         expCompanyLinkedinUrl = `https://${expCompanyLinkedinUrl}`;
       }
-      const endDateRaw = exp.end_date || exp.end_year || null;
+      const endDateRaw = emp.end_date || emp.end_year || null;
       const endDateStr = endDateRaw ? String(endDateRaw) : null;
-      const isCurrentExp = exp.is_current === true || 
-        (endDateStr && /present/i.test(endDateStr)) ||
-        (!endDateRaw && !exp.end_year && !exp.end_month);
+      const empDomains = emp.domains || emp.employer_company_website_domain;
+      const empDomain = Array.isArray(empDomains) ? empDomains[0] : empDomains || null;
       return {
-        title: exp.title || exp.job_title || null,
-        companyName: exp.company_name || exp.organization_name || null,
-        companyDomain: exp.company_website_domain || exp.company_domain || null,
+        title: emp.employee_title || emp.title || emp.job_title || null,
+        companyName: emp.employer_name || emp.company_name || emp.organization_name || null,
+        companyDomain: emp.company_website_domain || emp.company_domain || empDomain,
         companyLinkedinUrl: expCompanyLinkedinUrl,
-        startDate: exp.start_date || (exp.start_year ? String(exp.start_year) : null),
+        startDate: emp.start_date || (emp.start_year ? String(emp.start_year) : null),
         endDate: endDateStr,
-        isCurrent: !!isCurrentExp,
+        isCurrent,
       };
-    });
+    };
+
+    const currentEmployers = Array.isArray(person.current_employers) ? person.current_employers : [];
+    const pastEmployers = Array.isArray(person.past_employers) ? person.past_employers : [];
+    const rawExperiences = person.past_experiences || person.experiences || person.positions || [];
+
+    let experiences: CrustdataExperience[];
+    if (currentEmployers.length > 0 || pastEmployers.length > 0) {
+      experiences = [
+        ...currentEmployers.map((emp: any) => mapEmployerToExperience(emp, true)),
+        ...pastEmployers.map((emp: any) => mapEmployerToExperience(emp, false)),
+      ];
+    } else {
+      experiences = rawExperiences.map((exp: any) => {
+        let expCompanyLinkedinUrl = exp.company_linkedin_url || exp.company_linkedin_profile_url || null;
+        if (expCompanyLinkedinUrl && !expCompanyLinkedinUrl.startsWith('http')) {
+          expCompanyLinkedinUrl = `https://${expCompanyLinkedinUrl}`;
+        }
+        const endDateRaw = exp.end_date || exp.end_year || null;
+        const endDateStr = endDateRaw ? String(endDateRaw) : null;
+        const isCurrentExp = exp.is_current === true || 
+          (endDateStr && /present/i.test(endDateStr)) ||
+          (!endDateRaw && !exp.end_year && !exp.end_month);
+        return {
+          title: exp.title || exp.job_title || null,
+          companyName: exp.company_name || exp.organization_name || null,
+          companyDomain: exp.company_website_domain || exp.company_domain || null,
+          companyLinkedinUrl: expCompanyLinkedinUrl,
+          startDate: exp.start_date || (exp.start_year ? String(exp.start_year) : null),
+          endDate: endDateStr,
+          isCurrent: !!isCurrentExp,
+        };
+      });
+    }
 
     console.log(`[Crustdata] Employment history: ${experiences.length} positions found`);
 
