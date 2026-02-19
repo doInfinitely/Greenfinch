@@ -266,14 +266,11 @@ export async function classifyAndVerifyProperty(property: CommercialProperty): P
   const classLine = classEstimate.propertyClass
     ? `\nDCAD CLASS ESTIMATE: ${classEstimate.propertyClass} (from quality grade "${dcadQualityGrade}"). Override only if research shows renovations or condition changes.`
     : '';
-  const sizeLine = `DCAD SIZE: ${lotAcresStr} lot, ${totalSqft?.toLocaleString() || 'unknown'} sqft building`;
-
   const prompt = `Search the web to verify and classify this commercial property. Return ONLY valid JSON.
 
 ADDRESS: ${property.address}, ${property.city}, TX ${property.zip}
 DCAD: ${property.sptdCode || '?'} ${sptdDescription} | ${property.buildingCount || 0} bldgs, ${totalSqft?.toLocaleString() || 'unknown'} sqft | ${valStr} | ${lotAcresStr} | Quality: ${dcadQualityGrade || 'Unknown'}
 OWNER: ${primaryOwner} | ZONING: ${property.usedesc || 'Unknown'}
-${sizeLine}
 Note: DCAD may show one parcel of a multi-parcel property. Confirm or correct with canonical totals.${buildingInfo}${classLine}
 
 CATEGORIES: ${formatCompactCategories()}

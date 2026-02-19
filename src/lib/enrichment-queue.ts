@@ -1154,26 +1154,33 @@ async function processPropertyItem(
       return { success: false, error: 'Property not found in database' };
     }
 
-    const dcadProperty = (property as any).dcad || {
-      parcelId: property.propertyKey,
-      address: property.address,
-      city: property.city,
-      zip: property.zip,
-      lat: property.lat,
-      lon: property.lon,
-      usedesc: property.usedesc?.[0] || '',
-      usecode: property.usecode?.[0] || '',
-      regridYearBuilt: property.yearBuilt || null,
-      regridNumStories: property.numFloors || null,
-      lotSqft: property.lotSqft || null,
-      accountNum: '',
-      divisionCd: 'COM',
-      bizName: property.primaryOwner || null,
-      ownerName1: property.allOwners?.[0] || null,
-      ownerName2: property.allOwners?.[1] || null,
-      buildingCount: 1,
-      totalGrossBldgArea: property.buildingSqft || null,
-      buildings: [],
+    const dbProp = property as any;
+    const dcadProperty = dbProp.dcad || {
+      parcelId: dbProp.propertyKey,
+      address: dbProp.address || dbProp.regridAddress || '',
+      city: dbProp.city || '',
+      zip: dbProp.zip || '',
+      lat: dbProp.lat || 0,
+      lon: dbProp.lon || 0,
+      usedesc: dbProp.usedesc?.[0] || dbProp.dcadZoning || '',
+      usecode: dbProp.usecode?.[0] || '',
+      sptdCode: dbProp.dcadSptdCode || null,
+      regridYearBuilt: dbProp.yearBuilt || dbProp.dcadOldestYearBuilt || null,
+      regridNumStories: dbProp.numFloors || null,
+      lotSqft: dbProp.lotSqft || null,
+      lotAcres: dbProp.lotSqft ? dbProp.lotSqft / 43560 : (dbProp.dcadLandArea || null),
+      accountNum: dbProp.dcadAccountNum || '',
+      gisParcelId: dbProp.dcadGisParcelId || null,
+      divisionCd: dbProp.dcadDivisionCd || 'COM',
+      dcadImprovVal: dbProp.dcadImprovVal || null,
+      dcadLandVal: dbProp.dcadLandVal || null,
+      dcadTotalVal: dbProp.dcadTotalVal || null,
+      bizName: dbProp.dcadBizName || dbProp.primaryOwner || null,
+      ownerName1: dbProp.dcadOwnerName1 || dbProp.allOwners?.[0] || null,
+      ownerName2: dbProp.dcadOwnerName2 || dbProp.allOwners?.[1] || null,
+      buildingCount: dbProp.dcadBuildingCount || 1,
+      totalGrossBldgArea: dbProp.dcadTotalGrossBldgArea || dbProp.buildingSqft || null,
+      buildings: dbProp.dcadBuildings || [],
     };
 
     const checkpoint = await getCheckpoint(item.propertyKey);
