@@ -522,7 +522,7 @@ export async function enrichCompanyPDL(
     
     const linkedinHandle = company.linkedin_url || company.linkedin_id;
     const linkedinUrl = linkedinHandle 
-      ? (linkedinHandle.startsWith('http') ? linkedinHandle : `https://linkedin.com/company/${linkedinHandle}`)
+      ? (linkedinHandle.startsWith('http') ? linkedinHandle : `https://${linkedinHandle}`)
       : null;
 
     const employeeRange = company.size 
@@ -550,7 +550,7 @@ export async function enrichCompanyPDL(
       city: company.location?.locality || company.location?.name?.split(',')[0]?.trim() || null,
       state: company.location?.region || null,
       country: company.location?.country || null,
-      sicCode: company.sic?.[0]?.toString() || null,
+      sicCode: company.sic?.[0]?.sic_code?.toString() || null,
       naicsCode: company.naics?.[0]?.naics_code?.toString() || company.naics?.[0]?.toString() || null,
       tags: company.tags || null,
       phone: company.phone || null,
