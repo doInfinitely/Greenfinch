@@ -4,7 +4,7 @@ import { db } from './db';
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from './schema';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
 import { runFocusedEnrichment, cleanupAISummary } from './ai-enrichment';
-import type { FocusedEnrichmentResult, DiscoveredContact, DiscoveredOrganization } from './ai-enrichment';
+import type { FocusedEnrichmentResult, DiscoveredContact } from './ai-enrichment';
 import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
 import { findExistingContactByIdentifiers, flagPotentialDuplicateById, normalizeName as normalizeNameDedup, normalizeDomain as normalizeDomainDedup } from './deduplication';
@@ -144,7 +144,6 @@ export async function saveEnrichmentResults(
   const ownership = result.ownership.data;
   const physical = result.physical.data;
   const discoveredContacts = result.contacts.data.contacts || [];
-  const discoveredOrgs = result.contacts.data.organizations || [];
 
   const allSummaries = [
     result.classification.summary,
@@ -196,7 +195,6 @@ export async function saveEnrichmentResults(
         ownership: result.ownership.data,
         physical: result.physical.data,
         contacts: discoveredContacts,
-        organizations: discoveredOrgs,
         timing: result.timing,
         sources: allSources,
       },
@@ -206,30 +204,29 @@ export async function saveEnrichmentResults(
 
   console.log(`[SaveEnrichment] Updated property ${propertyKey} with enrichment data`);
 
-  const allOrgs = [...discoveredOrgs];
-  const existingDomains = new Set(discoveredOrgs.map(o => o.domain?.trim().toLowerCase()).filter(Boolean));
-  const existingNames = new Set(discoveredOrgs.map(o => o.name?.trim().toLowerCase()).filter(Boolean));
+  interface DerivedOrg { name: string; domain: string | null; orgType: string; roles: string[]; }
+  const allOrgs: DerivedOrg[] = [];
+  const existingDomains = new Set<string>();
+  const existingNames = new Set<string>();
 
   if (ownership.managementCompany?.name && ownership.managementCompany.confidence > 0) {
     const mgmtDomain = ownership.managementCompany.domain?.trim().toLowerCase() || null;
     const mgmtName = ownership.managementCompany.name.trim().toLowerCase();
-    if ((!mgmtDomain || !existingDomains.has(mgmtDomain)) && !existingNames.has(mgmtName)) {
-      console.log(`[SaveEnrichment] Synthesizing org from Stage 2 mgmt: ${ownership.managementCompany.name}`);
-      allOrgs.push({
-        name: ownership.managementCompany.name,
-        domain: ownership.managementCompany.domain || null,
-        orgType: 'management',
-        roles: ['property_manager'],
-      });
-      if (mgmtDomain) existingDomains.add(mgmtDomain);
-      existingNames.add(mgmtName);
-    }
+    console.log(`[SaveEnrichment] Adding org from ownership mgmt: ${ownership.managementCompany.name}`);
+    allOrgs.push({
+      name: ownership.managementCompany.name,
+      domain: ownership.managementCompany.domain || null,
+      orgType: 'management',
+      roles: ['property_manager'],
+    });
+    if (mgmtDomain) existingDomains.add(mgmtDomain);
+    existingNames.add(mgmtName);
   }
 
   if (ownership.beneficialOwner?.name && ownership.beneficialOwner.confidence > 0) {
     const ownerName = ownership.beneficialOwner.name.trim().toLowerCase();
     if (!existingNames.has(ownerName)) {
-      console.log(`[SaveEnrichment] Synthesizing org from Stage 2 owner: ${ownership.beneficialOwner.name}`);
+      console.log(`[SaveEnrichment] Adding org from ownership owner: ${ownership.beneficialOwner.name}`);
       allOrgs.push({
         name: ownership.beneficialOwner.name,
         domain: null,
@@ -238,6 +235,22 @@ export async function saveEnrichmentResults(
       });
       existingNames.add(ownerName);
     }
+  }
+
+  for (const contact of discoveredContacts) {
+    if (!contact.company) continue;
+    const cName = contact.company.trim().toLowerCase();
+    const cDomain = contact.companyDomain?.trim().toLowerCase() || null;
+    if (existingNames.has(cName) || (cDomain && existingDomains.has(cDomain))) continue;
+    console.log(`[SaveEnrichment] Deriving org from contact ${contact.name}: ${contact.company}`);
+    allOrgs.push({
+      name: contact.company,
+      domain: contact.companyDomain || null,
+      orgType: 'related',
+      roles: [contact.role || 'related'],
+    });
+    existingNames.add(cName);
+    if (cDomain) existingDomains.add(cDomain);
   }
 
   const orgIds: string[] = [];

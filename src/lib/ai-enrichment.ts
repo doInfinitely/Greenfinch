@@ -77,13 +77,6 @@ export interface DiscoveredContact {
   contactType: 'individual' | 'general'; // individual = named person, general = office/main line
 }
 
-export interface DiscoveredOrganization {
-  name: string;
-  domain: string | null;
-  orgType: string;
-  roles: string[];
-}
-
 function formatBuildingsSummary(buildings: DCADBuilding[] | null, totalSqft: number | null): string {
   if (!buildings || buildings.length === 0) return '';
   if (buildings.length === 1) {
@@ -621,7 +614,7 @@ async function identifyDecisionMakers(
   property: CommercialProperty,
   classification: PropertyClassification,
   ownership: OwnershipInfo
-): Promise<StageResult<{ contacts: IdentifiedDecisionMaker[]; organizations: DiscoveredOrganization[] }>> {
+): Promise<StageResult<{ contacts: IdentifiedDecisionMaker[] }>> {
   const client = getGeminiClient();
 
   const mgmtName = ownership.managementCompany?.name || null;
@@ -644,15 +637,15 @@ SEARCH STRATEGY (in priority order):
 2. Search "${classification.propertyName} property manager" and "${classification.propertyName} leasing"
 3. Search LinkedIn for property managers, leasing agents, or regional managers at ${mgmtName || 'the management company'} in ${city}
 
-PRIORITY ROLES (return these first):
+PRIORITY ROLES (return these first; listed in priority order):
 - On-site property manager or community manager for this specific property
+- Facilities/maintenance director for this specific property
+- Regional/district property manager overseeing this property's area
 - Leasing agent or leasing manager for this property or portfolio
-- Regional/district manager overseeing this property's area
-- Asset manager responsible for this property
-- Facilities/maintenance director for this property
+- Asset manager or owner with direct responsibility for this property
 
 DO NOT RETURN:
-- C-suite executives (CEO, CFO, COO, CTO, CMO) unless they are the direct property owner
+- C-suite executives (CEO, CFO, COO, CTO, CMO) unless they are the direct property owner and higher-priority contacts were not identified
 - Corporate HR, marketing, or IT staff
 - People at corporate headquarters with no direct tie to this property or market
 - National-level VPs unless they specifically oversee the ${city} region
@@ -660,7 +653,7 @@ DO NOT RETURN:
 Only return people verifiably connected to THIS property at THIS address or its local market as of 2025-2026.
 
 Return JSON:
-{"contacts":[{"name":"Full Name","title":"Title","company":"Co","domain":"co.com","role":"property_manager|facilities_manager|owner|leasing|other","rc":0.0-1.0,"evidence":"1 sentence linking them to this property","type":"individual|general"}],"orgs":[{"name":"Co","domain":"co.com","org_type":"owner|management|tenant|developer","roles":["property_manager"]}],"summary":"2 sentences max."}`;
+{"contacts":[{"name":"Full Name","title":"Title","company":"Company Name","domain":"company.com","role":"property_manager|facilities_manager|owner|leasing|other","rc":0.0-1.0,"evidence":"1 sentence linking them to this property","type":"individual|general"}],"summary":"2 sentences max."}`;
 
   console.log('[FocusedEnrichment] Stage 3a: Identifying decision-makers...');
   console.log(`[FocusedEnrichment] Stage 3a input - Property: ${classification.propertyName}, Mgmt: ${mgmtInfo}`);
@@ -691,7 +684,7 @@ Return JSON:
         success: false,
         errorMessage: 'Empty response from Gemini',
       });
-      return { data: { contacts: [], organizations: [] }, summary: '', sources: [] };
+      return { data: { contacts: [] }, summary: '', sources: [] };
     }
 
     const sources = extractGroundedSources(response);
@@ -708,25 +701,18 @@ Return JSON:
       contactType: c.type === 'general' ? 'general' : 'individual',
     }));
 
-    const organizations: DiscoveredOrganization[] = (parsed.orgs || []).map((o: any) => ({
-      name: o.name || '',
-      domain: o.domain ?? null,
-      orgType: o.org_type || 'other',
-      roles: o.roles || [],
-    }));
-
-    console.log(`[FocusedEnrichment] Stage 3a complete: ${contacts.length} contacts identified, ${organizations.length} orgs, ${sources.length} sources`);
+    console.log(`[FocusedEnrichment] Stage 3a complete: ${contacts.length} contacts identified, ${sources.length} sources`);
 
     trackCostFireAndForget({
       provider: 'gemini',
       endpoint: 'identify-decision-makers',
       entityType: 'property',
       success: true,
-      metadata: { contactsCount: contacts.length, orgsCount: organizations.length, sourcesCount: sources.length },
+      metadata: { contactsCount: contacts.length, sourcesCount: sources.length },
     });
 
     return {
-      data: { contacts, organizations },
+      data: { contacts },
       summary: parsed.summary || '',
       sources,
     };
@@ -740,7 +726,7 @@ Return JSON:
     });
     console.error(`[FocusedEnrichment] Stage 3a failed: ${error instanceof Error ? error.message : error}`);
     return {
-      data: { contacts: [], organizations: [] },
+      data: { contacts: [] },
       summary: '',
       sources: [],
     };
@@ -859,7 +845,7 @@ export async function discoverContacts(
   property: CommercialProperty,
   classification: PropertyClassification,
   ownership: OwnershipInfo
-): Promise<StageResult<{ contacts: DiscoveredContact[]; organizations: DiscoveredOrganization[] }> & { contactIdentificationMs: number; contactEnrichmentMs: number }> {
+): Promise<StageResult<{ contacts: DiscoveredContact[] }> & { contactIdentificationMs: number; contactEnrichmentMs: number }> {
   const city = property.city || 'Dallas';
 
   const startIdentify = Date.now();
@@ -912,7 +898,7 @@ export async function discoverContacts(
   ).slice(0, 10);
 
   return {
-    data: { contacts, organizations: identifyResult.data.organizations },
+    data: { contacts },
     summary: identifyResult.summary,
     sources: uniqueSources,
     contactIdentificationMs,
@@ -925,7 +911,7 @@ export interface FocusedEnrichmentResult {
   physical: StageResult<PropertyPhysicalData>;
   classification: StageResult<PropertyClassification>;
   ownership: StageResult<OwnershipInfo>;
-  contacts: StageResult<{ contacts: DiscoveredContact[]; organizations: DiscoveredOrganization[] }>;
+  contacts: StageResult<{ contacts: DiscoveredContact[] }>;
   timing: {
     physicalMs: number;
     classificationMs: number;
@@ -968,7 +954,7 @@ export async function runFocusedEnrichment(property: CommercialProperty): Promis
 
   console.log(`[FocusedEnrichment] All stages complete in ${totalMs}ms (3a: ${contactsResult.contactIdentificationMs}ms, 3b: ${contactsResult.contactEnrichmentMs}ms)`);
   
-  const contacts: StageResult<{ contacts: DiscoveredContact[]; organizations: DiscoveredOrganization[] }> = {
+  const contacts: StageResult<{ contacts: DiscoveredContact[] }> = {
     data: contactsResult.data,
     summary: contactsResult.summary,
     sources: contactsResult.sources,
