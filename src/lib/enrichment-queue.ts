@@ -3,8 +3,9 @@ import pLimit from 'p-limit';
 import { db } from './db';
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from './schema';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
-import { runFocusedEnrichment, cleanupAISummary } from './ai-enrichment';
-import type { FocusedEnrichmentResult, DiscoveredContact } from './ai-enrichment';
+import { runFocusedEnrichment, cleanupAISummary, EnrichmentStageError } from './ai-enrichment';
+import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpoint } from './ai-enrichment';
+import { isCircuitBreakerError } from './rate-limiter';
 import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
 import { findExistingContactByIdentifiers, flagPotentialDuplicateById, normalizeName as normalizeNameDedup, normalizeDomain as normalizeDomainDedup } from './deduplication';
@@ -31,6 +32,30 @@ const REDIS_BATCH_KEY = 'enrichment:batch';
 const REDIS_QUEUE_KEY = 'enrichment:items';
 const REDIS_LOCK_KEY = 'enrichment:batch';
 const REDIS_RATE_LIMIT_KEY = 'enrichment:last_request';
+const REDIS_CHECKPOINTS_KEY = 'enrichment:checkpoints';
+
+const memoryCheckpoints = new Map<string, EnrichmentStageCheckpoint>();
+
+async function getCheckpoint(propertyKey: string): Promise<EnrichmentStageCheckpoint | null> {
+  if (isRedisConfigured()) {
+    return await hashGet<EnrichmentStageCheckpoint>(REDIS_CHECKPOINTS_KEY, propertyKey);
+  }
+  return memoryCheckpoints.get(propertyKey) || null;
+}
+
+async function saveCheckpoint(propertyKey: string, checkpoint: EnrichmentStageCheckpoint): Promise<void> {
+  if (isRedisConfigured()) {
+    await hashSet(REDIS_CHECKPOINTS_KEY, propertyKey, checkpoint);
+  }
+  memoryCheckpoints.set(propertyKey, checkpoint);
+}
+
+async function clearCheckpoint(propertyKey: string): Promise<void> {
+  if (isRedisConfigured()) {
+    await hashDelete(REDIS_CHECKPOINTS_KEY, propertyKey);
+  }
+  memoryCheckpoints.delete(propertyKey);
+}
 
 async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedProperty | null> {
   const [dbProperty] = await db
@@ -444,6 +469,59 @@ export async function saveEnrichmentResults(
   const uniqueOrgIds = [...new Set(orgIds)];
   console.log(`[SaveEnrichment] Complete for ${propertyKey}: ${uniqueContactIds.length} contacts (${contactIds.length - uniqueContactIds.length} dupes removed), ${uniqueOrgIds.length} orgs (${orgIds.length - uniqueOrgIds.length} dupes removed)`);
   return { propertyId, contactIds: uniqueContactIds, orgIds: uniqueOrgIds };
+}
+
+async function savePartialEnrichment(propertyKey: string, checkpoint: EnrichmentStageCheckpoint): Promise<void> {
+  const [dbProperty] = await db
+    .select({ id: properties.id })
+    .from(properties)
+    .where(eq(properties.propertyKey, propertyKey))
+    .limit(1);
+
+  if (!dbProperty) return;
+
+  const updateData: Record<string, any> = {
+    enrichmentStatus: 'partial',
+    updatedAt: new Date(),
+  };
+
+  if (checkpoint.classification) {
+    const c = checkpoint.classification.data;
+    if (c.propertyName) updateData.commonName = c.propertyName;
+    if (c.canonicalAddress) updateData.validatedAddress = c.canonicalAddress;
+    if (c.category) updateData.assetCategory = c.category;
+    if (c.subcategory) updateData.assetSubcategory = c.subcategory;
+    if (c.confidence) updateData.categoryConfidence = c.confidence;
+    if (c.propertyClass) updateData.propertyClass = c.propertyClass;
+  }
+
+  if (checkpoint.ownership) {
+    const o = checkpoint.ownership.data;
+    if (o.beneficialOwner?.name) updateData.beneficialOwner = o.beneficialOwner.name;
+    if (o.beneficialOwner?.type) updateData.beneficialOwnerType = o.beneficialOwner.type;
+    if (o.managementCompany?.name) updateData.managementCompany = o.managementCompany.name;
+    if (o.managementCompany?.domain) updateData.managementCompanyDomain = o.managementCompany.domain;
+    if (o.propertyWebsite) updateData.propertyWebsite = o.propertyWebsite;
+    if (o.propertyPhone) updateData.propertyPhone = o.propertyPhone;
+  }
+
+  updateData.enrichmentJson = {
+    checkpoint: {
+      lastCompletedStage: checkpoint.lastCompletedStage,
+      failedStage: checkpoint.failedStage,
+      failureError: checkpoint.failureError,
+      failureCount: checkpoint.failureCount,
+      timing: checkpoint.timing,
+    },
+    ...(checkpoint.classification ? { classification: checkpoint.classification.data } : {}),
+    ...(checkpoint.ownership ? { ownership: checkpoint.ownership.data } : {}),
+  };
+
+  await db.update(properties)
+    .set(updateData)
+    .where(eq(properties.id, dbProperty.id));
+
+  console.log(`[EnrichmentQueue] Saved partial enrichment for ${propertyKey} (last stage: ${checkpoint.lastCompletedStage})`);
 }
 
 function normalizeCompanyForComparison(name: string | null | undefined): string {
@@ -929,13 +1007,15 @@ export interface BatchStatus {
   progress: QueueProgress;
   startedAt: Date | null;
   completedAt: Date | null;
-  errors: Array<{ propertyKey: string; error: string }>;
+  errors: Array<{ propertyKey: string; error: string; stage?: string; retryable?: boolean }>;
   concurrency: number;
 }
 
 interface QueueItem {
   propertyKey: string;
   propertyId?: string;
+  retryAttempt?: number;
+  lastFailedStage?: string;
 }
 
 // In-memory fallback state (used when Redis is not configured)
@@ -1061,7 +1141,7 @@ export async function addToQueue(items: QueueItem[]): Promise<void> {
 async function processPropertyItem(
   item: QueueItem,
   startTime: number
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; failedStage?: string; isRetryable?: boolean }> {
   try {
     let property = await getPropertyFromPostgres(item.propertyKey);
     
@@ -1095,9 +1175,16 @@ async function processPropertyItem(
       totalGrossBldgArea: property.buildingSqft || null,
       buildings: [],
     };
-    const enrichmentResult = await runFocusedEnrichment(dcadProperty as any);
+
+    const checkpoint = await getCheckpoint(item.propertyKey);
+    if (checkpoint?.lastCompletedStage) {
+      console.log(`[EnrichmentQueue] Resuming ${item.propertyKey} from checkpoint (last stage: ${checkpoint.lastCompletedStage}, attempts: ${checkpoint.failureCount || 0})`);
+    }
+    const enrichmentResult = await runFocusedEnrichment(dcadProperty as any, checkpoint);
     
     const saved = await saveEnrichmentResults(item.propertyKey, enrichmentResult);
+
+    await clearCheckpoint(item.propertyKey);
     
     if (saved.contactIds.length > 0 || saved.orgIds.length > 0) {
       console.log(`[EnrichmentQueue] Running cascade enrichment on ${saved.contactIds.length} contacts, ${saved.orgIds.length} orgs...`);
@@ -1107,10 +1194,35 @@ async function processPropertyItem(
     return { success: true };
   } catch (error) {
     console.error(`[EnrichmentQueue] Error processing ${item.propertyKey}:`, error);
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Unknown error' 
-    };
+
+    if (error instanceof EnrichmentStageError) {
+      const cp = error.checkpoint;
+      cp.failureCount = (cp.failureCount || 0) + 1;
+      await saveCheckpoint(item.propertyKey, cp);
+
+      if (cp.classification && cp.physical) {
+        try {
+          await savePartialEnrichment(item.propertyKey, cp);
+        } catch (saveErr) {
+          console.error(`[EnrichmentQueue] Error saving partial enrichment:`, saveErr);
+        }
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        failedStage: error.stage,
+        isRetryable: (cp.failureCount || 0) < 3
+      };
+    }
+
+    if (isCircuitBreakerError(error)) {
+      return { success: false, error: `Circuit breaker open: ${error.message}`, isRetryable: true };
+    }
+
+    const msg = error instanceof Error ? error.message : String(error);
+    const isTransient = /timeout|rate.limit|ECONNRESET|ENOTFOUND|fetch.failed|429|503|502/i.test(msg);
+    return { success: false, error: msg, isRetryable: isTransient };
   }
 }
 
@@ -1150,55 +1262,199 @@ export async function processQueue(): Promise<void> {
   return processQueueInternal();
 }
 
+class AdaptiveConcurrencyController {
+  private currentConcurrency: number;
+  private readonly minConcurrency: number;
+  private readonly maxConcurrency: number;
+  private recentResults: Array<{ success: boolean; timestamp: number }> = [];
+  private readonly windowSize = 10;
+  private readonly errorThresholdDown = 0.4;
+  private readonly errorThresholdUp = 0.1;
+  private lastAdjustment = 0;
+  private readonly adjustCooldownMs = 30000;
+
+  constructor(initial: number, min: number = 3, max?: number) {
+    this.currentConcurrency = initial;
+    this.minConcurrency = min;
+    this.maxConcurrency = max || initial;
+  }
+
+  recordResult(success: boolean): void {
+    this.recentResults.push({ success, timestamp: Date.now() });
+    if (this.recentResults.length > this.windowSize) {
+      this.recentResults.shift();
+    }
+  }
+
+  shouldThrottle(): boolean {
+    if (this.recentResults.length < 5) return false;
+    const errorRate = this.recentResults.filter(r => !r.success).length / this.recentResults.length;
+    return errorRate >= this.errorThresholdDown;
+  }
+
+  adjust(): { changed: boolean; newConcurrency: number; reason?: string } {
+    if (Date.now() - this.lastAdjustment < this.adjustCooldownMs) {
+      return { changed: false, newConcurrency: this.currentConcurrency };
+    }
+    if (this.recentResults.length < 5) {
+      return { changed: false, newConcurrency: this.currentConcurrency };
+    }
+
+    const errorRate = this.recentResults.filter(r => !r.success).length / this.recentResults.length;
+
+    if (errorRate >= this.errorThresholdDown && this.currentConcurrency > this.minConcurrency) {
+      const newVal = Math.max(this.minConcurrency, Math.floor(this.currentConcurrency * 0.6));
+      if (newVal < this.currentConcurrency) {
+        const reason = `Error rate ${(errorRate * 100).toFixed(0)}% ≥ ${(this.errorThresholdDown * 100).toFixed(0)}% → reducing ${this.currentConcurrency} → ${newVal}`;
+        this.currentConcurrency = newVal;
+        this.lastAdjustment = Date.now();
+        this.recentResults = [];
+        return { changed: true, newConcurrency: newVal, reason };
+      }
+    } else if (errorRate <= this.errorThresholdUp && this.currentConcurrency < this.maxConcurrency) {
+      const newVal = Math.min(this.maxConcurrency, this.currentConcurrency + 2);
+      if (newVal > this.currentConcurrency) {
+        const reason = `Error rate ${(errorRate * 100).toFixed(0)}% ≤ ${(this.errorThresholdUp * 100).toFixed(0)}% → increasing ${this.currentConcurrency} → ${newVal}`;
+        this.currentConcurrency = newVal;
+        this.lastAdjustment = Date.now();
+        this.recentResults = [];
+        return { changed: true, newConcurrency: newVal, reason };
+      }
+    }
+
+    return { changed: false, newConcurrency: this.currentConcurrency };
+  }
+
+  get concurrency(): number {
+    return this.currentConcurrency;
+  }
+}
+
 async function processQueueInternal(): Promise<void> {
   const startTime = Date.now();
   let batch = await getBatchStatus();
   const concurrencyLimit = batch?.concurrency || CONCURRENCY.PROPERTIES;
-  const limit = pLimit(concurrencyLimit);
+  const adaptiveController = new AdaptiveConcurrencyController(concurrencyLimit, 3, concurrencyLimit);
   
-  console.log(`[EnrichmentQueue] Starting parallel processing with concurrency=${concurrencyLimit}`);
+  console.log(`[EnrichmentQueue] Starting wave-based processing with initial concurrency=${concurrencyLimit} (adaptive)`);
 
   try {
     const items = await getQueueItems();
     await setQueueItems([]); // Clear queue
     
-    const promises = items.map((item, index) =>
-      limit(async () => {
-        const itemStart = Date.now();
-        console.log(`[EnrichmentQueue] [${index + 1}/${items.length}] Processing: ${item.propertyKey}`);
-        
-        const result = await processPropertyItem(item, startTime);
-        
-        // Re-fetch batch status to get latest state (for distributed updates)
-        batch = await getBatchStatus();
-        if (batch) {
-          batch.progress.processed++;
-          if (result.success) {
-            batch.progress.succeeded++;
-          } else {
-            batch.progress.failed++;
-            batch.errors.push({
-              propertyKey: item.propertyKey,
-              error: result.error || 'Unknown error',
-            });
+    let processedIndex = 0;
+    
+    while (processedIndex < items.length) {
+      const currentConcurrency = adaptiveController.concurrency;
+      const waveEnd = Math.min(processedIndex + currentConcurrency, items.length);
+      const waveItems = items.slice(processedIndex, waveEnd);
+      const waveNum = Math.floor(processedIndex / Math.max(currentConcurrency, 1)) + 1;
+      
+      console.log(`[EnrichmentQueue] Wave ${waveNum}: items ${processedIndex + 1}-${waveEnd}/${items.length}, concurrency=${currentConcurrency}`);
+      
+      const waveLimit = pLimit(currentConcurrency);
+      
+      const wavePromises = waveItems.map((item, waveIdx) => {
+        const globalIndex = processedIndex + waveIdx;
+        return waveLimit(async () => {
+          const itemStart = Date.now();
+          console.log(`[EnrichmentQueue] [${globalIndex + 1}/${items.length}] Processing: ${item.propertyKey}`);
+          
+          if (adaptiveController.shouldThrottle()) {
+            const throttleDelay = 2000 + Math.random() * 3000;
+            console.log(`[EnrichmentQueue] Throttling ${item.propertyKey} for ${Math.round(throttleDelay)}ms due to high error rate`);
+            await new Promise(resolve => setTimeout(resolve, throttleDelay));
           }
-          updateProgressStats(batch, startTime);
-          await setBatchStatus(batch); // Persist updated status
-        }
-        
-        const elapsed = ((Date.now() - itemStart) / 1000).toFixed(1);
-        const status = result.success ? 'SUCCESS' : 'FAILED';
-        const ppm = batch?.progress.propertiesPerMinute || 0;
-        const eta = batch?.progress.estimatedSecondsRemaining;
-        const etaStr = eta ? `ETA: ${Math.round(eta / 60)}m ${eta % 60}s` : '';
-        
-        console.log(`[EnrichmentQueue] [${index + 1}/${items.length}] ${status} (${elapsed}s) | Rate: ${ppm}/min | ${etaStr}`);
-        
-        return result;
-      })
-    );
 
-    await Promise.all(promises);
+          const result = await processPropertyItem(item, startTime);
+          
+          adaptiveController.recordResult(result.success);
+
+          batch = await getBatchStatus();
+          if (batch) {
+            batch.progress.processed++;
+            if (result.success) {
+              batch.progress.succeeded++;
+            } else {
+              batch.progress.failed++;
+              batch.errors.push({
+                propertyKey: item.propertyKey,
+                error: result.error || 'Unknown error',
+                stage: result.failedStage,
+                retryable: result.isRetryable,
+              });
+            }
+            updateProgressStats(batch, startTime);
+            await setBatchStatus(batch);
+          }
+          
+          const elapsed = ((Date.now() - itemStart) / 1000).toFixed(1);
+          const status = result.success ? 'SUCCESS' : 'FAILED';
+          const ppm = batch?.progress.propertiesPerMinute || 0;
+          const eta = batch?.progress.estimatedSecondsRemaining;
+          const etaStr = eta ? `ETA: ${Math.round(eta / 60)}m ${eta % 60}s` : '';
+          
+          console.log(`[EnrichmentQueue] [${globalIndex + 1}/${items.length}] ${status} (${elapsed}s) | Rate: ${ppm}/min | Concurrency: ${currentConcurrency} | ${etaStr}`);
+          
+          return result;
+        });
+      });
+
+      await Promise.all(wavePromises);
+      
+      const adjustment = adaptiveController.adjust();
+      if (adjustment.changed) {
+        console.log(`[EnrichmentQueue] Adaptive concurrency between waves: ${adjustment.reason}`);
+      }
+      
+      processedIndex = waveEnd;
+    }
+
+    const retryableItems = batch ? batch.errors
+      .filter(e => e.retryable && e.propertyKey)
+      .map(e => ({ propertyKey: e.propertyKey, retryAttempt: 1, lastFailedStage: e.stage })) : [];
+
+    if (retryableItems.length > 0 && batch) {
+      console.log(`[EnrichmentQueue] Starting retry pass for ${retryableItems.length} failed properties...`);
+
+      const retryDelay = 10000;
+      await new Promise(resolve => setTimeout(resolve, retryDelay));
+
+      const retryConcurrency = Math.max(3, Math.floor(concurrencyLimit / 3));
+      const retryLimit = pLimit(retryConcurrency);
+
+      const permanentErrors = batch.errors.filter(e => !e.retryable || !e.propertyKey);
+      batch.errors = permanentErrors;
+
+      const retryPromises = retryableItems.map((item) =>
+        retryLimit(async () => {
+          console.log(`[EnrichmentQueue] RETRY [attempt ${(item.retryAttempt || 0) + 1}] Processing: ${item.propertyKey} (failed at: ${item.lastFailedStage || 'unknown'})`);
+
+          const result = await processPropertyItem(item, startTime);
+
+          batch = await getBatchStatus();
+          if (batch) {
+            if (result.success) {
+              batch.progress.succeeded++;
+              batch.progress.failed--;
+            } else {
+              batch.errors.push({
+                propertyKey: item.propertyKey,
+                error: `Retry failed: ${result.error}`,
+                stage: result.failedStage,
+                retryable: false,
+              });
+            }
+            await setBatchStatus(batch);
+          }
+
+          return result;
+        })
+      );
+
+      await Promise.all(retryPromises);
+      console.log(`[EnrichmentQueue] Retry pass complete`);
+    }
 
     batch = await getBatchStatus();
     if (batch) {
