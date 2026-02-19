@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, X, Loader2, MoreVertical, ListPlus, User, XCircle, Eye, Sparkles, Maximize2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
@@ -23,104 +23,38 @@ import CustomerToggle from '@/components/CustomerToggle';
 import { normalizeCommonName } from '@/lib/normalization';
 import type { Property, EnrichedPropertyData, EnrichmentStatusType } from './types';
 
-function loadGoogleMapsIfNeeded(apiKey: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (typeof google !== 'undefined' && google.maps) {
-      resolve();
-      return;
-    }
-    const existingScript = document.getElementById('google-maps-script');
-    if (existingScript) {
-      const check = setInterval(() => {
-        if (typeof google !== 'undefined' && google.maps) {
-          clearInterval(check);
-          resolve();
-        }
-      }, 100);
-      setTimeout(() => { clearInterval(check); resolve(); }, 8000);
-      return;
-    }
-    const callbackName = `__gmapsInit_${Date.now()}`;
-    (window as any)[callbackName] = () => {
-      delete (window as any)[callbackName];
-      resolve();
-    };
-    const script = document.createElement('script');
-    script.id = 'google-maps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&callback=${callbackName}`;
-    script.async = true;
-    script.defer = true;
-    script.onerror = () => reject(new Error('Failed to load Google Maps'));
-    document.head.appendChild(script);
-  });
-}
-
 function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: Property; googleMapsApiKey: string; onExpand?: () => void }) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
+  const [imgUrl, setImgUrl] = useState<string>('');
 
   useEffect(() => {
-    if (!property.lat || !property.lon || !googleMapsApiKey || !containerRef.current) return;
+    if (!property.lat || !property.lon || !googleMapsApiKey) return;
 
     let mounted = true;
 
-    const loadApi = async () => {
+    const checkAndLoad = async () => {
       try {
-        await loadGoogleMapsIfNeeded(googleMapsApiKey);
+        const metaUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${property.lat},${property.lon}&radius=300&source=outdoor&key=${googleMapsApiKey}`;
+        const res = await fetch(metaUrl);
+        const meta = await res.json();
+
+        if (!mounted) return;
+
+        if (meta.status === 'OK' && meta.pano_id) {
+          const url = `https://maps.googleapis.com/maps/api/streetview?size=600x300&pano=${meta.pano_id}&pitch=5&fov=90&source=outdoor&key=${googleMapsApiKey}`;
+          setImgUrl(url);
+          setStatus('ready');
+        } else {
+          const fallbackUrl = `https://maps.googleapis.com/maps/api/streetview?size=600x300&location=${property.lat},${property.lon}&pitch=5&fov=90&source=outdoor&key=${googleMapsApiKey}`;
+          setImgUrl(fallbackUrl);
+          setStatus('ready');
+        }
       } catch {
         if (mounted) setStatus('unavailable');
-        return;
       }
-
-      if (!mounted || typeof google === 'undefined' || !google.maps) {
-        if (mounted) setStatus('unavailable');
-        return;
-      }
-
-      const sv = new google.maps.StreetViewService();
-      const location = new google.maps.LatLng(property.lat!, property.lon!);
-
-      sv.getPanorama(
-        {
-          location,
-          radius: 200,
-          source: google.maps.StreetViewSource.OUTDOOR,
-          preference: google.maps.StreetViewPreference.NEAREST,
-        },
-        (data, panoStatus) => {
-          if (!mounted) return;
-          if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
-            const panoLocation = data.location.latLng;
-            const rawHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, location) ?? 0;
-            const heading = ((rawHeading % 360) + 360) % 360;
-            const panoId = data.location.pano;
-
-            const width = 600;
-            const height = 300;
-            const locationParam = panoId ? `pano=${panoId}` : `location=${property.lat},${property.lon}`;
-            const imgUrl = `https://maps.googleapis.com/maps/api/streetview?size=${width}x${height}&${locationParam}&heading=${Math.round(heading)}&pitch=5&fov=90&source=outdoor&key=${googleMapsApiKey}`;
-
-            if (containerRef.current) {
-              const img = new Image();
-              img.onload = () => {
-                if (mounted) setStatus('ready');
-              };
-              img.onerror = () => {
-                if (mounted) setStatus('unavailable');
-              };
-              img.src = imgUrl;
-              containerRef.current.style.backgroundImage = `url(${imgUrl})`;
-              containerRef.current.style.backgroundSize = 'cover';
-              containerRef.current.style.backgroundPosition = 'center';
-            }
-          } else {
-            setStatus('unavailable');
-          }
-        }
-      );
     };
 
-    loadApi();
+    checkAndLoad();
     return () => { mounted = false; };
   }, [property.lat, property.lon, googleMapsApiKey]);
 
@@ -128,11 +62,19 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
 
   return (
     <div className="relative rounded-lg overflow-hidden border border-gray-200 h-full min-h-[160px]">
-      <div ref={containerRef} className="w-full h-full bg-gray-100" />
       {status === 'loading' && (
-        <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
+        <div className="w-full h-full bg-gray-100 flex items-center justify-center min-h-[160px]">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
         </div>
+      )}
+      {status === 'ready' && imgUrl && (
+        <img
+          src={imgUrl}
+          alt="Street view"
+          className="w-full h-full object-cover min-h-[160px]"
+          onError={() => setStatus('unavailable')}
+          data-testid="img-banner-streetview"
+        />
       )}
       {status === 'ready' && onExpand && (
         <button

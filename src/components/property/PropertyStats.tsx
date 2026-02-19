@@ -41,17 +41,19 @@ export default function PropertyStats({ property, enrichedProperty }: PropertySt
         {property.calculatedBuildingClass && (
           <div className="bg-gray-50 rounded-lg p-4" data-testid="stat-building-class">
             <p className="text-sm text-gray-600 mb-1">Building Class</p>
-            <Badge variant="outline" className={
-              property.calculatedBuildingClass === 'A+' || property.calculatedBuildingClass === 'A' 
-                ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-              property.calculatedBuildingClass === 'B' 
-                ? 'bg-blue-100 text-blue-800 border-blue-200' :
-              property.calculatedBuildingClass === 'C' 
-                ? 'bg-amber-100 text-amber-800 border-amber-200' :
-              'bg-gray-200 text-gray-700 border-gray-300'
-            } data-testid="badge-building-class">
-              Class {property.calculatedBuildingClass}
-            </Badge>
+            <div className="flex items-center h-[28px]">
+              <Badge variant="outline" className={
+                property.calculatedBuildingClass === 'A+' || property.calculatedBuildingClass === 'A' 
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                property.calculatedBuildingClass === 'B' 
+                  ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                property.calculatedBuildingClass === 'C' 
+                  ? 'bg-amber-100 text-amber-800 border-amber-200' :
+                'bg-gray-200 text-gray-700 border-gray-300'
+              } data-testid="badge-building-class">
+                Class {property.calculatedBuildingClass}
+              </Badge>
+            </div>
           </div>
         )}
         <div className="bg-gray-50 rounded-lg p-4" data-testid="stat-year-built">
