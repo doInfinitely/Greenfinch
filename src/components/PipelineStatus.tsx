@@ -32,6 +32,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import { formatCurrencyFull } from '@/lib/utils';
 import { PIPELINE_STATUS_LABELS, type PipelineStatus as PipelineStatusType } from '@/lib/schema';
 
 interface PipelineStatusProps {
@@ -332,14 +333,6 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     setShowAssignDialog(true);
   }
 
-  function formatCurrency(value: number): string {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    }).format(value);
-  }
-
   if (isCustomer) {
     return null;
   }
@@ -476,7 +469,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   const dealValueDisplay = dealValue && dealValue > 0 ? (
     <Badge variant="secondary" data-testid="badge-deal-value">
       <DollarSign className="w-3 h-3 mr-1" />
-      <span className="font-medium">{formatCurrency(dealValue)}</span>
+      <span className="font-medium">{formatCurrencyFull(dealValue)}</span>
     </Badge>
   ) : null;
 
@@ -615,7 +608,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
       title="Click to edit deal value"
     >
       <DollarSign className="w-4 h-4 mr-1" />
-      <span className="font-medium">{formatCurrency(dealValue)}</span>
+      <span className="font-medium">{formatCurrencyFull(dealValue)}</span>
     </Button>
   ) : null;
 

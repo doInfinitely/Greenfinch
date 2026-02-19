@@ -13,6 +13,7 @@ import { PipelineBoardSkeleton } from '@/components/PageSkeleton';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { normalizeCommonName } from '@/lib/normalization';
+import { formatCurrencyCompact } from '@/lib/utils';
 
 interface OrgMember {
   id: string;
@@ -39,6 +40,7 @@ const COLUMN_STYLES: Record<PipelineStatus, { bg: string; accent: string; badge:
 interface PipelineItem {
   id: string;
   propertyId: string;
+  propertyKey: string | null;
   status: PipelineStatus;
   dealValue: number | null;
   statusChangedAt: string;
@@ -58,16 +60,6 @@ interface PipelineItem {
 interface BoardData {
   items: Record<PipelineStatus, PipelineItem[]>;
   counts: Record<PipelineStatus, number>;
-}
-
-function formatCurrency(value: number): string {
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`;
-  }
-  if (value >= 1000) {
-    return `$${(value / 1000).toFixed(0)}K`;
-  }
-  return `$${value.toLocaleString()}`;
 }
 
 function getDaysInStage(statusChangedAt: string): number {
@@ -491,12 +483,12 @@ export default function PipelineBoard() {
                             return (
                               <Link
                                 key={item.id}
-                                href={`/property/${item.propertyId}`}
+                                href={`/property/${item.propertyKey || item.propertyId}`}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, item)}
                                 onDragEnd={handleDragEnd}
                                 className={`block ${updating === item.id ? 'opacity-50 pointer-events-none' : ''}`}
-                                data-testid={`card-property-${item.propertyId}`}
+                                data-testid={`card-property-${item.propertyKey || item.propertyId}`}
                               >
                                 <div className="bg-card border border-border/50 rounded-md p-3 md:p-4 cursor-grab active:cursor-grabbing hover:border-border hover:shadow-sm transition-all touch-manipulation">
                                   <div className="flex items-start gap-2">
@@ -510,7 +502,7 @@ export default function PipelineBoard() {
                                           
                                           {item.dealValue && (
                                             <p className="text-sm md:text-base font-semibold text-green-600 mt-1">
-                                              {formatCurrency(item.dealValue)}
+                                              {formatCurrencyCompact(item.dealValue)}
                                             </p>
                                           )}
                                         </div>

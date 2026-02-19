@@ -773,9 +773,9 @@ export default function OrganizationDetailPage() {
                 consolidatePropertiesForDisplay(properties).map((property) => (
                   <Link
                     key={property.propertyKey || property.id}
-                    href={`/property/${property.id}`}
+                    href={`/property/${property.propertyKey || property.id}`}
                     className="block px-6 py-4 hover:bg-gray-50"
-                    data-testid={`link-property-${property.id}`}
+                    data-testid={`link-property-${property.propertyKey || property.id}`}
                     aria-label={`View property ${property.commonName || property.address || 'details'}`}
                   >
                     <div className="flex items-start justify-between">

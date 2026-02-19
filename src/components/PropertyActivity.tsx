@@ -5,6 +5,7 @@ import { Activity, ArrowRight, MessageSquare, DollarSign, RefreshCw, Check, X, A
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PIPELINE_STATUS_LABELS, type PipelineStatus } from '@/lib/schema';
+import { formatCurrencyFull } from '@/lib/utils';
 
 interface ActivityItem {
   id: string;
@@ -84,16 +85,6 @@ export default function PropertyActivity({ propertyId }: PropertyActivityProps) 
     return (first + last).toUpperCase() || 'U';
   }
 
-  function formatCurrency(value: string): string {
-    const num = parseInt(value, 10);
-    if (isNaN(num)) return value;
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    }).format(num);
-  }
-
   function getActivityDescription(activity: ActivityItem): React.ReactNode {
     const userName = getUserName(activity.user);
 
@@ -121,15 +112,15 @@ export default function PropertyActivity({ propertyId }: PropertyActivityProps) 
           return (
             <>
               <span className="font-medium">{userName}</span> updated deal value from{' '}
-              <span className="font-medium">{formatCurrency(activity.previousValue)}</span> to{' '}
-              <span className="font-medium">{formatCurrency(activity.newValue || '0')}</span>
+              <span className="font-medium">{formatCurrencyFull(activity.previousValue)}</span> to{' '}
+              <span className="font-medium">{formatCurrencyFull(activity.newValue || '0')}</span>
             </>
           );
         }
         return (
           <>
             <span className="font-medium">{userName}</span> set deal value to{' '}
-            <span className="font-medium">{formatCurrency(activity.newValue || '0')}</span>
+            <span className="font-medium">{formatCurrencyFull(activity.newValue || '0')}</span>
           </>
         );
 

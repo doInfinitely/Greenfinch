@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
         senderFirstName: users.firstName,
         senderLastName: users.lastName,
         senderProfileImage: users.profileImageUrl,
+        propertyKey: properties.propertyKey,
         propertyAddress: properties.regridAddress,
         propertyCommonName: properties.commonName,
       })
@@ -75,6 +76,7 @@ export async function GET(request: NextRequest) {
         readAt: n.readAt,
         createdAt: n.createdAt,
         propertyId: n.propertyId,
+        propertyKey: n.propertyKey,
         noteId: n.noteId,
         actionId: n.actionId,
         sender: n.senderFirstName ? {

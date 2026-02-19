@@ -5,6 +5,7 @@ import AppSidebar from '@/components/AppSidebar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart3, TrendingUp, Users, Building2, Loader2 } from 'lucide-react';
 import { useAuth } from '@clerk/nextjs';
+import { formatCurrencyCompact } from '@/lib/utils';
 
 interface TeamMember {
   userId: string;
@@ -19,16 +20,6 @@ interface AnalyticsData {
   totalPipelineValue: number;
   valueGenerated: number;
   teamActivity: TeamMember[];
-}
-
-function formatCurrency(value: number): string {
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`;
-  }
-  if (value >= 1000) {
-    return `$${(value / 1000).toFixed(0)}K`;
-  }
-  return `$${value.toLocaleString()}`;
 }
 
 function formatDate(dateString: string): string {
@@ -142,7 +133,7 @@ export default function OrgAnalytics() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold" data-testid="text-pipeline-value">
-                      {formatCurrency(data?.totalPipelineValue || 0)}
+                      {formatCurrencyCompact(data?.totalPipelineValue || 0)}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Total active deals
@@ -157,7 +148,7 @@ export default function OrgAnalytics() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold" data-testid="text-value-generated">
-                      {formatCurrency(data?.valueGenerated || 0)}
+                      {formatCurrencyCompact(data?.valueGenerated || 0)}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       From Greenfinch leads

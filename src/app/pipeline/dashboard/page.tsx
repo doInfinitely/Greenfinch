@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { BarChart3, DollarSign, TrendingUp, Target, Loader2, Users, Calendar, MessageSquare, ChevronRight, Clock, AlertCircle, List, Building2, User } from 'lucide-react';
 import { formatDistanceToNow, isPast, isToday, isTomorrow } from 'date-fns';
+import { formatCurrencyCompact } from '@/lib/utils';
 
 interface DashboardData {
   totalPipelineValue: number;
@@ -42,6 +43,7 @@ interface OrgMember {
 interface PendingAction {
   id: string;
   propertyId: string;
+  propertyKey: string | null;
   actionType: string;
   description: string | null;
   dueAt: string;
@@ -57,6 +59,7 @@ interface RecentMention {
   isRead: boolean;
   createdAt: string;
   propertyId: string | null;
+  propertyKey: string | null;
   propertyAddress: string | null;
   sender: { firstName: string; lastName: string; profileImage: string | null } | null;
 }
@@ -72,16 +75,6 @@ interface UserList {
   listType: string | null;
   createdAt: string;
   itemCount: number;
-}
-
-function formatCurrency(value: number): string {
-  if (value >= 1000000) {
-    return `$${(value / 1000000).toFixed(1)}M`;
-  }
-  if (value >= 1000) {
-    return `$${(value / 1000).toFixed(0)}K`;
-  }
-  return `$${value.toLocaleString()}`;
 }
 
 export default function PipelineDashboard() {
@@ -247,7 +240,7 @@ export default function PipelineDashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold" data-testid="text-pipeline-value">
-                      {formatCurrency(data?.totalPipelineValue || 0)}
+                      {formatCurrencyCompact(data?.totalPipelineValue || 0)}
                     </div>
                     <p className="text-xs text-muted-foreground">
                       Across all active opportunities
@@ -280,7 +273,7 @@ export default function PipelineDashboard() {
                       {data?.wonThisMonth || 0}
                     </div>
                     <p className="text-xs text-muted-foreground">
-                      {formatCurrency(data?.wonValue || 0)} in deal value
+                      {formatCurrencyCompact(data?.wonValue || 0)} in deal value
                     </p>
                   </CardContent>
                 </Card>
@@ -413,7 +406,7 @@ export default function PipelineDashboard() {
                           return (
                             <Link
                               key={action.id}
-                              href={`/property/${action.propertyId}`}
+                              href={`/property/${action.propertyKey || action.propertyId}`}
                               className="flex items-center gap-3 p-3 -mx-3 rounded-md hover-elevate group"
                               data-testid={`task-item-${action.id}`}
                             >
@@ -478,7 +471,7 @@ export default function PipelineDashboard() {
                         {activity.recentMentions.map((mention) => (
                           <Link
                             key={mention.id}
-                            href={mention.propertyId ? `/property/${mention.propertyId}` : '#'}
+                            href={mention.propertyKey || mention.propertyId ? `/property/${mention.propertyKey || mention.propertyId}` : '#'}
                             className={`flex items-center gap-3 p-3 -mx-3 rounded-md hover-elevate group ${!mention.isRead ? 'bg-blue-50' : ''}`}
                             data-testid={`mention-item-${mention.id}`}
                           >

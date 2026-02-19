@@ -57,6 +57,7 @@ export async function GET(request: NextRequest) {
         dealValue: propertyPipeline.dealValue,
         statusChangedAt: propertyPipeline.statusChangedAt,
         ownerId: propertyPipeline.ownerId,
+        propertyKey: properties.propertyKey,
         propertyAddress: properties.regridAddress,
         propertyCity: properties.city,
         propertyState: properties.state,

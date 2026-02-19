@@ -35,7 +35,7 @@ export default function AssociatedProperties({ properties }: AssociatedPropertie
           {properties.map((prop, index) => (
             <Link
               key={`${prop.id}-${prop.role || index}`}
-              href={`/property/${prop.id}`}
+              href={`/property/${prop.propertyKey || prop.id}`}
               className="block p-4 border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors"
             >
               <div className="flex items-start justify-between">

@@ -12,6 +12,7 @@ import { Sparkles, ListPlus, Users } from 'lucide-react';
 import { TableSkeleton } from '@/components/PageSkeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
+import { formatLotSize, formatBuildingSqft } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import BulkAddToListModal from '@/components/BulkAddToListModal';
 import { useEnrichment } from '@/hooks/use-enrichment';
@@ -57,21 +58,6 @@ const getStatusDisplay = (p: Property): { label: string; className: string } => 
     return { label: 'Customer', className: 'bg-purple-100 text-purple-700' };
   }
   return { label: 'Prospect', className: 'bg-gray-100 text-gray-600' };
-};
-
-const formatLotSize = (sqft: number | null) => {
-  if (!sqft) return '-';
-  const acres = sqft / 43560;
-  return `${acres.toFixed(1)} ac`;
-};
-
-const formatBuildingSqft = (sqft: number | null) => {
-  if (!sqft) return '-';
-  if (sqft >= 1000) {
-    const k = sqft / 1000;
-    return sqft < 19000 ? `${k.toFixed(1)}k` : `${Math.round(k)}k`;
-  }
-  return sqft.toString();
 };
 
 const PAGE_SIZE = 20;

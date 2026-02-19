@@ -29,6 +29,7 @@ export async function GET(request: NextRequest) {
         dueAt: propertyActions.dueAt,
         status: propertyActions.status,
         createdAt: propertyActions.createdAt,
+        propertyKey: properties.propertyKey,
         propertyAddress: properties.regridAddress,
         creatorFirstName: users.firstName,
         creatorLastName: users.lastName,
@@ -58,6 +59,7 @@ export async function GET(request: NextRequest) {
         isRead: notifications.isRead,
         createdAt: notifications.createdAt,
         propertyId: notifications.propertyId,
+        propertyKey: properties.propertyKey,
         propertyAddress: properties.regridAddress,
         senderFirstName: users.firstName,
         senderLastName: users.lastName,
@@ -80,6 +82,7 @@ export async function GET(request: NextRequest) {
       pendingActions: pendingActions.map(a => ({
         id: a.id,
         propertyId: a.propertyId,
+        propertyKey: a.propertyKey,
         actionType: a.actionType,
         description: a.description,
         dueAt: a.dueAt,
@@ -99,6 +102,7 @@ export async function GET(request: NextRequest) {
         isRead: m.isRead,
         createdAt: m.createdAt,
         propertyId: m.propertyId,
+        propertyKey: m.propertyKey,
         propertyAddress: m.propertyAddress,
         sender: m.senderFirstName ? {
           firstName: m.senderFirstName,

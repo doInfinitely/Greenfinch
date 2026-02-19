@@ -1212,7 +1212,7 @@ export default function ContactsPage() {
                                     <ul className="space-y-1">
                                       {contact.properties.slice(0, 5).map((prop) => (
                                         <li key={prop.propertyId || prop.propertyKey} className="text-sm text-gray-600">
-                                          <Link href={`/property/${prop.propertyId}`} className="text-green-600 hover:underline">
+                                          <Link href={`/property/${prop.propertyKey || prop.propertyId}`} className="text-green-600 hover:underline">
                                             {prop.address || prop.propertyKey || 'Unknown'}
                                           </Link>
                                           {prop.role && <span className="text-gray-400 ml-2">({prop.role})</span>}

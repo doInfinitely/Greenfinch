@@ -23,6 +23,7 @@ interface Notification {
   readAt: string | null;
   createdAt: string;
   propertyId: string | null;
+  propertyKey: string | null;
   noteId: string | null;
   actionId: string | null;
   sender: {
@@ -169,9 +170,9 @@ export default function NotificationBell() {
                       if (!notification.isRead) {
                         markAsRead(notification.id);
                       }
-                      if (notification.propertyId) {
+                      if (notification.propertyKey || notification.propertyId) {
                         setIsOpen(false);
-                        router.push(`/property/${notification.propertyId}`);
+                        router.push(`/property/${notification.propertyKey || notification.propertyId}`);
                       }
                     }}
                     data-testid={`notification-item-${notification.id}`}
