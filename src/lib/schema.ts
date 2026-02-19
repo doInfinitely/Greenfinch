@@ -760,35 +760,6 @@ export const propertyActivity = pgTable('property_activity', {
   createdAtIdx: index('idx_property_activity_created').on(table.createdAt),
 }));
 
-// Data issue flags - general purpose data issue reporting for contacts and properties
-export const dataIssueFlags = pgTable('data_issue_flags', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  
-  entityType: text('entity_type').notNull(), // 'contact' | 'property'
-  contactId: uuid('contact_id').references(() => contacts.id),
-  propertyId: uuid('property_id').references(() => properties.id),
-  
-  issueDescription: text('issue_description').notNull(),
-  
-  status: text('status').default('open').notNull(), // open, reviewed, resolved, dismissed
-  
-  resolvedNote: text('resolved_note'),
-  
-  flaggedByUserId: uuid('flagged_by_user_id').references(() => users.id),
-  resolvedByUserId: uuid('resolved_by_user_id').references(() => users.id),
-  resolvedAt: timestamp('resolved_at'),
-  
-  createdAt: timestamp('created_at').defaultNow(),
-  updatedAt: timestamp('updated_at').defaultNow(),
-}, (table) => ({
-  entityTypeIdx: index('idx_data_issue_flags_entity').on(table.entityType),
-  contactIdx: index('idx_data_issue_flags_contact').on(table.contactId),
-  propertyIdx: index('idx_data_issue_flags_property').on(table.propertyId),
-  statusIdx: index('idx_data_issue_flags_status').on(table.status),
-}));
-
-export type DataIssueFlag = typeof dataIssueFlags.$inferSelect;
-
 // Contact LinkedIn flags - for flagging incorrect LinkedIn profiles
 export const contactLinkedinFlags = pgTable('contact_linkedin_flags', {
   id: uuid('id').primaryKey().defaultRandom(),
