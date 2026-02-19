@@ -1,8 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { X, Flag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+
+const MAX_DESCRIPTION_LENGTH = 2000;
 
 interface DataIssueDialogProps {
   entityType: 'contact' | 'property';
@@ -17,9 +19,26 @@ export default function DataIssueDialog({ entityType, entityId, entityLabel, onC
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
+  const safeClose = useCallback(() => {
+    if (!isSubmitting) onClose();
+  }, [isSubmitting, onClose]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') safeClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [safeClose]);
+
   const handleSubmit = async () => {
-    if (description.trim().length < 5) {
+    const trimmed = description.trim();
+    if (trimmed.length < 5) {
       setMessage({ type: 'error', text: 'Please describe the issue in at least a few words.' });
+      return;
+    }
+    if (trimmed.length > MAX_DESCRIPTION_LENGTH) {
+      setMessage({ type: 'error', text: `Description is too long (max ${MAX_DESCRIPTION_LENGTH} characters).` });
       return;
     }
 
@@ -34,7 +53,7 @@ export default function DataIssueDialog({ entityType, entityId, entityLabel, onC
           entityType,
           contactId: entityType === 'contact' ? entityId : undefined,
           propertyId: entityType === 'property' ? entityId : undefined,
-          issueDescription: description.trim(),
+          issueDescription: trimmed,
         }),
       });
 
@@ -56,9 +75,9 @@ export default function DataIssueDialog({ entityType, entityId, entityLabel, onC
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={safeClose}>
       <div
-        className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6"
+        className="bg-white rounded-md shadow-xl max-w-md w-full mx-4 p-6"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-4">
@@ -67,8 +86,9 @@ export default function DataIssueDialog({ entityType, entityId, entityLabel, onC
             <h3 className="text-lg font-semibold text-gray-900">Report Data Issue</h3>
           </div>
           <button
-            onClick={onClose}
+            onClick={safeClose}
             className="text-gray-400 hover:text-gray-600"
+            disabled={isSubmitting}
             data-testid="button-close-data-issue"
           >
             <X className="w-5 h-5" />
@@ -84,13 +104,18 @@ export default function DataIssueDialog({ entityType, entityId, entityLabel, onC
 
         <textarea
           value={description}
-          onChange={(e) => setDescription(e.target.value)}
+          onChange={(e) => setDescription(e.target.value.slice(0, MAX_DESCRIPTION_LENGTH))}
           placeholder="e.g. The email address is no longer valid, they left the company..."
           rows={4}
           className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500 text-sm"
           data-testid="input-data-issue-description"
           autoFocus
         />
+        {description.length > MAX_DESCRIPTION_LENGTH - 200 && (
+          <p className="text-xs text-gray-400 mt-1 text-right" data-testid="text-char-count">
+            {description.length}/{MAX_DESCRIPTION_LENGTH}
+          </p>
+        )}
 
         {message && (
           <div
@@ -104,7 +129,8 @@ export default function DataIssueDialog({ entityType, entityId, entityLabel, onC
         <div className="flex justify-end gap-3 mt-4">
           <Button
             variant="outline"
-            onClick={onClose}
+            onClick={safeClose}
+            disabled={isSubmitting}
             data-testid="button-cancel-data-issue"
           >
             Cancel
@@ -112,7 +138,7 @@ export default function DataIssueDialog({ entityType, entityId, entityLabel, onC
           <Button
             onClick={handleSubmit}
             disabled={isSubmitting || description.trim().length < 5}
-            className="bg-amber-600 hover:bg-amber-700 text-white"
+            className="bg-amber-600 text-white"
             data-testid="button-submit-data-issue"
           >
             {isSubmitting ? 'Submitting...' : 'Submit Report'}

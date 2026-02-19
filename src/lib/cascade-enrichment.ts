@@ -673,7 +673,11 @@ export async function enrichContactCascade(
   const finalLinkedin = foundLinkedin || pdlData?.linkedinUrl || crustdataData?.linkedinUrl || null;
   const finalLocation = pdlData?.location || crustdataData?.location || location || null;
   const personalPhone = pdlData?.mobilePhone || null;
-  const allPhones: string[] = Array.isArray(pdlData?.phonesJson) ? pdlData.phonesJson.filter((p: any): p is string => typeof p === 'string') : [];
+  const allPhones: string[] = Array.isArray(pdlData?.phonesJson)
+    ? pdlData.phonesJson
+        .map((p: any) => (typeof p === 'string' ? p : p?.number || p?.value || null))
+        .filter((p: string | null): p is string => !!p)
+    : [];
   const workPhone = allPhones.find(p => p !== personalPhone) || null;
   const finalPhone = personalPhone || allPhones[0] || null;
   

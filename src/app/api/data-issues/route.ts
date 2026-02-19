@@ -4,6 +4,9 @@ import { dataIssueFlags, contacts, properties } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_DESCRIPTION_LENGTH = 2000;
+
 export async function POST(request: NextRequest) {
   try {
     const session = await getSession();
@@ -18,16 +21,34 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'entityType must be "contact" or "property"' }, { status: 400 });
     }
 
-    if (entityType === 'contact' && !contactId) {
-      return NextResponse.json({ error: 'contactId is required for contact issues' }, { status: 400 });
+    if (entityType === 'contact') {
+      if (!contactId) {
+        return NextResponse.json({ error: 'contactId is required for contact issues' }, { status: 400 });
+      }
+      if (typeof contactId !== 'string' || !UUID_REGEX.test(contactId)) {
+        return NextResponse.json({ error: 'Invalid contactId format' }, { status: 400 });
+      }
     }
 
-    if (entityType === 'property' && !propertyId) {
-      return NextResponse.json({ error: 'propertyId is required for property issues' }, { status: 400 });
+    if (entityType === 'property') {
+      if (!propertyId) {
+        return NextResponse.json({ error: 'propertyId is required for property issues' }, { status: 400 });
+      }
+      if (typeof propertyId !== 'string' || !UUID_REGEX.test(propertyId)) {
+        return NextResponse.json({ error: 'Invalid propertyId format' }, { status: 400 });
+      }
     }
 
-    if (!issueDescription || typeof issueDescription !== 'string' || issueDescription.trim().length < 5) {
+    if (!issueDescription || typeof issueDescription !== 'string') {
+      return NextResponse.json({ error: 'Please provide a description' }, { status: 400 });
+    }
+
+    const trimmedDescription = issueDescription.trim();
+    if (trimmedDescription.length < 5) {
       return NextResponse.json({ error: 'Please provide a description of at least 5 characters' }, { status: 400 });
+    }
+    if (trimmedDescription.length > MAX_DESCRIPTION_LENGTH) {
+      return NextResponse.json({ error: `Description must be ${MAX_DESCRIPTION_LENGTH} characters or fewer` }, { status: 400 });
     }
 
     if (entityType === 'contact') {
@@ -48,11 +69,11 @@ export async function POST(request: NextRequest) {
       entityType,
       contactId: entityType === 'contact' ? contactId : null,
       propertyId: entityType === 'property' ? propertyId : null,
-      issueDescription: issueDescription.trim(),
+      issueDescription: trimmedDescription,
       flaggedByUserId: session.user.id,
     }).returning();
 
-    console.log(`[DataIssue] New ${entityType} issue flagged by user ${session.user.id}: ${issueDescription.trim().substring(0, 80)}`);
+    console.log(`[DataIssue] New ${entityType} issue flagged by user ${session.user.id}: ${trimmedDescription.substring(0, 80)}`);
 
     return NextResponse.json({
       success: true,
