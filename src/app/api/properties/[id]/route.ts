@@ -131,8 +131,14 @@ export async function GET(
         constituentCount: dbProperty.constituentCount,
         gisParcelId: dbProperty.dcadGisParcelId,
         parcelCount: Array.isArray(dbProperty.rawParcelsJson) ? (dbProperty.rawParcelsJson as any[]).length : 1,
-        usedesc: dbProperty.usedescs || [],
-        usecode: dbProperty.usecodes || [],
+        usedesc: (() => {
+          const parcels = Array.isArray(dbProperty.rawParcelsJson) ? (dbProperty.rawParcelsJson as any[]) : [];
+          return [...new Set(parcels.map(p => p.usedesc).filter(Boolean))] as string[];
+        })(),
+        usecode: (() => {
+          const parcels = Array.isArray(dbProperty.rawParcelsJson) ? (dbProperty.rawParcelsJson as any[]) : [];
+          return [...new Set(parcels.map(p => p.usecode).filter(Boolean))] as string[];
+        })(),
       },
       contacts: dedupedContactRows.map(row => ({
         ...row.contact,

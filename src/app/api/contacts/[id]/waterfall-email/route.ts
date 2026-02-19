@@ -75,7 +75,7 @@ export async function POST(
 
     if (!foundEmail) {
       const hunterResult = await hunterFindEmail(firstName, lastName, contact.companyDomain);
-      if (hunterResult.found && hunterResult.email) {
+      if (hunterResult.email) {
         foundEmail = hunterResult.email;
         emailSource = 'hunter_finder';
         console.log(`[WaterfallEmail] Hunter found: ${foundEmail}`);
@@ -89,7 +89,7 @@ export async function POST(
     let emailStatus = 'unverified';
     try {
       const zbResult = await zerobounceValidate(foundEmail);
-      emailStatus = zbResult.isValid ? 'valid' : (zbResult.status === 'catch-all' ? 'catch-all' : 'invalid');
+      emailStatus = zbResult.status === 'valid' ? 'valid' : (zbResult.status === 'catch-all' ? 'catch-all' : 'invalid');
     } catch {
       console.warn(`[WaterfallEmail] ZeroBounce validation failed for ${foundEmail}`);
     }
