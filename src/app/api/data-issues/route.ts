@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { dataIssueFlags, contacts, properties } from '@/lib/schema';
+import { dataIssues, contacts, properties } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
-import { getSession } from '@/lib/auth';
+import { auth } from '@clerk/nextjs/server';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const MAX_DESCRIPTION_LENGTH = 2000;
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getSession();
-    if (!session?.user) {
+    const { userId } = await auth();
+    if (!userId) {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
     }
 
@@ -65,22 +65,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const [flag] = await db.insert(dataIssueFlags).values({
+    const [inserted] = await db.insert(dataIssues).values({
       entityType,
       contactId: entityType === 'contact' ? contactId : null,
       propertyId: entityType === 'property' ? propertyId : null,
       issueDescription: trimmedDescription,
-      flaggedByUserId: session.user.id,
+      userId: userId,
+      status: 'open',
     }).returning();
 
-    console.log(`[DataIssue] New ${entityType} issue flagged by user ${session.user.id}: ${trimmedDescription.substring(0, 80)}`);
+    console.log(`[DataIssue] New ${entityType} issue flagged by user ${userId}: ${trimmedDescription.substring(0, 80)}`);
 
     return NextResponse.json({
       success: true,
-      data: { id: flag.id },
+      data: { id: inserted.id },
     });
-  } catch (error) {
-    console.error('[DataIssue] Error creating data issue flag:', error);
+  } catch (error: any) {
+    console.error('[DataIssue] Error creating data issue:', error);
     return NextResponse.json({ error: 'Failed to submit data issue' }, { status: 500 });
   }
 }

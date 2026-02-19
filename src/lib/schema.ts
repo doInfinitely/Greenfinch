@@ -495,15 +495,43 @@ export const listItems = pgTable('list_items', {
   addedAt: timestamp('added_at').defaultNow(),
 });
 
+// Data issues reports
+export const dataIssues = pgTable('data_issues', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id'), // Clerk user ID
+  entityType: text('entity_type').notNull(), // 'contact' or 'property'
+  contactId: uuid('contact_id').references(() => contacts.id),
+  propertyId: uuid('property_id').references(() => properties.id),
+  issueDescription: text('issue_description').notNull(),
+  status: text('status').default('open'), // 'open', 'resolved', 'ignored'
+  resolutionNote: text('resolution_note'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Relations
+export const dataIssuesRelations = relations(dataIssues, ({ one }) => ({
+  contact: one(contacts, {
+    fields: [dataIssues.contactId],
+    references: [contacts.id],
+  }),
+  property: one(properties, {
+    fields: [dataIssues.propertyId],
+    references: [properties.id],
+  }),
+}));
+
 // Relations
 export const propertiesRelations = relations(properties, ({ many }) => ({
   propertyContacts: many(propertyContacts),
   propertyOrganizations: many(propertyOrganizations),
+  dataIssues: many(dataIssues),
 }));
 
 export const contactsRelations = relations(contacts, ({ many }) => ({
   propertyContacts: many(propertyContacts),
   contactOrganizations: many(contactOrganizations),
+  dataIssues: many(dataIssues),
 }));
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({
