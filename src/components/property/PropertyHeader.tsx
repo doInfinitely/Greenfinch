@@ -236,226 +236,114 @@ export default function PropertyHeader({
               googleMapsApiKey={googleMapsApiKey!}
               onExpand={onExpandStreetView}
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-transparent pointer-events-none" />
-            <div className="absolute bottom-0 left-0 right-0 p-6 pointer-events-none">
-              <div className="flex items-end justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  {enrichedProperty?.commonName && (
-                    <h1 className="text-2xl font-bold text-white break-words drop-shadow-sm">
-                      {normalizeCommonName(enrichedProperty.commonName)}
-                    </h1>
-                  )}
-                  <p className={`${enrichedProperty?.commonName ? 'text-base text-white/90' : 'text-2xl font-bold text-white'} break-words drop-shadow-sm`}>
-                    {property.address || 'No Address'}
-                  </p>
-                  <p className="text-sm text-white/80 drop-shadow-sm">
-                    {property.city}, {property.state} {property.zip}
-                    {property.county && ` \u00B7 ${property.county} County`}
-                  </p>
-                </div>
-                <div className="flex-shrink-0 flex items-center gap-2 pointer-events-auto">
-                  {enrichedProperty?.assetCategory && (() => {
-                    const colors = CATEGORY_COLORS[enrichedProperty.assetCategory] || DEFAULT_CATEGORY_COLORS;
-                    return (
-                      <span className="inline-flex items-center gap-1">
-                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}>
-                          {enrichedProperty.assetCategory}
-                        </span>
-                        {enrichedProperty?.assetSubcategory && (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${colors.subBg} ${colors.subText}`}>
-                            {enrichedProperty.assetSubcategory}
-                          </span>
-                        )}
-                      </span>
-                    );
-                  })()}
-                  <LowConfidenceMarker confidence={enrichedProperty?.categoryConfidence} />
-                </div>
-              </div>
-            </div>
           </div>
         )}
 
         <div className="p-6">
-          {!hasStreetView && (
-            <div className="mb-4">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 overflow-hidden">
-                  {enrichedProperty?.commonName && (
-                    <div className="mb-1">
-                      <h1 className="text-2xl font-bold text-gray-900 break-words">
-                        {normalizeCommonName(enrichedProperty.commonName)}
-                      </h1>
-                    </div>
-                  )}
-                  <p className={`${enrichedProperty?.commonName ? 'text-lg text-gray-600' : 'text-2xl font-bold text-gray-900'} mb-1 break-words`}>
-                    {property.address || 'No Address'}
-                  </p>
-                  <p className="text-gray-600">
-                    {property.city}, {property.state} {property.zip}
-                  </p>
-                  {property.county && (
-                    <p className="text-sm text-gray-500">{property.county} County</p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2 mt-3">
-                    {enrichedProperty?.assetCategory && (() => {
-                      const colors = CATEGORY_COLORS[enrichedProperty.assetCategory] || DEFAULT_CATEGORY_COLORS;
-                      return (
-                        <span className="inline-flex items-center gap-1">
-                          <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}>
-                            {enrichedProperty.assetCategory}
-                          </span>
-                          {enrichedProperty?.assetSubcategory && (
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${colors.subBg} ${colors.subText}`}>
-                              {enrichedProperty.assetSubcategory}
-                            </span>
-                          )}
-                        </span>
-                      );
-                    })()}
-                    <LowConfidenceMarker confidence={enrichedProperty?.categoryConfidence} />
-                  </div>
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div className="min-w-0 flex-1 overflow-hidden">
+              {enrichedProperty?.commonName && (
+                <div className="mb-1">
+                  <h1 className="text-2xl font-bold text-gray-900 break-words">
+                    {normalizeCommonName(enrichedProperty.commonName)}
+                  </h1>
                 </div>
-                <div className="flex-shrink-0 flex items-center gap-1.5">
-                  {pipelineOwner && (
+              )}
+              <p className={`${enrichedProperty?.commonName ? 'text-lg text-gray-600' : 'text-2xl font-bold text-gray-900'} mb-1 break-words`}>
+                {property.address || 'No Address'}
+              </p>
+              <p className="text-gray-600">
+                {property.city}, {property.state} {property.zip}
+              </p>
+              {property.county && (
+                <p className="text-sm text-gray-500">{property.county} County</p>
+              )}
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                {enrichedProperty?.assetCategory && (() => {
+                  const colors = CATEGORY_COLORS[enrichedProperty.assetCategory] || DEFAULT_CATEGORY_COLORS;
+                  return (
+                    <span className="inline-flex items-center gap-1">
+                      <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${colors.bg} ${colors.text}`}>
+                        {enrichedProperty.assetCategory}
+                      </span>
+                      {enrichedProperty?.assetSubcategory && (
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs ${colors.subBg} ${colors.subText}`}>
+                          {enrichedProperty.assetSubcategory}
+                        </span>
+                      )}
+                    </span>
+                  );
+                })()}
+                <LowConfidenceMarker confidence={enrichedProperty?.categoryConfidence} />
+              </div>
+            </div>
+            
+            <div className="flex-shrink-0 flex items-center gap-1.5">
+              {pipelineOwner && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Avatar className="w-8 h-8 cursor-default" data-testid="avatar-pipeline-owner">
+                        <AvatarImage src={pipelineOwner.profileImageUrl || ''} />
+                        <AvatarFallback className="text-xs bg-green-100 text-green-700">
+                          {pipelineOwner.displayName?.charAt(0) || '?'}
+                        </AvatarFallback>
+                      </Avatar>
+                    </TooltipTrigger>
+                    <TooltipContent className="z-[100] bg-white border border-border px-3 py-1.5 text-sm text-popover-foreground shadow-md">
+                      <p>Owner: {pipelineOwner.displayName}</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
+              {(() => {
+                const queueStatus = getEnrichmentStatus(property.propertyKey, 'property');
+                const isResearchComplete = enrichmentStatus === 'completed' || enrichmentStatus === 'enriched';
+                if (isResearchComplete) {
+                  return (
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
-                          <Avatar className="w-8 h-8 cursor-default" data-testid="avatar-pipeline-owner">
-                            <AvatarImage src={pipelineOwner.profileImageUrl || ''} />
-                            <AvatarFallback className="text-xs bg-green-100 text-green-700">
-                              {pipelineOwner.displayName?.charAt(0) || '?'}
-                            </AvatarFallback>
-                          </Avatar>
+                          <span className="flex items-center justify-center w-8 h-8" role="img" aria-label="Researched with AI" data-testid="icon-researched">
+                            <Sparkles className="w-5 h-5 text-purple-500" />
+                          </span>
                         </TooltipTrigger>
                         <TooltipContent className="z-[100] bg-white border border-border px-3 py-1.5 text-sm text-popover-foreground shadow-md">
-                          <p>Owner: {pipelineOwner.displayName}</p>
+                          <p>Researched with AI</p>
                         </TooltipContent>
                       </Tooltip>
                     </TooltipProvider>
-                  )}
-                  {(() => {
-                    const queueStatus = getEnrichmentStatus(property.propertyKey, 'property');
-                    const isResearchComplete = enrichmentStatus === 'completed' || enrichmentStatus === 'enriched';
-                    if (isResearchComplete) {
-                      return (
-                        <TooltipProvider>
-                          <Tooltip>
-                            <TooltipTrigger asChild>
-                              <span className="flex items-center justify-center w-8 h-8" role="img" aria-label="Researched with AI" data-testid="icon-researched">
-                                <Sparkles className="w-5 h-5 text-purple-500" />
-                              </span>
-                            </TooltipTrigger>
-                            <TooltipContent className="z-[100] bg-white border border-border px-3 py-1.5 text-sm text-popover-foreground shadow-md">
-                              <p>Researched with AI</p>
-                            </TooltipContent>
-                          </Tooltip>
-                        </TooltipProvider>
-                      );
-                    }
-                    return null;
-                  })()}
-                  <Button variant="outline" size="icon" onClick={onShowAddToList} title="Add to prospecting list" disabled={!userId} data-testid="button-add-to-list">
-                    <ListPlus className="w-4 h-4" />
+                  );
+                }
+                return null;
+              })()}
+              <Button variant="outline" size="icon" onClick={onShowAddToList} title="Add to prospecting list" disabled={!userId} data-testid="button-add-to-list">
+                <ListPlus className="w-4 h-4" />
+              </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="icon" data-testid="button-more-actions">
+                    <MoreVertical className="w-4 h-4" />
                   </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="outline" size="icon" data-testid="button-more-actions">
-                        <MoreVertical className="w-4 h-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48 bg-white border border-gray-200">
-                      <DropdownMenuItem
-                        onClick={async () => { try { await fetch('/api/properties/views', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ propertyId }) }); } catch {} }}
-                        data-testid="menu-item-mark-new"
-                      >
-                        <Eye className="w-4 h-4 mr-2" />
-                        Mark as New
-                      </DropdownMenuItem>
-                      <AdminOnly>
-                        <DropdownMenuItem onClick={() => onSetAssignDialogTrigger(prev => prev + 1)} data-testid="menu-item-assign-owner">
-                          <User className="w-4 h-4 mr-2" />
-                          Assign Owner
-                        </DropdownMenuItem>
-                      </AdminOnly>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {hasStreetView && (
-            <div className="flex items-start justify-between gap-3 mb-4">
-              <div className="flex items-center gap-1.5">
-                {pipelineOwner && (
-                  <TooltipProvider>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Avatar className="w-8 h-8 cursor-default" data-testid="avatar-pipeline-owner">
-                          <AvatarImage src={pipelineOwner.profileImageUrl || ''} />
-                          <AvatarFallback className="text-xs bg-green-100 text-green-700">
-                            {pipelineOwner.displayName?.charAt(0) || '?'}
-                          </AvatarFallback>
-                        </Avatar>
-                      </TooltipTrigger>
-                      <TooltipContent className="z-[100] bg-white border border-border px-3 py-1.5 text-sm text-popover-foreground shadow-md">
-                        <p>Owner: {pipelineOwner.displayName}</p>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                )}
-                {(() => {
-                  const queueStatus = getEnrichmentStatus(property.propertyKey, 'property');
-                  const isResearchComplete = enrichmentStatus === 'completed' || enrichmentStatus === 'enriched';
-                  if (isResearchComplete) {
-                    return (
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="flex items-center justify-center w-8 h-8" role="img" aria-label="Researched with AI" data-testid="icon-researched">
-                              <Sparkles className="w-5 h-5 text-purple-500" />
-                            </span>
-                          </TooltipTrigger>
-                          <TooltipContent className="z-[100] bg-white border border-border px-3 py-1.5 text-sm text-popover-foreground shadow-md">
-                            <p>Researched with AI</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    );
-                  }
-                  return null;
-                })()}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <Button variant="outline" size="icon" onClick={onShowAddToList} title="Add to prospecting list" disabled={!userId} data-testid="button-add-to-list">
-                  <ListPlus className="w-4 h-4" />
-                </Button>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="icon" data-testid="button-more-actions">
-                      <MoreVertical className="w-4 h-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-48 bg-white border border-gray-200">
-                    <DropdownMenuItem
-                      onClick={async () => { try { await fetch('/api/properties/views', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ propertyId }) }); } catch {} }}
-                      data-testid="menu-item-mark-new"
-                    >
-                      <Eye className="w-4 h-4 mr-2" />
-                      Mark as New
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 bg-white border border-gray-200">
+                  <DropdownMenuItem
+                    onClick={async () => { try { await fetch('/api/properties/views', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify({ propertyId }) }); } catch {} }}
+                    data-testid="menu-item-mark-new"
+                  >
+                    <Eye className="w-4 h-4 mr-2" />
+                    Mark as New
+                  </DropdownMenuItem>
+                  <AdminOnly>
+                    <DropdownMenuItem onClick={() => onSetAssignDialogTrigger(prev => prev + 1)} data-testid="menu-item-assign-owner">
+                      <User className="w-4 h-4 mr-2" />
+                      Assign Owner
                     </DropdownMenuItem>
-                    <AdminOnly>
-                      <DropdownMenuItem onClick={() => onSetAssignDialogTrigger(prev => prev + 1)} data-testid="menu-item-assign-owner">
-                        <User className="w-4 h-4 mr-2" />
-                        Assign Owner
-                      </DropdownMenuItem>
-                    </AdminOnly>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
+                  </AdminOnly>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-          )}
+          </div>
 
           <div className="flex flex-wrap items-center gap-2 mb-6">
             {(() => {
