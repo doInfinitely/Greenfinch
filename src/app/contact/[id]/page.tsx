@@ -14,6 +14,7 @@ import ContactHeader from '@/components/contact/ContactHeader';
 import ContactInfo from '@/components/contact/ContactInfo';
 import AssociatedProperties from '@/components/contact/AssociatedProperties';
 import ContactOrganizations from '@/components/contact/ContactOrganizations';
+import DataIssueDialog from '@/components/DataIssueDialog';
 import type { Contact, LinkedInSearchResult, PropertyRelation, OrgRelation } from '@/components/contact/types';
 
 function hasHighQualityPhone(contact: Contact): boolean {
@@ -47,6 +48,7 @@ export default function ContactDetailPage() {
   const [emailMessage, setEmailMessage] = useState<string | null>(null);
   const [showAddToListModal, setShowAddToListModal] = useState(false);
   const [linkedInMessage, setLinkedInMessage] = useState<string | null>(null);
+  const [showDataIssueDialog, setShowDataIssueDialog] = useState(false);
   
   const [isEditMode, setIsEditMode] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -367,7 +369,7 @@ export default function ContactDetailPage() {
           </button>
           
           <div className="flex flex-col gap-4">
-            <ContactHeader contact={contact} onFlagLinkedIn={handleFlagLinkedIn} />
+            <ContactHeader contact={contact} onFlagLinkedIn={handleFlagLinkedIn} onReportDataIssue={() => setShowDataIssueDialog(true)} />
             
             {showLinkedInAlternatives && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowLinkedInAlternatives(false)}>
@@ -437,6 +439,15 @@ export default function ContactDetailPage() {
               </div>
             )}
             
+            {showDataIssueDialog && contact && (
+              <DataIssueDialog
+                entityType="contact"
+                entityId={contact.id}
+                entityLabel={contact.fullName || 'Unknown Contact'}
+                onClose={() => setShowDataIssueDialog(false)}
+              />
+            )}
+
             {isEditMode && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={handleCancelEdit}>
                 <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>

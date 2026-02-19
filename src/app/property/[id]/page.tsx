@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import dynamic from 'next/dynamic';
-import { X, Wrench, Maximize2 } from 'lucide-react';
+import { X, Wrench, Maximize2, Flag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import AddToListModal from '@/components/AddToListModal';
 import AddContactModal from '@/components/AddContactModal';
@@ -21,6 +21,7 @@ import OwnershipSection from '@/components/property/OwnershipSection';
 import ContactsSection from '@/components/property/ContactsSection';
 import FlagDialog from '@/components/property/FlagDialog';
 import ServiceProviderDialog from '@/components/property/ServiceProviderDialog';
+import DataIssueDialog from '@/components/DataIssueDialog';
 import type { Property, ConstituentProperty, EnrichedPropertyData, Contact, Organization, EnrichmentStatusType } from '@/components/property/types';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
@@ -61,6 +62,7 @@ export default function PropertyDetailPage() {
   
   const [showFlagDialog, setShowFlagDialog] = useState(false);
   const [flagType, setFlagType] = useState<'management_company' | 'owner' | 'property_info' | 'other'>('management_company');
+  const [showDataIssueDialog, setShowDataIssueDialog] = useState(false);
   
   const [showAddServiceProvider, setShowAddServiceProvider] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -551,6 +553,17 @@ export default function PropertyDetailPage() {
       />
 
       <main className="max-w-7xl mx-auto px-4 py-6">
+        <div className="flex justify-end mb-2">
+          <button
+            onClick={() => setShowDataIssueDialog(true)}
+            className="text-xs text-gray-500 hover:text-amber-600 hover:underline flex items-center gap-1"
+            title="Report incorrect data for this property"
+            data-testid="button-report-property-data-issue"
+          >
+            <Flag className="w-3 h-3" />
+            Report data issue
+          </button>
+        </div>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
@@ -810,6 +823,15 @@ export default function PropertyDetailPage() {
           flagType={flagType}
           propertyKey={property.propertyKey}
           onClose={() => setShowFlagDialog(false)}
+        />
+      )}
+
+      {showDataIssueDialog && (
+        <DataIssueDialog
+          entityType="property"
+          entityId={property.id}
+          entityLabel={property.commonName || property.validatedAddress || property.regridAddress || property.propertyKey}
+          onClose={() => setShowDataIssueDialog(false)}
         />
       )}
 

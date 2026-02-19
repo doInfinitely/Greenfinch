@@ -15,9 +15,10 @@ const CONTACT_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
 interface ContactHeaderProps {
   contact: Contact;
   onFlagLinkedIn: () => void;
+  onReportDataIssue: () => void;
 }
 
-export default function ContactHeader({ contact, onFlagLinkedIn }: ContactHeaderProps) {
+export default function ContactHeader({ contact, onFlagLinkedIn, onReportDataIssue }: ContactHeaderProps) {
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const [isLoadingPhoto, setIsLoadingPhoto] = useState(false);
   const photoFetchAttemptedRef = useRef<string | null>(null);
@@ -170,6 +171,15 @@ export default function ContactHeader({ contact, onFlagLinkedIn }: ContactHeader
               Wrong profile?
             </button>
           )}
+          <button
+            onClick={onReportDataIssue}
+            className="text-xs text-gray-500 hover:text-amber-600 hover:underline flex items-center gap-1"
+            title="Report incorrect data for this contact"
+            data-testid="button-report-data-issue"
+          >
+            <Flag className="w-3 h-3" />
+            Report data issue
+          </button>
         </div>
       </div>
     </div>
