@@ -713,32 +713,6 @@ export default function PropertyDetailPage() {
                 </div>
               </div>
 
-              {property.lat && property.lon && googleMapsApiKey && (
-                <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-                  <div className="h-48 lg:h-56">
-                    <StreetView
-                      apiKey={googleMapsApiKey}
-                      lat={property.lat}
-                      lon={property.lon}
-                    />
-                  </div>
-                  <div className="p-2 border-t border-gray-100 flex items-center justify-between">
-                    <p className="text-xs text-gray-500">
-                      <span className="font-medium">Street View</span> - drag to explore
-                    </p>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      onClick={() => setExpandedMapType('street')}
-                      title="Expand street view"
-                      data-testid="button-expand-street-view"
-                      className="h-6 w-6"
-                    >
-                      <Maximize2 className="w-3.5 h-3.5" />
-                    </Button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
