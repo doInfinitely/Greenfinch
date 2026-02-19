@@ -43,7 +43,7 @@ The project is built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM 
 - **Mapbox**: Interactive mapping, geocoding, POI enrichment.
 - **Findymail**: Email finding, verification, reverse email lookup, phone lookup.
 - **Hunter.io**: Email finding, organization domain enrichment.
-- **People Data Labs (PDL)**: Primary person and company enrichment.
+- **People Data Labs (PDL)**: Primary person and company enrichment (min_likelihood=6 for person matches).
 - **Crustdata**: Contact and company verification.
 - **SerpAPI**: Google search-based LinkedIn profile discovery (fallback).
 - **Apollo.io**: People match API for contact creation.
@@ -53,6 +53,7 @@ The project is built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM 
 - **Clerk Auth**: User authentication, organization management, RBAC.
 - **Google Gemini**: AI-based property enrichment (`gemini-3-flash-preview` with search grounding).
 - **Upstash Redis**: Distributed caching and locking.
+- **Logo.dev**: Company logo and brand data API (describe endpoint for logo, blurhash, brand colors, social links). API route: `/api/brand/[domain]`. Requires `LOGO_DEV_SECRET_KEY` secret.
 
 ## Planned Fixes
 - [ ] **ENRICHLAYER-1**: EnrichLayer profile photo API call is failing (site currently timing out). When their service is restored: add a 10s fetch timeout with `AbortController` to `getProfilePicture()` and all other EnrichLayer functions in `src/lib/enrichlayer.ts`, add a circuit breaker to skip calls after repeated failures, and ensure the contact detail page and enrichment queue gracefully handle the timeout without blocking other operations.
