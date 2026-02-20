@@ -397,10 +397,13 @@ export class DashboardMap {
       return;
     }
 
-    // Try client-side matching by parcelnumb (instant)
+    // Try client-side matching by parcelnumb, then by ll_uuid (instant)
     let propertyInfo = parcelnumb 
       ? this.findPropertyByParcelNumber(parcelnumb)
       : null;
+    if (!propertyInfo && llUuid) {
+      propertyInfo = this.findPropertyByLlUuid(llUuid);
+    }
 
     if (propertyInfo) {
       this.tooltipCache.set(parcelId, {
@@ -411,8 +414,8 @@ export class DashboardMap {
         propertyKey: propertyInfo.propertyKey,
       });
       this.showTooltip(center, propertyInfo);
-    } else if (parcelnumb && !isSameParcel && !this.pendingApiCalls.has(parcelId)) {
-      this.fetchAndShowTooltip(center, parcelnumb, parcelId, props);
+    } else if ((parcelnumb || llUuid) && !isSameParcel && !this.pendingApiCalls.has(parcelId)) {
+      this.fetchAndShowTooltip(center, parcelnumb, parcelId, props, llUuid);
     } else if (!this.pendingApiCalls.has(parcelId)) {
       // No match and no pending API call - show Regrid address only (never raw owner name)
       const regridAddress = props.address || props.siteaddr || props.mail_addres;
@@ -446,10 +449,13 @@ export class DashboardMap {
     }
   }
 
-  private async fetchAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string, parcelId: string, regridProps?: Record<string, any>) {
+  private async fetchAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string | null, parcelId: string, regridProps?: Record<string, any>, llUuid?: string | null) {
     this.pendingApiCalls.add(parcelId);
     try {
-      const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
+      const params = new URLSearchParams();
+      if (parcelnumb) params.set('parcelnumb', parcelnumb);
+      if (llUuid) params.set('ll_uuid', llUuid);
+      const response = await fetch(`/api/parcels/resolve?${params.toString()}`);
       
       if (response.ok) {
         const data = await response.json();
@@ -557,9 +563,10 @@ export class DashboardMap {
     const feature = e.features[0];
     const props = feature.properties || {};
     const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
+    const llUuid = props.ll_uuid || (typeof feature.id === 'string' ? feature.id : null);
     
     // Check tooltip cache first - it may already have resolved this parcel
-    const parcelId = parcelnumb || props.ll_uuid || (typeof feature.id === 'string' ? feature.id : null);
+    const parcelId = parcelnumb || llUuid;
     if (parcelId) {
       const cached = this.tooltipCache.get(parcelId);
       if (cached?.propertyKey) {
@@ -577,10 +584,22 @@ export class DashboardMap {
       }
     }
 
+    // Try client-side match by ll_uuid
+    if (llUuid) {
+      const propertyInfo = this.findPropertyByLlUuid(llUuid);
+      if (propertyInfo?.propertyKey) {
+        this.config.onPropertyClick(propertyInfo.propertyKey);
+        return;
+      }
+    }
+
     // API fallback - resolve parcel to parent property via server
-    if (parcelnumb) {
+    if (parcelnumb || llUuid) {
       try {
-        const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
+        const params = new URLSearchParams();
+        if (parcelnumb) params.set('parcelnumb', parcelnumb);
+        if (llUuid) params.set('ll_uuid', llUuid);
+        const response = await fetch(`/api/parcels/resolve?${params.toString()}`);
         if (response.ok) {
           const data = await response.json();
           if (data.propertyKey) {
