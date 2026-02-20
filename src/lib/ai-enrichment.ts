@@ -118,6 +118,9 @@ function mapQualityGradeToClass(grade: string | null): { propertyClass: string |
   return mapping[gradeNorm] || { propertyClass: null, confidence: 0 };
 }
 
+// SDK-level HTTP timeout: must be under the ~300s system TCP socket timeout
+const GEMINI_HTTP_TIMEOUT_MS = 280000; // 280 seconds
+
 // AI-generated source domains to filter out from grounding results
 const AI_SOURCE_DOMAINS = [
   'vertexaisearch.cloud.google.com',
@@ -294,7 +297,8 @@ Return JSON:
       contents: prompt,
       config: {
         temperature: 0.1,
-        tools: [{ googleSearch: {} }]
+        tools: [{ googleSearch: {} }],
+        httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
       }
     }));
 
@@ -392,7 +396,6 @@ Return JSON:
 
 async function callGeminiWithTimeout<T>(
   fn: () => Promise<T>,
-  timeoutMs: number = 600000,
   retries: number = 2
 ): Promise<T> {
   let lastError: Error | null = null;
@@ -400,7 +403,7 @@ async function callGeminiWithTimeout<T>(
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
       const overallStart = Date.now();
-      console.log(`[FocusedEnrichment] API call attempt ${attempt}/${retries}, timeout=${timeoutMs}ms...`);
+      console.log(`[FocusedEnrichment] API call attempt ${attempt}/${retries}, httpTimeout=${GEMINI_HTTP_TIMEOUT_MS}ms...`);
 
       const wrappedFn = async () => {
         const queueWait = Date.now() - overallStart;
@@ -409,12 +412,8 @@ async function callGeminiWithTimeout<T>(
         }
         const apiStart = Date.now();
 
-        const timeoutPromise = new Promise<never>((_, reject) => {
-          setTimeout(() => reject(new Error(`Gemini API timeout after ${timeoutMs}ms (attempt ${attempt})`)), timeoutMs);
-        });
-
         try {
-          const result = await Promise.race([fn(), timeoutPromise]);
+          const result = await fn();
           console.log(`[FocusedEnrichment] Gemini API responded in ${Date.now() - apiStart}ms (total with queue: ${Date.now() - overallStart}ms)`);
           return result;
         } catch (apiErr) {
@@ -512,10 +511,10 @@ Return JSON:
         contents: prompt,
         config: {
           temperature: 0.1,
-          tools: [{ googleSearch: {} }]
+          tools: [{ googleSearch: {} }],
+          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
         }
       }),
-      600000,
       2
     );
 
@@ -679,10 +678,10 @@ Return JSON:
         contents: prompt,
         config: {
           temperature: 0.1,
-          tools: [{ googleSearch: {} }]
+          tools: [{ googleSearch: {} }],
+          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
         }
       }),
-      600000,
       2
     );
 
@@ -768,10 +767,10 @@ async function enrichContactDetails(
         contents: prompt,
         config: {
           temperature: 0.1,
-          tools: [{ googleSearch: {} }]
+          tools: [{ googleSearch: {} }],
+          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
         }
       }),
-      600000,
       2
     );
 
@@ -1144,9 +1143,11 @@ ${preCleaned}`;
       () => client.models.generateContent({
         model: GEMINI_MODEL,
         contents: prompt,
-        config: { temperature: 0.1 }
+        config: {
+          temperature: 0.1,
+          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
+        }
       }),
-      600000,
       1
     );
     
@@ -1193,10 +1194,10 @@ If you cannot find a replacement, return {"name":null}`;
         contents: prompt,
         config: {
           temperature: 0.1,
-          tools: [{ googleSearch: {} }]
+          tools: [{ googleSearch: {} }],
+          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
         }
       }),
-      600000,
       1
     );
 
