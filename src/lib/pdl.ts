@@ -446,7 +446,7 @@ export async function enrichPersonPDL(
 
 export async function enrichCompanyPDL(
   domain: string,
-  options: { name?: string; linkedinUrl?: string; locality?: string; region?: string } = {}
+  options: { name?: string; linkedinUrl?: string; locality?: string; region?: string; ticker?: string } = {}
 ): Promise<PDLCompanyResult> {
   const apiKey = process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY;
   
@@ -455,52 +455,95 @@ export async function enrichCompanyPDL(
     return emptyCompanyResult();
   }
 
+  if (!domain && !options.name && !options.linkedinUrl && !options.ticker) {
+    console.warn('[PDL] No identifiers provided for company enrichment');
+    return emptyCompanyResult();
+  }
+
+  async function attemptEnrich(params: URLSearchParams, attemptLabel: string): Promise<{ found: boolean; data?: any }> {
+    console.log(`[PDL] Company enrich ${attemptLabel}:`, Object.fromEntries(params));
+
+    const response = await fetch(`${PDL_API_BASE}/company/enrich?${params}`, {
+      method: 'GET',
+      headers: { 'X-Api-Key': apiKey! },
+    });
+
+    console.log(`[PDL] Company enrich ${attemptLabel} status:`, response.status);
+
+    if (response.status === 404) {
+      return { found: false };
+    }
+
+    if (response.status === 402) {
+      console.error('[PDL] Insufficient credits');
+      throw new Error('PDL API: Insufficient credits');
+    }
+
+    if (response.status === 429) {
+      throw new Error('Rate limit hit');
+    }
+
+    if (!response.ok) {
+      const text = await response.text();
+      console.error(`[PDL] Company enrichment error (${attemptLabel}):`, text);
+      throw new Error(`PDL API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log(`[PDL] Company found (${attemptLabel}):`, data.name, '| likelihood:', data.likelihood);
+    return { found: true, data };
+  }
+
   try {
     const result = await withRetry(
       () => rateLimiters.pdlCompany.execute(async () => {
-          const params = new URLSearchParams({
-            website: domain,
+          const baseParams = new URLSearchParams({
             pretty: 'true',
             titlecase: 'true',
-          });
-          if (options.name) params.set('name', options.name);
-          if (options.linkedinUrl) params.set('profile', options.linkedinUrl);
-          if (options.locality) params.set('locality', options.locality);
-          if (options.region) params.set('region', options.region);
-
-          console.log('[PDL] Company enrich request:', domain, options.name ? `(name: ${options.name})` : '');
-
-          const response = await fetch(`${PDL_API_BASE}/company/enrich?${params}`, {
-            method: 'GET',
-            headers: {
-              'X-Api-Key': apiKey,
-            },
+            min_likelihood: '5',
           });
 
-          console.log('[PDL] Company enrich response status:', response.status);
+          if (domain) baseParams.set('website', domain);
+          if (options.name) baseParams.set('name', options.name);
+          if (options.linkedinUrl) baseParams.set('profile', options.linkedinUrl);
+          if (options.locality) baseParams.set('locality', options.locality);
+          if (options.region) baseParams.set('region', options.region);
+          if (options.ticker) baseParams.set('ticker', options.ticker);
 
-          if (response.status === 404) {
-            return { found: false };
+          const attempt1 = await attemptEnrich(baseParams, 'attempt 1 (all params)');
+          if (attempt1.found) return attempt1;
+
+          if (domain && options.name) {
+            const nameOnlyParams = new URLSearchParams({
+              name: options.name,
+              pretty: 'true',
+              titlecase: 'true',
+              min_likelihood: '5',
+            });
+            if (options.linkedinUrl) nameOnlyParams.set('profile', options.linkedinUrl);
+            if (options.locality) nameOnlyParams.set('locality', options.locality);
+            if (options.region) nameOnlyParams.set('region', options.region);
+
+            console.log('[PDL] Domain-based lookup failed, retrying with name-based lookup...');
+            const attempt2 = await attemptEnrich(nameOnlyParams, 'attempt 2 (name only)');
+            if (attempt2.found) return attempt2;
           }
 
-          if (response.status === 402) {
-            console.error('[PDL] Insufficient credits');
-            throw new Error('PDL API: Insufficient credits');
+          if (options.linkedinUrl && !domain) {
+            const profileParams = new URLSearchParams({
+              profile: options.linkedinUrl,
+              pretty: 'true',
+              titlecase: 'true',
+              min_likelihood: '5',
+            });
+            if (options.name) profileParams.set('name', options.name);
+
+            console.log('[PDL] Trying LinkedIn profile-based lookup...');
+            const attempt3 = await attemptEnrich(profileParams, 'attempt 3 (profile)');
+            if (attempt3.found) return attempt3;
           }
 
-          if (response.status === 429) {
-            throw new Error('Rate limit hit');
-          }
-
-          if (!response.ok) {
-            const text = await response.text();
-            console.error('[PDL] Company enrichment error:', text);
-            throw new Error(`PDL API error: ${response.status}`);
-          }
-
-          const data = await response.json();
-          console.log('[PDL] Company found:', data.name);
-          return { found: true, data };
+          return { found: false };
         }),
       { maxRetries: 3, baseDelayMs: 3000, serviceName: 'PDL Company' }
     );
@@ -539,7 +582,7 @@ export async function enrichCompanyPDL(
       name: company.name || null,
       displayName: company.display_name || company.name || null,
       description: company.summary || company.description || null,
-      website: company.website || `https://${domain}`,
+      website: company.website || (domain ? `https://${domain}` : null),
       linkedinUrl,
       industry: company.industry || null,
       employeeCount: company.employee_count || null,

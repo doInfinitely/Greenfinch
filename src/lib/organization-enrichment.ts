@@ -46,7 +46,7 @@ async function findOrCreateOrgByDomain(domain: string): Promise<{ id: string; is
 
 export async function enrichOrganizationByDomain(
   domain: string,
-  options?: { forceRefresh?: boolean }
+  options?: { forceRefresh?: boolean; name?: string; linkedinUrl?: string }
 ): Promise<OrganizationEnrichmentResult> {
   console.log(`[OrgEnrichment] Enriching organization with cascade (PDL → Crustdata): ${domain}`);
   
@@ -64,8 +64,18 @@ export async function enrichOrganizationByDomain(
       enrichedData: null,
     };
   }
+
+  const org = await db.query.organizations.findFirst({
+    where: eq(organizations.id, orgRecord.id),
+  });
   
-  const cascadeResult = await enrichOrganizationCascade(domain);
+  const cascadeName = options?.name || org?.name || undefined;
+  const cascadeLinkedin = options?.linkedinUrl || (org?.linkedinHandle ? `https://linkedin.com/company/${org.linkedinHandle}` : undefined);
+  
+  const cascadeResult = await enrichOrganizationCascade(domain, {
+    name: cascadeName,
+    linkedinUrl: cascadeLinkedin,
+  });
   
   if (!cascadeResult.found) {
     console.log(`[OrgEnrichment] No provider found company: ${domain}`);
@@ -170,5 +180,8 @@ export async function enrichOrganizationById(orgId: string): Promise<Organizatio
     return { success: false, orgId, enrichedData: null, error: 'no_domain' };
   }
   
-  return enrichOrganizationByDomain(org.domain);
+  return enrichOrganizationByDomain(org.domain, {
+    name: org.name || undefined,
+    linkedinUrl: org.linkedinHandle ? `https://linkedin.com/company/${org.linkedinHandle}` : undefined,
+  });
 }
