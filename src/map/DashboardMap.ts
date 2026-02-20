@@ -277,9 +277,12 @@ export class DashboardMap {
     this.handlersRegistered = true;
 
     this.map.on('click', 'clusters', this.onClusterClick);
+    this.map.on('click', 'property-points', this.onPropertyPointClick);
     this.map.on('mouseenter', 'clusters', this.onCursorPointer);
     this.map.on('mouseleave', 'clusters', this.onCursorDefault);
     this.map.on('mouseenter', 'parcels-fill', this.onCursorPointer);
+    this.map.on('mouseenter', 'property-points', this.onCursorPointer);
+    this.map.on('mouseleave', 'property-points', this.onCursorDefault);
     this.map.on('mousemove', 'parcels-fill', this.onParcelHover);
     this.map.on('mouseleave', 'parcels-fill', this.onParcelLeave);
     this.map.on('click', 'parcels-fill', this.onParcelClick);
