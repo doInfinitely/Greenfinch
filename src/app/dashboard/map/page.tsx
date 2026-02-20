@@ -223,7 +223,7 @@ export default function MapPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
             <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
-            <div className="hidden md:flex items-center gap-1.5">
+            <div className="hidden md:flex lg:hidden items-center gap-1.5">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
