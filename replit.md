@@ -13,6 +13,8 @@ greenfinch.ai is an AI-native commercial real estate prospecting CRM. It aggrega
 - Design for nationwide expansion (MVP scope: ZIP 75225 in Dallas, TX)
 - Light mode only: Dark mode is fully disabled; all `dark:` CSS classes removed from app code; `tailwind.config.ts` has `darkMode: "class"` but `layout.tsx` force-removes the `dark` class and forces `light` class on the HTML element
 - No changes to EnrichLayer integration until their site is back up (currently timing out)
+- No confirmation dialogs for paid API calls (phone lookup, contact research, etc.) — just execute immediately
+- Keep error/failure messages simple and user-friendly — don't list internal provider names or technical details
 
 ## System Architecture
 

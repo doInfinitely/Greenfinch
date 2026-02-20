@@ -275,11 +275,6 @@ export default function ContactDetailPage() {
   const handleFindPhone = async () => {
     if (!contact) return;
 
-    const confirmed = window.confirm(
-      `Search for phone number for ${contact.fullName || 'this contact'}?\n\nThis will check up to 4 sources (Findymail, PDL, Hunter, EnrichLayer).`
-    );
-    if (!confirmed) return;
-
     setIsFindingPhone(true);
     setPhoneMessage(null);
 
@@ -290,9 +285,9 @@ export default function ContactDetailPage() {
       apiEndpoint: `/api/contacts/${contactId}/waterfall-phone`,
       onSuccess: (data: any) => {
         if (data?.data?.phone) {
-          setPhoneMessage(`Found: ${data.data.phone} (via ${data.data.source})`);
+          setPhoneMessage(`Found: ${data.data.phone}`);
         } else {
-          setPhoneMessage('No phone number found after checking all sources');
+          setPhoneMessage('No phone number found');
         }
         fetchContact();
         setIsFindingPhone(false);
@@ -306,11 +301,6 @@ export default function ContactDetailPage() {
 
   const handleResearchContact = async () => {
     if (!contact) return;
-
-    const confirmed = window.confirm(
-      `Run full research on ${contact.fullName || 'this contact'}?\n\nThis will search for email, LinkedIn, and other details using paid API services.`
-    );
-    if (!confirmed) return;
 
     setIsFindingEmail(true);
     setEmailMessage(null);

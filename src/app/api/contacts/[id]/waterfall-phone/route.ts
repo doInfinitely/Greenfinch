@@ -284,7 +284,7 @@ export async function POST(
     return apiSuccess({
       phone: null,
       steps,
-      message: 'No phone number found after checking all sources',
+      message: 'No phone number found',
     });
   } catch (error) {
     console.error('[WaterfallPhone] API error:', error);
