@@ -422,21 +422,21 @@ export class DashboardMap {
     const props = feature.properties || {};
     const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
 
-    if (this.debugLogging) {
-      console.log('[ParcelClick] parcelnumb:', parcelnumb);
-    }
+    console.log('[ParcelClick] parcelnumb:', parcelnumb, 'all props:', JSON.stringify(Object.keys(props)));
 
     if (!parcelnumb) {
-      if (this.debugLogging) console.log('[ParcelClick] No parcelnumb found');
+      console.log('[ParcelClick] No parcelnumb found in feature properties');
       return;
     }
 
     const entry = this.parcelIndex.get(parcelnumb);
     if (entry) {
-      if (this.debugLogging) console.log('[ParcelClick] Index hit →', entry.pk, entry.n);
+      console.log('[ParcelClick] Index hit →', entry.pk, entry.n);
       this.config.onPropertyClick(entry.pk);
     } else {
-      if (this.debugLogging) console.log('[ParcelClick] Not in our database');
+      console.log('[ParcelClick] parcelnumb NOT in index. Index size:', this.parcelIndex.size);
+      const sampleKeys = Array.from(this.parcelIndex.keys()).slice(0, 5);
+      console.log('[ParcelClick] Sample index keys:', sampleKeys);
     }
   };
 
