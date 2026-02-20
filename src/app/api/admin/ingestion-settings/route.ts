@@ -8,6 +8,14 @@ const DEFAULT_SETTINGS = {
   zip_codes: ['75225'],
   default_limit: 500,
   all_zips: false,
+  filters: {
+    lotSqftMin: null as number | null,
+    lotSqftMax: null as number | null,
+    buildingSqftMin: null as number | null,
+    buildingSqftMax: null as number | null,
+    buildingClassCodes: [] as string[],
+    conditionGrades: [] as string[],
+  },
 };
 
 export async function GET() {
@@ -31,10 +39,13 @@ export async function GET() {
       settingsMap[setting.key] = setting.value;
     }
 
+    const storedFilters = settingsMap.ingestion_filters as typeof DEFAULT_SETTINGS.filters | undefined;
+    
     return NextResponse.json({
       zipCodes: (settingsMap.zip_codes as string[]) || DEFAULT_SETTINGS.zip_codes,
       defaultLimit: (settingsMap.default_limit as number) || DEFAULT_SETTINGS.default_limit,
       allZips: settingsMap.all_zips === true ? true : DEFAULT_SETTINGS.all_zips,
+      filters: storedFilters || DEFAULT_SETTINGS.filters,
     });
   } catch (error) {
     console.error('[IngestionSettings] Error fetching settings:', error);
@@ -60,7 +71,7 @@ export async function PUT(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { zipCodes, defaultLimit, allZips } = body;
+    const { zipCodes, defaultLimit, allZips, filters } = body;
 
     const session = await getSession();
     const userId = session?.user?.id || null;
@@ -143,17 +154,50 @@ export async function PUT(request: NextRequest) {
       }
     }
 
+    if (filters !== undefined) {
+      const sanitizedFilters = {
+        lotSqftMin: typeof filters.lotSqftMin === 'number' ? filters.lotSqftMin : null,
+        lotSqftMax: typeof filters.lotSqftMax === 'number' ? filters.lotSqftMax : null,
+        buildingSqftMin: typeof filters.buildingSqftMin === 'number' ? filters.buildingSqftMin : null,
+        buildingSqftMax: typeof filters.buildingSqftMax === 'number' ? filters.buildingSqftMax : null,
+        buildingClassCodes: Array.isArray(filters.buildingClassCodes) ? filters.buildingClassCodes.filter((c: any) => typeof c === 'string') : [],
+        conditionGrades: Array.isArray(filters.conditionGrades) ? filters.conditionGrades.filter((c: any) => typeof c === 'string') : [],
+      };
+
+      const existingFilterSetting = await db.select().from(ingestionSettings).where(eq(ingestionSettings.key, 'ingestion_filters'));
+      
+      if (existingFilterSetting.length > 0) {
+        await db.update(ingestionSettings)
+          .set({ 
+            value: sanitizedFilters, 
+            updatedAt: new Date(),
+            updatedByUserId: userId 
+          })
+          .where(eq(ingestionSettings.key, 'ingestion_filters'));
+      } else {
+        await db.insert(ingestionSettings).values({
+          key: 'ingestion_filters',
+          value: sanitizedFilters,
+          description: 'Property filters for ingestion (lot size, building sqft, class, condition)',
+          updatedByUserId: userId,
+        });
+      }
+    }
+
     const updatedSettings = await db.select().from(ingestionSettings);
     const settingsMap: Record<string, unknown> = {};
     for (const setting of updatedSettings) {
       settingsMap[setting.key] = setting.value;
     }
 
+    const updatedFilters = settingsMap.ingestion_filters as typeof DEFAULT_SETTINGS.filters | undefined;
+
     return NextResponse.json({
       success: true,
       zipCodes: (settingsMap.zip_codes as string[]) || DEFAULT_SETTINGS.zip_codes,
       defaultLimit: (settingsMap.default_limit as number) || DEFAULT_SETTINGS.default_limit,
       allZips: settingsMap.all_zips === true ? true : DEFAULT_SETTINGS.all_zips,
+      filters: updatedFilters || DEFAULT_SETTINGS.filters,
     });
   } catch (error) {
     console.error('[IngestionSettings] Error updating settings:', error);

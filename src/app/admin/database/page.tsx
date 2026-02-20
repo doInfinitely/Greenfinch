@@ -89,6 +89,13 @@ export default function DatabaseAdminPage() {
   const [isLoadingIngestionSettings, setIsLoadingIngestionSettings] = useState(false);
   const [isSavingIngestionSettings, setIsSavingIngestionSettings] = useState(false);
 
+  const [filterLotSqftMin, setFilterLotSqftMin] = useState<string>('');
+  const [filterLotSqftMax, setFilterLotSqftMax] = useState<string>('');
+  const [filterBldgSqftMin, setFilterBldgSqftMin] = useState<string>('');
+  const [filterBldgSqftMax, setFilterBldgSqftMax] = useState<string>('');
+  const [filterBldgClassCodes, setFilterBldgClassCodes] = useState<string[]>([]);
+  const [filterConditionGrades, setFilterConditionGrades] = useState<string[]>([]);
+
   const fetchTables = useCallback(async () => {
     setIsLoadingTables(true);
     try {
@@ -224,6 +231,14 @@ export default function DatabaseAdminPage() {
       setIngestionZipCodes(data.zipCodes || ['75225']);
       setIngestionLimit(data.defaultLimit || 500);
       setIngestionAllZips(data.allZips === true);
+      if (data.filters) {
+        setFilterLotSqftMin(data.filters.lotSqftMin ? String(data.filters.lotSqftMin) : '');
+        setFilterLotSqftMax(data.filters.lotSqftMax ? String(data.filters.lotSqftMax) : '');
+        setFilterBldgSqftMin(data.filters.buildingSqftMin ? String(data.filters.buildingSqftMin) : '');
+        setFilterBldgSqftMax(data.filters.buildingSqftMax ? String(data.filters.buildingSqftMax) : '');
+        setFilterBldgClassCodes(data.filters.buildingClassCodes || []);
+        setFilterConditionGrades(data.filters.conditionGrades || []);
+      }
     } catch (error) {
       toast({
         title: 'Error',
@@ -246,6 +261,14 @@ export default function DatabaseAdminPage() {
           zipCodes: ingestionZipCodes,
           defaultLimit: ingestionLimit,
           allZips: ingestionAllZips,
+          filters: {
+            lotSqftMin: filterLotSqftMin ? parseInt(filterLotSqftMin) || null : null,
+            lotSqftMax: filterLotSqftMax ? parseInt(filterLotSqftMax) || null : null,
+            buildingSqftMin: filterBldgSqftMin ? parseInt(filterBldgSqftMin) || null : null,
+            buildingSqftMax: filterBldgSqftMax ? parseInt(filterBldgSqftMax) || null : null,
+            buildingClassCodes: filterBldgClassCodes,
+            conditionGrades: filterConditionGrades,
+          },
         }),
       });
 
@@ -866,6 +889,109 @@ export default function DatabaseAdminPage() {
                     />
                   </div>
 
+                  <div className="space-y-3">
+                    <label className="text-sm font-medium text-gray-700">Property Filters</label>
+                    <p className="text-sm text-gray-500">
+                      Filter properties during ingestion based on physical characteristics. Leave fields empty for no filter.
+                    </p>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Lot Size Min (sq ft)</label>
+                        <Input
+                          type="number"
+                          min={0}
+                          placeholder="No minimum"
+                          value={filterLotSqftMin}
+                          onChange={(e) => setFilterLotSqftMin(e.target.value)}
+                          data-testid="input-filter-lot-sqft-min"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Lot Size Max (sq ft)</label>
+                        <Input
+                          type="number"
+                          min={0}
+                          placeholder="No maximum"
+                          value={filterLotSqftMax}
+                          onChange={(e) => setFilterLotSqftMax(e.target.value)}
+                          data-testid="input-filter-lot-sqft-max"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Building Size Min (sq ft)</label>
+                        <Input
+                          type="number"
+                          min={0}
+                          placeholder="No minimum"
+                          value={filterBldgSqftMin}
+                          onChange={(e) => setFilterBldgSqftMin(e.target.value)}
+                          data-testid="input-filter-bldg-sqft-min"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-500 mb-1">Building Size Max (sq ft)</label>
+                        <Input
+                          type="number"
+                          min={0}
+                          placeholder="No maximum"
+                          value={filterBldgSqftMax}
+                          onChange={(e) => setFilterBldgSqftMax(e.target.value)}
+                          data-testid="input-filter-bldg-sqft-max"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Building Class</label>
+                      <p className="text-xs text-gray-400 mb-2">Select building classes to include. Leave empty for all classes.</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {['A', 'B', 'C', 'D', 'E', 'F', 'S'].map((cls) => (
+                          <Button
+                            key={cls}
+                            size="sm"
+                            variant={filterBldgClassCodes.includes(cls) ? 'default' : 'outline'}
+                            onClick={() => {
+                              setFilterBldgClassCodes(prev =>
+                                prev.includes(cls) ? prev.filter(c => c !== cls) : [...prev, cls]
+                              );
+                            }}
+                            className="h-7 px-2.5 text-xs"
+                            data-testid={`button-filter-class-${cls}`}
+                          >
+                            {cls}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">Condition Grade</label>
+                      <p className="text-xs text-gray-400 mb-2">Select condition grades to include. Leave empty for all grades.</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {['Excellent', 'Good', 'Average', 'Fair', 'Poor', 'Unsound'].map((grade) => (
+                          <Button
+                            key={grade}
+                            size="sm"
+                            variant={filterConditionGrades.includes(grade) ? 'default' : 'outline'}
+                            onClick={() => {
+                              setFilterConditionGrades(prev =>
+                                prev.includes(grade) ? prev.filter(g => g !== grade) : [...prev, grade]
+                              );
+                            }}
+                            className="h-7 px-2.5 text-xs"
+                            data-testid={`button-filter-condition-${grade.toLowerCase()}`}
+                          >
+                            {grade}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="pt-4 border-t">
                     <Button
                       onClick={saveIngestionSettings}
@@ -878,7 +1004,7 @@ export default function DatabaseAdminPage() {
 
                   <div className="pt-4 border-t">
                     <h4 className="text-sm font-medium text-gray-700 mb-2">Current Configuration</h4>
-                    <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600">
+                    <div className="bg-gray-50 rounded-md p-3 text-sm text-gray-600 space-y-1">
                       <p>
                         <strong>Scope:</strong> {ingestionAllZips ? 'All ZIP codes (county-wide)' : 'Specific ZIP codes'}
                       </p>
@@ -890,6 +1016,22 @@ export default function DatabaseAdminPage() {
                       <p>
                         <strong>{ingestionAllZips ? 'Total limit:' : 'Limit per ZIP:'}</strong> {ingestionLimit} properties
                       </p>
+                      {(filterLotSqftMin || filterLotSqftMax) && (
+                        <p>
+                          <strong>Lot size:</strong> {filterLotSqftMin ? `${parseInt(filterLotSqftMin).toLocaleString()} sq ft min` : 'no min'} – {filterLotSqftMax ? `${parseInt(filterLotSqftMax).toLocaleString()} sq ft max` : 'no max'}
+                        </p>
+                      )}
+                      {(filterBldgSqftMin || filterBldgSqftMax) && (
+                        <p>
+                          <strong>Building size:</strong> {filterBldgSqftMin ? `${parseInt(filterBldgSqftMin).toLocaleString()} sq ft min` : 'no min'} – {filterBldgSqftMax ? `${parseInt(filterBldgSqftMax).toLocaleString()} sq ft max` : 'no max'}
+                        </p>
+                      )}
+                      {filterBldgClassCodes.length > 0 && (
+                        <p><strong>Building class:</strong> {filterBldgClassCodes.join(', ')}</p>
+                      )}
+                      {filterConditionGrades.length > 0 && (
+                        <p><strong>Condition:</strong> {filterConditionGrades.join(', ')}</p>
+                      )}
                     </div>
                   </div>
                 </>

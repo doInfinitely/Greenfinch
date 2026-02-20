@@ -1054,6 +1054,59 @@ export const enrichmentCostEvents = pgTable('enrichment_cost_events', {
 export type EnrichmentCostEvent = typeof enrichmentCostEvents.$inferSelect;
 export type InsertEnrichmentCostEvent = typeof enrichmentCostEvents.$inferInsert;
 
+// Contact Snapshots table - stores version history of contact data changes
+export const contactSnapshots = pgTable('contact_snapshots', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  contactId: uuid('contact_id').notNull(),
+  version: integer('version').notNull().default(1),
+  snapshotData: json('snapshot_data').$type<{
+    fullName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+    title?: string | null;
+    employerName?: string | null;
+    companyDomain?: string | null;
+    linkedinUrl?: string | null;
+    location?: string | null;
+    photoUrl?: string | null;
+    emailValidationStatus?: string | null;
+    phoneSource?: string | null;
+    enrichmentPhoneWork?: string | null;
+    enrichmentPhonePersonal?: string | null;
+  }>().notNull(),
+  changes: json('changes').$type<{
+    field: string;
+    oldValue: string | null;
+    newValue: string | null;
+  }[]>(),
+  changeType: text('change_type').notNull().default('research'),
+  triggeredBy: text('triggered_by'),
+  isCanonical: boolean('is_canonical').default(false),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  contactIdx: index('idx_contact_snapshots_contact').on(table.contactId),
+  contactVersionIdx: uniqueIndex('idx_contact_snapshots_contact_version').on(table.contactId, table.version),
+}));
+
+export type ContactSnapshot = typeof contactSnapshots.$inferSelect;
+export type InsertContactSnapshot = typeof contactSnapshots.$inferInsert;
+
+// User Contact Versions table - tracks which version each user is viewing
+export const userContactVersions = pgTable('user_contact_versions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: text('user_id').notNull(),
+  contactId: uuid('contact_id').notNull(),
+  viewingVersion: integer('viewing_version').notNull(),
+  hasUnseenUpdate: boolean('has_unseen_update').default(false),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  userContactIdx: uniqueIndex('idx_user_contact_versions_user_contact').on(table.userId, table.contactId),
+  contactIdx: index('idx_user_contact_versions_contact').on(table.contactId),
+}));
+
+export type UserContactVersion = typeof userContactVersions.$inferSelect;
+export type InsertUserContactVersion = typeof userContactVersions.$inferInsert;
+
 // Outreach method constants
 export const OUTREACH_METHODS = [
   'email',

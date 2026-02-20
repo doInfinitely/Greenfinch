@@ -1,11 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { contacts } from '@/lib/schema';
-import { eq } from 'drizzle-orm';
+import { contacts, contactSnapshots, userContactVersions } from '@/lib/schema';
+import { eq, desc, sql } from 'drizzle-orm';
 import { enrichContactCascade } from '@/lib/cascade-enrichment';
-import { requireSession } from '@/lib/auth';
+import { requireSession, getUserId } from '@/lib/auth';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+const TRACKED_FIELDS = ['email', 'phone', 'title', 'employerName', 'companyDomain', 'linkedinUrl', 'location', 'photoUrl', 'emailValidationStatus'] as const;
+
+function captureSnapshot(contact: any) {
+  return {
+    fullName: contact.fullName || null,
+    email: contact.email || null,
+    phone: contact.phone || null,
+    title: contact.title || null,
+    employerName: contact.employerName || null,
+    companyDomain: contact.companyDomain || null,
+    linkedinUrl: contact.linkedinUrl || null,
+    location: contact.location || null,
+    photoUrl: contact.photoUrl || null,
+    emailValidationStatus: contact.emailValidationStatus || null,
+    phoneSource: contact.phoneSource || null,
+    enrichmentPhoneWork: contact.enrichmentPhoneWork || null,
+    enrichmentPhonePersonal: contact.enrichmentPhonePersonal || null,
+  };
+}
+
+function detectChanges(before: Record<string, any>, after: Record<string, any>) {
+  const changes: Array<{ field: string; oldValue: string | null; newValue: string | null }> = [];
+  for (const field of TRACKED_FIELDS) {
+    const oldVal = before[field] || null;
+    const newVal = after[field] || null;
+    if (oldVal !== newVal && (oldVal || newVal)) {
+      changes.push({ field, oldValue: oldVal, newValue: newVal });
+    }
+  }
+  return changes;
+}
 
 export async function POST(
   request: NextRequest,
@@ -13,6 +45,7 @@ export async function POST(
 ) {
   try {
     await requireSession();
+    const userId = await getUserId();
     
     const { id } = await params;
 
@@ -37,9 +70,12 @@ export async function POST(
       return NextResponse.json({ error: 'Contact has no name to enrich' }, { status: 400 });
     }
 
+    const beforeSnapshot = captureSnapshot(contact);
+    const isReResearch = !!(contact.enrichedAt || contact.pdlEnrichedAt);
+
     const location = contact.location || 'Dallas, TX';
     
-    console.log(`[EnrichContact] Starting cascade enrichment for contact: ${contact.fullName} (${id})`);
+    console.log(`[EnrichContact] Starting ${isReResearch ? 're-research' : 'initial research'} for contact: ${contact.fullName} (${id})`);
     console.log(`[EnrichContact] Using location: ${location}, title: ${contact.title}, domain: ${contact.companyDomain}`);
 
     const result = await enrichContactCascade({
@@ -76,6 +112,7 @@ export async function POST(
 
     const updateData: Record<string, any> = {
       updatedAt: new Date(),
+      enrichedAt: new Date(),
       confidenceFlag: result.confidenceFlag,
       enrichmentSource: result.enrichmentSource,
     };
@@ -106,17 +143,28 @@ export async function POST(
       updateData.enrichmentPhoneWork = result.workPhone;
     }
 
-    if (result.title && !contact.title) {
-      updateData.title = result.title;
-      updateData.titleConfidence = result.confidenceFlag === 'verified' ? 0.95 : 0.80;
-    }
-
-    if (result.company && !contact.employerName) {
-      updateData.employerName = result.company;
-    }
-
-    if (result.companyDomain && !contact.companyDomain) {
-      updateData.companyDomain = result.companyDomain;
+    if (isReResearch) {
+      if (result.title) {
+        updateData.title = result.title;
+        updateData.titleConfidence = result.confidenceFlag === 'verified' ? 0.95 : 0.80;
+      }
+      if (result.company) {
+        updateData.employerName = result.company;
+      }
+      if (result.companyDomain) {
+        updateData.companyDomain = result.companyDomain;
+      }
+    } else {
+      if (result.title && !contact.title) {
+        updateData.title = result.title;
+        updateData.titleConfidence = result.confidenceFlag === 'verified' ? 0.95 : 0.80;
+      }
+      if (result.company && !contact.employerName) {
+        updateData.employerName = result.company;
+      }
+      if (result.companyDomain && !contact.companyDomain) {
+        updateData.companyDomain = result.companyDomain;
+      }
     }
 
     if (result.photoUrl) {
@@ -167,6 +215,8 @@ export async function POST(
     }
 
     updateData.providerId = result.providerId;
+    updateData.pdlEnriched = true;
+    updateData.pdlEnrichedAt = new Date();
 
     const cleanUpdate = Object.fromEntries(
       Object.entries(updateData).filter(([_, v]) => v !== undefined)
@@ -177,6 +227,61 @@ export async function POST(
       .set(cleanUpdate)
       .where(eq(contacts.id, id))
       .returning();
+
+    const afterSnapshot = captureSnapshot(updatedContact);
+    const changes = detectChanges(beforeSnapshot, afterSnapshot);
+    let versionCreated = false;
+    let newVersion = 1;
+
+    if (changes.length > 0) {
+      const [latestSnapshot] = await db
+        .select({ version: contactSnapshots.version })
+        .from(contactSnapshots)
+        .where(eq(contactSnapshots.contactId, id))
+        .orderBy(desc(contactSnapshots.version))
+        .limit(1);
+
+      newVersion = (latestSnapshot?.version || 0) + 1;
+
+      await db.insert(contactSnapshots).values({
+        contactId: id,
+        version: newVersion,
+        snapshotData: afterSnapshot,
+        changes,
+        changeType: isReResearch ? 're-research' : 'research',
+        triggeredBy: userId || undefined,
+        isCanonical: !isReResearch,
+      });
+
+      if (userId) {
+        await db.insert(userContactVersions)
+          .values({
+            userId,
+            contactId: id,
+            viewingVersion: newVersion,
+            hasUnseenUpdate: false,
+          })
+          .onConflictDoUpdate({
+            target: [userContactVersions.userId, userContactVersions.contactId],
+            set: {
+              viewingVersion: newVersion,
+              hasUnseenUpdate: false,
+              updatedAt: new Date(),
+            },
+          });
+
+        if (isReResearch) {
+          await db.execute(sql`
+            UPDATE user_contact_versions 
+            SET has_unseen_update = true, updated_at = NOW()
+            WHERE contact_id = ${id} AND user_id != ${userId}
+          `);
+        }
+      }
+
+      versionCreated = true;
+      console.log(`[EnrichContact] Version ${newVersion} created for ${contact.fullName} with ${changes.length} change(s): ${changes.map(c => c.field).join(', ')}`);
+    }
 
     return NextResponse.json({
       success: true,
@@ -204,6 +309,12 @@ export async function POST(
         confidenceFlag: result.confidenceFlag,
         emailSource: result.emailSource,
         enrichmentSource: result.enrichmentSource,
+      },
+      versioning: {
+        isReResearch,
+        changesDetected: changes.length > 0,
+        changes,
+        version: versionCreated ? newVersion : null,
       },
     });
   } catch (error) {

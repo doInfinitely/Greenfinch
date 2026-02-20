@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { runIngestion, runMultiZipIngestion, runAllZipsIngestion, countCommercialPropertiesByZip, countAllCommercialProperties } from '@/lib/dcad-ingestion';
+import { runIngestion, runMultiZipIngestion, runAllZipsIngestion, countCommercialPropertiesByZip, countAllCommercialProperties, type IngestionFilters } from '@/lib/dcad-ingestion';
 import { requireAdminAccess } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { ingestionSettings } from '@/lib/schema';
@@ -7,7 +7,7 @@ import { ingestionSettings } from '@/lib/schema';
 const DEFAULT_ZIP_CODES = ['75225'];
 const DEFAULT_LIMIT = 500;
 
-async function getIngestionSettings(): Promise<{ zipCodes: string[]; limit: number; allZips: boolean }> {
+async function getIngestionSettings(): Promise<{ zipCodes: string[]; limit: number; allZips: boolean; filters: IngestionFilters }> {
   try {
     const settings = await db.select().from(ingestionSettings);
     const settingsMap: Record<string, unknown> = {};
@@ -18,6 +18,7 @@ async function getIngestionSettings(): Promise<{ zipCodes: string[]; limit: numb
     const storedZipCodes = settingsMap.zip_codes as string[] | undefined;
     const storedLimit = settingsMap.default_limit as number | undefined;
     const storedAllZips = settingsMap.all_zips as boolean | undefined;
+    const storedFilters = settingsMap.ingestion_filters as IngestionFilters | undefined;
     
     const zipCodes = Array.isArray(storedZipCodes) && storedZipCodes.length > 0 
       ? storedZipCodes 
@@ -26,11 +27,12 @@ async function getIngestionSettings(): Promise<{ zipCodes: string[]; limit: numb
       ? storedLimit
       : DEFAULT_LIMIT;
     const allZips = storedAllZips === true;
+    const filters: IngestionFilters = storedFilters || {};
     
-    return { zipCodes, limit, allZips };
+    return { zipCodes, limit, allZips, filters };
   } catch (error) {
     console.error('[Ingest] Failed to fetch settings, using defaults:', error);
-    return { zipCodes: DEFAULT_ZIP_CODES, limit: DEFAULT_LIMIT, allZips: false };
+    return { zipCodes: DEFAULT_ZIP_CODES, limit: DEFAULT_LIMIT, allZips: false, filters: {} };
   }
 }
 
@@ -132,9 +134,11 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const configuredFilters = dbSettings.filters;
+
     if (body.mode === 'all' || allZips) {
       console.log(`Starting DCAD-based ingestion for ALL ZIP codes with limit ${configuredLimit}`);
-      const stats = await runAllZipsIngestion(configuredLimit);
+      const stats = await runAllZipsIngestion(configuredLimit, configuredFilters);
       return NextResponse.json({
         success: true,
         mode: 'all',
@@ -146,7 +150,7 @@ export async function POST(request: NextRequest) {
 
     if (body.mode === 'multi-zip') {
       console.log(`Starting DCAD-based ingestion for ${configuredZipCodes.length} ZIP codes: ${configuredZipCodes.join(', ')} with limit ${configuredLimit}`);
-      const stats = await runMultiZipIngestion(configuredZipCodes, configuredLimit);
+      const stats = await runMultiZipIngestion(configuredZipCodes, configuredLimit, configuredFilters);
       return NextResponse.json({
         success: true,
         mode: 'multi-zip',
@@ -158,7 +162,7 @@ export async function POST(request: NextRequest) {
 
     if (body.zipCode) {
       console.log(`Starting DCAD-based ingestion for ZIP ${body.zipCode} with limit ${configuredLimit}`);
-      const stats = await runIngestion(body.zipCode, configuredLimit);
+      const stats = await runIngestion(body.zipCode, configuredLimit, configuredFilters);
       return NextResponse.json({
         success: true,
         mode: 'mvp',
@@ -169,7 +173,7 @@ export async function POST(request: NextRequest) {
     }
 
     console.log(`Starting DCAD-based ingestion for ${configuredZipCodes.length} ZIP codes: ${configuredZipCodes.join(', ')} with limit ${configuredLimit}`);
-    const stats = await runMultiZipIngestion(configuredZipCodes, configuredLimit);
+    const stats = await runMultiZipIngestion(configuredZipCodes, configuredLimit, configuredFilters);
     return NextResponse.json({
       success: true,
       mode: 'multi-zip',

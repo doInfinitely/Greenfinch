@@ -6,6 +6,43 @@ import { INCLUDED_SPTD_CODES } from './property-classifications';
 import { executeQuery } from './snowflake';
 import { calculateBuildingClass, extractPrimaryHvacTypes, extractPrimaryQualityGrade } from './building-class';
 
+export interface IngestionFilters {
+  lotSqftMin?: number | null;
+  lotSqftMax?: number | null;
+  buildingSqftMin?: number | null;
+  buildingSqftMax?: number | null;
+  buildingClassCodes?: string[];
+  conditionGrades?: string[];
+}
+
+function buildFilterClauses(filters?: IngestionFilters): string {
+  if (!filters) return '';
+  const clauses: string[] = [];
+  
+  if (filters.lotSqftMin != null && filters.lotSqftMin > 0) {
+    clauses.push(`cp.LOT_SQFT >= ${Number(filters.lotSqftMin)}`);
+  }
+  if (filters.lotSqftMax != null && filters.lotSqftMax > 0) {
+    clauses.push(`cp.LOT_SQFT <= ${Number(filters.lotSqftMax)}`);
+  }
+  if (filters.buildingSqftMin != null && filters.buildingSqftMin > 0) {
+    clauses.push(`cp.GROSS_BLDG_AREA >= ${Number(filters.buildingSqftMin)}`);
+  }
+  if (filters.buildingSqftMax != null && filters.buildingSqftMax > 0) {
+    clauses.push(`cp.GROSS_BLDG_AREA <= ${Number(filters.buildingSqftMax)}`);
+  }
+  if (filters.buildingClassCodes && filters.buildingClassCodes.length > 0) {
+    const escaped = filters.buildingClassCodes.map(c => `'${c.replace(/'/g, "''")}'`).join(', ');
+    clauses.push(`cp.BLDG_CLASS_CD IN (${escaped})`);
+  }
+  if (filters.conditionGrades && filters.conditionGrades.length > 0) {
+    const escaped = filters.conditionGrades.map(c => `'${c.replace(/'/g, "''")}'`).join(', ');
+    clauses.push(`cp.CONDITION_GRADE IN (${escaped})`);
+  }
+  
+  return clauses.length > 0 ? ' AND ' + clauses.join(' AND ') : '';
+}
+
 const COMMERCIAL_PROPERTIES_TABLE = 'DCAD_LAND_2025.PUBLIC.COMMERCIAL_PROPERTIES';
 const ACCOUNT_APPRL_TABLE = 'DCAD_LAND_2025.PUBLIC.ACCOUNT_APPRL_YEAR';
 const ACCOUNT_INFO_TABLE = 'DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO';
@@ -213,9 +250,11 @@ export async function countAllCommercialProperties(): Promise<number> {
 export async function getCommercialPropertiesByZip(
   zipCode: string,
   limit: number = 1000,
-  offset: number = 0
+  offset: number = 0,
+  filters?: IngestionFilters
 ): Promise<DCadCommercialProperty[]> {
   const sptdCodesList = INCLUDED_SPTD_CODES.map(c => `'${c}'`).join(', ');
+  const filterClauses = buildFilterClauses(filters);
   
   const sql = `
     SELECT 
@@ -284,7 +323,7 @@ export async function getCommercialPropertiesByZip(
     LEFT JOIN ${LAND_TABLE} land ON cp.ACCOUNT_NUM = land.ACCOUNT_NUM AND land.APPRAISAL_YR = 2025
     LEFT JOIN ${REGRID_TABLE} r ON ai.GIS_PARCEL_ID = r."parcelnumb"
     WHERE cp.ZIP LIKE '${zipCode}%'
-      AND aa.SPTD_CODE IN (${sptdCodesList})
+      AND aa.SPTD_CODE IN (${sptdCodesList})${filterClauses}
     ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
     LIMIT ${limit}
     OFFSET ${offset}
@@ -296,9 +335,11 @@ export async function getCommercialPropertiesByZip(
 
 export async function getAllCommercialProperties(
   limit: number = 50000,
-  offset: number = 0
+  offset: number = 0,
+  filters?: IngestionFilters
 ): Promise<DCadCommercialProperty[]> {
   const sptdCodesList = INCLUDED_SPTD_CODES.map(c => `'${c}'`).join(', ');
+  const filterClauses = buildFilterClauses(filters);
   
   const sql = `
     SELECT 
@@ -366,7 +407,7 @@ export async function getAllCommercialProperties(
     JOIN ${ACCOUNT_INFO_TABLE} ai ON cp.ACCOUNT_NUM = ai.ACCOUNT_NUM
     LEFT JOIN ${LAND_TABLE} land ON cp.ACCOUNT_NUM = land.ACCOUNT_NUM AND land.APPRAISAL_YR = 2025
     LEFT JOIN ${REGRID_TABLE} r ON ai.GIS_PARCEL_ID = r."parcelnumb"
-    WHERE aa.SPTD_CODE IN (${sptdCodesList})
+    WHERE aa.SPTD_CODE IN (${sptdCodesList})${filterClauses}
     ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
     LIMIT ${limit}
     OFFSET ${offset}
@@ -839,9 +880,11 @@ export interface IngestionStats {
 
 export async function runIngestion(
   zipCode: string,
-  limit: number = 500
+  limit: number = 500,
+  filters?: IngestionFilters
 ): Promise<IngestionStats> {
   console.log(`[Ingestion] Starting ingestion for ZIP ${zipCode}`);
+  if (filters) console.log(`[Ingestion] Filters applied:`, JSON.stringify(filters));
   
   const startTime = Date.now();
   const stats: IngestionStats = {
@@ -855,7 +898,7 @@ export async function runIngestion(
   const count = await countCommercialPropertiesByZip(zipCode);
   console.log(`[Ingestion] Found ${count} commercial properties (rows) in ZIP ${zipCode}`);
   
-  const commercialProperties = await getCommercialPropertiesByZip(zipCode, limit);
+  const commercialProperties = await getCommercialPropertiesByZip(zipCode, limit, 0, filters);
   stats.totalFromSnowflake = commercialProperties.length;
   console.log(`[Ingestion] Fetched ${commercialProperties.length} rows from Snowflake`);
   
@@ -919,7 +962,8 @@ export interface MultiZipIngestionStats {
 
 export async function runMultiZipIngestion(
   zipCodes: string[],
-  limitPerZip: number = 500
+  limitPerZip: number = 500,
+  filters?: IngestionFilters
 ): Promise<MultiZipIngestionStats> {
   console.log(`[Ingestion] Starting multi-ZIP ingestion for ${zipCodes.length} ZIP codes: ${zipCodes.join(', ')}`);
   
@@ -935,7 +979,7 @@ export async function runMultiZipIngestion(
   
   for (const zipCode of zipCodes) {
     console.log(`\n[Ingestion] --- Processing ZIP ${zipCode} ---`);
-    const zipStats = await runIngestion(zipCode, limitPerZip);
+    const zipStats = await runIngestion(zipCode, limitPerZip, filters);
     
     stats.totalFromSnowflake += zipStats.totalFromSnowflake;
     stats.propertiesSaved += zipStats.propertiesSaved;
@@ -952,9 +996,11 @@ export async function runMultiZipIngestion(
 }
 
 export async function runAllZipsIngestion(
-  limit: number = 50000
+  limit: number = 50000,
+  filters?: IngestionFilters
 ): Promise<IngestionStats> {
   console.log(`[Ingestion] Starting ALL ZIP codes ingestion with limit ${limit}`);
+  if (filters) console.log(`[Ingestion] Filters applied:`, JSON.stringify(filters));
   
   const startTime = Date.now();
   const stats: IngestionStats = {
@@ -968,7 +1014,7 @@ export async function runAllZipsIngestion(
   const count = await countAllCommercialProperties();
   console.log(`[Ingestion] Found ${count} total commercial properties (rows) across all ZIP codes`);
   
-  const commercialProperties = await getAllCommercialProperties(limit);
+  const commercialProperties = await getAllCommercialProperties(limit, 0, filters);
   stats.totalFromSnowflake = commercialProperties.length;
   console.log(`[Ingestion] Fetched ${commercialProperties.length} rows from Snowflake`);
   

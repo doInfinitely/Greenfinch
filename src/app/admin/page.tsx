@@ -76,7 +76,7 @@ export default function AdminPage() {
   const [ingestOffset, setIngestOffset] = useState('0');
   const [isIngesting, setIsIngesting] = useState(false);
   const [ingestionResult, setIngestionResult] = useState<IngestionResult | null>(null);
-  const [ingestionSettings, setIngestionSettings] = useState<{ zipCodes: string[]; defaultLimit: number; allZips: boolean } | null>(null);
+  const [ingestionSettings, setIngestionSettings] = useState<{ zipCodes: string[]; defaultLimit: number; allZips: boolean; filters?: any } | null>(null);
 
   const [enrichLimit, setEnrichLimit] = useState('50');
   const [onlyUnenriched, setOnlyUnenriched] = useState(true);
@@ -390,8 +390,19 @@ export default function AdminPage() {
             </p>
 
             {ingestionSettings && (
-              <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm text-gray-600">
+              <div className="bg-gray-50 rounded-lg p-3 mb-4 text-sm text-gray-600 space-y-0.5">
                 <p><strong>Scope:</strong> {ingestionSettings.allZips ? 'All ZIP codes (county-wide)' : `Specific ZIPs: ${ingestionSettings.zipCodes.join(', ')}`}</p>
+                {ingestionSettings.filters && (ingestionSettings.filters.lotSqftMin || ingestionSettings.filters.lotSqftMax || ingestionSettings.filters.buildingSqftMin || ingestionSettings.filters.buildingSqftMax || ingestionSettings.filters.buildingClassCodes?.length > 0 || ingestionSettings.filters.conditionGrades?.length > 0) && (
+                  <p className="text-xs text-gray-500">
+                    <strong>Filters:</strong>{' '}
+                    {[
+                      ingestionSettings.filters.lotSqftMin || ingestionSettings.filters.lotSqftMax ? `Lot ${ingestionSettings.filters.lotSqftMin ? `≥${Number(ingestionSettings.filters.lotSqftMin).toLocaleString()}` : ''}${ingestionSettings.filters.lotSqftMin && ingestionSettings.filters.lotSqftMax ? '–' : ''}${ingestionSettings.filters.lotSqftMax ? `≤${Number(ingestionSettings.filters.lotSqftMax).toLocaleString()}` : ''} sqft` : '',
+                      ingestionSettings.filters.buildingSqftMin || ingestionSettings.filters.buildingSqftMax ? `Bldg ${ingestionSettings.filters.buildingSqftMin ? `≥${Number(ingestionSettings.filters.buildingSqftMin).toLocaleString()}` : ''}${ingestionSettings.filters.buildingSqftMin && ingestionSettings.filters.buildingSqftMax ? '–' : ''}${ingestionSettings.filters.buildingSqftMax ? `≤${Number(ingestionSettings.filters.buildingSqftMax).toLocaleString()}` : ''} sqft` : '',
+                      ingestionSettings.filters.buildingClassCodes?.length > 0 ? `Class ${ingestionSettings.filters.buildingClassCodes.join(',')}` : '',
+                      ingestionSettings.filters.conditionGrades?.length > 0 ? `Condition: ${ingestionSettings.filters.conditionGrades.join(', ')}` : '',
+                    ].filter(Boolean).join(' | ')}
+                  </p>
+                )}
                 <p className="text-xs text-gray-400 mt-1">Change in Database {'>'} Ingestion Settings</p>
               </div>
             )}

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { X, ExternalLink, Phone, XCircle, Search, Loader2, Pencil, Save, CheckCircle2 } from 'lucide-react';
+import { X, ExternalLink, Phone, XCircle, Search, Loader2, Pencil, Save, CheckCircle2, RefreshCw } from 'lucide-react';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
@@ -16,6 +16,7 @@ import { formatPhoneNumber } from '@/lib/phone-format';
 import AssociatedProperties from '@/components/contact/AssociatedProperties';
 import ContactOrganizations from '@/components/contact/ContactOrganizations';
 import DataIssueDialog from '@/components/DataIssueDialog';
+import ContactVersionHistory from '@/components/ContactVersionHistory';
 import type { Contact, LinkedInSearchResult, PropertyRelation, OrgRelation } from '@/components/contact/types';
 
 function hasHighQualityPhone(contact: Contact): boolean {
@@ -45,7 +46,7 @@ export default function ContactDetailPage() {
   const { items: enrichmentItems, getEnrichmentStatus } = useEnrichmentQueue();
   const [isFindingPhone, setIsFindingPhone] = useState(false);
   const [isFindingEmail, setIsFindingEmail] = useState(false);
-  const [phoneMessage, setPhoneMessage] = useState<string | null>(null);
+  const [phoneNoResults, setPhoneNoResults] = useState(false);
   const [emailMessage, setEmailMessage] = useState<string | null>(null);
   const [showAddToListModal, setShowAddToListModal] = useState(false);
   const [linkedInMessage, setLinkedInMessage] = useState<string | null>(null);
@@ -277,7 +278,7 @@ export default function ContactDetailPage() {
     if (!contact) return;
 
     setIsFindingPhone(true);
-    setPhoneMessage(null);
+    setPhoneNoResults(false);
 
     startEnrichment({
       type: 'contact_phone',
@@ -286,15 +287,13 @@ export default function ContactDetailPage() {
       apiEndpoint: `/api/contacts/${contactId}/waterfall-phone`,
       onSuccess: (data: any) => {
         if (data?.data?.phone) {
-          setPhoneMessage(`Found: ${formatPhoneNumber(data.data.phone)}`);
+          fetchContact();
         } else {
-          setPhoneMessage('No phone number found');
+          setPhoneNoResults(true);
         }
-        fetchContact();
         setIsFindingPhone(false);
       },
-      onError: (errorMsg: string) => {
-        setPhoneMessage(`Error: ${errorMsg}`);
+      onError: () => {
         setIsFindingPhone(false);
       },
     });
@@ -560,6 +559,22 @@ export default function ContactDetailPage() {
                 
                 if (!needsPhone) return null;
                 
+                if (phoneNoResults) {
+                  return (
+                    <AdminOnly>
+                      <button
+                        disabled
+                        className="inline-flex items-center px-3 py-2 text-gray-400 bg-gray-100 text-sm font-medium rounded-lg cursor-not-allowed border border-gray-200"
+                        title="All providers checked — no phone numbers available for this contact"
+                        data-testid="button-find-phone-exhausted"
+                      >
+                        <Phone className="w-4 h-4 mr-2" />
+                        No Phone Available
+                      </button>
+                    </AdminOnly>
+                  );
+                }
+                
                 return (
                   <AdminOnly>
                     <button
@@ -593,23 +608,44 @@ export default function ContactDetailPage() {
                 );
                 const hasLinkedIn = !!contact.linkedinUrl;
                 const isFullyResearched = hasValidatedEmail && hasLinkedIn;
-
-                if (isFullyResearched) {
-                  return (
-                    <span 
-                      className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg"
-                      title="This contact has been researched with AI"
-                      data-testid="badge-ai-researched"
-                    >
-                      <GreenfinchAgentIcon size={16} className="text-green-600" />
-                      AI Researched
-                    </span>
-                  );
-                }
-
                 const enrichStatus = getEnrichmentStatus(contactId as string, 'contact');
                 const isActive = enrichStatus.isActive || isFindingEmail;
                 const hasFailed = enrichStatus.status === 'failed';
+
+                if (isFullyResearched) {
+                  return (
+                    <>
+                      <span 
+                        className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg"
+                        title="This contact has been researched with AI"
+                        data-testid="badge-ai-researched"
+                      >
+                        <GreenfinchAgentIcon size={16} className="text-green-600" />
+                        AI Researched
+                      </span>
+                      <AdminOnly>
+                        <button
+                          onClick={handleResearchContact}
+                          disabled={isActive}
+                          className={`inline-flex items-center px-3 py-2 text-sm font-medium rounded-lg disabled:cursor-not-allowed ${
+                            isActive
+                              ? 'text-gray-400 bg-gray-100 border border-gray-200'
+                              : 'text-purple-700 bg-purple-50 border border-purple-200 hover:bg-purple-100'
+                          }`}
+                          title="Re-run research to check for updates (title changes, employer changes, etc.)"
+                          data-testid="button-refresh-research"
+                        >
+                          {isActive ? (
+                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          ) : (
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                          )}
+                          {isActive ? 'Refreshing...' : 'Refresh Research'}
+                        </button>
+                      </AdminOnly>
+                    </>
+                  );
+                }
                 
                 return (
                   <AdminOnly>
@@ -637,9 +673,6 @@ export default function ContactDetailPage() {
                 );
               })()}
               
-              {phoneMessage && (
-                <span className="text-sm text-blue-600">{phoneMessage}</span>
-              )}
               {emailMessage && (
                 <span className="text-sm text-purple-600">{emailMessage}</span>
               )}
@@ -694,6 +727,8 @@ export default function ContactDetailPage() {
                 </div>
               </div>
             )}
+            
+            <ContactVersionHistory contactId={contactId as string} />
           </div>
         </div>
       </main>
