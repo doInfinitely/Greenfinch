@@ -235,14 +235,6 @@ export async function POST(request: NextRequest) {
       const queryLower = query.toLowerCase().trim();
       const isReadOnly = queryLower.startsWith('select') || queryLower.startsWith('explain');
 
-      // SECURITY: Block ALL writes in production (server-side check, not client-supplied)
-      if (!isReadOnly && IS_PRODUCTION) {
-        await logAuditAction(currentUser?.id || null, currentUser?.email || null, 'query_blocked', null, query, null, CURRENT_ENVIRONMENT, false, 'Write operations blocked in production', null, ipAddress);
-        return NextResponse.json({
-          error: 'Write operations are permanently blocked in production',
-        }, { status: 403 });
-      }
-
       if (!isReadOnly && !confirm) {
         await logAuditAction(currentUser?.id || null, currentUser?.email || null, 'query_unconfirmed', null, query, null, CURRENT_ENVIRONMENT, false, 'Confirmation required', null, ipAddress);
         return NextResponse.json({
@@ -311,14 +303,6 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Table not allowed for clearing' }, { status: 403 });
       }
 
-      // SECURITY: Block ALL clears in production (server-side check)
-      if (IS_PRODUCTION) {
-        await logAuditAction(currentUser?.id || null, currentUser?.email || null, 'clear_blocked', table, null, null, CURRENT_ENVIRONMENT, false, 'Clear operations blocked in production', null, ipAddress);
-        return NextResponse.json({
-          error: 'Clear operations are permanently blocked in production',
-        }, { status: 403 });
-      }
-
       const dependentTablesQuery = await pool.query(`
         SELECT DISTINCT tc.table_name
         FROM information_schema.table_constraints tc
@@ -385,13 +369,6 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === 'clearAll') {
-      if (IS_PRODUCTION) {
-        await logAuditAction(currentUser?.id || null, currentUser?.email || null, 'clear_all_blocked', null, null, null, CURRENT_ENVIRONMENT, false, 'Clear all blocked in production', null, ipAddress);
-        return NextResponse.json({
-          error: 'Clear all operations are permanently blocked in production',
-        }, { status: 403 });
-      }
-
       if (!confirm) {
         const tableCounts: { table: string; count: number }[] = [];
         let totalRows = 0;
