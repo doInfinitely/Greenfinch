@@ -421,6 +421,23 @@ export default function PropertyDetailPage() {
     fetchPipelineData();
   }, [propertyId]);
 
+  const handlePipelineChange = useCallback((pipelineUpdate: any) => {
+    setPipelineData(pipelineUpdate || null);
+    if (pipelineUpdate?.owner) {
+      const owner = pipelineUpdate.owner;
+      const displayName = [owner.firstName, owner.lastName].filter(Boolean).join(' ') || 'Unknown';
+      setPipelineOwner({
+        id: owner.id,
+        firstName: owner.firstName,
+        lastName: owner.lastName,
+        profileImageUrl: owner.profileImageUrl,
+        displayName,
+      });
+    } else {
+      setPipelineOwner(null);
+    }
+  }, []);
+
   const handleEnrichment = async () => {
     if (!property) return;
     
@@ -557,6 +574,7 @@ export default function PropertyDetailPage() {
         onSetAssignDialogTrigger={setAssignDialogTrigger}
         onSetIsCurrentCustomer={setIsCurrentCustomer}
         onExpandStreetView={() => setExpandedMapType('street')}
+        onPipelineChange={handlePipelineChange}
       />
 
       <main className="max-w-7xl mx-auto px-4 py-6">

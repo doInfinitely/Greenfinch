@@ -188,6 +188,7 @@ interface PropertyHeaderProps {
   onSetAssignDialogTrigger: (fn: (prev: number) => number) => void;
   onSetIsCurrentCustomer: (value: boolean) => void;
   onExpandStreetView?: () => void;
+  onPipelineChange?: (pipeline: any) => void;
 }
 
 export default function PropertyHeader({
@@ -209,6 +210,7 @@ export default function PropertyHeader({
   onSetAssignDialogTrigger,
   onSetIsCurrentCustomer,
   onExpandStreetView,
+  onPipelineChange,
 }: PropertyHeaderProps) {
   const router = useRouter();
   const { getEnrichmentStatus } = useEnrichmentQueue();
@@ -381,7 +383,7 @@ export default function PropertyHeader({
                 </AdminOnly>
               );
             })()}
-            <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls hideOwnerDisplay triggerAssignDialog={assignDialogTrigger} isCustomer={isCurrentCustomer} initialData={pipelineData} initialLoaded={pipelineLoaded} />
+            <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls hideOwnerDisplay triggerAssignDialog={assignDialogTrigger} isCustomer={isCurrentCustomer} initialData={pipelineData} initialLoaded={pipelineLoaded} onPipelineChange={onPipelineChange} />
             <div className="border-l border-gray-200 h-6 mx-1 hidden sm:block" />
             <CustomerToggle propertyId={property.propertyKey} onToggle={onSetIsCurrentCustomer} initialIsCustomer={isCurrentCustomer} initialLoaded={customerLoaded} />
           </div>

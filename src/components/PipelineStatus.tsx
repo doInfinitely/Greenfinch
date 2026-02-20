@@ -51,6 +51,7 @@ interface PipelineStatusProps {
     owner: any;
   } | null;
   initialLoaded?: boolean;
+  onPipelineChange?: (pipeline: { id?: string; status: string; dealValue: number | null; ownerId: string | null; owner: Owner | null }) => void;
 }
 
 const STATUS_COLORS: Record<PipelineStatusType, string> = {
@@ -99,7 +100,7 @@ interface OrgMember {
   canBeAssignedOwner?: boolean;
 }
 
-export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false, hideOwnerControls = false, hideOwnerDisplay = false, triggerAssignDialog = 0, isCustomer = false, initialData, initialLoaded }: PipelineStatusProps) {
+export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false, hideOwnerControls = false, hideOwnerDisplay = false, triggerAssignDialog = 0, isCustomer = false, initialData, initialLoaded, onPipelineChange }: PipelineStatusProps) {
   const { orgRole } = useAuth();
   const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
   
@@ -191,6 +192,7 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
 
       const data = await res.json();
       setPipeline(data.pipeline);
+      onPipelineChange?.(data.pipeline);
       toast({
         title: 'Status updated',
         description: `Property moved to ${PIPELINE_STATUS_LABELS[newStatus]}`,
@@ -250,7 +252,12 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         throw new Error(error.error || 'Failed to claim property');
       }
 
-      await fetchPipeline();
+      const claimRefreshRes = await fetch(`/api/properties/${propertyId}/pipeline`);
+      if (claimRefreshRes.ok) {
+        const claimData = await claimRefreshRes.json();
+        setPipeline(claimData.pipeline);
+        onPipelineChange?.(claimData.pipeline);
+      }
       toast({
         title: 'Property claimed',
         description: 'You are now the owner of this opportunity',
@@ -306,8 +313,13 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
       setShowAssignDialog(false);
       setSelectedOwnerId('');
       
-      // Then refresh data
-      await fetchPipeline();
+      // Refresh data and notify parent
+      const refreshRes = await fetch(`/api/properties/${propertyId}/pipeline`);
+      if (refreshRes.ok) {
+        const refreshData = await refreshRes.json();
+        setPipeline(refreshData.pipeline);
+        onPipelineChange?.(refreshData.pipeline);
+      }
       
       toast({
         title: 'Owner assigned',
