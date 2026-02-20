@@ -412,6 +412,13 @@ export class DashboardMap {
       propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
     }
 
+    if (!propertyInfo) {
+      propertyInfo = this.findPropertyMarkerAtPoint(e.point);
+      if (this.debugLogging && propertyInfo && !isSameParcel) {
+        console.log('[ParcelHover] marker fallback →', propertyInfo.propertyKey, propertyInfo.commonName);
+      }
+    }
+
     if (this.debugLogging && !isSameParcel) {
       console.log('[ParcelHover] clientMatch:', !!propertyInfo, propertyInfo ? `${propertyInfo.commonName || propertyInfo.address}` : 'none', 'hasLlIndex:', llUuid ? this.propertyIndex.has(`ll:${llUuid}`) : 'n/a');
     }
@@ -573,10 +580,14 @@ export class DashboardMap {
       layers: this.map.getLayer('property-points') ? ['property-points'] : [],
     });
     if (markerFeatures && markerFeatures.length > 0) {
-      if (this.debugLogging) {
-        console.log('[ParcelClick] Suppressed by marker overlay at', e.point, 'markers:', markerFeatures.length);
+      const markerProps = markerFeatures[0].properties as any;
+      if (markerProps?.propertyKey) {
+        if (this.debugLogging) {
+          console.log('[ParcelClick] Direct marker hit →', markerProps.propertyKey);
+        }
+        this.config.onPropertyClick(markerProps.propertyKey);
+        return;
       }
-      return;
     }
     
     const feature = e.features[0];
@@ -617,6 +628,13 @@ export class DashboardMap {
       }
     }
 
+    const markerMatch = this.findPropertyMarkerAtPoint(e.point);
+    if (markerMatch?.propertyKey) {
+      if (this.debugLogging) console.log('[ParcelClick] marker fallback →', markerMatch.propertyKey, markerMatch.commonName);
+      this.config.onPropertyClick(markerMatch.propertyKey);
+      return;
+    }
+
     if (parcelnumb || llUuid) {
       try {
         const params = new URLSearchParams();
@@ -641,6 +659,30 @@ export class DashboardMap {
 
   private findPropertyByLlUuid(llUuid: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
     return this.propertyIndex.get(`ll:${llUuid}`) || null;
+  }
+
+  private findPropertyMarkerAtPoint(point: mapboxgl.Point, radius: number = 30): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
+    if (!this.map || !this.map.getLayer('property-points')) return null;
+    const bbox: [mapboxgl.PointLike, mapboxgl.PointLike] = [
+      [point.x - radius, point.y - radius],
+      [point.x + radius, point.y + radius],
+    ];
+    const markers = this.map.queryRenderedFeatures(bbox, { layers: ['property-points'] });
+    if (markers && markers.length > 0) {
+      const props = markers[0].properties as any;
+      if (props?.propertyKey) {
+        const indexed = this.propertyIndex.get(`pk:${props.propertyKey}`);
+        if (indexed) return indexed;
+        return {
+          propertyKey: props.propertyKey,
+          commonName: props.commonName || null,
+          address: props.address || null,
+          category: props.category,
+          subcategory: props.subcategory,
+        };
+      }
+    }
+    return null;
   }
 
   private getPropertyAddress(propertyKey: string): string | null {
