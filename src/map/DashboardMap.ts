@@ -163,7 +163,7 @@ export class DashboardMap {
         type: 'geojson',
         data: this.currentData,
         cluster: true,
-        clusterMaxZoom: 14,
+        clusterMaxZoom: 15,
         clusterRadius: 160,
       });
     }
@@ -457,8 +457,8 @@ export class DashboardMap {
     if (!this.map) return;
 
     const zoom = this.map.getZoom();
-    const showParcels = zoom >= 14;
-    const showClusters = zoom < 14;
+    const showParcels = zoom >= 15;
+    const showClusters = zoom < 15;
 
     const setVisibility = (layerId: string, visible: boolean) => {
       if (this.map?.getLayer(layerId)) {
