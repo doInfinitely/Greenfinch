@@ -190,17 +190,23 @@ function createWorker(concurrency: number): Worker {
     {
       connection: getBullMQRedisConfig() as any,
       concurrency,
+      lockDuration: 600000,
+      stalledInterval: 300000,
     }
   );
 
   worker.on('ready', () => {
-    console.log(`[BullMQ] Worker ready (concurrency=${concurrency})`);
+    console.log(`[BullMQ] Worker ready (concurrency=${concurrency}, lockDuration=600s, stalledInterval=300s)`);
   });
 
   worker.on('failed', async (job, err) => {
     if (!job) return;
     const { propertyKey } = job.data as EnrichmentJobData;
     console.error(`[BullMQ Worker] Job failed (attempt ${job.attemptsMade}/${job.opts?.attempts || 3}): ${propertyKey} - ${err.message}`);
+  });
+
+  worker.on('stalled', (jobId: string) => {
+    console.warn(`[BullMQ Worker] Job stalled (lock expired): ${jobId} — this usually means a Gemini call exceeded the lock duration`);
   });
 
   worker.on('error', (err) => {
