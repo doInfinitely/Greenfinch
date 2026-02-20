@@ -107,7 +107,7 @@ export default function ContactsSection({
                   <ContactAvatar photoUrl={contact.photoUrl} name={contact.fullName || ''} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center flex-wrap gap-2 mb-1">
-                      <p className={`font-medium ${isFormer ? 'text-gray-500 line-through' : 'text-gray-900'}`} data-testid={`text-contact-name-${contact.id}`}>{contact.fullName}</p>
+                      <p className={`font-medium ${isFormer ? 'text-gray-500' : 'text-gray-900'}`} data-testid={`text-contact-name-${contact.id}`}>{contact.fullName}</p>
                       {contact.role && (
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[contact.role] || ROLE_COLORS.other}`}>
                           {ROLE_LABELS[contact.role] || contact.role}
