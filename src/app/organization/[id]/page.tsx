@@ -148,22 +148,22 @@ interface BrandData {
   socials: Record<string, string>;
 }
 
-const SOCIAL_ICON_MAP: Record<string, { icon: typeof SiLinkedin; label: string; color: string }> = {
-  linkedin: { icon: SiLinkedin, label: 'LinkedIn', color: '#0A66C2' },
+const SOCIAL_ICON_MAP: Record<string, { icon: typeof SiLinkedin; label: string }> = {
+  linkedin: { icon: SiLinkedin, label: 'LinkedIn' },
   twitter: { icon: (props: any) => (
     <svg {...props} fill="currentColor" viewBox="0 0 24 24">
       <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
     </svg>
-  ) as any, label: 'X (Twitter)', color: '#000000' },
-  facebook: { icon: SiFacebook, label: 'Facebook', color: '#1877F2' },
-  instagram: { icon: SiInstagram, label: 'Instagram', color: '#E4405F' },
-  youtube: { icon: SiYoutube, label: 'YouTube', color: '#FF0000' },
-  github: { icon: SiGithub, label: 'GitHub', color: '#181717' },
-  pinterest: { icon: SiPinterest, label: 'Pinterest', color: '#BD081C' },
-  reddit: { icon: SiReddit, label: 'Reddit', color: '#FF4500' },
-  telegram: { icon: SiTelegram, label: 'Telegram', color: '#26A5E4' },
-  snapchat: { icon: SiSnapchat, label: 'Snapchat', color: '#FFFC00' },
-  crunchbase: { icon: SiCrunchbase, label: 'Crunchbase', color: '#0288D1' },
+  ) as any, label: 'X (Twitter)' },
+  facebook: { icon: SiFacebook, label: 'Facebook' },
+  instagram: { icon: SiInstagram, label: 'Instagram' },
+  youtube: { icon: SiYoutube, label: 'YouTube' },
+  github: { icon: SiGithub, label: 'GitHub' },
+  pinterest: { icon: SiPinterest, label: 'Pinterest' },
+  reddit: { icon: SiReddit, label: 'Reddit' },
+  telegram: { icon: SiTelegram, label: 'Telegram' },
+  snapchat: { icon: SiSnapchat, label: 'Snapchat' },
+  crunchbase: { icon: SiCrunchbase, label: 'Crunchbase' },
 };
 
 function BlurhashImage({ 
@@ -415,29 +415,21 @@ export default function OrganizationDetailPage() {
 
   const socialLinks = useMemo(() => {
     if (!organization) return [];
-    const SOCIAL_KEY_NORMALIZE: Record<string, string> = { x: 'twitter' };
     const links: Array<{ platform: string; url: string }> = [];
-    if (brandData?.socials) {
-      Object.entries(brandData.socials).forEach(([rawPlatform, url]) => {
-        if (!url) return;
-        const platform = SOCIAL_KEY_NORMALIZE[rawPlatform] || rawPlatform;
-        links.push({ platform, url });
-      });
-    }
-    if (!links.find(l => l.platform === 'linkedin') && organization.linkedinHandle) {
+    if (organization.linkedinHandle) {
       links.push({ platform: 'linkedin', url: `https://www.linkedin.com/company/${organization.linkedinHandle}` });
     }
-    if (!links.find(l => l.platform === 'twitter') && organization.twitterHandle) {
-      links.push({ platform: 'twitter', url: `https://twitter.com/${organization.twitterHandle}` });
+    if (organization.twitterHandle) {
+      links.push({ platform: 'twitter', url: `https://x.com/${organization.twitterHandle}` });
     }
-    if (!links.find(l => l.platform === 'facebook') && organization.facebookHandle) {
+    if (organization.facebookHandle) {
       links.push({ platform: 'facebook', url: `https://facebook.com/${organization.facebookHandle}` });
     }
-    if (!links.find(l => l.platform === 'crunchbase') && organization.crunchbaseHandle) {
+    if (organization.crunchbaseHandle) {
       links.push({ platform: 'crunchbase', url: `https://www.crunchbase.com/organization/${organization.crunchbaseHandle}` });
     }
     return links;
-  }, [organization, brandData]);
+  }, [organization]);
 
   const logoSrc = organization ? (brandData?.logo || organization.logoUrl) : null;
   const brandColors = brandData?.colors || [];
@@ -598,7 +590,7 @@ export default function OrganizationDetailPage() {
                   </div>
 
                   {socialLinks.length > 0 && (
-                    <div className="flex items-center gap-2 mt-3" data-testid="social-links">
+                    <div className="flex items-center gap-1 mt-3" data-testid="social-links">
                       {socialLinks.map(({ platform, url }) => {
                         const socialConfig = SOCIAL_ICON_MAP[platform];
                         if (!socialConfig) return null;
@@ -609,11 +601,11 @@ export default function OrganizationDetailPage() {
                             href={url}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="transition-opacity hover:opacity-70"
+                            className="p-2 rounded-md text-gray-500 hover:text-gray-800 hover:bg-gray-100 transition-colors"
                             title={socialConfig.label}
                             data-testid={`link-social-${platform}`}
                           >
-                            <IconComp className="w-4 h-4" style={{ color: socialConfig.color }} />
+                            <IconComp className="w-5 h-5" />
                           </a>
                         );
                       })}
