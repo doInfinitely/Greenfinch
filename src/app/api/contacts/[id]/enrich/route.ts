@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { contacts, contactSnapshots, userContactVersions } from '@/lib/schema';
-import { eq, desc, sql } from 'drizzle-orm';
+import { contacts, contactSnapshots, userContactVersions, propertyContacts, contactOrganizations } from '@/lib/schema';
+import { eq, desc, sql, and } from 'drizzle-orm';
 import { enrichContactCascade } from '@/lib/cascade-enrichment';
 import { requireSession, getUserId } from '@/lib/auth';
 
@@ -143,7 +143,25 @@ export async function POST(
       updateData.enrichmentPhoneWork = result.workPhone;
     }
 
-    if (isReResearch) {
+    if (result.employerLeftDetected) {
+      const currentTitle = result.pdlTitle || result.crustdataTitle || result.title || null;
+      const currentCompany = result.pdlCompany || result.crustdataCompany || null;
+      const currentDomain = result.pdlCompanyDomain || result.crustdataCompanyDomain || null;
+      
+      console.log(`[EnrichContact] EMPLOYER LEFT DETECTED for ${contact.fullName}: ${result.employerLeftReason}`);
+      console.log(`[EnrichContact] Updating to current employer: ${currentTitle} at ${currentCompany} (${currentDomain})`);
+      
+      if (currentTitle) {
+        updateData.title = currentTitle;
+        updateData.titleConfidence = result.confidenceFlag === 'verified' ? 0.95 : 0.80;
+      }
+      if (currentCompany) {
+        updateData.employerName = currentCompany;
+      }
+      if (currentDomain) {
+        updateData.companyDomain = currentDomain;
+      }
+    } else if (isReResearch) {
       if (result.title) {
         updateData.title = result.title;
         updateData.titleConfidence = result.confidenceFlag === 'verified' ? 0.95 : 0.80;
@@ -227,6 +245,45 @@ export async function POST(
       .set(cleanUpdate)
       .where(eq(contacts.id, id))
       .returning();
+
+    if (result.employerLeftDetected) {
+      try {
+        const updatedPCs = await db
+          .update(propertyContacts)
+          .set({
+            relationshipStatus: 'former',
+            relationshipStatusReason: result.employerLeftReason,
+          })
+          .where(
+            and(
+              eq(propertyContacts.contactId, id),
+              sql`(${propertyContacts.relationshipStatus} IS NULL OR ${propertyContacts.relationshipStatus} != 'former')`
+            )
+          )
+          .returning();
+        
+        if (updatedPCs.length > 0) {
+          console.log(`[EnrichContact] Marked ${updatedPCs.length} property-contact relationship(s) as 'former' for ${contact.fullName}`);
+        }
+
+        const updatedOrgs = await db
+          .update(contactOrganizations)
+          .set({ isCurrent: false })
+          .where(
+            and(
+              eq(contactOrganizations.contactId, id),
+              eq(contactOrganizations.isCurrent, true)
+            )
+          )
+          .returning();
+
+        if (updatedOrgs.length > 0) {
+          console.log(`[EnrichContact] Marked ${updatedOrgs.length} organization relationship(s) as former for ${contact.fullName}`);
+        }
+      } catch (relError) {
+        console.error(`[EnrichContact] Failed to update relationship status for ${contact.fullName}:`, relError);
+      }
+    }
 
     const afterSnapshot = captureSnapshot(updatedContact);
     const changes = detectChanges(beforeSnapshot, afterSnapshot);

@@ -723,9 +723,15 @@ export async function enrichContactCascade(
   // FINAL OUTPUT: Resolve fields with priority rules
   // ═══════════════════════════════════════════════════════════════
   
-  const finalTitle = crustdataData?.title || pdlData?.title || title || null;
-  const finalCompany = crustdataData?.companyName || (pdlDomainMatches ? pdlData?.companyName : null) || companyName || null;
-  const finalCompanyDomain = crustdataData?.companyDomain || (pdlDomainMatches ? pdlData?.companyDomain : null) || companyDomain || null;
+  const finalTitle = employerLeftDetected
+    ? (crustdataData?.title || pdlData?.title || title || null)
+    : (crustdataData?.title || pdlData?.title || title || null);
+  const finalCompany = employerLeftDetected
+    ? (crustdataData?.companyName || pdlData?.companyName || null)
+    : (crustdataData?.companyName || (pdlDomainMatches ? pdlData?.companyName : null) || companyName || null);
+  const finalCompanyDomain = employerLeftDetected
+    ? (crustdataData?.companyDomain || pdlData?.companyDomain || null)
+    : (crustdataData?.companyDomain || (pdlDomainMatches ? pdlData?.companyDomain : null) || companyDomain || null);
   const finalLinkedin = foundLinkedin || pdlData?.linkedinUrl || crustdataData?.linkedinUrl || null;
   const finalLocation = pdlData?.location || crustdataData?.location || location || null;
   const personalPhone = pdlData?.mobilePhone || null;

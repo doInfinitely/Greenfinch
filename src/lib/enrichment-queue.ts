@@ -675,15 +675,31 @@ export async function runCascadeEnrichmentOnSavedRecords(
       if (result.workPhone) {
         updateData.enrichmentPhoneWork = result.workPhone;
       }
-      if (result.title && !contact.title) {
-        updateData.title = result.title;
-        updateData.titleConfidence = result.confidenceFlag === 'verified' ? 0.95 : 0.80;
-      }
-      if (result.company && !contact.employerName) {
-        updateData.employerName = result.company;
-      }
-      if (result.companyDomain && !contact.companyDomain) {
-        updateData.companyDomain = result.companyDomain;
+      if (result.employerLeftDetected) {
+        const currentTitle = result.pdlTitle || result.crustdataTitle || result.title || null;
+        const currentCompany = result.pdlCompany || result.crustdataCompany || null;
+        const currentDomain = result.pdlCompanyDomain || result.crustdataCompanyDomain || null;
+        if (currentTitle) {
+          updateData.title = currentTitle;
+          updateData.titleConfidence = result.confidenceFlag === 'verified' ? 0.95 : 0.80;
+        }
+        if (currentCompany) {
+          updateData.employerName = currentCompany;
+        }
+        if (currentDomain) {
+          updateData.companyDomain = currentDomain;
+        }
+      } else {
+        if (result.title && !contact.title) {
+          updateData.title = result.title;
+          updateData.titleConfidence = result.confidenceFlag === 'verified' ? 0.95 : 0.80;
+        }
+        if (result.company && !contact.employerName) {
+          updateData.employerName = result.company;
+        }
+        if (result.companyDomain && !contact.companyDomain) {
+          updateData.companyDomain = result.companyDomain;
+        }
       }
       if (result.photoUrl) {
         updateData.photoUrl = result.photoUrl;
@@ -792,6 +808,15 @@ export async function runCascadeEnrichmentOnSavedRecords(
                   eq(propertyContacts.contactId, contactId)
                 )
               );
+
+            await db.update(contactOrganizations)
+              .set({ isCurrent: false })
+              .where(
+                and(
+                  eq(contactOrganizations.contactId, contactId),
+                  eq(contactOrganizations.isCurrent, true)
+                )
+              ).catch(err => console.error('[RoleVerification] Failed to update contact_organizations:', err));
 
             const [pcRow, prop] = await Promise.all([
               db.query.propertyContacts.findFirst({
