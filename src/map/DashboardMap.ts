@@ -163,8 +163,8 @@ export class DashboardMap {
         type: 'geojson',
         data: this.currentData,
         cluster: true,
-        clusterMaxZoom: 15,
-        clusterRadius: 160,
+        clusterMaxZoom: 14,
+        clusterRadius: 80,
       });
     }
 
