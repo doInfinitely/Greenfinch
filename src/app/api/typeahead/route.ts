@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import pLimit from 'p-limit';
-import { getParcelByPoint } from '@/lib/regrid';
-import { resolveParcelToProperty } from '@/lib/postgres-queries';
+import { db } from '@/lib/db';
+import { properties } from '@/lib/schema';
+import { sql } from 'drizzle-orm';
 
 interface CacheEntry {
   data: TypeaheadSuggestion[];
@@ -33,21 +34,24 @@ function cleanExpiredCache() {
 
 async function resolvePoiToProperty(lat: number, lon: number): Promise<string | undefined> {
   try {
-    const parcel = await getParcelByPoint(lat, lon);
-    
-    if (!parcel || !parcel.llUuid) {
-      return undefined;
-    }
+    const result = await db
+      .select({ propertyKey: properties.propertyKey })
+      .from(properties)
+      .where(
+        sql`${properties.isParentProperty} = true
+          AND ${properties.lat} IS NOT NULL
+          AND ${properties.lon} IS NOT NULL
+          AND ABS(${properties.lat} - ${lat}) < 0.001
+          AND ABS(${properties.lon} - ${lon}) < 0.001`
+      )
+      .limit(1);
 
-    const resolved = await resolveParcelToProperty(parcel.llUuid);
-    
-    if (resolved && resolved.propertyKey) {
-      return resolved.propertyKey;
+    if (result.length > 0) {
+      return result[0].propertyKey;
     }
 
     return undefined;
   } catch (error) {
-    console.warn(`Error resolving POI at ${lat}, ${lon}:`, error);
     return undefined;
   }
 }

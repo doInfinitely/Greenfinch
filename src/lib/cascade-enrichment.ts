@@ -383,7 +383,61 @@ export async function enrichContactCascade(
   // STAGE 1: Input Validation
   // ═══════════════════════════════════════════════════════════════
   if (!lastName || lastName.trim() === '') {
-    console.log(`[CascadeEnrichment] SKIP: No last name for "${fullName}" — insufficient input`);
+    console.log(`[CascadeEnrichment] Single-name contact "${fullName}" — attempting best-effort enrichment`);
+
+    if (companyDomain) {
+      try {
+        console.log(`[CascadeEnrichment] Trying PDL company search for "${firstName}" at ${companyDomain}`);
+        const { enrichPersonPDL } = await import('./pdl');
+        const pdlResult = await enrichPersonPDL(firstName, '', companyDomain, {
+          companyName: companyName || undefined,
+          location: location || undefined,
+          email: email || undefined,
+        });
+
+        if (pdlResult.found) {
+          const resolvedLastName = pdlResult.lastName || '';
+          console.log(`[CascadeEnrichment] PDL resolved single-name "${fullName}" → ${pdlResult.firstName} ${resolvedLastName}`);
+
+          const result = buildEmptyResult(
+            `${pdlResult.firstName || firstName} ${resolvedLastName}`.trim(),
+            pdlResult.firstName || firstName,
+            resolvedLastName,
+            'pdl_matched'
+          );
+          result.found = true;
+          result.enrichmentSource = 'pdl';
+          result.enrichedAt = new Date();
+          result.email = pdlResult.workEmail || email || null;
+          result.emailSource = pdlResult.workEmail ? 'findymail_finder' : (email ? 'input_verified' : null);
+          result.phone = pdlResult.mobilePhone || null;
+          result.mobilePhone = pdlResult.mobilePhone || null;
+          result.title = pdlResult.title || title || null;
+          result.company = pdlResult.companyName || companyName || null;
+          result.companyDomain = pdlResult.companyDomain || companyDomain || null;
+          result.linkedinUrl = pdlResult.linkedinUrl || null;
+          result.location = pdlResult.location || location || null;
+          result.pdlRaw = pdlResult.raw || null;
+          result.pdlFullName = pdlResult.fullName || null;
+          result.pdlWorkEmail = pdlResult.workEmail || null;
+          result.pdlMobilePhone = pdlResult.mobilePhone || null;
+          result.pdlLinkedinUrl = pdlResult.linkedinUrl || null;
+          result.pdlTitle = pdlResult.title || null;
+          result.pdlCompany = pdlResult.companyName || null;
+          result.pdlCompanyDomain = pdlResult.companyDomain || null;
+          result.pdlLocation = pdlResult.location || null;
+          result.pdlCity = pdlResult.city || null;
+          result.pdlState = pdlResult.state || null;
+          result.pdlIndustry = pdlResult.industry || null;
+          result.pdlGender = pdlResult.gender || null;
+          return result;
+        }
+      } catch (err) {
+        console.warn(`[CascadeEnrichment] PDL lookup failed for single-name "${fullName}":`, err instanceof Error ? err.message : err);
+      }
+    }
+
+    console.log(`[CascadeEnrichment] Could not resolve single-name "${fullName}" — insufficient input`);
     return buildEmptyResult(fullName, firstName, lastName, 'insufficient_input');
   }
   

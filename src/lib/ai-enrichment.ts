@@ -746,8 +746,6 @@ Return JSON:
   }
 }
 
-const STAGE_3B_TIMEOUT_MS = 60000;
-
 async function enrichContactDetails(
   contact: IdentifiedDecisionMaker,
   city: string
@@ -770,10 +768,10 @@ async function enrichContactDetails(
         config: {
           temperature: 0.1,
           tools: [{ googleSearch: {} }],
-          httpOptions: { timeout: STAGE_3B_TIMEOUT_MS }
+          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
         }
       }),
-      1
+      2
     );
 
     const text = response.text?.trim() || '';
@@ -871,10 +869,16 @@ export async function discoverContacts(
   console.log(`[FocusedEnrichment] Stage 3a took ${contactIdentificationMs}ms, identified ${identifiedContacts.length} contacts`);
 
   const startEnrich = Date.now();
-  const enrichmentResults = await Promise.all(
+  const settledResults = await Promise.allSettled(
     identifiedContacts.map(contact => enrichContactDetails(contact, city))
   );
   const contactEnrichmentMs = Date.now() - startEnrich;
+
+  const enrichmentResults: ContactEnrichmentResult[] = settledResults.map((result, idx) => {
+    if (result.status === 'fulfilled') return result.value;
+    console.warn(`[FocusedEnrichment] Stage 3b failed for ${identifiedContacts[idx].name}: ${result.reason}`);
+    return { email: null, emailSource: null, phone: null, phoneLabel: null, phoneConfidence: null, location: null, enrichmentSources: [] };
+  });
 
   console.log(`[FocusedEnrichment] Stage 3b took ${contactEnrichmentMs}ms for ${identifiedContacts.length} contacts`);
 
