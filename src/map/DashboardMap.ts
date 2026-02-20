@@ -342,9 +342,6 @@ export class DashboardMap {
   private pendingApiCalls: Set<string> = new Set();
 
   private onParcelHover = (e: mapboxgl.MapLayerMouseEvent) => {
-    if (this.debugLogging && !this.styleReady) {
-      console.log('[ParcelHover] BLOCKED: styleReady=false');
-    }
     if (!this.map || !this.styleReady || !e.features?.length) return;
 
     const feature = e.features[0];
@@ -413,13 +410,6 @@ export class DashboardMap {
     }
     if (!propertyInfo && parcelnumb) {
       propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
-    }
-
-    if (!propertyInfo) {
-      propertyInfo = this.findPropertyMarkerAtPoint(e.point);
-      if (this.debugLogging && propertyInfo && !isSameParcel) {
-        console.log('[ParcelHover] marker fallback →', propertyInfo.propertyKey, propertyInfo.commonName);
-      }
     }
 
     if (this.debugLogging && !isSameParcel) {
@@ -575,24 +565,6 @@ export class DashboardMap {
   private onParcelClick = async (e: mapboxgl.MapLayerMouseEvent) => {
     if (!e.features?.length || !this.config.onPropertyClick || !this.map) return;
 
-    const hitbox: [mapboxgl.PointLike, mapboxgl.PointLike] = [
-      [e.point.x - 3, e.point.y - 3],
-      [e.point.x + 3, e.point.y + 3],
-    ];
-    const markerFeatures = this.map.queryRenderedFeatures(hitbox, {
-      layers: this.map.getLayer('property-points') ? ['property-points'] : [],
-    });
-    if (markerFeatures && markerFeatures.length > 0) {
-      const markerProps = markerFeatures[0].properties as any;
-      if (markerProps?.propertyKey) {
-        if (this.debugLogging) {
-          console.log('[ParcelClick] Direct marker hit →', markerProps.propertyKey);
-        }
-        this.config.onPropertyClick(markerProps.propertyKey);
-        return;
-      }
-    }
-    
     const feature = e.features[0];
     const props = feature.properties || {};
     const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
@@ -631,13 +603,6 @@ export class DashboardMap {
       }
     }
 
-    const markerMatch = this.findPropertyMarkerAtPoint(e.point);
-    if (markerMatch?.propertyKey) {
-      if (this.debugLogging) console.log('[ParcelClick] marker fallback →', markerMatch.propertyKey, markerMatch.commonName);
-      this.config.onPropertyClick(markerMatch.propertyKey);
-      return;
-    }
-
     if (parcelnumb || llUuid) {
       try {
         const params = new URLSearchParams();
@@ -662,47 +627,6 @@ export class DashboardMap {
 
   private findPropertyByLlUuid(llUuid: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
     return this.propertyIndex.get(`ll:${llUuid}`) || null;
-  }
-
-  private findPropertyMarkerAtPoint(point: mapboxgl.Point, maxDistMeters: number = 300): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
-    if (!this.map || !this.map.getLayer('property-points')) return null;
-    const clickLngLat = this.map.unproject(point);
-    const canvas = this.map.getCanvas();
-    const viewportBbox: [mapboxgl.PointLike, mapboxgl.PointLike] = [[0, 0], [canvas.width, canvas.height]];
-    const allMarkers = this.map.queryRenderedFeatures(viewportBbox, { layers: ['property-points'] });
-    if (!allMarkers || allMarkers.length === 0) return null;
-
-    let closest: { propertyKey: string; dist: number; props: any } | null = null;
-    for (const marker of allMarkers) {
-      const geom = marker.geometry as GeoJSON.Point;
-      if (!geom || geom.type !== 'Point') continue;
-      const [lng, lat] = geom.coordinates;
-      const dlat = (lat - clickLngLat.lat) * 111320;
-      const dlng = (lng - clickLngLat.lng) * 111320 * Math.cos(clickLngLat.lat * Math.PI / 180);
-      const dist = Math.sqrt(dlat * dlat + dlng * dlng);
-      if (dist < maxDistMeters && (!closest || dist < closest.dist)) {
-        const p = marker.properties as any;
-        if (p?.propertyKey) {
-          closest = { propertyKey: p.propertyKey, dist, props: p };
-        }
-      }
-    }
-
-    if (closest) {
-      if (this.debugLogging) {
-        console.log('[MarkerFallback] closest marker:', closest.propertyKey, 'dist:', Math.round(closest.dist), 'm');
-      }
-      const indexed = this.propertyIndex.get(`pk:${closest.propertyKey}`);
-      if (indexed) return indexed;
-      return {
-        propertyKey: closest.propertyKey,
-        commonName: closest.props.commonName || null,
-        address: closest.props.address || null,
-        category: closest.props.category,
-        subcategory: closest.props.subcategory,
-      };
-    }
-    return null;
   }
 
   private getPropertyAddress(propertyKey: string): string | null {
