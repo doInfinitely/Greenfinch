@@ -1,146 +1,75 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { parcelToProperty, properties } from '@/lib/schema';
+import { properties } from '@/lib/schema';
 import { eq, sql } from 'drizzle-orm';
+import { normalizeCommonName } from '@/lib/normalization';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
-  const llUuid = searchParams.get('ll_uuid');
   const parcelnumb = searchParams.get('parcelnumb');
 
-  if (!llUuid && !parcelnumb) {
+  if (!parcelnumb) {
     return NextResponse.json(
-      { error: 'll_uuid or parcelnumb parameter is required' },
+      { error: 'parcelnumb parameter is required' },
       { status: 400 }
     );
   }
 
   try {
-    let propertyKey: string | null = null;
+    const directResult = await db
+      .select({
+        propertyKey: properties.propertyKey,
+        gisParcelId: properties.dcadGisParcelId,
+        commonName: properties.commonName,
+        bizName: properties.dcadBizName,
+        address: properties.validatedAddress,
+        regridAddress: properties.regridAddress,
+        category: properties.assetCategory,
+        subcategory: properties.assetSubcategory,
+      })
+      .from(properties)
+      .where(eq(properties.propertyKey, parcelnumb))
+      .limit(1);
 
-    if (parcelnumb) {
-      const normalizedParcel = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
-      
-      // Strategy 1: Direct match against propertyKey (fast, indexed)
-      const directResult = await db
-        .select({ propertyKey: properties.propertyKey })
-        .from(properties)
-        .where(sql`UPPER(REPLACE(REPLACE(${properties.propertyKey}, '-', ''), ' ', '')) = ${normalizedParcel}`)
-        .limit(1);
-
-      if (directResult.length > 0) {
-        propertyKey = directResult[0].propertyKey;
-      } else {
-        // Strategy 2: Check if parcelnumb is a constituent using JSONB containment (database-side)
-        const constituentResult = await db
-          .select({ propertyKey: properties.propertyKey })
-          .from(properties)
-          .where(sql`${properties.isParentProperty} = true AND ${properties.constituentAccountNums}::jsonb @> ${JSON.stringify([parcelnumb])}::jsonb`)
-          .limit(1);
-
-        if (constituentResult.length > 0) {
-          propertyKey = constituentResult[0].propertyKey;
-        } else {
-          // Strategy 3: Progressive prefix match for Regrid/DCAD mismatch
-          // Try progressively shorter prefixes until we find a match
-          // Start from full length - 1 and work down to minimum of 10 chars
-          // Order by: most trailing zeros first (parent properties like 005453000K01A0000 vs 005453000K01A0100)
-          for (let len = normalizedParcel.length - 1; len >= 10 && !propertyKey; len--) {
-            const prefix = normalizedParcel.substring(0, len);
-            const prefixResult = await db
-              .select({ propertyKey: properties.propertyKey })
-              .from(properties)
-              .where(sql`${properties.propertyKey} LIKE ${prefix + '%'}`)
-              .orderBy(sql`LENGTH(REGEXP_REPLACE(${properties.propertyKey}, '.*[^0]', '')) DESC, ${properties.isParentProperty} DESC`)
-              .limit(1);
-
-            if (prefixResult.length > 0) {
-              propertyKey = prefixResult[0].propertyKey;
-            }
-          }
-        }
-      }
-    }
-
-    // Strategy 3: If ll_uuid is provided and no match yet, try parcel mapping table
-    if (!propertyKey && llUuid) {
-      const parcelResult = await db
-        .select({ propertyKey: parcelToProperty.propertyKey })
-        .from(parcelToProperty)
-        .where(eq(parcelToProperty.llUuid, llUuid))
-        .limit(1);
-
-      if (parcelResult.length > 0) {
-        propertyKey = parcelResult[0].propertyKey;
-      }
-    }
-
-    if (!propertyKey) {
+    if (directResult.length === 0) {
       return NextResponse.json({ found: false });
     }
 
-    const propertyResult = await db
-      .select({
-        propertyKey: properties.propertyKey,
-        address: properties.validatedAddress,
-        regridAddress: properties.regridAddress,
-        commonName: properties.commonName,
-        category: properties.assetCategory,
-        subcategory: properties.assetSubcategory,
-        isParentProperty: properties.isParentProperty,
-        parentPropertyKey: properties.parentPropertyKey,
-      })
-      .from(properties)
-      .where(eq(properties.propertyKey, propertyKey))
-      .limit(1);
+    const property = directResult[0];
 
-    if (propertyResult.length === 0) {
-      return NextResponse.json({ 
-        propertyKey,
-        displayName: 'Unknown Property',
-      });
-    }
-
-    const property = propertyResult[0];
-    
-    // If this is a constituent, resolve to parent
-    if (property.parentPropertyKey) {
+    let resolved = property;
+    if (property.gisParcelId && property.gisParcelId !== property.propertyKey) {
       const parentResult = await db
         .select({
           propertyKey: properties.propertyKey,
+          gisParcelId: properties.dcadGisParcelId,
+          commonName: properties.commonName,
+          bizName: properties.dcadBizName,
           address: properties.validatedAddress,
           regridAddress: properties.regridAddress,
-          commonName: properties.commonName,
           category: properties.assetCategory,
           subcategory: properties.assetSubcategory,
-          isParentProperty: properties.isParentProperty,
         })
         .from(properties)
-        .where(eq(properties.propertyKey, property.parentPropertyKey))
+        .where(eq(properties.propertyKey, property.gisParcelId))
         .limit(1);
 
       if (parentResult.length > 0) {
-        const parent = parentResult[0];
-        return NextResponse.json({
-          propertyKey: parent.propertyKey,
-          displayName: parent.commonName || parent.address || parent.regridAddress || 'Unknown Property',
-          address: parent.address || parent.regridAddress,
-          category: parent.category,
-          subcategory: parent.subcategory,
-          isParentProperty: parent.isParentProperty,
-          resolvedFromConstituent: true,
-          constituentPropertyKey: property.propertyKey,
-        });
+        resolved = parentResult[0];
       }
     }
 
+    const displayName = resolved.commonName
+      ? normalizeCommonName(resolved.commonName)
+      : resolved.bizName || resolved.address || resolved.regridAddress || 'Unknown Property';
+
     return NextResponse.json({
-      propertyKey: property.propertyKey,
-      displayName: property.commonName || property.address || property.regridAddress || 'Unknown Property',
-      address: property.address || property.regridAddress,
-      category: property.category,
-      subcategory: property.subcategory,
-      isParentProperty: property.isParentProperty,
+      found: true,
+      propertyKey: resolved.propertyKey,
+      displayName,
+      address: resolved.address || resolved.regridAddress,
+      category: resolved.category,
+      subcategory: resolved.subcategory,
     });
   } catch (error) {
     console.error('Error resolving parcel to property:', error);

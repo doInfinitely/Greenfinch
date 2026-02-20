@@ -22,23 +22,33 @@ export interface DashboardMapConfig {
   onError?: (error: string) => void;
 }
 
+interface ParcelIndexEntry {
+  pk: string;
+  n: string | null;
+  a: string | null;
+  c: string | null;
+  s: string | null;
+}
+
 export class DashboardMap {
   private map: mapboxgl.Map | null = null;
   private config: DashboardMapConfig;
   private isDestroyed = false;
   private currentData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
   private debugLogging = true;
-  private bulkLoaded = false;
-  private propertyIndex: Map<string, { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string; llUuid?: string }> = new Map();
+  private parcelIndexLoaded = false;
+  private parcelIndex: Map<string, ParcelIndexEntry> = new Map();
   private hoverPopup: mapboxgl.Popup | null = null;
   private hoveredParcelId: string | number | null = null;
   private currentStyle: string = SATELLITE_STREETS_STYLE;
   private styleReady = false;
   private isAnimating = false;
   private initError: string | null = null;
-  private handlersRegistered = false; // Track if handlers were registered
-  private resizeObserver: ResizeObserver | null = null; // Track container size changes
-  private searchMarker: mapboxgl.Marker | null = null; // Search location marker
+  private handlersRegistered = false;
+  private resizeObserver: ResizeObserver | null = null;
+  private searchMarker: mapboxgl.Marker | null = null;
+  private hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private currentHoveredParcelId: string | null = null;
 
   constructor(config: DashboardMapConfig) {
     this.config = config;
@@ -54,7 +64,6 @@ export class DashboardMap {
       : [-96.7784, 32.8639];
     this.currentStyle = SATELLITE_STREETS_STYLE;
 
-    // Dallas metro bounds - same as main map
     const DALLAS_BOUNDS: [[number, number], [number, number]] = [
       [-97.6, 32.4],
       [-96.3, 33.2],
@@ -79,8 +88,6 @@ export class DashboardMap {
     this.map.addControl(new mapboxgl.NavigationControl(), 'top-right');
     this.map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
 
-    // Set up ResizeObserver to handle container size changes
-    // This fixes coordinate mismatch when flex layout changes container dimensions
     this.resizeObserver = new ResizeObserver(() => {
       if (this.map && !this.isDestroyed) {
         this.map.resize();
@@ -111,7 +118,6 @@ export class DashboardMap {
       this.emitBounds();
     });
 
-    // Force repaint when new vector tiles are loaded
     this.map.on('sourcedata', (e) => {
       if (this.isDestroyed || !this.map || !this.styleReady) return;
       if (e.sourceId === 'regrid' && e.isSourceLoaded) {
@@ -119,7 +125,6 @@ export class DashboardMap {
       }
     });
 
-    // Also trigger repaint after tiles finish loading
     this.map.on('idle', () => {
       if (this.isDestroyed || !this.map || !this.styleReady) return;
       this.map.triggerRepaint();
@@ -141,13 +146,10 @@ export class DashboardMap {
     this.registerEventHandlers();
     this.updateLayerVisibility();
     
-    // Resize to ensure coordinate system matches container dimensions
-    // This is critical for flex layouts where container size may change
     this.map.resize();
     
     this.emitBounds();
 
-    // Mark ready after a short delay to let tiles start loading
     setTimeout(() => {
       this.styleReady = true;
     }, 50);
@@ -156,7 +158,6 @@ export class DashboardMap {
   private addSources() {
     if (!this.map) return;
 
-    // Property points source
     if (!this.map.getSource('properties')) {
       this.map.addSource('properties', {
         type: 'geojson',
@@ -167,7 +168,6 @@ export class DashboardMap {
       });
     }
 
-    // Regrid parcel source (use cached tile URL if available)
     const regridTileUrl = this.config.regridTileUrl || 
       (this.config.regridToken ? `https://tiles.regrid.com/api/v1/parcels/{z}/{x}/{y}.mvt?token=${this.config.regridToken}` : null);
     
@@ -185,7 +185,6 @@ export class DashboardMap {
   private addLayers() {
     if (!this.map) return;
 
-    // Add parcel layers (below markers)
     if ((this.config.regridToken || this.config.regridTileUrl) && this.map.getSource('regrid')) {
       if (!this.map.getLayer('parcels-fill')) {
         this.map.addLayer({
@@ -194,7 +193,7 @@ export class DashboardMap {
           source: 'regrid',
           'source-layer': 'parcels',
           paint: {
-            'fill-color': '#16a34a', // Green-600 for hover effect
+            'fill-color': '#16a34a',
             'fill-opacity': [
               'case',
               ['boolean', ['feature-state', 'hover'], false],
@@ -212,14 +211,13 @@ export class DashboardMap {
           source: 'regrid',
           'source-layer': 'parcels',
           paint: {
-            'line-color': '#22c55e', // Bright green (green-500)
+            'line-color': '#22c55e',
             'line-width': 1,
           },
         });
       }
     }
 
-    // Add property layers on top
     if (this.map.getSource('properties')) {
       if (!this.map.getLayer('clusters')) {
         this.map.addLayer({
@@ -293,11 +291,9 @@ export class DashboardMap {
   private registerEventHandlers() {
     if (!this.map) return;
     
-    // Only register handlers once - they persist across style changes
     if (this.handlersRegistered) return;
     this.handlersRegistered = true;
 
-    // Cluster click handler
     this.map.on('click', 'clusters', this.onClusterClick);
     this.map.on('mouseenter', 'clusters', this.onCursorPointer);
     this.map.on('mouseleave', 'clusters', this.onCursorDefault);
@@ -326,17 +322,12 @@ export class DashboardMap {
     if (this.map) this.map.getCanvas().style.cursor = '';
   };
 
-  private currentHoveredParcelId: string | null = null;
-  private tooltipCache: Map<string, { displayName: string; address: string | null; category?: string; subcategory?: string; propertyKey?: string }> = new Map();
-  private pendingApiCalls: Set<string> = new Set();
-
   private onParcelHover = (e: mapboxgl.MapLayerMouseEvent) => {
     if (!this.map || !this.styleReady || !e.features?.length) return;
 
     const feature = e.features[0];
     const featureId = feature.id;
 
-    // Update hover state for parcel fill
     if (this.hoveredParcelId !== null && this.hoveredParcelId !== featureId) {
       try {
         this.map.setFeatureState(
@@ -362,85 +353,63 @@ export class DashboardMap {
 
     const props = feature.properties || {};
     const center = e.lngLat;
-    
     const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
-    const llUuid = props.ll_uuid || (featureId != null ? String(featureId) : null);
-    const parcelId = llUuid || parcelnumb;
-    
-    if (this.debugLogging) {
-      console.log('[ParcelHover] featureId:', featureId, 'type:', typeof featureId, 'props.ll_uuid:', props.ll_uuid, 'parcelnumb:', parcelnumb, 'resolved llUuid:', llUuid, 'parcelId:', parcelId, 'indexSize:', this.propertyIndex.size);
-    }
-    
-    if (!parcelId) {
+
+    if (!parcelnumb) {
       if (this.hoverPopup) this.hoverPopup.remove();
       this.currentHoveredParcelId = null;
       return;
     }
 
-    const isSameParcel = parcelId === this.currentHoveredParcelId;
-    this.currentHoveredParcelId = parcelId;
+    if (parcelnumb === this.currentHoveredParcelId) return;
+    this.currentHoveredParcelId = parcelnumb;
 
-    // Check cache first (for API results)
-    const cached = this.tooltipCache.get(parcelId);
-    if (cached) {
+    if (this.hoverDebounceTimer) {
+      clearTimeout(this.hoverDebounceTimer);
+    }
+
+    this.hoverDebounceTimer = setTimeout(() => {
+      if (this.currentHoveredParcelId !== parcelnumb) return;
+      this.resolveAndShowTooltip(center, parcelnumb, props);
+    }, 150);
+  };
+
+  private resolveAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string, regridProps: Record<string, any>) {
+    const entry = this.parcelIndex.get(parcelnumb);
+
+    if (entry) {
+      const displayName = entry.n
+        ? normalizeCommonName(entry.n)
+        : entry.a || 'Unknown Property';
+
       this.showTooltip(center, {
-        commonName: cached.displayName,
-        address: cached.address,
-        category: cached.category,
-        subcategory: cached.subcategory,
+        displayName,
+        address: entry.a,
+        category: entry.c,
+        subcategory: entry.s,
       });
-      return;
-    }
-
-    // Try client-side matching by ll_uuid first (most reliable), then by parcelnumb
-    let propertyInfo: ReturnType<typeof this.findPropertyByLlUuid> = null;
-    if (llUuid) {
-      propertyInfo = this.findPropertyByLlUuid(llUuid);
-    }
-    if (!propertyInfo && parcelnumb) {
-      propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
-    }
-
-    if (this.debugLogging && !isSameParcel) {
-      console.log('[ParcelHover] clientMatch:', !!propertyInfo, propertyInfo ? `${propertyInfo.commonName || propertyInfo.address}` : 'none', 'hasLlIndex:', llUuid ? this.propertyIndex.has(`ll:${llUuid}`) : 'n/a');
-    }
-
-    if (propertyInfo) {
-      this.tooltipCache.set(parcelId, {
-        displayName: propertyInfo.commonName || propertyInfo.address || 'Unknown Property',
-        address: propertyInfo.address,
-        category: propertyInfo.category,
-        subcategory: propertyInfo.subcategory,
-        propertyKey: propertyInfo.propertyKey,
-      });
-      this.showTooltip(center, propertyInfo);
-    } else if ((parcelnumb || llUuid) && !isSameParcel && !this.pendingApiCalls.has(parcelId)) {
-      this.fetchAndShowTooltip(center, parcelnumb, parcelId, props, llUuid);
-    } else if (!this.pendingApiCalls.has(parcelId)) {
-      const regridAddress = props.address || props.siteaddr || props.mail_addres;
+    } else {
+      const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
       if (regridAddress) {
         this.showTooltip(center, {
-          commonName: null,
+          displayName: regridAddress,
           address: regridAddress,
-          isUnimported: true,
+          category: null,
+          subcategory: null,
         });
-      } else if (!isSameParcel) {
+      } else {
         if (this.hoverPopup) this.hoverPopup.remove();
       }
     }
-  };
+  }
 
   private showTooltip(
     center: mapboxgl.LngLat, 
-    propertyInfo: { commonName: string | null; address: string | null; category?: string; subcategory?: string; isUnimported?: boolean }
+    info: { displayName: string; address: string | null; category?: string | null; subcategory?: string | null }
   ) {
-    const displayName = propertyInfo.commonName 
-      ? normalizeCommonName(propertyInfo.commonName) 
-      : propertyInfo.address || 'Unknown Property';
-    
     const popupContent = `<div style="font-size: 12px; max-width: 220px;">
-      <div style="font-weight: 600;">${displayName}</div>
-      ${propertyInfo.subcategory || propertyInfo.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${propertyInfo.subcategory || propertyInfo.category}</div>` : ''}
+      <div style="font-weight: 600;">${info.displayName}</div>
+      ${info.subcategory || info.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${info.subcategory || info.category}</div>` : ''}
     </div>`;
     
     if (this.hoverPopup && this.map) {
@@ -448,91 +417,16 @@ export class DashboardMap {
     }
   }
 
-  private async fetchAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string | null, parcelId: string, regridProps?: Record<string, any>, llUuid?: string | null) {
-    this.pendingApiCalls.add(parcelId);
-    try {
-      const params = new URLSearchParams();
-      if (parcelnumb) params.set('parcelnumb', parcelnumb);
-      if (llUuid) params.set('ll_uuid', llUuid);
-      const response = await fetch(`/api/parcels/resolve?${params.toString()}`);
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.found !== false && data.displayName) {
-          this.tooltipCache.set(parcelId, {
-            displayName: data.displayName,
-            address: data.address,
-            category: data.category,
-            subcategory: data.subcategory,
-            propertyKey: data.propertyKey,
-          });
-          
-          if (this.currentHoveredParcelId === parcelId) {
-            this.showTooltip(center, {
-              commonName: data.displayName,
-              address: data.address,
-              category: data.category,
-              subcategory: data.subcategory,
-            });
-          }
-          return;
-        }
-      }
-      
-      // API returned no match - show Regrid address (not owner name) as fallback
-      if (this.currentHoveredParcelId === parcelId && regridProps) {
-        const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
-        if (regridAddress) {
-          this.tooltipCache.set(parcelId, {
-            displayName: regridAddress,
-            address: regridAddress,
-          });
-          this.showTooltip(center, {
-            commonName: null,
-            address: regridAddress,
-            isUnimported: true,
-          });
-        }
-      }
-    } catch (err) {
-      if (this.currentHoveredParcelId === parcelId && regridProps) {
-        const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
-        if (regridAddress) {
-          this.showTooltip(center, {
-            commonName: null,
-            address: regridAddress,
-            isUnimported: true,
-          });
-        }
-      }
-    } finally {
-      this.pendingApiCalls.delete(parcelId);
-    }
-  }
-
-  private findPropertyByParcelNumber(parcelnumb: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
-    const normalizedParcel = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
-    
-    // Try exact match first
-    const exact = this.propertyIndex.get(`pk:${normalizedParcel}`);
-    if (exact) return exact;
-    
-    // Progressive prefix matching - try shorter prefixes until we find a match
-    // Start from full length - 1 and work down to minimum of 10 chars
-    for (let len = normalizedParcel.length - 1; len >= 10; len--) {
-      const prefix = normalizedParcel.substring(0, len);
-      const prefixMatch = this.propertyIndex.get(`prefix:${prefix}`);
-      if (prefixMatch) return prefixMatch;
-    }
-    
-    return null;
-  }
-
   private onParcelLeave = () => {
     if (!this.map) return;
 
     this.map.getCanvas().style.cursor = '';
     this.currentHoveredParcelId = null;
+
+    if (this.hoverDebounceTimer) {
+      clearTimeout(this.hoverDebounceTimer);
+      this.hoverDebounceTimer = null;
+    }
 
     if (this.hoveredParcelId !== null && this.styleReady) {
       try {
@@ -551,82 +445,30 @@ export class DashboardMap {
     }
   };
 
-  private onParcelClick = async (e: mapboxgl.MapLayerMouseEvent) => {
+  private onParcelClick = (e: mapboxgl.MapLayerMouseEvent) => {
     if (!e.features?.length || !this.config.onPropertyClick || !this.map) return;
 
     const feature = e.features[0];
     const props = feature.properties || {};
     const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
-    const llUuid = props.ll_uuid || (feature.id != null ? String(feature.id) : null);
-    
-    const parcelId = llUuid || parcelnumb;
 
     if (this.debugLogging) {
-      console.log('[ParcelClick] featureId:', feature.id, 'type:', typeof feature.id, 'llUuid:', llUuid, 'parcelnumb:', parcelnumb, 'parcelId:', parcelId);
+      console.log('[ParcelClick] parcelnumb:', parcelnumb);
     }
 
-    if (parcelId) {
-      const cached = this.tooltipCache.get(parcelId);
-      if (cached?.propertyKey) {
-        if (this.debugLogging) console.log('[ParcelClick] Cache hit →', cached.propertyKey);
-        this.config.onPropertyClick(cached.propertyKey);
-        return;
-      }
-    }
-    
-    if (llUuid) {
-      const propertyInfo = this.findPropertyByLlUuid(llUuid);
-      if (propertyInfo?.propertyKey) {
-        if (this.debugLogging) console.log('[ParcelClick] ll_uuid match →', propertyInfo.propertyKey);
-        this.config.onPropertyClick(propertyInfo.propertyKey);
-        return;
-      }
+    if (!parcelnumb) {
+      if (this.debugLogging) console.log('[ParcelClick] No parcelnumb found');
+      return;
     }
 
-    if (parcelnumb) {
-      const propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
-      if (propertyInfo?.propertyKey) {
-        if (this.debugLogging) console.log('[ParcelClick] parcelnumb match →', propertyInfo.propertyKey);
-        this.config.onPropertyClick(propertyInfo.propertyKey);
-        return;
-      }
+    const entry = this.parcelIndex.get(parcelnumb);
+    if (entry) {
+      if (this.debugLogging) console.log('[ParcelClick] Index hit →', entry.pk, entry.n);
+      this.config.onPropertyClick(entry.pk);
+    } else {
+      if (this.debugLogging) console.log('[ParcelClick] Not in our database');
     }
-
-    if (parcelnumb || llUuid) {
-      try {
-        const params = new URLSearchParams();
-        if (parcelnumb) params.set('parcelnumb', parcelnumb);
-        if (llUuid) params.set('ll_uuid', llUuid);
-        if (this.debugLogging) console.log('[ParcelClick] API fallback →', params.toString());
-        const response = await fetch(`/api/parcels/resolve?${params.toString()}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.propertyKey) {
-            if (this.debugLogging) console.log('[ParcelClick] API resolved →', data.propertyKey);
-            this.config.onPropertyClick(data.propertyKey);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn('Parcel lookup failed', err);
-      }
-    }
-    if (this.debugLogging) console.log('[ParcelClick] No match found');
   };
-
-  private findPropertyByLlUuid(llUuid: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
-    return this.propertyIndex.get(`ll:${llUuid}`) || null;
-  }
-
-  private getPropertyAddress(propertyKey: string): string | null {
-    for (const feature of this.currentData.features) {
-      const props = feature.properties as any;
-      if (props?.propertyKey === propertyKey) {
-        return props?.address || null;
-      }
-    }
-    return null;
-  }
 
   private updateLayerVisibility() {
     if (!this.map) return;
@@ -662,8 +504,7 @@ export class DashboardMap {
 
   setData(geojson: GeoJSON.FeatureCollection) {
     this.currentData = geojson;
-    this.buildPropertyIndex();
-    this.loadBulkParcelMappings();
+    this.loadParcelIndex();
     
     if (!this.map) return;
 
@@ -673,101 +514,32 @@ export class DashboardMap {
     }
   }
 
-  private async loadBulkParcelMappings() {
-    if (this.bulkLoaded) return;
-    this.bulkLoaded = true;
+  private async loadParcelIndex() {
+    if (this.parcelIndexLoaded) return;
+    this.parcelIndexLoaded = true;
     try {
-      const response = await fetch('/api/parcels/bulk-lookup');
+      const response = await fetch('/api/parcels/parcel-index');
       if (!response.ok) return;
-      const mapping: Record<string, { pk: string; n: string | null; c: string | null; s: string | null }> = await response.json();
+      const data: Record<string, ParcelIndexEntry> = await response.json();
       
-      let added = 0;
-      for (const [llUuid, info] of Object.entries(mapping)) {
-        const key = `ll:${llUuid}`;
-        if (!this.propertyIndex.has(key)) {
-          const existing = this.propertyIndex.get(`pk:${info.pk.replace(/[-\s]/g, '').toUpperCase()}`);
-          this.propertyIndex.set(key, {
-            propertyKey: info.pk,
-            commonName: info.n || existing?.commonName || null,
-            address: existing?.address || null,
-            category: info.c || existing?.category || null,
-            subcategory: info.s || existing?.subcategory || null,
-            llUuid: llUuid,
-          });
-          added++;
-        }
+      this.parcelIndex.clear();
+      for (const [propertyKey, entry] of Object.entries(data)) {
+        this.parcelIndex.set(propertyKey, entry);
       }
+      
       if (this.debugLogging) {
-        console.log('[BulkLookup] Loaded', Object.keys(mapping).length, 'mappings, added', added, 'new ll: entries. Index now:', this.propertyIndex.size);
+        console.log('[ParcelIndex] Loaded', this.parcelIndex.size, 'entries');
       }
     } catch (err) {
-      console.warn('[BulkLookup] Failed to load parcel mappings:', err);
-    }
-  }
-
-  private buildPropertyIndex() {
-    this.propertyIndex.clear();
-    
-    let llCount = 0;
-    for (const feature of this.currentData.features) {
-      const props = feature.properties as any;
-      if (!props?.propertyKey) continue;
-      
-      const info = {
-        propertyKey: props.propertyKey,
-        commonName: props.commonName || null,
-        address: props.address || null,
-        category: props.category || null,
-        subcategory: props.subcategory || null,
-        llUuid: props.llUuid || null,
-      };
-      
-      const normalizedKey = props.propertyKey.replace(/[-\s]/g, '').toUpperCase();
-      this.propertyIndex.set(`pk:${normalizedKey}`, info);
-      
-      for (let len = normalizedKey.length - 1; len >= 10; len--) {
-        const prefix = normalizedKey.substring(0, len);
-        const existingKey = `prefix:${prefix}`;
-        const existing = this.propertyIndex.get(existingKey);
-        
-        if (!existing) {
-          this.propertyIndex.set(existingKey, info);
-        } else {
-          const existingNormalized = existing.propertyKey.replace(/[-\s]/g, '').toUpperCase();
-          const existingTrailingZeros = (existingNormalized.match(/0+$/) || [''])[0].length;
-          const newTrailingZeros = (normalizedKey.match(/0+$/) || [''])[0].length;
-          if (newTrailingZeros > existingTrailingZeros) {
-            this.propertyIndex.set(existingKey, info);
-          }
-        }
-      }
-      
-      if (props.llUuid) {
-        this.propertyIndex.set(`ll:${props.llUuid}`, info);
-        llCount++;
-      }
-    }
-    
-    if (this.debugLogging) {
-      console.log('[BuildIndex] features:', this.currentData.features.length, 'indexSize:', this.propertyIndex.size, 'llEntries:', llCount);
-      const testKey = 'll:3245c377-8707-453c-a375-92a873762781';
-      const testEntry = this.propertyIndex.get(testKey);
-      if (testEntry) {
-        console.log('[BuildIndex] Test property found:', testEntry.commonName, testEntry.propertyKey);
-      } else {
-        console.log('[BuildIndex] Test property NOT found. Sample ll keys:', 
-          Array.from(this.propertyIndex.keys()).filter(k => k.startsWith('ll:')).slice(0, 5));
-      }
+      console.warn('[ParcelIndex] Failed to load:', err);
     }
   }
 
   flyTo(lat: number, lon: number, zoom: number = 16, showMarker: boolean = true) {
     if (!this.map) return;
     
-    // Prevent style switching during animation
     this.isAnimating = true;
     
-    // Show search marker at the location
     if (showMarker) {
       this.setSearchMarker(lat, lon);
     }
@@ -778,7 +550,6 @@ export class DashboardMap {
       duration: 1500,
     });
     
-    // Re-enable after animation completes
     this.map.once('moveend', () => {
       this.isAnimating = false;
     });
@@ -787,10 +558,8 @@ export class DashboardMap {
   setSearchMarker(lat: number, lon: number) {
     if (!this.map) return;
     
-    // Remove existing marker if any
     this.clearSearchMarker();
     
-    // Create marker element with a distinctive search pin style
     const el = document.createElement('div');
     el.className = 'search-marker';
     el.innerHTML = `
@@ -815,6 +584,10 @@ export class DashboardMap {
 
   destroy() {
     this.isDestroyed = true;
+    if (this.hoverDebounceTimer) {
+      clearTimeout(this.hoverDebounceTimer);
+      this.hoverDebounceTimer = null;
+    }
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
