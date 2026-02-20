@@ -440,7 +440,7 @@ export async function getProfilePicture(linkedinUrl: string): Promise<ProfilePic
     await waitForRateLimit();
     
     const params = new URLSearchParams();
-    params.append('profile_url', linkedinUrl);
+    params.append('person_profile_url', linkedinUrl);
 
     const url = `${ENRICHLAYER_BASE_URL}/person/profile-picture?${params.toString()}`;
     console.log(`[EnrichLayer] Fetching profile picture for: ${linkedinUrl}`);
