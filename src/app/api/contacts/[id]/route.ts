@@ -41,6 +41,7 @@ export async function GET(
         propertyId: propertyContacts.propertyId,
         role: propertyContacts.role,
         confidenceScore: propertyContacts.confidenceScore,
+        relationshipStatus: propertyContacts.relationshipStatus,
         propertyKey: properties.propertyKey,
         address: properties.regridAddress,
         validatedAddress: properties.validatedAddress,
@@ -121,6 +122,7 @@ export async function GET(
         assetCategory: prop.assetCategory,
         role: prop.role,
         confidenceScore: prop.confidenceScore,
+        relationshipStatus: prop.relationshipStatus,
       })),
       // Deduplicate organizations by orgId, keeping the one with isCurrent=true or the first one
       organizations: Object.values(

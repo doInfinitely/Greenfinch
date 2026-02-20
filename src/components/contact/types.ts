@@ -18,6 +18,7 @@ export interface PropertyRelation {
   assetCategory: string | null;
   role: string | null;
   confidenceScore: number | null;
+  relationshipStatus: string | null;
 }
 
 export interface OrgRelation {

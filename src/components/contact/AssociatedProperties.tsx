@@ -27,6 +27,7 @@ interface GroupedProperty {
   commonName: string | null;
   assetCategory: string | null;
   roles: { role: string; confidenceScore: number | null }[];
+  relationshipStatus: string | null;
 }
 
 function groupProperties(properties: PropertyRelation[]): GroupedProperty[] {
@@ -51,6 +52,7 @@ function groupProperties(properties: PropertyRelation[]): GroupedProperty[] {
         commonName: prop.commonName,
         assetCategory: prop.assetCategory,
         roles: prop.role ? [{ role: prop.role, confidenceScore: prop.confidenceScore }] : [],
+        relationshipStatus: prop.relationshipStatus,
       });
     }
   }
@@ -110,15 +112,22 @@ export default function AssociatedProperties({ properties }: AssociatedPropertie
                     </span>
                   )}
                 </div>
-                <div className="flex flex-wrap gap-1 justify-end ml-2">
-                  {prop.roles.map((r) => (
-                    <span key={r.role} className="flex items-center">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[r.role] || ROLE_COLORS.other}`}>
-                        {ROLE_LABELS[r.role] || r.role}
+                <div className="flex flex-col items-end gap-1 ml-2">
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {prop.roles.map((r) => (
+                      <span key={r.role} className="flex items-center">
+                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[r.role] || ROLE_COLORS.other}`}>
+                          {ROLE_LABELS[r.role] || r.role}
+                        </span>
+                        <LowConfidenceMarker confidence={r.confidenceScore} />
                       </span>
-                      <LowConfidenceMarker confidence={r.confidenceScore} />
+                    ))}
+                  </div>
+                  {prop.relationshipStatus === 'former' && (
+                    <span className="text-xs text-orange-600 font-medium" data-testid={`badge-former-${prop.propertyKey || prop.id}`}>
+                      Former
                     </span>
-                  ))}
+                  )}
                 </div>
               </div>
             </Link>
