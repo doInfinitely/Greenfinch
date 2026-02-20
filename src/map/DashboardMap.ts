@@ -336,17 +336,19 @@ export class DashboardMap {
     const props = feature.properties || {};
     const center = e.lngLat;
     const parcelnumb = props.parcelnumb_no_formatting || props.parcelnumb || props.apn;
+    const llUuid = props.ll_uuid || (feature.id ? String(feature.id) : null);
 
-    if (!parcelnumb) {
+    if (!parcelnumb && !llUuid) {
       if (this.hoverPopup) this.hoverPopup.remove();
       this.currentHoveredParcelId = null;
       return;
     }
 
-    if (parcelnumb === this.currentHoveredParcelId) return;
-    this.currentHoveredParcelId = parcelnumb;
+    const parcelId = parcelnumb || llUuid;
+    if (parcelId === this.currentHoveredParcelId) return;
+    this.currentHoveredParcelId = parcelId;
 
-    this.resolveAndShowTooltip(center, parcelnumb, props);
+    this.resolveAndShowTooltip(center, parcelnumb, llUuid, props);
   };
 
   private resolveParcelNumber(parcelnumb: string): ParcelIndexEntry | null {
@@ -360,11 +362,20 @@ export class DashboardMap {
       if (prefixMatch) return prefixMatch;
     }
 
+    if (this.debugLogging) {
+      console.log('[ParcelResolve] MISS for:', parcelnumb, '→ normalized:', normalized, '| index size:', this.parcelIndex.size);
+    }
     return null;
   }
 
-  private resolveAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string, regridProps: Record<string, any>) {
-    const entry = this.resolveParcelNumber(parcelnumb);
+  private resolveAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string | null, llUuid: string | null, regridProps: Record<string, any>) {
+    let entry: ParcelIndexEntry | null = null;
+    if (parcelnumb) {
+      entry = this.resolveParcelNumber(parcelnumb);
+    }
+    if (!entry && llUuid) {
+      entry = this.parcelIndex.get(`ll:${llUuid}`) || null;
+    }
 
     if (entry) {
       const displayName = entry.n
@@ -435,10 +446,17 @@ export class DashboardMap {
     const feature = e.features[0];
     const props = feature.properties || {};
     const parcelnumb = props.parcelnumb_no_formatting || props.parcelnumb || props.apn;
+    const llUuid = props.ll_uuid || (feature.id ? String(feature.id) : null);
 
-    if (!parcelnumb) return;
+    if (!parcelnumb && !llUuid) return;
 
-    const entry = this.resolveParcelNumber(parcelnumb);
+    let entry: ParcelIndexEntry | null = null;
+    if (parcelnumb) {
+      entry = this.resolveParcelNumber(parcelnumb);
+    }
+    if (!entry && llUuid) {
+      entry = this.parcelIndex.get(`ll:${llUuid}`) || null;
+    }
     if (entry) {
       this.config.onPropertyClick(entry.pk);
     }
@@ -499,6 +517,11 @@ export class DashboardMap {
       this.parcelIndex.clear();
 
       for (const [key, entry] of Object.entries(data)) {
+        if (key.startsWith('ll:')) {
+          this.parcelIndex.set(key, entry);
+          continue;
+        }
+
         const normalizedKey = key.replace(/[-\s]/g, '').toUpperCase();
         this.parcelIndex.set(normalizedKey, entry);
 

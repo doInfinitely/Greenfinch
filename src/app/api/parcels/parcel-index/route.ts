@@ -10,6 +10,7 @@ export async function GET() {
       .select({
         propertyKey: properties.propertyKey,
         gisParcelId: properties.dcadGisParcelId,
+        llUuid: properties.sourceLlUuid,
         commonName: properties.commonName,
         bizName: properties.dcadBizName,
         address: properties.validatedAddress,
@@ -86,6 +87,15 @@ export async function GET() {
           c: resolvedProp.category || null,
           s: resolvedProp.subcategory || null,
         };
+      }
+    }
+
+    for (const row of rows) {
+      if (row.llUuid && !index[`ll:${row.llUuid}`]) {
+        const entry = index[row.propertyKey];
+        if (entry) {
+          index[`ll:${row.llUuid}`] = entry;
+        }
       }
     }
 
