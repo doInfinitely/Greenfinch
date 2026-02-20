@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { properties, propertyContacts, propertyOrganizations } from '@/lib/schema';
+import { properties, propertyContacts, propertyOrganizations, propertyPipeline } from '@/lib/schema';
 import { eq, isNotNull, and, or, sql, inArray, gte, lte, isNull } from 'drizzle-orm';
 import { normalizeCommonName } from '@/lib/normalization';
 
@@ -161,6 +161,7 @@ export async function GET(request: NextRequest) {
         propertyClass: properties.propertyClass,
         sourceLlUuid: properties.sourceLlUuid,
         isCurrentCustomer: sql<boolean>`coalesce("properties"."is_current_customer", false)`,
+        pipelineStatus: sql<string | null>`(SELECT pp.status FROM property_pipeline pp WHERE pp.property_id = properties.id LIMIT 1)`,
       })
       .from(properties)
       .where(and(...conditions));
@@ -200,6 +201,7 @@ export async function GET(request: NextRequest) {
             buildingSqft: p.buildingSqft || 0,
             llUuid: p.sourceLlUuid || '',
             isCurrentCustomer: p.isCurrentCustomer || false,
+            pipelineStatus: p.pipelineStatus || '',
           },
         };
       });

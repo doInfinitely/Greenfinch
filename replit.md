@@ -48,6 +48,13 @@ The project is built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM 
 - **Batch Summary/Report**: `/api/admin/enrich-status` returns failure breakdown by stage and service, retryable vs permanent error counts, and per-service circuit breaker state (CLOSED/OPEN/HALF_OPEN).
 - **BullMQ Job Queue**: Persistent job queue using BullMQ + ioredis over Upstash Redis TCP connection. Jobs survive workflow/process restarts. Automatic 3-attempt retry with exponential backoff. Batch metadata stored in Redis with 2h TTL. Legacy in-process batch engine retained as fallback (pass `useLegacy=true`). Worker concurrency matches batch request. Worker `lockDuration=600s` and `stalledInterval=300s` to accommodate long Gemini API calls (up to 280s+ with search grounding). Files: `src/lib/bullmq-connection.ts` (config), `src/lib/bullmq-enrichment.ts` (queue/worker/batch management). Requires `UPSTASH_REDIS_HOST`, `UPSTASH_REDIS_PORT`, `UPSTASH_REDIS_PASSWORD` secrets for TCP connection.
 - **Phone Research Waterfall**: On-demand 4-step phone lookup triggered via "Find Phone" button (not during automatic enrichment). Cascade: Findymail phone by LinkedIn → PDL person enrichment → Hunter email-finder phone → EnrichLayer LinkedIn profile phone. Stops at first success. Route: `/api/contacts/[id]/waterfall-phone`.
+- **Map Marker Colors**: Property markers are colored by pipeline stage: gray (new/no pipeline), green (qualified), yellow (attempted contact), purple (active opportunity), dark green (won), red (lost), gray (disqualified). White stroke for visibility on satellite.
+- **Parcel Resolution**: No proximity-based matching. Parcel hover/click uses exact + prefix matching against Regrid parcel numbers, with `/api/parcels/resolve` API fallback. Always resolves to parent property.
+- **Map Viewport Persistence**: Map center/zoom saved to sessionStorage when navigating to a property. Restored on return so user doesn't lose their place.
+- **Street View Scoring**: Panorama selection uses multi-candidate scoring to prefer road-facing views over alleyways/parking lots. Scores based on description keywords, link count, and distance.
+- **"New" Filter**: The view status filter shows "New" (blue dot = unviewed properties) instead of "Viewed", matching the app's visual language where blue dots indicate new/unviewed items.
+- **Enrichment Queue Links**: Queue items are always clickable/linkable to their property/contact/organization page, regardless of status (in-progress, failed, completed).
+- **Test credentials**: Clerk login with username `admin`, password `Me@tballH@mmy`.
 
 ## External Dependencies
 - **Snowflake**: Regrid parcel data ingestion.

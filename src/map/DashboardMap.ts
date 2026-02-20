@@ -254,10 +254,20 @@ export class DashboardMap {
           source: 'properties',
           filter: ['!', ['has', 'point_count']],
           paint: {
-            'circle-color': '#16a34a', // Green (green-600)
+            'circle-color': [
+              'match',
+              ['get', 'pipelineStatus'],
+              'qualified', '#16a34a',
+              'attempted_contact', '#eab308',
+              'active_opportunity', '#9333ea',
+              'won', '#15803d',
+              'lost', '#ef4444',
+              'disqualified', '#9ca3af',
+              '#6b7280',
+            ],
             'circle-radius': 8,
             'circle-stroke-width': 2,
-            'circle-stroke-color': '#facc15', // Yellow border for visibility
+            'circle-stroke-color': '#ffffff',
           },
         });
       }
@@ -378,11 +388,6 @@ export class DashboardMap {
       ? this.findPropertyByParcelNumber(parcelnumb)
       : null;
 
-    // If parcelnumb matching fails, try spatial proximity to nearest property marker
-    if (!propertyInfo) {
-      propertyInfo = this.findNearestProperty(center);
-    }
-
     if (propertyInfo) {
       this.showTooltip(center, propertyInfo);
     } else if (parcelnumb && !isSameParcel) {
@@ -451,44 +456,27 @@ export class DashboardMap {
         }
       }
       
-      // No match found via API - try spatial proximity before showing raw Regrid data
-      if (this.currentHoveredParcelId === parcelId) {
-        const nearestProperty = this.findNearestProperty(center);
-        if (nearestProperty) {
-          this.tooltipCache.set(parcelId, {
-            displayName: nearestProperty.commonName || nearestProperty.address || 'Unknown Property',
-            address: nearestProperty.address,
-            category: nearestProperty.category,
-            subcategory: nearestProperty.subcategory,
+      if (this.currentHoveredParcelId === parcelId && regridProps) {
+        const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
+        const owner = regridProps.owner || regridProps.owner1;
+        if (regridAddress || owner) {
+          this.showTooltip(center, {
+            commonName: owner || null,
+            address: regridAddress || null,
+            isUnimported: true,
           });
-          this.showTooltip(center, nearestProperty);
-        } else if (regridProps) {
-          const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
-          const owner = regridProps.owner || regridProps.owner1;
-          if (regridAddress || owner) {
-            this.showTooltip(center, {
-              commonName: owner || null,
-              address: regridAddress || null,
-              isUnimported: true,
-            });
-          }
         }
       }
     } catch (err) {
-      if (this.currentHoveredParcelId === parcelId) {
-        const nearestProperty = this.findNearestProperty(center);
-        if (nearestProperty) {
-          this.showTooltip(center, nearestProperty);
-        } else if (regridProps) {
-          const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
-          const owner = regridProps.owner || regridProps.owner1;
-          if (regridAddress || owner) {
-            this.showTooltip(center, {
-              commonName: owner || null,
-              address: regridAddress || null,
-              isUnimported: true,
-            });
-          }
+      if (this.currentHoveredParcelId === parcelId && regridProps) {
+        const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
+        const owner = regridProps.owner || regridProps.owner1;
+        if (regridAddress || owner) {
+          this.showTooltip(center, {
+            commonName: owner || null,
+            address: regridAddress || null,
+            isUnimported: true,
+          });
         }
       }
     }
@@ -510,41 +498,6 @@ export class DashboardMap {
     }
     
     return null;
-  }
-
-  private findNearestProperty(lngLat: mapboxgl.LngLat): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
-    if (this.currentData.features.length === 0) return null;
-
-    const zoom = this.map?.getZoom() || 14;
-    if (zoom < 14) return null;
-
-    const maxDistDeg = zoom >= 16 ? 0.003 : 0.002;
-
-    let nearest: { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null = null;
-    let nearestDist = maxDistDeg;
-
-    for (const feature of this.currentData.features) {
-      if (feature.geometry.type !== 'Point') continue;
-      const [lon, lat] = (feature.geometry as GeoJSON.Point).coordinates;
-      const dx = lon - lngLat.lng;
-      const dy = lat - lngLat.lat;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        const props = feature.properties as any;
-        if (props?.propertyKey) {
-          nearest = {
-            propertyKey: props.propertyKey,
-            commonName: props.commonName || null,
-            address: props.address || null,
-            category: props.category || null,
-            subcategory: props.subcategory || null,
-          };
-        }
-      }
-    }
-
-    return nearest;
   }
 
   private onParcelLeave = () => {
@@ -593,15 +546,8 @@ export class DashboardMap {
       this.config.onPropertyClick(propertyInfo.propertyKey);
       return;
     }
-
-    // Try spatial proximity to nearest property marker
-    const nearestProperty = this.findNearestProperty(e.lngLat);
-    if (nearestProperty?.propertyKey) {
-      this.config.onPropertyClick(nearestProperty.propertyKey);
-      return;
-    }
     
-    // API fallback for parcels not found client-side
+    // API fallback - resolve parcel to parent property via server
     try {
       const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
       if (response.ok) {
@@ -618,26 +564,6 @@ export class DashboardMap {
 
   private findPropertyByLlUuid(llUuid: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
     return this.propertyIndex.get(`ll:${llUuid}`) || null;
-  }
-
-  private findPropertyByLocation(lng: number, lat: number): { propertyKey: string; commonName: string | null; address: string | null } | null {
-    // Use larger tolerance to match clicks within parcels (about 200m)
-    // This helps match sub-parcels (like apartment units) to their parent property
-    const tolerance = 0.002;
-    for (const feature of this.currentData.features) {
-      if (feature.geometry.type === 'Point') {
-        const [fLng, fLat] = feature.geometry.coordinates;
-        if (Math.abs(fLng - lng) < tolerance && Math.abs(fLat - lat) < tolerance) {
-          const props = feature.properties as any;
-          return {
-            propertyKey: props?.propertyKey || null,
-            commonName: props?.commonName || null,
-            address: props?.address || null,
-          };
-        }
-      }
-    }
-    return null;
   }
 
   private getPropertyAddress(propertyKey: string): string | null {

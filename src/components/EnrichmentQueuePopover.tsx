@@ -32,12 +32,13 @@ const TYPE_COLORS: Record<string, string> = {
 
 function getResultUrl(item: EnrichmentQueueItem): string | undefined {
   if (item.resultUrl) return item.resultUrl;
-  if (item.status !== 'completed') return undefined;
   
   switch (item.type) {
     case 'property':
       return `/property/${item.entityId}`;
     case 'contact':
+    case 'contact_phone':
+    case 'contact_email':
       return `/contact/${item.entityId}`;
     case 'organization':
       return `/organization/${item.entityId}`;
@@ -51,7 +52,7 @@ function QueueItem({ item, onRemove }: { item: EnrichmentQueueItem; onRemove: ()
   const isActive = item.status === 'pending' || item.status === 'processing' || item.status === 'polling';
   
   const content = (
-    <div className={`p-3 border-b border-gray-100 last:border-b-0 ${resultUrl ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
+    <div className={`p-3 border-b border-gray-100 last:border-b-0 ${resultUrl ? 'hover:bg-gray-50 cursor-pointer' : ''}`} data-testid={`queue-item-${item.id}`}>
       <div className="flex items-start gap-3">
         <div className="flex-shrink-0 mt-0.5">
           {(item.status === 'processing' || item.status === 'polling') && (
@@ -116,7 +117,7 @@ function QueueItem({ item, onRemove }: { item: EnrichmentQueueItem; onRemove: ()
         </div>
         
         <div className="flex items-center gap-1">
-          {resultUrl && item.status === 'completed' && (
+          {resultUrl && (
             <ChevronRight className="w-4 h-4 text-gray-400" />
           )}
           {!isActive && (
@@ -137,7 +138,7 @@ function QueueItem({ item, onRemove }: { item: EnrichmentQueueItem; onRemove: ()
     </div>
   );
   
-  if (resultUrl && item.status === 'completed') {
+  if (resultUrl) {
     return (
       <Link href={resultUrl} data-testid={`link-queue-item-${item.id}`}>
         {content}

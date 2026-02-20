@@ -695,14 +695,14 @@ export default function PropertyFilters({
       </button>
 
       <button
-        onClick={() => onFiltersChange({ ...filters, viewStatus: filters.viewStatus === 'viewed_only' ? 'all' : 'viewed_only' })}
+        onClick={() => onFiltersChange({ ...filters, viewStatus: filters.viewStatus === 'new_only' ? 'all' : 'new_only' })}
         className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-all whitespace-nowrap ${
-          filters.viewStatus === 'viewed_only' ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+          filters.viewStatus === 'new_only' ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
         }`}
-        data-testid="filter-btn-viewed"
+        data-testid="filter-btn-new"
       >
-        <span className={`w-2 h-2 rounded-full ${filters.viewStatus === 'viewed_only' ? 'bg-blue-500' : 'bg-blue-400/60'}`} />
-        Viewed
+        <span className={`w-2 h-2 rounded-full ${filters.viewStatus === 'new_only' ? 'bg-blue-500' : 'bg-blue-400/60'}`} />
+        New
       </button>
 
       {activeFilterCount > 0 && (
@@ -906,9 +906,9 @@ export default function PropertyFilters({
             <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3l1.912 5.813a2 2 0 001.272 1.278L21 12l-5.816 1.91a2 2 0 00-1.272 1.277L12 21l-1.912-5.813a2 2 0 00-1.272-1.278L3 12l5.816-1.91a2 2 0 001.272-1.277L12 3z" /></svg>
             AI Researched
           </button>
-          <button onClick={() => onFiltersChange({ ...filters, viewStatus: filters.viewStatus === 'viewed_only' ? 'all' : 'viewed_only' })} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${filters.viewStatus === 'viewed_only' ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`} data-testid="filter-btn-viewed-mobile">
-            <span className={`w-2.5 h-2.5 rounded-full ${filters.viewStatus === 'viewed_only' ? 'bg-blue-500' : 'bg-blue-400/60'}`} />
-            Viewed
+          <button onClick={() => onFiltersChange({ ...filters, viewStatus: filters.viewStatus === 'new_only' ? 'all' : 'new_only' })} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${filters.viewStatus === 'new_only' ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'}`} data-testid="filter-btn-new-mobile">
+            <span className={`w-2.5 h-2.5 rounded-full ${filters.viewStatus === 'new_only' ? 'bg-blue-500' : 'bg-blue-400/60'}`} />
+            New
           </button>
         </div>
       </div>

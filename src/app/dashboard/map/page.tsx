@@ -7,7 +7,6 @@ import type { MapBounds } from '@/map/DashboardMap';
 import type { MapCanvasHandle } from '@/map/MapCanvas';
 import PropertyFilters, { FilterState, serializeFiltersToParams, parseFiltersFromParams } from '@/components/PropertyFilters';
 import MapSearchBar from '@/components/MapSearchBar';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
 
@@ -71,6 +70,7 @@ function getZoomForType(type: string, hasPropertyKey: boolean): number {
 
 export default function MapPage() {
   const mapRef = useRef<MapCanvasHandle>(null);
+  const mapZoomRef = useRef<number>(13);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -82,6 +82,20 @@ export default function MapPage() {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 32.8639, lon: -96.7784 });
   const [isLoading, setIsLoading] = useState(true);
   const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
+
+  const savedViewport = useMemo(() => {
+    try {
+      const saved = sessionStorage.getItem('greenfinch_map_viewport');
+      if (saved) {
+        sessionStorage.removeItem('greenfinch_map_viewport');
+        const parsed = JSON.parse(saved);
+        if (parsed.center && Date.now() - parsed.timestamp < 30 * 60 * 1000) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return null;
+  }, []);
 
   // Build API URL with all active filters
   const buildGeojsonUrl = useCallback((filterState: FilterState): string => {
@@ -157,16 +171,24 @@ export default function MapPage() {
   }, [filters, buildGeojsonUrl]);
 
 
-  const handleBoundsChange = useCallback((newBounds: MapBounds) => {
+  const handleBoundsChange = useCallback((newBounds: MapBounds, zoom: number) => {
     setBounds(newBounds);
     const centerLat = (newBounds.north + newBounds.south) / 2;
     const centerLon = (newBounds.east + newBounds.west) / 2;
     setMapCenter({ lat: centerLat, lon: centerLon });
+    mapZoomRef.current = zoom;
   }, []);
 
   const handlePropertyClick = useCallback((propertyKey: string) => {
+    try {
+      sessionStorage.setItem('greenfinch_map_viewport', JSON.stringify({
+        center: mapCenter,
+        zoom: mapZoomRef.current,
+        timestamp: Date.now(),
+      }));
+    } catch {}
     router.push(`/property/${propertyKey}`);
-  }, [router]);
+  }, [router, mapCenter]);
 
   const handleSearchSelect = useCallback((suggestion: SearchSuggestion) => {
     const zoom = getZoomForType(suggestion.type, !!suggestion.propertyKey);
@@ -215,6 +237,8 @@ export default function MapPage() {
             regridToken={config.regridToken}
             regridTileUrl={config.regridTileUrl}
             properties={allProperties}
+            initialCenter={savedViewport?.center}
+            initialZoom={savedViewport?.zoom}
             onBoundsChange={handleBoundsChange}
             onPropertyClick={handlePropertyClick}
           />
@@ -223,58 +247,6 @@ export default function MapPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
             <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
-            <div className="hidden md:flex lg:hidden items-center gap-1.5">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => handleFiltersChange({
-                      ...filters,
-                      viewStatus: filters.viewStatus === 'viewed_only' ? 'all' : 'viewed_only',
-                    })}
-                    className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${
-                      filters.viewStatus === 'viewed_only'
-                        ? 'bg-blue-50 border-blue-300 shadow-sm'
-                        : 'bg-white/95 backdrop-blur-sm border-gray-200 shadow-sm hover:border-gray-300'
-                    }`}
-                    data-testid="toggle-viewed"
-                    aria-label="Filter: Viewed only"
-                  >
-                    <span className={`w-2.5 h-2.5 rounded-full ${
-                      filters.viewStatus === 'viewed_only' ? 'bg-blue-500' : 'bg-blue-400/60'
-                    }`} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{filters.viewStatus === 'viewed_only' ? 'Showing viewed only' : 'Filter by viewed'}</p>
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => handleFiltersChange({
-                      ...filters,
-                      enrichmentStatus: filters.enrichmentStatus === 'researched' ? 'all' : 'researched',
-                    })}
-                    className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${
-                      filters.enrichmentStatus === 'researched'
-                        ? 'bg-purple-50 border-purple-300 shadow-sm'
-                        : 'bg-white/95 backdrop-blur-sm border-gray-200 shadow-sm hover:border-gray-300'
-                    }`}
-                    data-testid="toggle-researched"
-                    aria-label="Filter: Researched with AI"
-                  >
-                    <svg className={`w-4 h-4 ${
-                      filters.enrichmentStatus === 'researched' ? 'text-purple-600' : 'text-gray-500'
-                    }`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M12 3l1.912 5.813a2 2 0 001.272 1.278L21 12l-5.816 1.91a2 2 0 00-1.272 1.277L12 21l-1.912-5.813a2 2 0 00-1.272-1.278L3 12l5.816-1.91a2 2 0 001.272-1.277L12 3z" />
-                    </svg>
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{filters.enrichmentStatus === 'researched' ? 'Showing AI researched only' : 'Filter by AI researched'}</p>
-                </TooltipContent>
-              </Tooltip>
-            </div>
           </div>
         </div>
         {isLoading && (
