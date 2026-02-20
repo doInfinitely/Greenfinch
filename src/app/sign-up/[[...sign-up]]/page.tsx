@@ -10,7 +10,7 @@ function SignUpContent() {
   
   return (
     <SignUp 
-      fallbackRedirectUrl={redirectUrl || "/dashboard/map"}
+      fallbackRedirectUrl={redirectUrl || "/pipeline/dashboard"}
       signInUrl="/sign-in"
     />
   );

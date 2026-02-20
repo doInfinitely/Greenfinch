@@ -4,16 +4,24 @@ import { db } from '@/lib/db';
 import { propertyPipeline, users } from '@/lib/schema';
 import { eq, sql, and, isNull } from 'drizzle-orm';
 
-function getTimeframeStart(timeframe: string): Date {
+function getTimeframeStart(timeframe: string): Date | null {
   const now = new Date();
   switch (timeframe) {
+    case 'week': {
+      const day = now.getDay();
+      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+      return new Date(now.getFullYear(), now.getMonth(), diff);
+    }
     case 'month':
       return new Date(now.getFullYear(), now.getMonth(), 1);
-    case 'quarter':
+    case 'quarter': {
       const quarterMonth = Math.floor(now.getMonth() / 3) * 3;
       return new Date(now.getFullYear(), quarterMonth, 1);
+    }
     case 'year':
       return new Date(now.getFullYear(), 0, 1);
+    case 'all':
+      return null;
     default:
       return new Date(now.getFullYear(), now.getMonth(), 1);
   }
@@ -74,12 +82,16 @@ export async function GET(request: NextRequest) {
 
     const timeframeStart = getTimeframeStart(timeframe);
 
+    const wonTimeFilter = timeframeStart
+      ? sql`AND ${propertyPipeline.statusChangedAt} >= ${timeframeStart}`
+      : sql``;
+
     const [pipelineStats] = await db
       .select({
         totalPipelineValue: sql<number>`COALESCE(SUM(CASE WHEN ${propertyPipeline.status} IN ('qualified', 'attempted_contact', 'active_opportunity') THEN ${propertyPipeline.dealValue} ELSE 0 END), 0)`,
         activeOpportunities: sql<number>`COUNT(CASE WHEN ${propertyPipeline.status} IN ('qualified', 'attempted_contact', 'active_opportunity') THEN 1 END)`,
-        wonThisMonth: sql<number>`COUNT(CASE WHEN ${propertyPipeline.status} = 'won' AND ${propertyPipeline.statusChangedAt} >= ${timeframeStart} THEN 1 END)`,
-        wonValue: sql<number>`COALESCE(SUM(CASE WHEN ${propertyPipeline.status} = 'won' AND ${propertyPipeline.statusChangedAt} >= ${timeframeStart} THEN ${propertyPipeline.dealValue} ELSE 0 END), 0)`,
+        wonThisMonth: sql<number>`COUNT(CASE WHEN ${propertyPipeline.status} = 'won' ${wonTimeFilter} THEN 1 END)`,
+        wonValue: sql<number>`COALESCE(SUM(CASE WHEN ${propertyPipeline.status} = 'won' ${wonTimeFilter} THEN ${propertyPipeline.dealValue} ELSE 0 END), 0)`,
         qualifiedCount: sql<number>`COUNT(CASE WHEN ${propertyPipeline.status} = 'qualified' THEN 1 END)`,
         attemptedContactCount: sql<number>`COUNT(CASE WHEN ${propertyPipeline.status} = 'attempted_contact' THEN 1 END)`,
         activeOppCount: sql<number>`COUNT(CASE WHEN ${propertyPipeline.status} = 'active_opportunity' THEN 1 END)`,

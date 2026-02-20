@@ -806,97 +806,50 @@ export default function PropertyFilters({
         </div>
       )}
 
-      {/* Research Status */}
-      <div className="border-b border-gray-100 pb-2">
-        <SectionHeader 
-          id="research" 
-          title="Research Status" 
-          count={filters.enrichmentStatus !== 'all' ? 1 : 0}
-          onClear={() => onFiltersChange({ ...filters, enrichmentStatus: 'all' })}
-        />
-        {openSections.has('research') && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'all' })}
-              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
-                filters.enrichmentStatus === 'all'
-                  ? 'bg-green-100 border-green-500 text-green-700'
-                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
-              }`}
-              data-testid="button-enrichment-all"
-            >
-              All
-            </button>
-            <button
-              onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'researched' })}
-              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
-                filters.enrichmentStatus === 'researched'
-                  ? 'bg-green-100 border-green-500 text-green-700'
-                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
-              }`}
-              data-testid="button-enrichment-researched"
-            >
-              Researched
-            </button>
-            <button
-              onClick={() => onFiltersChange({ ...filters, enrichmentStatus: 'not_researched' })}
-              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
-                filters.enrichmentStatus === 'not_researched'
-                  ? 'bg-green-100 border-green-500 text-green-700'
-                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
-              }`}
-              data-testid="button-enrichment-not-researched"
-            >
-              Not Researched
-            </button>
-          </div>
-        )}
+      {/* Research Status - toggle switches */}
+      <div className="border-b border-gray-100 pb-3">
+        <div className="flex items-center justify-between py-3">
+          <span className="text-sm font-medium text-gray-700">Researched with AI</span>
+          <button
+            role="switch"
+            aria-checked={filters.enrichmentStatus === 'researched'}
+            onClick={() => onFiltersChange({
+              ...filters,
+              enrichmentStatus: filters.enrichmentStatus === 'researched' ? 'all' : 'researched',
+            })}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+              filters.enrichmentStatus === 'researched' ? 'bg-green-500' : 'bg-gray-300'
+            }`}
+            data-testid="switch-enrichment-researched"
+          >
+            <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+              filters.enrichmentStatus === 'researched' ? 'translate-x-[18px]' : 'translate-x-[3px]'
+            }`} />
+          </button>
+        </div>
       </div>
 
+      {/* View Status - toggle switch */}
       <div>
-        <SectionHeader 
-          id="viewStatus" 
-          title="View Status" 
-          count={filters.viewStatus !== 'all' ? 1 : 0}
-          onClear={() => onFiltersChange({ ...filters, viewStatus: 'all' })}
-        />
-        {openSections.has('viewStatus') && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              onClick={() => onFiltersChange({ ...filters, viewStatus: 'all' })}
-              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
-                filters.viewStatus === 'all'
-                  ? 'bg-green-100 border-green-500 text-green-700'
-                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
-              }`}
-              data-testid="button-view-status-all"
-            >
-              All
-            </button>
-            <button
-              onClick={() => onFiltersChange({ ...filters, viewStatus: 'new_only' })}
-              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
-                filters.viewStatus === 'new_only'
-                  ? 'bg-blue-100 border-blue-500 text-blue-700'
-                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
-              }`}
-              data-testid="button-view-status-new"
-            >
-              New Only
-            </button>
-            <button
-              onClick={() => onFiltersChange({ ...filters, viewStatus: 'viewed_only' })}
-              className={`px-4 py-2 text-sm rounded-full border transition-colors ${
-                filters.viewStatus === 'viewed_only'
-                  ? 'bg-green-100 border-green-500 text-green-700'
-                  : 'bg-white border-gray-300 text-gray-600 active:bg-gray-100'
-              }`}
-              data-testid="button-view-status-viewed"
-            >
-              Viewed
-            </button>
-          </div>
-        )}
+        <div className="flex items-center justify-between py-3">
+          <span className="text-sm font-medium text-gray-700">Viewed</span>
+          <button
+            role="switch"
+            aria-checked={filters.viewStatus === 'viewed_only'}
+            onClick={() => onFiltersChange({
+              ...filters,
+              viewStatus: filters.viewStatus === 'viewed_only' ? 'all' : 'viewed_only',
+            })}
+            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+              filters.viewStatus === 'viewed_only' ? 'bg-green-500' : 'bg-gray-300'
+            }`}
+            data-testid="switch-view-status-viewed"
+          >
+            <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+              filters.viewStatus === 'viewed_only' ? 'translate-x-[18px]' : 'translate-x-[3px]'
+            }`} />
+          </button>
+        </div>
       </div>
 
     </div>

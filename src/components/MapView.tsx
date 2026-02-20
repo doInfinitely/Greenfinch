@@ -45,8 +45,7 @@ interface MapViewProps {
   initialZoom?: number;
 }
 
-const LIGHT_STYLE = 'mapbox://styles/mapbox/light-v11';
-const SATELLITE_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
+const MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
 
 interface ParcelPropertyInfo {
   propertyKey: string;
@@ -73,8 +72,7 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
   const layersAdded = useRef(false);
   const propertyHandlersAdded = useRef(false);
   const lastFlyToRef = useRef<string | null>(null);
-  const currentStyle = useRef<string>(LIGHT_STYLE);
-  const isStyleSwitching = useRef(false);
+  const currentStyle = useRef<string>(MAP_STYLE);
   const parcelHoverDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const currentHoveredLlUuid = useRef<string | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -113,8 +111,8 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       data: geojson,
       cluster: true,
       clusterMaxZoom: 13,
-      clusterRadius: 120,
-      clusterMinPoints: 2,
+      clusterRadius: 200,
+      clusterMinPoints: 3,
     });
 
     map.current.addLayer({
@@ -184,7 +182,25 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
         visibility: initialPointVisibility,
       },
       paint: {
-        'circle-color': '#22c55e',
+        'circle-color': [
+          'case',
+          ['==', ['get', 'enriched'], true],
+          [
+            'match',
+            ['get', 'category'],
+            'Office', '#3b82f6',
+            'Retail', '#f59e0b',
+            'Industrial', '#8b5cf6',
+            'Multifamily', '#10b981',
+            'Medical', '#ef4444',
+            'Hospitality', '#ec4899',
+            'Mixed Use', '#06b6d4',
+            'Land', '#84cc16',
+            'Special Purpose', '#f97316',
+            '#3b82f6',
+          ],
+          '#d1d5db',
+        ],
         'circle-radius': [
           'interpolate', ['linear'], ['zoom'],
           14, 6,
@@ -192,7 +208,12 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
           18, 10,
         ],
         'circle-stroke-width': 2,
-        'circle-stroke-color': '#ffffff',
+        'circle-stroke-color': [
+          'case',
+          ['==', ['get', 'enriched'], true],
+          '#ffffff',
+          '#22c55e',
+        ],
       },
     });
 
@@ -603,27 +624,6 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
     updateLayerVisibility(zoom);
   }, [addPropertyLayers, updateLayerVisibility, regridToken]);
 
-  const handleStyleSwitch = useCallback((newStyle: string) => {
-    if (!map.current || currentStyle.current === newStyle || isStyleSwitching.current) return;
-    
-    isStyleSwitching.current = true;
-    
-    const center = map.current.getCenter();
-    const zoom = map.current.getZoom();
-    const bearing = map.current.getBearing();
-    const pitch = map.current.getPitch();
-    
-    currentStyle.current = newStyle;
-    map.current.setStyle(newStyle);
-    
-    map.current.once('style.load', () => {
-      if (!map.current) return;
-      map.current.jumpTo({ center, zoom, bearing, pitch });
-      readdAllLayers();
-      isStyleSwitching.current = false;
-    });
-  }, [readdAllLayers]);
-
   useEffect(() => {
     if (!mapContainer.current || map.current || !mapToken) return;
 
@@ -634,8 +634,7 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       const startCenter: [number, number] = initialCenter 
         ? [initialCenter.lon, initialCenter.lat]
         : [-96.7877, 32.8667];
-      const startStyle = startZoom >= 14 ? SATELLITE_STYLE : LIGHT_STYLE;
-      currentStyle.current = startStyle;
+      currentStyle.current = MAP_STYLE;
 
       const DALLAS_BOUNDS: [[number, number], [number, number]] = [
         [-97.6, 32.4],
@@ -644,7 +643,7 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
 
       map.current = new mapboxgl.Map({
         container: mapContainer.current,
-        style: startStyle,
+        style: MAP_STYLE,
         center: startCenter,
         zoom: startZoom,
         maxBounds: DALLAS_BOUNDS,
@@ -679,20 +678,6 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
           const zoom = map.current.getZoom();
           setCurrentZoom(zoom);
           updateLayerVisibility(zoom);
-        }
-      });
-
-      map.current.on('idle', () => {
-        if (!map.current || isStyleSwitching.current) return;
-        
-        const zoom = map.current.getZoom();
-        const shouldBeSatellite = zoom >= 14;
-        const isSatellite = currentStyle.current === SATELLITE_STYLE;
-        
-        if (shouldBeSatellite && !isSatellite) {
-          handleStyleSwitch(SATELLITE_STYLE);
-        } else if (!shouldBeSatellite && isSatellite) {
-          handleStyleSwitch(LIGHT_STYLE);
         }
       });
 
@@ -741,7 +726,7 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       }
       propertyHandlersAdded.current = false;
     };
-  }, [mapToken, updateLayerVisibility, handleStyleSwitch]);
+  }, [mapToken, updateLayerVisibility]);
 
   useEffect(() => {
     if (!map.current || !mapLoaded) return;

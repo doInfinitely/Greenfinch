@@ -172,22 +172,29 @@ export default function PipelineDashboard() {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
+  const totalPipelineItems = (data?.counts?.qualified || 0) + (data?.counts?.attemptedContact || 0) +
+    (data?.counts?.activeOpportunity || 0) + (data?.counts?.won || 0) + (data?.counts?.lost || 0);
+  const hasNoActivity = !loading && !error && totalPipelineItems === 0 &&
+    !activity?.pendingActions?.length && !activity?.recentMentions?.length;
+
   return (
     <AppSidebar>
       <div className="h-full bg-gray-50 p-6">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
-            <h1 className="text-2xl font-bold text-gray-900">Pipeline Dashboard</h1>
+            <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
             
             <div className="flex items-center gap-3 flex-wrap">
               <Select value={timeframe} onValueChange={setTimeframe}>
-                <SelectTrigger className="w-32" data-testid="select-timeframe">
+                <SelectTrigger className="w-36" data-testid="select-timeframe">
                   <SelectValue placeholder="Timeframe" />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="week">This Week</SelectItem>
                   <SelectItem value="month">This Month</SelectItem>
                   <SelectItem value="quarter">This Quarter</SelectItem>
                   <SelectItem value="year">This Year</SelectItem>
+                  <SelectItem value="all">All Time</SelectItem>
                 </SelectContent>
               </Select>
 
@@ -294,85 +301,49 @@ export default function PipelineDashboard() {
                 </Card>
               </div>
 
-              {data?.funnel && (
-                <Card className="mb-6" data-testid="card-funnel-metrics">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base font-medium">Pipeline Funnel</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {/* Stage Counts */}
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
-                      <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
-                        <div className="text-2xl font-bold text-green-700" data-testid="text-qualified-count">
-                          {data.counts?.qualified || 0}
-                        </div>
-                        <div className="text-xs text-green-600">Qualified</div>
+              {hasNoActivity && (
+                <Card className="mb-6 border-dashed" data-testid="card-empty-state">
+                  <CardContent className="py-12">
+                    <div className="text-center max-w-md mx-auto">
+                      <div className="w-12 h-12 rounded-full bg-gray-100 flex items-center justify-center mx-auto mb-4">
+                        <Target className="w-6 h-6 text-gray-400" />
                       </div>
-                      <div className="text-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
-                        <div className="text-2xl font-bold text-yellow-700" data-testid="text-attempted-count">
-                          {data.counts?.attemptedContact || 0}
-                        </div>
-                        <div className="text-xs text-yellow-600">Attempted</div>
-                      </div>
-                      <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
-                        <div className="text-2xl font-bold text-purple-700" data-testid="text-active-count">
-                          {data.counts?.activeOpportunity || 0}
-                        </div>
-                        <div className="text-xs text-purple-600">Active</div>
-                      </div>
-                      <div className="text-center p-3 bg-emerald-50 rounded-lg border border-emerald-200">
-                        <div className="text-2xl font-bold text-emerald-700" data-testid="text-won-total">
-                          {data.counts?.won || 0}
-                        </div>
-                        <div className="text-xs text-emerald-600">Won</div>
-                      </div>
-                      <div className="text-center p-3 bg-red-50 rounded-lg border border-red-200 col-span-2 md:col-span-1">
-                        <div className="text-2xl font-bold text-red-700" data-testid="text-lost-total">
-                          {data.counts?.lost || 0}
-                        </div>
-                        <div className="text-xs text-red-600">Lost</div>
-                      </div>
-                    </div>
-                    {/* Conversion Rates */}
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="flex flex-col items-center p-4 bg-gray-50 rounded-lg">
-                        <span className="text-2xl font-bold text-blue-600" data-testid="text-qualified-to-attempted">
-                          {data.funnel.qualifiedToAttempted}%
-                        </span>
-                        <span className="text-xs text-muted-foreground text-center mt-1">
-                          Qualified → Attempted Contact
-                        </span>
-                      </div>
-                      <div className="flex flex-col items-center p-4 bg-gray-50 rounded-lg">
-                        <span className="text-2xl font-bold text-purple-600" data-testid="text-attempted-to-active">
-                          {data.funnel.attemptedToActive}%
-                        </span>
-                        <span className="text-xs text-muted-foreground text-center mt-1">
-                          Attempted → Active Opp
-                        </span>
-                      </div>
-                      <div className="flex flex-col items-center p-4 bg-gray-50 rounded-lg">
-                        <span className="text-2xl font-bold text-green-600" data-testid="text-active-to-won">
-                          {data.funnel.activeToWon}%
-                        </span>
-                        <span className="text-xs text-muted-foreground text-center mt-1">
-                          Active Opp → Won
-                        </span>
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No activity yet</h3>
+                      <p className="text-sm text-gray-500 mb-6">
+                        Start prospecting to build your pipeline. Here are some places to begin:
+                      </p>
+                      <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                        <Link
+                          href="/dashboard/map"
+                          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors"
+                          data-testid="link-explore-properties"
+                        >
+                          <Building2 className="w-4 h-4" />
+                          Explore Properties
+                        </Link>
+                        <Link
+                          href="/pipeline/board"
+                          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                          data-testid="link-pipeline-board"
+                        >
+                          <BarChart3 className="w-4 h-4" />
+                          Pipeline Board
+                        </Link>
+                        <Link
+                          href="/lists"
+                          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+                          data-testid="link-view-lists"
+                        >
+                          <List className="w-4 h-4" />
+                          Create a List
+                        </Link>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
               )}
 
-              {(data?.activeOpportunities || 0) === 0 && !data?.counts?.won && !data?.counts?.lost && (
-                <div className="text-center py-12">
-                  <p className="text-muted-foreground">
-                    Start qualifying properties to see your pipeline analytics here.
-                  </p>
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
                 <Card data-testid="card-pending-tasks">
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 gap-2">
                     <CardTitle className="text-base font-medium flex items-center gap-2">
@@ -502,6 +473,44 @@ export default function PipelineDashboard() {
                   </CardContent>
                 </Card>
               </div>
+
+              {data?.funnel && totalPipelineItems > 0 && (
+                <Card className="mt-6" data-testid="card-funnel-metrics">
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-base font-medium">Pipeline Funnel</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-0 overflow-x-auto" data-testid="funnel-flow">
+                      {[
+                        { label: 'Qualified', count: data.counts?.qualified || 0, testId: 'text-qualified-count' },
+                        { label: 'Attempted', count: data.counts?.attemptedContact || 0, rate: data.funnel.qualifiedToAttempted, testId: 'text-attempted-count' },
+                        { label: 'Active', count: data.counts?.activeOpportunity || 0, rate: data.funnel.attemptedToActive, testId: 'text-active-count' },
+                        { label: 'Won', count: data.counts?.won || 0, rate: data.funnel.activeToWon, testId: 'text-won-total' },
+                        { label: 'Lost', count: data.counts?.lost || 0, testId: 'text-lost-total' },
+                      ].map((stage, i, arr) => (
+                        <div key={stage.label} className="flex items-center">
+                          <div className="flex flex-col items-center min-w-[72px]">
+                            <span className="text-xl font-bold text-gray-900" data-testid={stage.testId}>{stage.count}</span>
+                            <span className="text-xs text-gray-500 mt-0.5">{stage.label}</span>
+                          </div>
+                          {i < arr.length - 1 && (
+                            <div className="flex flex-col items-center mx-1 min-w-[40px]">
+                              {arr[i + 1].rate !== undefined ? (
+                                <>
+                                  <span className="text-[10px] font-medium text-gray-400">{arr[i + 1].rate}%</span>
+                                  <ChevronRight className="w-4 h-4 text-gray-300" />
+                                </>
+                              ) : (
+                                <ChevronRight className="w-4 h-4 text-gray-300" />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               <Card className="mt-6" data-testid="card-recent-lists">
                 <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-3 gap-2">

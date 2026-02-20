@@ -219,8 +219,51 @@ export default function MapPage() {
           />
         </div>
         <div className="absolute top-3 left-3 right-14 md:right-auto z-10 flex flex-col gap-2">
-          <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
-          <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
+          <div className="flex items-center gap-2 flex-wrap">
+            <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
+            <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
+            <div className="hidden md:flex items-center gap-3 bg-white/95 backdrop-blur-sm rounded-lg border border-gray-200 shadow-sm px-3 py-1.5">
+              <label className="flex items-center gap-2 cursor-pointer select-none" data-testid="toggle-viewed">
+                <span className="text-xs font-medium text-gray-600">Viewed</span>
+                <button
+                  role="switch"
+                  aria-checked={filters.viewStatus === 'viewed_only'}
+                  onClick={() => handleFiltersChange({
+                    ...filters,
+                    viewStatus: filters.viewStatus === 'viewed_only' ? 'all' : 'viewed_only',
+                  })}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    filters.viewStatus === 'viewed_only' ? 'bg-green-500' : 'bg-gray-300'
+                  }`}
+                  data-testid="switch-viewed"
+                >
+                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                    filters.viewStatus === 'viewed_only' ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                  }`} />
+                </button>
+              </label>
+              <div className="w-px h-4 bg-gray-200" />
+              <label className="flex items-center gap-2 cursor-pointer select-none" data-testid="toggle-researched">
+                <span className="text-xs font-medium text-gray-600">Researched with AI</span>
+                <button
+                  role="switch"
+                  aria-checked={filters.enrichmentStatus === 'researched'}
+                  onClick={() => handleFiltersChange({
+                    ...filters,
+                    enrichmentStatus: filters.enrichmentStatus === 'researched' ? 'all' : 'researched',
+                  })}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    filters.enrichmentStatus === 'researched' ? 'bg-green-500' : 'bg-gray-300'
+                  }`}
+                  data-testid="switch-researched"
+                >
+                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
+                    filters.enrichmentStatus === 'researched' ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                  }`} />
+                </button>
+              </label>
+            </div>
+          </div>
         </div>
         {isLoading && (
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/20 pointer-events-none">
