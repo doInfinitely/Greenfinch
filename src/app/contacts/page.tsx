@@ -9,6 +9,7 @@ import { BulkActionBar } from '@/components/BulkActionBar';
 import { ListPlus, Filter, Mail, Phone, Loader2, Plus } from 'lucide-react';
 import { ContactCardSkeleton } from '@/components/PageSkeleton';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, LinkedInLink, hasAnyPhone, hasOnlyOfficeLine, hasHighQualityPhone } from '@/components/ContactStatusIcons';
+import { formatPhoneNumber } from '@/lib/phone-format';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useToast } from '@/hooks/use-toast';
 import { useEnrichment } from '@/hooks/use-enrichment';
@@ -50,6 +51,7 @@ interface Contact {
   email: string | null;
   phone: string | null;
   phoneLabel: string | null;
+  phoneExtension: string | null;
   aiPhone: string | null;
   aiPhoneLabel: string | null;
   enrichmentPhoneWork: string | null;
@@ -313,11 +315,11 @@ export default function ContactsPage() {
     return labelMap[lower] || label.charAt(0).toUpperCase() + label.slice(1).replace(/_/g, ' ');
   };
 
-  const getPhoneNumbers = (contact: Contact): { number: string; label: string }[] => {
-    const phones: { number: string; label: string }[] = [];
+  const getPhoneNumbers = (contact: Contact): { number: string; label: string; extension?: string | null }[] => {
+    const phones: { number: string; label: string; extension?: string | null }[] = [];
     
     if (contact.phone) {
-      phones.push({ number: contact.phone, label: formatPhoneLabel(contact.phoneLabel) || '' });
+      phones.push({ number: contact.phone, label: formatPhoneLabel(contact.phoneLabel) || '', extension: contact.phoneExtension || null });
     }
     if (contact.enrichmentPhoneWork && contact.enrichmentPhoneWork !== contact.phone) {
       phones.push({ number: contact.enrichmentPhoneWork, label: 'Work' });
@@ -1155,9 +1157,9 @@ export default function ContactsPage() {
                                         className="text-sm text-green-600 underline"
                                         data-testid={`link-phone-${contact.id}-${p.number}`}
                                       >
-                                        {p.number}
+                                        {formatPhoneNumber(p.number, p.extension)}
                                       </a>
-                                      <span className="text-xs text-gray-400">({p.label})</span>
+                                      {p.label && <span className="text-xs text-gray-400">({p.label})</span>}
                                     </div>
                                   ))}
                                 </div>

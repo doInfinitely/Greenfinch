@@ -12,6 +12,7 @@ import ContactDetailSkeleton from '@/components/ContactDetailSkeleton';
 import { List } from 'lucide-react';
 import ContactHeader from '@/components/contact/ContactHeader';
 import ContactInfo from '@/components/contact/ContactInfo';
+import { formatPhoneNumber } from '@/lib/phone-format';
 import AssociatedProperties from '@/components/contact/AssociatedProperties';
 import ContactOrganizations from '@/components/contact/ContactOrganizations';
 import DataIssueDialog from '@/components/DataIssueDialog';
@@ -285,7 +286,7 @@ export default function ContactDetailPage() {
       apiEndpoint: `/api/contacts/${contactId}/waterfall-phone`,
       onSuccess: (data: any) => {
         if (data?.data?.phone) {
-          setPhoneMessage(`Found: ${data.data.phone}`);
+          setPhoneMessage(`Found: ${formatPhoneNumber(data.data.phone)}`);
         } else {
           setPhoneMessage('No phone number found');
         }

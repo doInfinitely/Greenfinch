@@ -148,6 +148,7 @@ export async function GET(request: NextRequest) {
         email: contacts.email,
         phone: contacts.phone,
         phoneLabel: contacts.phoneLabel,
+        phoneExtension: contacts.phoneExtension,
         aiPhone: contacts.aiPhone,
         aiPhoneLabel: contacts.aiPhoneLabel,
         enrichmentPhoneWork: contacts.enrichmentPhoneWork,
