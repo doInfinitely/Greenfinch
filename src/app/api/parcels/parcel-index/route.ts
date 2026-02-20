@@ -71,6 +71,24 @@ export async function GET() {
       };
     }
 
+    for (const [gisId, group] of gisGroups.entries()) {
+      if (!index[gisId]) {
+        const selfRef = group.find(s => s.propertyKey === s.gisParcelId);
+        const representative = selfRef || group[0];
+        const resolvedProp = propertyMap.get(representative.propertyKey) || representative;
+        const name = resolvedProp.commonName
+          ? normalizeCommonName(resolvedProp.commonName)
+          : resolvedProp.bizName || null;
+        index[gisId] = {
+          pk: resolvedProp.propertyKey,
+          n: name,
+          a: resolvedProp.address || resolvedProp.regridAddress || null,
+          c: resolvedProp.category || null,
+          s: resolvedProp.subcategory || null,
+        };
+      }
+    }
+
     const response = NextResponse.json(index);
     response.headers.set('Cache-Control', 'private, max-age=300');
     return response;

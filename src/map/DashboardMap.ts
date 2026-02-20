@@ -277,12 +277,9 @@ export class DashboardMap {
     this.handlersRegistered = true;
 
     this.map.on('click', 'clusters', this.onClusterClick);
-    this.map.on('click', 'property-points', this.onPropertyPointClick);
     this.map.on('mouseenter', 'clusters', this.onCursorPointer);
     this.map.on('mouseleave', 'clusters', this.onCursorDefault);
     this.map.on('mouseenter', 'parcels-fill', this.onCursorPointer);
-    this.map.on('mouseenter', 'property-points', this.onCursorPointer);
-    this.map.on('mouseleave', 'property-points', this.onCursorDefault);
     this.map.on('mousemove', 'parcels-fill', this.onParcelHover);
     this.map.on('mouseleave', 'parcels-fill', this.onParcelLeave);
     this.map.on('click', 'parcels-fill', this.onParcelClick);
@@ -338,7 +335,7 @@ export class DashboardMap {
 
     const props = feature.properties || {};
     const center = e.lngLat;
-    const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
+    const parcelnumb = props.parcelnumb_no_formatting || props.parcelnumb || props.apn;
 
     if (!parcelnumb) {
       if (this.hoverPopup) this.hoverPopup.remove();
@@ -352,8 +349,22 @@ export class DashboardMap {
     this.resolveAndShowTooltip(center, parcelnumb, props);
   };
 
+  private resolveParcelNumber(parcelnumb: string): ParcelIndexEntry | null {
+    const normalized = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
+    const exact = this.parcelIndex.get(normalized);
+    if (exact) return exact;
+
+    for (let len = normalized.length - 1; len >= 10; len--) {
+      const prefix = `prefix:${normalized.substring(0, len)}`;
+      const prefixMatch = this.parcelIndex.get(prefix);
+      if (prefixMatch) return prefixMatch;
+    }
+
+    return null;
+  }
+
   private resolveAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string, regridProps: Record<string, any>) {
-    const entry = this.parcelIndex.get(parcelnumb);
+    const entry = this.resolveParcelNumber(parcelnumb);
 
     if (entry) {
       const displayName = entry.n
@@ -423,23 +434,13 @@ export class DashboardMap {
 
     const feature = e.features[0];
     const props = feature.properties || {};
-    const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
+    const parcelnumb = props.parcelnumb_no_formatting || props.parcelnumb || props.apn;
 
-    console.log('[ParcelClick] parcelnumb:', parcelnumb, 'all props:', JSON.stringify(Object.keys(props)));
+    if (!parcelnumb) return;
 
-    if (!parcelnumb) {
-      console.log('[ParcelClick] No parcelnumb found in feature properties');
-      return;
-    }
-
-    const entry = this.parcelIndex.get(parcelnumb);
+    const entry = this.resolveParcelNumber(parcelnumb);
     if (entry) {
-      console.log('[ParcelClick] Index hit →', entry.pk, entry.n);
       this.config.onPropertyClick(entry.pk);
-    } else {
-      console.log('[ParcelClick] parcelnumb NOT in index. Index size:', this.parcelIndex.size);
-      const sampleKeys = Array.from(this.parcelIndex.keys()).slice(0, 5);
-      console.log('[ParcelClick] Sample index keys:', sampleKeys);
     }
   };
 
@@ -496,12 +497,29 @@ export class DashboardMap {
       const data: Record<string, ParcelIndexEntry> = await response.json();
       
       this.parcelIndex.clear();
-      for (const [propertyKey, entry] of Object.entries(data)) {
-        this.parcelIndex.set(propertyKey, entry);
+
+      for (const [key, entry] of Object.entries(data)) {
+        const normalizedKey = key.replace(/[-\s]/g, '').toUpperCase();
+        this.parcelIndex.set(normalizedKey, entry);
+
+        for (let len = normalizedKey.length - 1; len >= 10; len--) {
+          const prefixKey = `prefix:${normalizedKey.substring(0, len)}`;
+          const existing = this.parcelIndex.get(prefixKey);
+          if (!existing) {
+            this.parcelIndex.set(prefixKey, entry);
+          } else {
+            const existingNorm = existing.pk.replace(/[-\s]/g, '').toUpperCase();
+            const existingTrailingZeros = (existingNorm.match(/0+$/) || [''])[0].length;
+            const newTrailingZeros = (normalizedKey.match(/0+$/) || [''])[0].length;
+            if (newTrailingZeros > existingTrailingZeros) {
+              this.parcelIndex.set(prefixKey, entry);
+            }
+          }
+        }
       }
       
       if (this.debugLogging) {
-        console.log('[ParcelIndex] Loaded', this.parcelIndex.size, 'entries');
+        console.log('[ParcelIndex] Loaded', Object.keys(data).length, 'properties,', this.parcelIndex.size, 'total index entries (with prefixes)');
       }
     } catch (err) {
       console.warn('[ParcelIndex] Failed to load:', err);
