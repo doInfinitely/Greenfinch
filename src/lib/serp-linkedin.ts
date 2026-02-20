@@ -13,15 +13,25 @@ export interface SerpLinkedInResult {
 
 const CACHE_TTL_SECONDS = 24 * 60 * 60;
 
-function buildCacheKey(name: string, company: string | null): string {
-  const normalized = `${name.toLowerCase().trim()}|${(company || '').toLowerCase().trim()}`;
+function buildCacheKey(name: string, company: string | null, location: string | null): string {
+  const normalized = `${name.toLowerCase().trim()}|${(company || '').toLowerCase().trim()}|${(location || '').toLowerCase().trim()}`;
   return `serp-linkedin:${normalized}`;
+}
+
+function extractCityState(location: string | null): { city: string | null; state: string | null } {
+  if (!location) return { city: null, state: null };
+  const parts = location.split(',').map(p => p.trim()).filter(Boolean);
+  if (parts.length >= 2) {
+    return { city: parts[0], state: parts[1].replace(/\s+\d{5}.*/, '') };
+  }
+  return { city: parts[0] || null, state: null };
 }
 
 export async function searchLinkedInProfile(
   firstName: string,
   lastName: string,
-  company: string | null
+  company: string | null,
+  location: string | null = null
 ): Promise<SerpLinkedInResult> {
   const apiKey = process.env.SERP_API_KEY;
   if (!apiKey) {
@@ -30,7 +40,7 @@ export async function searchLinkedInProfile(
   }
 
   const fullName = `${firstName} ${lastName}`.trim();
-  const cacheKey = buildCacheKey(fullName, company);
+  const cacheKey = buildCacheKey(fullName, company, location);
 
   try {
     const cached = await cacheGet<SerpLinkedInResult>(cacheKey);
@@ -41,12 +51,22 @@ export async function searchLinkedInProfile(
   } catch {
   }
 
-  console.log(`[SERP LinkedIn] Searching for: ${fullName}${company ? ` at ${company}` : ''}`);
+  const { city, state } = extractCityState(location);
+  const locationPart = city && state ? ` "${city}" "${state}"` : (city ? ` "${city}"` : '');
+
+  console.log(`[SERP LinkedIn] Searching for: ${fullName}${company ? ` at ${company}` : ''}${location ? ` near ${location}` : ''}`);
 
   try {
+    const queryParts = [
+      `site:linkedin.com/in/`,
+      `"${firstName} ${lastName}"`,
+    ];
+    if (company) queryParts.push(`"${company}"`);
+    if (locationPart) queryParts.push(locationPart);
+
     const params = new URLSearchParams({
       engine: 'google',
-      q: `site:linkedin.com/in/ "${firstName} ${lastName}"${company ? ` "${company}"` : ''}`,
+      q: queryParts.join(' '),
       api_key: apiKey,
       num: '5',
     });
@@ -64,7 +84,7 @@ export async function searchLinkedInProfile(
 
     console.log(`[SERP LinkedIn] Got ${organicResults.length} results for "${fullName}"`);
 
-    const linkedinMatch = findBestLinkedInMatch(organicResults, firstName, lastName, company);
+    const linkedinMatch = findBestLinkedInMatch(organicResults, firstName, lastName, company, location);
 
     if (linkedinMatch) {
       console.log(`[SERP LinkedIn] Found LinkedIn for "${fullName}": ${linkedinMatch.linkedinUrl} (confidence: ${linkedinMatch.confidence})`);
@@ -96,11 +116,15 @@ function findBestLinkedInMatch(
   results: any[],
   firstName: string,
   lastName: string,
-  company: string | null
+  company: string | null,
+  location: string | null
 ): SerpLinkedInResult | null {
   const firstLower = firstName.toLowerCase();
   const lastLower = lastName.toLowerCase();
   const companyLower = company?.toLowerCase() || '';
+  const { city, state } = extractCityState(location);
+  const cityLower = city?.toLowerCase() || '';
+  const stateLower = state?.toLowerCase() || '';
 
   for (const result of results) {
     const link = result.link || '';
@@ -138,6 +162,13 @@ function findBestLinkedInMatch(
       if (matchingWords.length >= Math.ceil(companyWords.length / 2)) {
         confidence = Math.max(confidence, 0.8);
       }
+    }
+
+    if (cityLower && combined.includes(cityLower)) {
+      confidence = Math.min(confidence + 0.05, 1.0);
+    }
+    if (stateLower && combined.includes(stateLower)) {
+      confidence = Math.min(confidence + 0.03, 1.0);
     }
 
     return {

@@ -605,7 +605,8 @@ export async function enrichContactCascade(
       const serpResult = await searchLinkedInProfile(
         firstName,
         lastName,
-        companyName || companyDomain || null
+        companyName || companyDomain || null,
+        location || null
       );
       
       if (serpResult.found && serpResult.linkedinUrl) {
