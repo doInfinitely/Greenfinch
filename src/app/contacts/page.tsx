@@ -524,13 +524,6 @@ export default function ContactsPage() {
         entityId: contact.id,
         entityName: `${contact.fullName || 'Contact'} - Phone`,
         apiEndpoint: `/api/contacts/${contact.id}/waterfall-phone`,
-        pollForCompletion: {
-          checkEndpoint: `/api/contacts/${contact.id}`,
-          checkField: 'contact.enrichedAt',
-          compareMode: 'changed',
-          maxAttempts: 20,
-          intervalMs: 3000,
-        },
       });
     }
     

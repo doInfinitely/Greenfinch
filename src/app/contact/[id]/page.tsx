@@ -276,27 +276,30 @@ export default function ContactDetailPage() {
     if (!contact) return;
 
     const confirmed = window.confirm(
-      `Search for phone number for ${contact.fullName || 'this contact'}?\n\nThis will use a paid API lookup service.`
+      `Search for phone number for ${contact.fullName || 'this contact'}?\n\nThis will check up to 4 sources (Findymail, PDL, Hunter, EnrichLayer).`
     );
     if (!confirmed) return;
 
     setIsFindingPhone(true);
     setPhoneMessage(null);
 
-    const originalEnrichedAt = contact.enrichedAt;
-
     startEnrichment({
       type: 'contact_phone',
       entityId: contactId,
       entityName: `${contact.fullName || 'Contact'} - Phone`,
       apiEndpoint: `/api/contacts/${contactId}/waterfall-phone`,
-      pollForCompletion: {
-        checkEndpoint: `/api/contacts/${contactId}`,
-        checkField: 'contact.enrichedAt',
-        originalValue: originalEnrichedAt,
-        compareMode: 'changed',
-        maxAttempts: 20,
-        intervalMs: 3000,
+      onSuccess: (data: any) => {
+        if (data?.data?.phone) {
+          setPhoneMessage(`Found: ${data.data.phone} (via ${data.data.source})`);
+        } else {
+          setPhoneMessage('No phone number found after checking all sources');
+        }
+        fetchContact();
+        setIsFindingPhone(false);
+      },
+      onError: (errorMsg: string) => {
+        setPhoneMessage(`Error: ${errorMsg}`);
+        setIsFindingPhone(false);
       },
     });
   };
