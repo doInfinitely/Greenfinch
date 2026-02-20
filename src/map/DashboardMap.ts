@@ -336,7 +336,8 @@ export class DashboardMap {
   };
 
   private currentHoveredParcelId: string | null = null;
-  private tooltipCache: Map<string, { displayName: string; address: string | null; category?: string; subcategory?: string }> = new Map();
+  private tooltipCache: Map<string, { displayName: string; address: string | null; category?: string; subcategory?: string; propertyKey?: string }> = new Map();
+  private pendingApiCalls: Set<string> = new Set();
 
   private onParcelHover = (e: mapboxgl.MapLayerMouseEvent) => {
     if (!this.map || !this.styleReady || !e.features?.length) return;
@@ -381,11 +382,10 @@ export class DashboardMap {
       return;
     }
 
-    // Always update position, check if we need new content
     const isSameParcel = parcelId === this.currentHoveredParcelId;
     this.currentHoveredParcelId = parcelId;
 
-    // Check cache first (for API results)
+    // Check cache first (for API results and spatial matches)
     const cached = this.tooltipCache.get(parcelId);
     if (cached) {
       this.showTooltip(center, {
@@ -402,14 +402,24 @@ export class DashboardMap {
       ? this.findPropertyByParcelNumber(parcelnumb)
       : null;
 
+    // If parcelnumb matching fails, try spatial proximity to nearest property marker
+    if (!propertyInfo) {
+      propertyInfo = this.findNearestProperty(center);
+    }
+
     if (propertyInfo) {
+      this.tooltipCache.set(parcelId, {
+        displayName: propertyInfo.commonName || propertyInfo.address || 'Unknown Property',
+        address: propertyInfo.address,
+        category: propertyInfo.category,
+        subcategory: propertyInfo.subcategory,
+        propertyKey: propertyInfo.propertyKey,
+      });
       this.showTooltip(center, propertyInfo);
-    } else if (parcelnumb && !isSameParcel) {
-      // API fallback for constituent parcels - only fetch on new parcel
-      // Pass Regrid props so we can show address if no match found
+    } else if (parcelnumb && !isSameParcel && !this.pendingApiCalls.has(parcelId)) {
       this.fetchAndShowTooltip(center, parcelnumb, parcelId, props);
-    } else {
-      // No match in our database - show Regrid tile data (address, owner)
+    } else if (!this.pendingApiCalls.has(parcelId)) {
+      // No match and no pending API call - show Regrid tile data
       const regridAddress = props.address || props.siteaddr || props.mail_addres;
       const owner = props.owner || props.owner1;
       if (regridAddress || owner) {
@@ -443,21 +453,21 @@ export class DashboardMap {
   }
 
   private async fetchAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string, parcelId: string, regridProps?: Record<string, any>) {
+    this.pendingApiCalls.add(parcelId);
     try {
       const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
       
       if (response.ok) {
         const data = await response.json();
         if (data.displayName) {
-          // Cache the result
           this.tooltipCache.set(parcelId, {
             displayName: data.displayName,
             address: data.address,
             category: data.category,
             subcategory: data.subcategory,
+            propertyKey: data.propertyKey,
           });
           
-          // Only show if still hovering over the same parcel
           if (this.currentHoveredParcelId === parcelId) {
             this.showTooltip(center, {
               commonName: data.displayName,
@@ -470,29 +480,60 @@ export class DashboardMap {
         }
       }
       
-      if (this.currentHoveredParcelId === parcelId && regridProps) {
-        const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
-        const owner = regridProps.owner || regridProps.owner1;
-        if (regridAddress || owner) {
-          this.showTooltip(center, {
-            commonName: owner || null,
-            address: regridAddress || null,
-            isUnimported: true,
+      // API returned no match - try spatial proximity as last resort
+      if (this.currentHoveredParcelId === parcelId) {
+        const nearestProperty = this.findNearestProperty(center);
+        if (nearestProperty) {
+          this.tooltipCache.set(parcelId, {
+            displayName: nearestProperty.commonName || nearestProperty.address || 'Unknown Property',
+            address: nearestProperty.address,
+            category: nearestProperty.category,
+            subcategory: nearestProperty.subcategory,
+            propertyKey: nearestProperty.propertyKey,
           });
+          this.showTooltip(center, nearestProperty);
+        } else if (regridProps) {
+          const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
+          const owner = regridProps.owner || regridProps.owner1;
+          if (regridAddress || owner) {
+            this.tooltipCache.set(parcelId, {
+              displayName: owner || regridAddress || 'Unknown',
+              address: regridAddress || null,
+            });
+            this.showTooltip(center, {
+              commonName: owner || null,
+              address: regridAddress || null,
+              isUnimported: true,
+            });
+          }
         }
       }
     } catch (err) {
-      if (this.currentHoveredParcelId === parcelId && regridProps) {
-        const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
-        const owner = regridProps.owner || regridProps.owner1;
-        if (regridAddress || owner) {
-          this.showTooltip(center, {
-            commonName: owner || null,
-            address: regridAddress || null,
-            isUnimported: true,
+      if (this.currentHoveredParcelId === parcelId) {
+        const nearestProperty = this.findNearestProperty(center);
+        if (nearestProperty) {
+          this.tooltipCache.set(parcelId, {
+            displayName: nearestProperty.commonName || nearestProperty.address || 'Unknown Property',
+            address: nearestProperty.address,
+            category: nearestProperty.category,
+            subcategory: nearestProperty.subcategory,
+            propertyKey: nearestProperty.propertyKey,
           });
+          this.showTooltip(center, nearestProperty);
+        } else if (regridProps) {
+          const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
+          const owner = regridProps.owner || regridProps.owner1;
+          if (regridAddress || owner) {
+            this.showTooltip(center, {
+              commonName: owner || null,
+              address: regridAddress || null,
+              isUnimported: true,
+            });
+          }
         }
       }
+    } finally {
+      this.pendingApiCalls.delete(parcelId);
     }
   }
 
@@ -512,6 +553,41 @@ export class DashboardMap {
     }
     
     return null;
+  }
+
+  private findNearestProperty(lngLat: mapboxgl.LngLat): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
+    if (this.currentData.features.length === 0) return null;
+
+    const zoom = this.map?.getZoom() || 14;
+    if (zoom < 14) return null;
+
+    const maxDistDeg = zoom >= 17 ? 0.001 : zoom >= 16 ? 0.002 : 0.0015;
+
+    let nearest: { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null = null;
+    let nearestDist = maxDistDeg;
+
+    for (const feature of this.currentData.features) {
+      if (feature.geometry.type !== 'Point') continue;
+      const [lon, lat] = (feature.geometry as GeoJSON.Point).coordinates;
+      const dx = lon - lngLat.lng;
+      const dy = lat - lngLat.lat;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < nearestDist) {
+        nearestDist = dist;
+        const props = feature.properties as any;
+        if (props?.propertyKey) {
+          nearest = {
+            propertyKey: props.propertyKey,
+            commonName: props.commonName || null,
+            address: props.address || null,
+            category: props.category || null,
+            subcategory: props.subcategory || null,
+          };
+        }
+      }
+    }
+
+    return nearest;
   }
 
   private onParcelLeave = () => {
@@ -549,30 +625,46 @@ export class DashboardMap {
     const props = feature.properties || {};
     const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
     
-    if (!parcelnumb) {
-      console.warn('No parcel number found for clicked parcel');
-      return;
+    // Check tooltip cache first - it may already have resolved this parcel
+    const parcelId = parcelnumb || props.ll_uuid || (typeof feature.id === 'string' ? feature.id : null);
+    if (parcelId) {
+      const cached = this.tooltipCache.get(parcelId);
+      if (cached?.propertyKey) {
+        this.config.onPropertyClick(cached.propertyKey);
+        return;
+      }
     }
     
-    // Try client-side match first (exact + progressive prefix matching)
-    const propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
-    if (propertyInfo?.propertyKey) {
-      this.config.onPropertyClick(propertyInfo.propertyKey);
+    // Try client-side match by parcel number
+    if (parcelnumb) {
+      const propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
+      if (propertyInfo?.propertyKey) {
+        this.config.onPropertyClick(propertyInfo.propertyKey);
+        return;
+      }
+    }
+
+    // Try spatial proximity to nearest property marker
+    const nearestProperty = this.findNearestProperty(e.lngLat);
+    if (nearestProperty?.propertyKey) {
+      this.config.onPropertyClick(nearestProperty.propertyKey);
       return;
     }
     
     // API fallback - resolve parcel to parent property via server
-    try {
-      const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
-      if (response.ok) {
-        const data = await response.json();
-        if (data.propertyKey) {
-          this.config.onPropertyClick(data.propertyKey);
-          return;
+    if (parcelnumb) {
+      try {
+        const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.propertyKey) {
+            this.config.onPropertyClick(data.propertyKey);
+            return;
+          }
         }
+      } catch (err) {
+        console.warn('Parcel lookup failed', err);
       }
-    } catch (err) {
-      console.warn('Parcel lookup failed', err);
     }
   };
 
