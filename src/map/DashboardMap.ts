@@ -226,7 +226,7 @@ export class DashboardMap {
           source: 'properties',
           filter: ['has', 'point_count'],
           paint: {
-            'circle-color': '#16a34a', // Green (green-600)
+            'circle-color': '#1f2937', // Very dark grey (gray-800)
             'circle-radius': ['step', ['get', 'point_count'], 24, 50, 32, 200, 42],
           },
         });
