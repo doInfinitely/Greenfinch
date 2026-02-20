@@ -13,9 +13,10 @@ const ORG_TYPE_COLORS: Record<string, string> = {
 
 interface ContactOrganizationsProps {
   organizations: OrgRelation[];
+  contactTitle?: string | null;
 }
 
-export default function ContactOrganizations({ organizations }: ContactOrganizationsProps) {
+export default function ContactOrganizations({ organizations, contactTitle }: ContactOrganizationsProps) {
   const router = useRouter();
 
   return (
@@ -44,8 +45,8 @@ export default function ContactOrganizations({ organizations }: ContactOrganizat
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                     </svg>
                   </div>
-                  {org.title && (
-                    <p className="text-sm text-gray-600">{org.title}</p>
+                  {(org.isCurrent && contactTitle ? contactTitle : org.title) && (
+                    <p className="text-sm text-gray-600">{org.isCurrent && contactTitle ? contactTitle : org.title}</p>
                   )}
                   {org.domain && (
                     <span

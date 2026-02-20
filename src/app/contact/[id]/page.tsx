@@ -669,7 +669,7 @@ export default function ContactDetailPage() {
           </div>
 
           <div className="lg:col-span-1 space-y-6">
-            <ContactOrganizations organizations={organizations} />
+            <ContactOrganizations organizations={organizations} contactTitle={contact?.title} />
             
             {contact.enrichedAt && (
               <div className="bg-white rounded-lg border border-gray-200 p-6">

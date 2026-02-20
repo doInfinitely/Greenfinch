@@ -57,6 +57,7 @@ export default function PropertyDetailPage() {
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   const [constituentProperties, setConstituentProperties] = useState<ConstituentProperty[]>([]);
+  const [showConstituents, setShowConstituents] = useState(false);
   const [parentProperty, setParentProperty] = useState<{ propertyKey: string; commonName: string | null } | null>(null);
   const [expandedMapType, setExpandedMapType] = useState<'satellite' | 'street' | null>(null);
   
@@ -606,44 +607,50 @@ export default function PropertyDetailPage() {
             )}
 
             {property.isParentProperty && constituentProperties.length > 0 && (
-              <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-                <div className="flex items-center gap-2 mb-4">
-                  <svg className="w-5 h-5 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="bg-white rounded-lg shadow-sm border border-gray-200">
+                <button
+                  onClick={() => setShowConstituents(!showConstituents)}
+                  className="w-full flex items-center gap-2 p-4 text-left hover:bg-gray-50 transition-colors rounded-lg"
+                  data-testid="button-toggle-constituents"
+                >
+                  <svg className="w-5 h-5 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                   </svg>
-                  <h2 className="text-lg font-semibold text-gray-900">Properties in Complex</h2>
-                  <span className="ml-auto bg-emerald-100 text-emerald-800 text-xs font-medium px-2 py-0.5 rounded-full">
-                    {constituentProperties.length} properties
+                  <span className="text-sm font-medium text-gray-700">Properties in Complex</span>
+                  <span className="bg-emerald-100 text-emerald-800 text-xs font-medium px-2 py-0.5 rounded-full">
+                    {constituentProperties.length}
                   </span>
-                </div>
-                <p className="text-sm text-gray-500 mb-4">
-                  This property is a parent complex with multiple registered accounts on the same parcel.
-                </p>
-                <div className="space-y-2">
-                  {constituentProperties.map((constituent) => (
-                    <a
-                      key={constituent.propertyKey}
-                      href={`/property/${constituent.propertyKey}`}
-                      className="block p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="font-medium text-gray-900">
-                            {normalizeCommonName(constituent.commonName) || normalizeCommonName(constituent.dcadBizName) || 'Unnamed Property'}
-                          </p>
-                          {constituent.buildingSqft && (
-                            <p className="text-sm text-gray-500">
-                              {constituent.buildingSqft.toLocaleString()} sq ft
+                  <svg className={`w-4 h-4 text-gray-400 ml-auto transition-transform ${showConstituents ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {showConstituents && (
+                  <div className="px-4 pb-4 space-y-2">
+                    {constituentProperties.map((constituent) => (
+                      <a
+                        key={constituent.propertyKey}
+                        href={`/property/${constituent.propertyKey}`}
+                        className="block p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-gray-900">
+                              {normalizeCommonName(constituent.commonName) || normalizeCommonName(constituent.dcadBizName) || 'Unnamed Property'}
                             </p>
-                          )}
+                            {constituent.buildingSqft && (
+                              <p className="text-sm text-gray-500">
+                                {constituent.buildingSqft.toLocaleString()} sq ft
+                              </p>
+                            )}
+                          </div>
+                          <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
                         </div>
-                        <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                    </a>
-                  ))}
-                </div>
+                      </a>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 

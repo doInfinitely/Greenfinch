@@ -42,7 +42,10 @@ export default function ContactHeader({ contact, onFlagLinkedIn, onReportDataIss
       photoFetchAttemptedRef.current = contact.id;
       setIsLoadingPhoto(true);
       
-      fetch(`/api/contacts/${contact.id}/profile-photo`)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      
+      fetch(`/api/contacts/${contact.id}/profile-photo`, { signal: controller.signal })
         .then(res => res.json())
         .then(data => {
           if (!isMounted) return;
@@ -52,9 +55,12 @@ export default function ContactHeader({ contact, onFlagLinkedIn, onReportDataIss
         })
         .catch(err => {
           if (!isMounted) return;
-          console.error('Failed to auto-fetch profile photo:', err);
+          if (err.name !== 'AbortError') {
+            console.error('Failed to auto-fetch profile photo:', err);
+          }
         })
         .finally(() => {
+          clearTimeout(timeoutId);
           if (isMounted) {
             setIsLoadingPhoto(false);
           }
