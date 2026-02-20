@@ -13,6 +13,7 @@ const COST_PER_CREDIT: Record<EnrichmentProvider, number> = {
   mapbox: 0.005,
   serp: 0.01,
   leadmagic: 0.03,
+  enrichlayer: 0.02,
 };
 
 interface TrackCostParams {

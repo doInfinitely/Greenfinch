@@ -1010,6 +1010,7 @@ export const ENRICHMENT_PROVIDERS = [
   'mapbox',
   'serp',
   'leadmagic',
+  'enrichlayer',
 ] as const;
 
 export type EnrichmentProvider = typeof ENRICHMENT_PROVIDERS[number];
@@ -1025,6 +1026,7 @@ export const ENRICHMENT_PROVIDER_LABELS: Record<EnrichmentProvider, string> = {
   mapbox: 'Mapbox',
   serp: 'SerpAPI',
   leadmagic: 'LeadMagic',
+  enrichlayer: 'EnrichLayer',
 };
 
 export const enrichmentCostEvents = pgTable('enrichment_cost_events', {
