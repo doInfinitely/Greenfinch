@@ -299,11 +299,8 @@ export class DashboardMap {
 
     // Cluster click handler
     this.map.on('click', 'clusters', this.onClusterClick);
-    this.map.on('click', 'property-points', this.onPropertyPointClick);
     this.map.on('mouseenter', 'clusters', this.onCursorPointer);
     this.map.on('mouseleave', 'clusters', this.onCursorDefault);
-    this.map.on('mouseenter', 'property-points', this.onCursorPointer);
-    this.map.on('mouseleave', 'property-points', this.onCursorDefault);
     this.map.on('mouseenter', 'parcels-fill', this.onCursorPointer);
     this.map.on('mousemove', 'parcels-fill', this.onParcelHover);
     this.map.on('mouseleave', 'parcels-fill', this.onParcelLeave);
@@ -319,14 +316,6 @@ export class DashboardMap {
       if (err || !this.map) return;
       this.map.easeTo({ center: coords, zoom: zoom || 14, duration: 500 });
     });
-  };
-
-  private onPropertyPointClick = (e: mapboxgl.MapLayerMouseEvent) => {
-    if (!e.features?.length) return;
-    const propertyKey = e.features[0].properties?.propertyKey;
-    if (propertyKey && this.config.onPropertyClick) {
-      this.config.onPropertyClick(propertyKey);
-    }
   };
 
   private onCursorPointer = () => {
@@ -469,7 +458,7 @@ export class DashboardMap {
       
       if (response.ok) {
         const data = await response.json();
-        if (data.displayName) {
+        if (data.found !== false && data.displayName) {
           this.tooltipCache.set(parcelId, {
             displayName: data.displayName,
             address: data.address,

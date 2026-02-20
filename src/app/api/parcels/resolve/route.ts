@@ -76,10 +76,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!propertyKey) {
-      return NextResponse.json(
-        { error: 'Property not found for this parcel' },
-        { status: 404 }
-      );
+      return NextResponse.json({ found: false });
     }
 
     const propertyResult = await db
