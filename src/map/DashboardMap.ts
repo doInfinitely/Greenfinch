@@ -1,8 +1,7 @@
 import mapboxgl from 'mapbox-gl';
 import { normalizeCommonName } from '@/lib/normalization';
 
-const LIGHT_STYLE = 'mapbox://styles/mapbox/light-v11';
-const SATELLITE_RASTER_URL = 'mapbox://mapbox.satellite';
+const SATELLITE_STREETS_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
 
 export interface MapBounds {
   north: number;
@@ -31,7 +30,7 @@ export class DashboardMap {
   private propertyIndex: Map<string, { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string; llUuid?: string }> = new Map();
   private hoverPopup: mapboxgl.Popup | null = null;
   private hoveredParcelId: string | number | null = null;
-  private currentStyle: string = LIGHT_STYLE;
+  private currentStyle: string = SATELLITE_STREETS_STYLE;
   private styleReady = false;
   private isAnimating = false;
   private initError: string | null = null;
@@ -51,7 +50,7 @@ export class DashboardMap {
     const initialCenter: [number, number] = this.config.initialCenter
       ? [this.config.initialCenter.lon, this.config.initialCenter.lat]
       : [-96.7784, 32.8639];
-    this.currentStyle = LIGHT_STYLE;
+    this.currentStyle = SATELLITE_STREETS_STYLE;
 
     // Dallas metro bounds - same as main map
     const DALLAS_BOUNDS: [[number, number], [number, number]] = [
@@ -62,7 +61,7 @@ export class DashboardMap {
     try {
       this.map = new mapboxgl.Map({
         container: this.config.container,
-        style: LIGHT_STYLE,
+        style: SATELLITE_STREETS_STYLE,
         center: initialCenter,
         zoom: initialZoom,
         attributionControl: false,
@@ -155,15 +154,6 @@ export class DashboardMap {
   private addSources() {
     if (!this.map) return;
 
-    // Satellite raster source for zoom >= 15
-    if (!this.map.getSource('satellite')) {
-      this.map.addSource('satellite', {
-        type: 'raster',
-        url: SATELLITE_RASTER_URL,
-        tileSize: 256,
-      });
-    }
-
     // Property points source
     if (!this.map.getSource('properties')) {
       this.map.addSource('properties', {
@@ -193,22 +183,7 @@ export class DashboardMap {
   private addLayers() {
     if (!this.map) return;
 
-    // Add satellite layer first (below everything else)
-    if (this.map.getSource('satellite') && !this.map.getLayer('satellite-layer')) {
-      this.map.addLayer({
-        id: 'satellite-layer',
-        type: 'raster',
-        source: 'satellite',
-        layout: {
-          visibility: 'none', // Hidden by default, shown when zoom >= 15
-        },
-        paint: {
-          'raster-opacity': 1,
-        },
-      });
-    }
-
-    // Add parcel layers (above satellite, below markers)
+    // Add parcel layers (below markers)
     if ((this.config.regridToken || this.config.regridTileUrl) && this.map.getSource('regrid')) {
       if (!this.map.getLayer('parcels-fill')) {
         this.map.addLayer({
@@ -681,7 +656,6 @@ export class DashboardMap {
     const zoom = this.map.getZoom();
     const showParcels = zoom >= 15;
     const showClusters = zoom < 15;
-    const showSatellite = zoom >= 15;
 
     const setVisibility = (layerId: string, visible: boolean) => {
       if (this.map?.getLayer(layerId)) {
@@ -689,7 +663,6 @@ export class DashboardMap {
       }
     };
 
-    setVisibility('satellite-layer', showSatellite);
     setVisibility('clusters', showClusters);
     setVisibility('cluster-count', showClusters);
     setVisibility('property-points', showParcels);

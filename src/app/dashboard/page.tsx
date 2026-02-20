@@ -7,7 +7,7 @@ export default function DashboardPage() {
   const router = useRouter();
   
   useEffect(() => {
-    router.replace('/dashboard/map');
+    router.replace('/pipeline/dashboard');
   }, [router]);
 
   return (

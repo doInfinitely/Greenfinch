@@ -60,7 +60,7 @@ export default function LandingNav() {
               <div className="w-16 h-4 bg-gray-200 rounded animate-pulse"></div>
             ) : isSignedIn ? (
               <Link
-                href="/dashboard"
+                href="/pipeline/dashboard"
                 className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 rounded-lg hover:from-green-600 hover:to-emerald-700 transition-all shadow-sm hover:shadow-md"
                 data-testid="link-dashboard"
               >
@@ -126,7 +126,7 @@ export default function LandingNav() {
             <div className="pt-3 border-t border-gray-100 space-y-3">
               {isSignedIn ? (
                 <Link
-                  href="/dashboard"
+                  href="/pipeline/dashboard"
                   onClick={() => setMobileMenuOpen(false)}
                   className="block px-3 py-2 rounded-lg text-base font-medium text-white bg-gradient-to-r from-green-500 to-emerald-600 text-center"
                   data-testid="link-mobile-dashboard"
