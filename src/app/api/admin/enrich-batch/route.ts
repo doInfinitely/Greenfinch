@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { isBullMQConfigured } from '@/lib/bullmq-connection';
+import { startBullMQBatch, isBullMQBatchRunning, cancelBullMQBatch } from '@/lib/bullmq-enrichment';
 import { startBatch, isBatchRunning, getMaxBatchSize, cancelBatch } from '@/lib/enrichment-queue';
 import { requireAdminAccess } from '@/lib/auth';
 import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
@@ -23,19 +25,57 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { propertyIds, propertyKeys, limit, onlyUnenriched, concurrency } = body;
+    const { propertyIds, propertyKeys, limit, onlyUnenriched, concurrency, useLegacy } = body;
+
+    const useBullMQ = isBullMQConfigured() && !useLegacy;
+    const maxBatchSize = getMaxBatchSize();
+    const requestedLimit = limit ? Math.min(limit, maxBatchSize) : maxBatchSize;
+
+    if (useBullMQ) {
+      if (await isBullMQBatchRunning()) {
+        return NextResponse.json(
+          { error: 'A batch is already running. Please wait for it to complete or check status at /api/admin/enrich-status', engine: 'bullmq' },
+          { status: 409 }
+        );
+      }
+
+      console.log(`[API] Starting BullMQ batch enrichment with limit: ${requestedLimit}, concurrency: ${concurrency || 'default'}`);
+
+      const batchStatus = await startBullMQBatch({
+        propertyIds,
+        propertyKeys,
+        limit: requestedLimit,
+        onlyUnenriched: onlyUnenriched ?? false,
+        concurrency: concurrency ? Math.min(Math.max(1, concurrency), 50) : undefined,
+      });
+
+      const identifier = getIdentifier(request);
+      const route = new URL(request.url).pathname;
+      const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
+
+      const response = NextResponse.json({
+        success: true,
+        message: 'Batch enrichment started (BullMQ - survives restarts)',
+        engine: 'bullmq',
+        batchId: batchStatus.batchId,
+        totalProperties: batchStatus.progress.total,
+        concurrency: batchStatus.concurrency,
+        maxBatchSize,
+        status: batchStatus.status,
+        checkStatusAt: '/api/admin/enrich-status',
+      });
+      addRateLimitHeaders(response, rateInfo);
+      return response;
+    }
 
     if (await isBatchRunning()) {
       return NextResponse.json(
-        { error: 'A batch is already running. Please wait for it to complete or check status at /api/admin/enrich-status' },
+        { error: 'A batch is already running. Please wait for it to complete or check status at /api/admin/enrich-status', engine: 'legacy' },
         { status: 409 }
       );
     }
 
-    const maxBatchSize = getMaxBatchSize();
-    const requestedLimit = limit ? Math.min(limit, maxBatchSize) : maxBatchSize;
-
-    console.log(`[API] Starting batch enrichment with limit: ${requestedLimit}, concurrency: ${concurrency || 'default'}`);
+    console.log(`[API] Starting legacy batch enrichment with limit: ${requestedLimit}, concurrency: ${concurrency || 'default'}`);
 
     const batchStatus = await startBatch({
       propertyIds,
@@ -45,14 +85,14 @@ export async function POST(request: NextRequest) {
       concurrency: concurrency ? Math.min(Math.max(1, concurrency), 50) : undefined,
     });
 
-    // Get rate limit info for headers
     const identifier = getIdentifier(request);
     const route = new URL(request.url).pathname;
     const rateInfo = await checkRateLimitFn(identifier, route, 20, 60);
 
     const response = NextResponse.json({
       success: true,
-      message: 'Batch enrichment started',
+      message: 'Batch enrichment started (legacy)',
+      engine: 'legacy',
       batchId: batchStatus.batchId,
       totalProperties: batchStatus.progress.total,
       concurrency: batchStatus.concurrency,
@@ -76,6 +116,7 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     message: 'Use POST method to start batch enrichment',
+    engine: isBullMQConfigured() ? 'bullmq' : 'legacy',
     maxBatchSize: getMaxBatchSize(),
     example: {
       method: 'POST',
@@ -85,9 +126,12 @@ export async function GET() {
         limit: 50,
         onlyUnenriched: true,
         concurrency: 15,
+        useLegacy: false,
       },
     },
     notes: [
+      'BullMQ engine is used by default when configured (jobs survive workflow restarts)',
+      'Set useLegacy=true to use the old in-process batch engine',
       'If propertyIds or propertyKeys provided, those specific properties will be enriched',
       'If onlyUnenriched=true, properties with null or pending enrichmentStatus will be enriched',
       'limit is capped at ENRICHMENT_MAX_BATCH_SIZE environment variable (default: 200)',
@@ -110,8 +154,13 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
+    if (isBullMQConfigured()) {
+      const result = await cancelBullMQBatch();
+      return NextResponse.json({ ...result, engine: 'bullmq' });
+    }
+
     const result = await cancelBatch();
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, engine: 'legacy' });
   } catch (error) {
     console.error('[API] Batch cancel error:', error);
     return NextResponse.json(

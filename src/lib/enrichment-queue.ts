@@ -1138,8 +1138,8 @@ export async function addToQueue(items: QueueItem[]): Promise<void> {
   await setQueueItems([...currentQueue, ...items]);
 }
 
-async function processPropertyItem(
-  item: QueueItem,
+export async function processPropertyItem(
+  item: { propertyKey: string; retryAttempt?: number; lastFailedStage?: string },
   startTime: number
 ): Promise<{ success: boolean; error?: string; failedStage?: string; isRetryable?: boolean }> {
   try {

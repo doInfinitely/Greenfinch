@@ -1,4 +1,6 @@
 import { NextResponse } from 'next/server';
+import { isBullMQConfigured } from '@/lib/bullmq-connection';
+import { getBullMQBatchStatus, isBullMQBatchRunning } from '@/lib/bullmq-enrichment';
 import { getQueueStatus, isBatchRunning, getMaxBatchSize } from '@/lib/enrichment-queue';
 import { requireAdminAccess } from '@/lib/auth';
 import { rateLimiters } from '@/lib/rate-limiter';
@@ -62,15 +64,54 @@ export async function GET() {
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
+  const circuitBreakers = getCircuitBreakerStatus();
+  const useBullMQ = isBullMQConfigured();
+
+  if (useBullMQ) {
+    const status = await getBullMQBatchStatus();
+    const isRunning = await isBullMQBatchRunning();
+
+    if (!status) {
+      return NextResponse.json({
+        status: 'idle',
+        message: 'No batch has been started yet',
+        isRunning: false,
+        engine: 'bullmq',
+        maxBatchSize: getMaxBatchSize(),
+        circuitBreakers,
+      });
+    }
+
+    const summary = buildBatchSummary(status.errors);
+
+    return NextResponse.json({
+      batchId: status.batchId,
+      status: status.status,
+      isRunning,
+      engine: 'bullmq',
+      progress: status.progress,
+      percentComplete: status.progress.total > 0 
+        ? Math.round((status.progress.processed / status.progress.total) * 100) 
+        : 0,
+      startedAt: status.startedAt,
+      completedAt: status.completedAt,
+      errors: status.errors.slice(-10),
+      errorCount: status.errors.length,
+      summary,
+      circuitBreakers,
+      maxBatchSize: getMaxBatchSize(),
+    });
+  }
+
   const status = await getQueueStatus();
   const isRunning = await isBatchRunning();
-  const circuitBreakers = getCircuitBreakerStatus();
 
   if (!status) {
     return NextResponse.json({
       status: 'idle',
       message: 'No batch has been started yet',
       isRunning: false,
+      engine: 'legacy',
       maxBatchSize: getMaxBatchSize(),
       circuitBreakers,
     });
@@ -82,6 +123,7 @@ export async function GET() {
     batchId: status.batchId,
     status: status.status,
     isRunning,
+    engine: 'legacy',
     progress: status.progress,
     percentComplete: status.progress.total > 0 
       ? Math.round((status.progress.processed / status.progress.total) * 100) 
