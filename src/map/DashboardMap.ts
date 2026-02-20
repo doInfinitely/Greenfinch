@@ -226,8 +226,18 @@ export class DashboardMap {
           source: 'properties',
           filter: ['has', 'point_count'],
           paint: {
-            'circle-color': '#1f2937', // Very dark grey (gray-800)
-            'circle-radius': ['step', ['get', 'point_count'], 24, 50, 32, 200, 42],
+            'circle-color': [
+              'step',
+              ['get', 'point_count'],
+              '#34d399',
+              25, '#2dd4bf',
+              50, '#22d3ee',
+              100, '#60a5fa',
+            ],
+            'circle-radius': ['step', ['get', 'point_count'], 22, 50, 30, 200, 40],
+            'circle-opacity': 0.92,
+            'circle-stroke-width': 2.5,
+            'circle-stroke-color': '#ffffff',
           },
         });
       }
@@ -240,10 +250,14 @@ export class DashboardMap {
           filter: ['has', 'point_count'],
           layout: {
             'text-field': '{point_count_abbreviated}',
-            'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+            'text-font': ['DIN Offc Pro Bold', 'Arial Unicode MS Bold'],
             'text-size': 13,
           },
-          paint: { 'text-color': '#ffffff' },
+          paint: {
+            'text-color': '#ffffff',
+            'text-halo-color': 'rgba(0,0,0,0.3)',
+            'text-halo-width': 1,
+          },
         });
       }
 
