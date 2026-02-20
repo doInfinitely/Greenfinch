@@ -746,6 +746,8 @@ Return JSON:
   }
 }
 
+const STAGE_3B_TIMEOUT_MS = 60000;
+
 async function enrichContactDetails(
   contact: IdentifiedDecisionMaker,
   city: string
@@ -768,10 +770,10 @@ async function enrichContactDetails(
         config: {
           temperature: 0.1,
           tools: [{ googleSearch: {} }],
-          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
+          httpOptions: { timeout: STAGE_3B_TIMEOUT_MS }
         }
       }),
-      2
+      1
     );
 
     const text = response.text?.trim() || '';
