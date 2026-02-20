@@ -806,48 +806,42 @@ export default function PropertyFilters({
         </div>
       )}
 
-      {/* Research Status - toggle switches */}
+      {/* Quick Filters */}
       <div className="border-b border-gray-100 pb-3">
-        <div className="flex items-center justify-between py-3">
-          <span className="text-sm font-medium text-gray-700">Researched with AI</span>
+        <div className="flex items-center gap-2 py-3">
           <button
-            role="switch"
-            aria-checked={filters.enrichmentStatus === 'researched'}
             onClick={() => onFiltersChange({
               ...filters,
               enrichmentStatus: filters.enrichmentStatus === 'researched' ? 'all' : 'researched',
             })}
-            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-              filters.enrichmentStatus === 'researched' ? 'bg-green-500' : 'bg-gray-300'
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
+              filters.enrichmentStatus === 'researched'
+                ? 'bg-purple-50 border-purple-300 text-purple-700'
+                : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
             }`}
-            data-testid="switch-enrichment-researched"
+            data-testid="filter-btn-researched"
           >
-            <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
-              filters.enrichmentStatus === 'researched' ? 'translate-x-[18px]' : 'translate-x-[3px]'
-            }`} />
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 3l1.912 5.813a2 2 0 001.272 1.278L21 12l-5.816 1.91a2 2 0 00-1.272 1.277L12 21l-1.912-5.813a2 2 0 00-1.272-1.278L3 12l5.816-1.91a2 2 0 001.272-1.277L12 3z" />
+            </svg>
+            AI Researched
           </button>
-        </div>
-      </div>
-
-      {/* View Status - toggle switch */}
-      <div>
-        <div className="flex items-center justify-between py-3">
-          <span className="text-sm font-medium text-gray-700">Viewed</span>
           <button
-            role="switch"
-            aria-checked={filters.viewStatus === 'viewed_only'}
             onClick={() => onFiltersChange({
               ...filters,
               viewStatus: filters.viewStatus === 'viewed_only' ? 'all' : 'viewed_only',
             })}
-            className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-              filters.viewStatus === 'viewed_only' ? 'bg-green-500' : 'bg-gray-300'
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-all ${
+              filters.viewStatus === 'viewed_only'
+                ? 'bg-blue-50 border-blue-300 text-blue-700'
+                : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
             }`}
-            data-testid="switch-view-status-viewed"
+            data-testid="filter-btn-viewed"
           >
-            <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
-              filters.viewStatus === 'viewed_only' ? 'translate-x-[18px]' : 'translate-x-[3px]'
+            <span className={`w-2.5 h-2.5 rounded-full ${
+              filters.viewStatus === 'viewed_only' ? 'bg-blue-500' : 'bg-blue-400/60'
             }`} />
+            Viewed
           </button>
         </div>
       </div>

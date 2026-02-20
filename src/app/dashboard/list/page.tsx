@@ -16,6 +16,7 @@ import { formatLotSize, formatBuildingSqft } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import BulkAddToListModal from '@/components/BulkAddToListModal';
 import { useEnrichment } from '@/hooks/use-enrichment';
+import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import PropertyFilters, { FilterState, parseFiltersFromParams, serializeFiltersToParams } from '@/components/PropertyFilters';
 
 interface Property {
@@ -60,7 +61,8 @@ const getStatusDisplay = (p: Property): { label: string; className: string } => 
   return { label: 'Prospect', className: 'bg-gray-100 text-gray-600' };
 };
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 20;
 
 interface PaginationInfo {
   page: number;
@@ -76,8 +78,10 @@ export default function ListPage() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selectedProperties, setSelectedProperties] = useState<Set<string>>(new Set());
   const [showAddToListModal, setShowAddToListModal] = useState(false);
+  const { getEnrichmentStatus } = useEnrichmentQueue();
   const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
 
   const debouncedQuery = useDebounce(searchQuery, 300);
@@ -91,11 +95,11 @@ export default function ListPage() {
   }, [router, pathname]);
 
   const { data, isLoading, isFetching } = useQuery<{ properties: Property[]; pagination: PaginationInfo }>({
-    queryKey: ['/api/properties/search', debouncedQuery, currentPage, filters],
+    queryKey: ['/api/properties/search', debouncedQuery, currentPage, pageSize, filters],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('page', String(currentPage));
-      params.set('limit', String(PAGE_SIZE));
+      params.set('limit', String(pageSize));
       if (debouncedQuery) {
         params.set('q', debouncedQuery);
       }
@@ -146,7 +150,7 @@ export default function ListPage() {
   });
 
   const properties = data?.properties || [];
-  const pagination = data?.pagination || { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 0 };
+  const pagination = data?.pagination || { page: 1, limit: pageSize, total: 0, totalPages: 0 };
 
   const [viewedPropertyIds, setViewedPropertyIds] = useState<Set<string>>(new Set());
 
@@ -190,6 +194,12 @@ export default function ListPage() {
       setSelectedProperties(new Set());
     }
   }, [pagination.totalPages]);
+
+  const handlePageSizeChange = useCallback((newSize: number) => {
+    setPageSize(newSize);
+    setCurrentPage(1);
+    setSelectedProperties(new Set());
+  }, []);
 
   const handleRowClick = useCallback((propertyKey: string) => {
     router.push(`/property/${propertyKey}`);
@@ -351,18 +361,39 @@ export default function ListPage() {
                       <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
                         <div className="flex items-start gap-1.5">
                           {!viewedPropertyIds.has(p.propertyKey) && (
-                            <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0 mt-1.5" title="New" />
-                          )}
-                          {p.enriched && (
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Sparkles className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
+                                <span className="w-2.5 h-2.5 bg-blue-500 rounded-full flex-shrink-0 mt-1.5 cursor-help" />
                               </TooltipTrigger>
-                              <TooltipContent>
-                                <p>Researched with AI</p>
-                              </TooltipContent>
+                              <TooltipContent><p>Not yet viewed</p></TooltipContent>
                             </Tooltip>
                           )}
+                          {(() => {
+                            const enrichStatus = getEnrichmentStatus(p.propertyKey, 'property');
+                            if (enrichStatus.isActive) {
+                              return (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <span className="flex-shrink-0 mt-0.5">
+                                      <Sparkles className="w-4 h-4 text-purple-500 animate-pulse" />
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent><p>AI research in progress...</p></TooltipContent>
+                                </Tooltip>
+                              );
+                            }
+                            if (p.enriched) {
+                              return (
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Sparkles className="w-4 h-4 text-purple-500 flex-shrink-0 mt-0.5" />
+                                  </TooltipTrigger>
+                                  <TooltipContent><p>Researched with AI</p></TooltipContent>
+                                </Tooltip>
+                              );
+                            }
+                            return null;
+                          })()}
                           <div className="min-w-0">
                             {p.commonName ? (
                               <>
@@ -478,61 +509,82 @@ export default function ListPage() {
               ))}
             </div>
 
-            {pagination.totalPages > 1 && (
+            {pagination.total > 0 && (
               <div className="px-4 md:px-6 py-3 border-t border-gray-200 bg-white sticky bottom-0">
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="text-sm text-gray-500">
-                    Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
-                    {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                    {pagination.total.toLocaleString()} properties
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(pagination.page - 1)}
-                      disabled={pagination.page === 1 || isFetching}
-                      data-testid="button-prev-page"
-                    >
-                      Previous
-                    </Button>
-                    <div className="flex items-center space-x-1">
-                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                        let pageNum: number;
-                        if (pagination.totalPages <= 5) {
-                          pageNum = i + 1;
-                        } else if (pagination.page <= 3) {
-                          pageNum = i + 1;
-                        } else if (pagination.page >= pagination.totalPages - 2) {
-                          pageNum = pagination.totalPages - 4 + i;
-                        } else {
-                          pageNum = pagination.page - 2 + i;
-                        }
-                        return (
-                          <Button
-                            key={pageNum}
-                            variant={pagination.page === pageNum ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => handlePageChange(pageNum)}
-                            disabled={isFetching}
-                            className={pagination.page === pageNum ? 'bg-green-600 hover:bg-green-700' : ''}
-                            data-testid={`button-page-${pageNum}`}
-                          >
-                            {pageNum}
-                          </Button>
-                        );
-                      })}
+                  <div className="flex items-center gap-3">
+                    <div className="text-sm text-gray-500">
+                      Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
+                      {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
+                      {pagination.total.toLocaleString()} properties
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(pagination.page + 1)}
-                      disabled={pagination.page === pagination.totalPages || isFetching}
-                      data-testid="button-next-page"
-                    >
-                      Next
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-400">Per page:</span>
+                      <div className="flex items-center gap-1">
+                        {PAGE_SIZE_OPTIONS.map((size) => (
+                          <Button
+                            key={size}
+                            variant={pageSize === size ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handlePageSizeChange(size)}
+                            className={`h-7 px-2 text-xs ${pageSize === size ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                            data-testid={`button-page-size-${size}`}
+                          >
+                            {size}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
+                  {pagination.totalPages > 1 && (
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(pagination.page - 1)}
+                        disabled={pagination.page === 1 || isFetching}
+                        data-testid="button-prev-page"
+                      >
+                        Previous
+                      </Button>
+                      <div className="flex items-center space-x-1">
+                        {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                          let pageNum: number;
+                          if (pagination.totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (pagination.page <= 3) {
+                            pageNum = i + 1;
+                          } else if (pagination.page >= pagination.totalPages - 2) {
+                            pageNum = pagination.totalPages - 4 + i;
+                          } else {
+                            pageNum = pagination.page - 2 + i;
+                          }
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={pagination.page === pageNum ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => handlePageChange(pageNum)}
+                              disabled={isFetching}
+                              className={pagination.page === pageNum ? 'bg-green-600 hover:bg-green-700' : ''}
+                              data-testid={`button-page-${pageNum}`}
+                            >
+                              {pageNum}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(pagination.page + 1)}
+                        disabled={pagination.page === pagination.totalPages || isFetching}
+                        data-testid="button-next-page"
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}

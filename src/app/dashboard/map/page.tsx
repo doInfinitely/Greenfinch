@@ -7,6 +7,7 @@ import type { MapBounds } from '@/map/DashboardMap';
 import type { MapCanvasHandle } from '@/map/MapCanvas';
 import PropertyFilters, { FilterState, serializeFiltersToParams, parseFiltersFromParams } from '@/components/PropertyFilters';
 import MapSearchBar from '@/components/MapSearchBar';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useToast } from '@/hooks/use-toast';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
 
@@ -222,46 +223,57 @@ export default function MapPage() {
           <div className="flex items-center gap-2 flex-wrap">
             <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
             <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
-            <div className="hidden md:flex items-center gap-3 bg-white/95 backdrop-blur-sm rounded-lg border border-gray-200 shadow-sm px-3 py-1.5">
-              <label className="flex items-center gap-2 cursor-pointer select-none" data-testid="toggle-viewed">
-                <span className="text-xs font-medium text-gray-600">Viewed</span>
-                <button
-                  role="switch"
-                  aria-checked={filters.viewStatus === 'viewed_only'}
-                  onClick={() => handleFiltersChange({
-                    ...filters,
-                    viewStatus: filters.viewStatus === 'viewed_only' ? 'all' : 'viewed_only',
-                  })}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                    filters.viewStatus === 'viewed_only' ? 'bg-green-500' : 'bg-gray-300'
-                  }`}
-                  data-testid="switch-viewed"
-                >
-                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
-                    filters.viewStatus === 'viewed_only' ? 'translate-x-[18px]' : 'translate-x-[3px]'
-                  }`} />
-                </button>
-              </label>
-              <div className="w-px h-4 bg-gray-200" />
-              <label className="flex items-center gap-2 cursor-pointer select-none" data-testid="toggle-researched">
-                <span className="text-xs font-medium text-gray-600">Researched with AI</span>
-                <button
-                  role="switch"
-                  aria-checked={filters.enrichmentStatus === 'researched'}
-                  onClick={() => handleFiltersChange({
-                    ...filters,
-                    enrichmentStatus: filters.enrichmentStatus === 'researched' ? 'all' : 'researched',
-                  })}
-                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-                    filters.enrichmentStatus === 'researched' ? 'bg-green-500' : 'bg-gray-300'
-                  }`}
-                  data-testid="switch-researched"
-                >
-                  <span className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-transform ${
-                    filters.enrichmentStatus === 'researched' ? 'translate-x-[18px]' : 'translate-x-[3px]'
-                  }`} />
-                </button>
-              </label>
+            <div className="hidden md:flex items-center gap-1.5">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => handleFiltersChange({
+                      ...filters,
+                      viewStatus: filters.viewStatus === 'viewed_only' ? 'all' : 'viewed_only',
+                    })}
+                    className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${
+                      filters.viewStatus === 'viewed_only'
+                        ? 'bg-blue-50 border-blue-300 shadow-sm'
+                        : 'bg-white/95 backdrop-blur-sm border-gray-200 shadow-sm hover:border-gray-300'
+                    }`}
+                    data-testid="toggle-viewed"
+                    aria-label="Filter: Viewed only"
+                  >
+                    <span className={`w-2.5 h-2.5 rounded-full ${
+                      filters.viewStatus === 'viewed_only' ? 'bg-blue-500' : 'bg-blue-400/60'
+                    }`} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{filters.viewStatus === 'viewed_only' ? 'Showing viewed only' : 'Filter by viewed'}</p>
+                </TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => handleFiltersChange({
+                      ...filters,
+                      enrichmentStatus: filters.enrichmentStatus === 'researched' ? 'all' : 'researched',
+                    })}
+                    className={`flex items-center justify-center w-9 h-9 rounded-lg border transition-all ${
+                      filters.enrichmentStatus === 'researched'
+                        ? 'bg-purple-50 border-purple-300 shadow-sm'
+                        : 'bg-white/95 backdrop-blur-sm border-gray-200 shadow-sm hover:border-gray-300'
+                    }`}
+                    data-testid="toggle-researched"
+                    aria-label="Filter: Researched with AI"
+                  >
+                    <svg className={`w-4 h-4 ${
+                      filters.enrichmentStatus === 'researched' ? 'text-purple-600' : 'text-gray-500'
+                    }`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 3l1.912 5.813a2 2 0 001.272 1.278L21 12l-5.816 1.91a2 2 0 00-1.272 1.277L12 21l-1.912-5.813a2 2 0 00-1.272-1.278L3 12l5.816-1.91a2 2 0 001.272-1.277L12 3z" />
+                    </svg>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>{filters.enrichmentStatus === 'researched' ? 'Showing AI researched only' : 'Filter by AI researched'}</p>
+                </TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </div>
