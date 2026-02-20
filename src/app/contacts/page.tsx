@@ -91,6 +91,9 @@ interface PaginationInfo {
   totalPages: number;
 }
 
+const PAGE_SIZE_OPTIONS = [20, 50, 100] as const;
+const DEFAULT_PAGE_SIZE = 20;
+
 interface BulkConfirmation {
   isOpen: boolean;
   contactsToProcess: Contact[];
@@ -127,9 +130,10 @@ export default function ContactsPage() {
   const [titleFilter, setTitleFilter] = useState('all');
   const [sortBy, setSortBy] = useState('propertyCount');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [pagination, setPagination] = useState<PaginationInfo>({
     page: 1,
-    limit: 20,
+    limit: DEFAULT_PAGE_SIZE,
     total: 0,
     totalPages: 0,
   });
@@ -196,7 +200,7 @@ export default function ContactsPage() {
     try {
       const params = new URLSearchParams();
       params.set('page', String(page));
-      params.set('limit', '20');
+      params.set('limit', String(pageSize));
       params.set('sortBy', sortBy);
       params.set('sortOrder', sortOrder);
       if (searchQuery) params.set('q', searchQuery);
@@ -225,7 +229,7 @@ export default function ContactsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [searchQuery, titleFilter, organizationFilter, sortBy, sortOrder, propertyCountFilter, hasValidEmail, hasPhone, hasLinkedIn]);
+  }, [searchQuery, titleFilter, organizationFilter, sortBy, sortOrder, propertyCountFilter, hasValidEmail, hasPhone, hasLinkedIn, pageSize]);
 
   const searchOrganizations = useCallback(async (query: string) => {
     if (query.length < 2) {
@@ -366,6 +370,10 @@ export default function ContactsPage() {
     if (newPage >= 1 && newPage <= pagination.totalPages) {
       fetchContacts(newPage);
     }
+  };
+
+  const handlePageSizeChange = (newSize: number) => {
+    setPageSize(newSize);
   };
 
   const handleSort = (column: string) => {
@@ -1027,10 +1035,19 @@ export default function ContactsPage() {
           <>
             <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
+                <table className="w-full divide-y divide-gray-200 table-fixed">
+                  <colgroup>
+                    <col className="w-10" />
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '22%' }} />
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '10%' }} />
+                  </colgroup>
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-4 py-3 text-left w-10">
+                      <th className="px-3 py-3 text-left">
                         <Checkbox
                           checked={allSelected}
                           indeterminate={someSelected && !allSelected}
@@ -1041,32 +1058,32 @@ export default function ContactsPage() {
                       </th>
                       <th
                         onClick={() => handleSort('fullName')}
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       >
                         Contact <SortIcon column="fullName" />
                       </th>
                       <th
                         onClick={() => handleSort('email')}
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       >
                         Email <SortIcon column="email" />
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Phone
                       </th>
                       <th
                         onClick={() => handleSort('title')}
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       >
                         Title <SortIcon column="title" />
                       </th>
                       <th
                         onClick={() => handleSort('employerName')}
-                        className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       >
                         Employer <SortIcon column="employerName" />
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Location
                       </th>
                     </tr>
@@ -1078,7 +1095,7 @@ export default function ContactsPage() {
                           className={`hover:bg-gray-50 ${contact.id ? 'cursor-pointer' : ''} ${selectedContacts.has(contact.id) ? 'bg-green-50' : ''}`}
                           data-testid={`contact-row-${contact.id}`}
                         >
-                          <td className="px-4 py-4">
+                          <td className="px-3 py-3">
                             <Checkbox
                               checked={selectedContacts.has(contact.id)}
                               onChange={(e) => {
@@ -1091,19 +1108,19 @@ export default function ContactsPage() {
                             />
                           </td>
                           <td 
-                            className="px-4 py-3"
+                            className="px-3 py-3"
                             onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1.5">
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-1.5">
                                   <span className="text-sm font-medium text-gray-900 truncate">
                                     {contact.fullName || 'Unknown'}
                                   </span>
                                   <LinkedInLink linkedinUrl={contact.linkedinUrl} size="sm" />
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1 flex-shrink-0" data-testid={`contact-status-icons-${contact.id}`}>
+                              <div className="flex items-center gap-0.5 flex-shrink-0" data-testid={`contact-status-icons-${contact.id}`}>
                                 <EmailStatusIcon 
                                   hasEmail={!!contact.email} 
                                   status={contact.emailValidationStatus || contact.emailStatus}
@@ -1122,14 +1139,14 @@ export default function ContactsPage() {
                             </div>
                           </td>
                           <td 
-                            className="px-4 py-3 whitespace-nowrap"
+                            className="px-3 py-3 overflow-hidden"
                             onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
                             {contact.email ? (
                               <a
                                 href={`mailto:${contact.email}`}
                                 onClick={(e) => e.stopPropagation()}
-                                className="text-sm text-green-600 underline"
+                                className="text-sm text-green-600 underline truncate block"
                                 data-testid={`link-email-${contact.id}`}
                               >
                                 {contact.email}
@@ -1139,7 +1156,7 @@ export default function ContactsPage() {
                             )}
                           </td>
                           <td 
-                            className="px-4 py-3"
+                            className="px-3 py-3"
                             onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
                             {(() => {
@@ -1150,7 +1167,7 @@ export default function ContactsPage() {
                               return (
                                 <div className="flex flex-col gap-0.5">
                                   {phones.map((p) => (
-                                    <div key={p.number} className="flex items-center gap-1">
+                                    <div key={p.number} className="flex items-center gap-1 whitespace-nowrap">
                                       <a
                                         href={`tel:${p.number}`}
                                         onClick={(e) => e.stopPropagation()}
@@ -1167,31 +1184,31 @@ export default function ContactsPage() {
                             })()}
                           </td>
                           <td 
-                            className="px-4 py-3 whitespace-nowrap"
+                            className="px-3 py-3 overflow-hidden"
                             onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
                             {contact.title ? (
-                              <span className="text-sm text-gray-900 truncate max-w-[200px] block">{contact.title}</span>
+                              <span className="text-sm text-gray-900 truncate block">{contact.title}</span>
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
                           <td 
-                            className="px-4 py-3 whitespace-nowrap"
+                            className="px-3 py-3 overflow-hidden"
                             onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
                             {contact.employerName ? (
-                              <span className="text-sm text-gray-900 truncate max-w-[180px] block">{contact.employerName}</span>
+                              <span className="text-sm text-gray-900 truncate block">{contact.employerName}</span>
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
                           <td 
-                            className="px-4 py-3 whitespace-nowrap"
+                            className="px-3 py-3 overflow-hidden"
                             onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
                             {contact.location ? (
-                              <span className="text-sm text-gray-600 truncate max-w-[150px] block">{contact.location}</span>
+                              <span className="text-sm text-gray-600 truncate block">{contact.location}</span>
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
                             )}
@@ -1315,60 +1332,81 @@ export default function ContactsPage() {
               ))}
             </div>
 
-            {pagination.totalPages > 1 && (
+            {pagination.total > 0 && (
               <div className="px-4 md:px-6 py-3 border-t border-gray-200 bg-white sticky bottom-0">
                 <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                  <div className="text-sm text-gray-500">
-                    Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
-                    {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
-                    {pagination.total} contacts
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(pagination.page - 1)}
-                      disabled={pagination.page === 1}
-                      data-testid="button-prev-page"
-                    >
-                      Previous
-                    </Button>
-                    <div className="flex items-center space-x-1">
-                      {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
-                        let pageNum;
-                        if (pagination.totalPages <= 5) {
-                          pageNum = i + 1;
-                        } else if (pagination.page <= 3) {
-                          pageNum = i + 1;
-                        } else if (pagination.page >= pagination.totalPages - 2) {
-                          pageNum = pagination.totalPages - 4 + i;
-                        } else {
-                          pageNum = pagination.page - 2 + i;
-                        }
-                        return (
-                          <Button
-                            key={pageNum}
-                            variant={pagination.page === pageNum ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => handlePageChange(pageNum)}
-                            className={pagination.page === pageNum ? 'bg-green-600 hover:bg-green-700' : ''}
-                            data-testid={`button-page-${pageNum}`}
-                          >
-                            {pageNum}
-                          </Button>
-                        );
-                      })}
+                  <div className="flex items-center gap-3">
+                    <div className="text-sm text-gray-500">
+                      Showing {((pagination.page - 1) * pagination.limit) + 1} to{' '}
+                      {Math.min(pagination.page * pagination.limit, pagination.total)} of{' '}
+                      {pagination.total.toLocaleString()} contacts
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePageChange(pagination.page + 1)}
-                      disabled={pagination.page === pagination.totalPages}
-                      data-testid="button-next-page"
-                    >
-                      Next
-                    </Button>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs text-gray-400">Per page:</span>
+                      <div className="flex items-center gap-1">
+                        {PAGE_SIZE_OPTIONS.map((size) => (
+                          <Button
+                            key={size}
+                            variant={pageSize === size ? 'default' : 'outline'}
+                            size="sm"
+                            onClick={() => handlePageSizeChange(size)}
+                            className={`h-7 px-2 text-xs ${pageSize === size ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                            data-testid={`button-page-size-${size}`}
+                          >
+                            {size}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
+                  {pagination.totalPages > 1 && (
+                    <div className="flex items-center space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(pagination.page - 1)}
+                        disabled={pagination.page === 1}
+                        data-testid="button-prev-page"
+                      >
+                        Previous
+                      </Button>
+                      <div className="flex items-center space-x-1">
+                        {Array.from({ length: Math.min(5, pagination.totalPages) }, (_, i) => {
+                          let pageNum;
+                          if (pagination.totalPages <= 5) {
+                            pageNum = i + 1;
+                          } else if (pagination.page <= 3) {
+                            pageNum = i + 1;
+                          } else if (pagination.page >= pagination.totalPages - 2) {
+                            pageNum = pagination.totalPages - 4 + i;
+                          } else {
+                            pageNum = pagination.page - 2 + i;
+                          }
+                          return (
+                            <Button
+                              key={pageNum}
+                              variant={pagination.page === pageNum ? 'default' : 'outline'}
+                              size="sm"
+                              onClick={() => handlePageChange(pageNum)}
+                              className={pagination.page === pageNum ? 'bg-green-600 hover:bg-green-700' : ''}
+                              data-testid={`button-page-${pageNum}`}
+                            >
+                              {pageNum}
+                            </Button>
+                          );
+                        })}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePageChange(pagination.page + 1)}
+                        disabled={pagination.page === pagination.totalPages}
+                        data-testid="button-next-page"
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
