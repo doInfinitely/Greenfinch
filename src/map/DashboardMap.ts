@@ -47,7 +47,6 @@ export class DashboardMap {
   private handlersRegistered = false;
   private resizeObserver: ResizeObserver | null = null;
   private searchMarker: mapboxgl.Marker | null = null;
-  private hoverDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private currentHoveredParcelId: string | null = null;
 
   constructor(config: DashboardMapConfig) {
@@ -347,14 +346,7 @@ export class DashboardMap {
     if (parcelnumb === this.currentHoveredParcelId) return;
     this.currentHoveredParcelId = parcelnumb;
 
-    if (this.hoverDebounceTimer) {
-      clearTimeout(this.hoverDebounceTimer);
-    }
-
-    this.hoverDebounceTimer = setTimeout(() => {
-      if (this.currentHoveredParcelId !== parcelnumb) return;
-      this.resolveAndShowTooltip(center, parcelnumb, props);
-    }, 150);
+    this.resolveAndShowTooltip(center, parcelnumb, props);
   };
 
   private resolveAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string, regridProps: Record<string, any>) {
@@ -405,11 +397,6 @@ export class DashboardMap {
 
     this.map.getCanvas().style.cursor = '';
     this.currentHoveredParcelId = null;
-
-    if (this.hoverDebounceTimer) {
-      clearTimeout(this.hoverDebounceTimer);
-      this.hoverDebounceTimer = null;
-    }
 
     if (this.hoveredParcelId !== null && this.styleReady) {
       try {
@@ -567,10 +554,6 @@ export class DashboardMap {
 
   destroy() {
     this.isDestroyed = true;
-    if (this.hoverDebounceTimer) {
-      clearTimeout(this.hoverDebounceTimer);
-      this.hoverDebounceTimer = null;
-    }
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
       this.resizeObserver = null;
