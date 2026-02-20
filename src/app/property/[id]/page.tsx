@@ -829,7 +829,7 @@ export default function PropertyDetailPage() {
       {showDataIssueDialog && (
         <DataIssueDialog
           entityType="property"
-          entityId={property.id}
+          entityId={property.propertyKey}
           entityLabel={property.commonName || property.validatedAddress || property.regridAddress || property.propertyKey}
           onClose={() => setShowDataIssueDialog(false)}
         />
