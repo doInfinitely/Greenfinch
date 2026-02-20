@@ -1,5 +1,6 @@
 'use client';
 
+import { useMemo } from 'react';
 import Link from 'next/link';
 import { AlertTriangle } from 'lucide-react';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
@@ -16,27 +17,71 @@ function LowConfidenceMarker({ confidence }: { confidence: number | null | undef
   );
 }
 
+interface GroupedProperty {
+  id: string;
+  propertyKey: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  zip: string | null;
+  commonName: string | null;
+  assetCategory: string | null;
+  roles: { role: string; confidenceScore: number | null }[];
+}
+
+function groupProperties(properties: PropertyRelation[]): GroupedProperty[] {
+  const map = new Map<string, GroupedProperty>();
+
+  for (const prop of properties) {
+    const key = prop.propertyKey || prop.id;
+    const existing = map.get(key);
+
+    if (existing) {
+      if (prop.role && !existing.roles.some(r => r.role === prop.role)) {
+        existing.roles.push({ role: prop.role, confidenceScore: prop.confidenceScore });
+      }
+    } else {
+      map.set(key, {
+        id: prop.id,
+        propertyKey: prop.propertyKey,
+        address: prop.address,
+        city: prop.city,
+        state: prop.state,
+        zip: prop.zip,
+        commonName: prop.commonName,
+        assetCategory: prop.assetCategory,
+        roles: prop.role ? [{ role: prop.role, confidenceScore: prop.confidenceScore }] : [],
+      });
+    }
+  }
+
+  return Array.from(map.values());
+}
+
 interface AssociatedPropertiesProps {
   properties: PropertyRelation[];
 }
 
 export default function AssociatedProperties({ properties }: AssociatedPropertiesProps) {
+  const grouped = useMemo(() => groupProperties(properties), [properties]);
+
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
       <h2 className="text-lg font-semibold text-gray-900 mb-4">
         Associated Properties
-        <span className="ml-2 text-sm font-normal text-gray-500">({properties.length})</span>
+        <span className="ml-2 text-sm font-normal text-gray-500">({grouped.length})</span>
       </h2>
       
-      {properties.length === 0 ? (
+      {grouped.length === 0 ? (
         <p className="text-gray-500 text-center py-8">No properties associated with this contact.</p>
       ) : (
         <div className="space-y-3">
-          {properties.map((prop, index) => (
+          {grouped.map((prop) => (
             <Link
-              key={`${prop.id}-${prop.role || index}`}
+              key={prop.propertyKey || prop.id}
               href={`/property/${prop.propertyKey || prop.id}`}
               className="block p-4 border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors"
+              data-testid={`link-property-${prop.propertyKey || prop.id}`}
             >
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
@@ -65,13 +110,15 @@ export default function AssociatedProperties({ properties }: AssociatedPropertie
                     </span>
                   )}
                 </div>
-                <div className="text-right">
-                  {prop.role && (
-                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[prop.role] || ROLE_COLORS.other}`}>
-                      {ROLE_LABELS[prop.role] || prop.role}
+                <div className="flex flex-wrap gap-1 justify-end ml-2">
+                  {prop.roles.map((r) => (
+                    <span key={r.role} className="flex items-center">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[r.role] || ROLE_COLORS.other}`}>
+                        {ROLE_LABELS[r.role] || r.role}
+                      </span>
+                      <LowConfidenceMarker confidence={r.confidenceScore} />
                     </span>
-                  )}
-                  <LowConfidenceMarker confidence={prop.confidenceScore} />
+                  ))}
                 </div>
               </div>
             </Link>
