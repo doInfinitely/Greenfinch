@@ -201,6 +201,61 @@ export async function findEmail(
   }
 }
 
+export interface HunterPhoneResult {
+  found: boolean;
+  phone: string | null;
+  email: string | null;
+  confidence: number;
+  error?: string;
+}
+
+export async function findPhoneByName(
+  firstName: string,
+  lastName: string,
+  companyDomain: string
+): Promise<HunterPhoneResult> {
+  const apiKey = process.env.HUNTER_API_KEY;
+
+  if (!apiKey) {
+    return { found: false, phone: null, email: null, confidence: 0, error: 'no_api_key' };
+  }
+
+  try {
+    const response = await makeEmailFinderRequest(firstName, lastName, companyDomain, apiKey);
+    totalCreditsUsed += 1;
+
+    trackCostFireAndForget({
+      provider: 'hunter',
+      endpoint: 'email-finder-phone',
+      entityType: 'contact',
+      success: true,
+      metadata: { found: !!response?.data?.phone_number },
+    });
+
+    const phone = response?.data?.phone_number || null;
+    const email = response?.data?.email || null;
+    const confidence = response?.data?.score ? response.data.score / 100 : 0;
+
+    if (phone) {
+      console.log(`[Hunter] Phone found for ${firstName} ${lastName}: ${phone}`);
+      return { found: true, phone, email, confidence };
+    }
+
+    console.log(`[Hunter] No phone for ${firstName} ${lastName} at ${companyDomain}`);
+    return { found: false, phone: null, email, confidence };
+  } catch (error: any) {
+    console.warn(`[Hunter] Phone lookup failed:`, error.message);
+    trackCostFireAndForget({
+      provider: 'hunter',
+      endpoint: 'email-finder-phone',
+      entityType: 'contact',
+      success: false,
+      errorMessage: error.message,
+    });
+    return { found: false, phone: null, email: null, confidence: 0, error: error.message };
+  }
+}
+
 // Company Enrichment API Response (Clearbit-compatible schema)
 export interface CompanyEnrichmentResult {
   success: boolean;
