@@ -226,14 +226,7 @@ export class DashboardMap {
           source: 'properties',
           filter: ['has', 'point_count'],
           paint: {
-            'circle-color': [
-              'step',
-              ['get', 'point_count'],
-              '#34d399',
-              25, '#2dd4bf',
-              50, '#22d3ee',
-              100, '#60a5fa',
-            ],
+            'circle-color': '#16a34a',
             'circle-radius': ['step', ['get', 'point_count'], 22, 50, 30, 200, 40],
             'circle-opacity': 0.92,
             'circle-stroke-width': 2.5,
@@ -268,17 +261,7 @@ export class DashboardMap {
           source: 'properties',
           filter: ['!', ['has', 'point_count']],
           paint: {
-            'circle-color': [
-              'match',
-              ['get', 'pipelineStatus'],
-              'qualified', '#16a34a',
-              'attempted_contact', '#eab308',
-              'active_opportunity', '#9333ea',
-              'won', '#15803d',
-              'lost', '#ef4444',
-              'disqualified', '#9ca3af',
-              '#6b7280',
-            ],
+            'circle-color': '#16a34a',
             'circle-radius': 8,
             'circle-stroke-width': 2,
             'circle-stroke-color': '#ffffff',
@@ -474,8 +457,8 @@ export class DashboardMap {
     if (!this.map) return;
 
     const zoom = this.map.getZoom();
-    const showParcels = zoom >= 15;
-    const showClusters = zoom < 15;
+    const showParcels = zoom >= 14;
+    const showClusters = zoom < 14;
 
     const setVisibility = (layerId: string, visible: boolean) => {
       if (this.map?.getLayer(layerId)) {
