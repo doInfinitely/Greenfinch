@@ -243,8 +243,8 @@ export default function MapPage() {
             onPropertyClick={handlePropertyClick}
           />
         </div>
-        <div className="absolute top-3 left-3 right-14 md:right-auto z-10 flex flex-col gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
+        <div className="absolute top-3 left-3 right-3 z-10 pointer-events-none">
+          <div className="flex items-center gap-2 flex-wrap pointer-events-auto w-fit">
             <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
             <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
           </div>

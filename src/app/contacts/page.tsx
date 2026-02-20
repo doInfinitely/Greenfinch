@@ -1350,7 +1350,7 @@ export default function ContactsPage() {
                             variant={pageSize === size ? 'default' : 'outline'}
                             size="sm"
                             onClick={() => handlePageSizeChange(size)}
-                            className={`h-7 px-2 text-xs ${pageSize === size ? 'bg-green-600 hover:bg-green-700' : ''}`}
+                            className={`h-7 px-2 text-xs ${pageSize === size ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
                             data-testid={`button-page-size-${size}`}
                           >
                             {size}
@@ -1388,7 +1388,7 @@ export default function ContactsPage() {
                               variant={pagination.page === pageNum ? 'default' : 'outline'}
                               size="sm"
                               onClick={() => handlePageChange(pageNum)}
-                              className={pagination.page === pageNum ? 'bg-green-600 hover:bg-green-700' : ''}
+                              className={pagination.page === pageNum ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
                               data-testid={`button-page-${pageNum}`}
                             >
                               {pageNum}

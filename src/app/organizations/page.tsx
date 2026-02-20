@@ -588,7 +588,7 @@ export default function OrganizationsPage() {
                             variant={pagination.page === pageNum ? 'default' : 'outline'}
                             size="sm"
                             onClick={() => handlePageChange(pageNum)}
-                            className={pagination.page === pageNum ? 'bg-green-600 hover:bg-green-700' : ''}
+                            className={pagination.page === pageNum ? 'bg-green-600 hover:bg-green-700 text-white' : ''}
                             data-testid={`button-page-${pageNum}`}
                           >
                             {pageNum}
