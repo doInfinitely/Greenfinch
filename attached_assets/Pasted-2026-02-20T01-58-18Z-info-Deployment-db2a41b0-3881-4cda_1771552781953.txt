@@ -1,0 +1,96 @@
+2026-02-20T01:58:18Z info: Deployment: db2a41b0-3881-4cda-88a3-0c88cc5e1e0f
+2026-02-20T01:58:18Z info: Running Security Scan
+2026-02-20T01:58:38Z info: Security Scan Complete
+2026-02-20T01:58:38Z info: Connecting to builder
+2026-02-20T01:58:39Z info: Builder connected
+2026-02-20T01:58:39Z info: Installing packages
+2026-02-20T01:58:40Z info: Starting Build
+
+> rest-express@1.0.0 build
+> tsx script/build.ts
+
+
+Building Next.js application...
+
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+
+▲ Next.js 16.1.2 (Turbopack)
+
+  Creating an optimized production build ...
+
+✓ Compiled successfully in 14.0s
+
+  Running TypeScript ...
+
+Failed to compile.
+
+
+./src/app/property/[id]/page.tsx:833:33
+Type error: Property 'commonName' does not exist on type 'Property'.
+
+  831 |           entityType="property"
+  832 |           entityId={property.propertyKey}
+> 833 |           entityLabel={property.commonName || property.validatedAddress || property.regridAddress || property.propertyKey}
+      |                                 ^
+  834 |           onClose={() => setShowDataIssueDialog(false)}
+  835 |         />
+  836 |       )}
+
+./src/app/property/[id]/page.tsx:833:33
+Type error: Property 'commonName' does not exist on type 'Property'.
+
+  831 |           entityType="property"
+  832 |           entityId={property.propertyKey}
+> 833 |           entityLabel={property.commonName || property.validatedAddress || property.regridAddress || property.propertyKey}
+      |                                 ^
+  834 |           onClose={() => setShowDataIssueDialog(false)}
+  835 |         />
+  836 |       )}
+
+./src/app/property/[id]/page.tsx:833:33
+Type error: Property 'commonName' does not exist on type 'Property'.
+
+  831 |           entityType="property"
+  832 |           entityId={property.propertyKey}
+> 833 |           entityLabel={property.commonName || property.validatedAddress || property.regridAddress || property.propertyKey}
+      |                                 ^
+  834 |           onClose={() => setShowDataIssueDialog(false)}
+  835 |         />
+  836 |       )}
+
+./src/app/property/[id]/page.tsx:833:33
+Type error: Property 'commonName' does not exist on type 'Property'.
+
+  831 |           entityType="property"
+  832 |           entityId={property.propertyKey}
+> 833 |           entityLabel={property.commonName || property.validatedAddress || property.regridAddress || property.propertyKey}
+      |                                 ^
+  834 |           onClose={() => setShowDataIssueDialog(false)}
+  835 |         />
+  836 |       )}
+
+Next.js build worker exited with code: 1 and signal: null
+
+Error: Command failed: npx next build
+    at genericNodeError (node:internal/errors:984:15)
+    at wrappedFn (node:internal/errors:538:14)
+    at checkExecSyncError (node:child_process:891:11)
+    at execSync (node:child_process:963:15)
+    at buildAll (/home/runner/workspace/script/build.ts:10:3) {
+  status: 1,
+  signal: null,
+  output: [ null, null, null ],
+  pid: 85,
+  stdout: null,
+  stderr: null
+}
+
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.10.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.10.1
+npm notice To update run: npm install -g npm@11.10.1
+npm notice

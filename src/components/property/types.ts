@@ -1,6 +1,9 @@
 export interface Property {
   propertyKey: string;
   address: string;
+  regridAddress: string | null;
+  validatedAddress: string | null;
+  commonName: string | null;
   city: string;
   state: string;
   zip: string;

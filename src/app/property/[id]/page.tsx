@@ -183,6 +183,9 @@ export default function PropertyDetailPage() {
         setProperty({
           propertyKey: prop.propertyKey,
           address: prop.address || prop.siteAddress || '',
+          regridAddress: prop.regridAddress || null,
+          validatedAddress: prop.validatedAddress || null,
+          commonName: prop.commonName || null,
           city: prop.city || prop.siteCity || '',
           state: prop.state || prop.siteState || 'TX',
           zip: prop.zip || prop.siteZip || '',
@@ -306,6 +309,9 @@ export default function PropertyDetailPage() {
         setProperty({
           propertyKey: prop.propertyKey || prop.PROPERTY_KEY || propertyId,
           address: prop.address || prop.SITE_ADDRESS || '',
+          regridAddress: prop.regridAddress || null,
+          validatedAddress: prop.validatedAddress || null,
+          commonName: prop.commonName || null,
           city: prop.city || prop.SITE_CITY || '',
           state: prop.state || 'TX',
           zip: prop.zip || prop.SITE_ZIP || '',
