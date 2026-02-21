@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { Flag } from 'lucide-react';
-import linkedinLogo from '@/assets/linkedin-logo.png';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { ContactStatusSummary } from '@/components/ContactStatusIcons';
 import type { Contact } from './types';
@@ -14,11 +13,10 @@ const CONTACT_TYPE_CONFIG: Record<string, { label: string; color: string }> = {
 
 interface ContactHeaderProps {
   contact: Contact;
-  onFlagLinkedIn: () => void;
   onReportDataIssue: () => void;
 }
 
-export default function ContactHeader({ contact, onFlagLinkedIn, onReportDataIssue }: ContactHeaderProps) {
+export default function ContactHeader({ contact, onReportDataIssue }: ContactHeaderProps) {
   const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
   const [isLoadingPhoto, setIsLoadingPhoto] = useState(false);
   const photoFetchAttemptedRef = useRef<string | null>(null);
@@ -101,18 +99,6 @@ export default function ContactHeader({ contact, onFlagLinkedIn, onReportDataIss
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="text-2xl font-bold text-gray-900">{contact.fullName || 'Unknown Contact'}</h1>
-          {contact.linkedinUrl && (
-            <a
-              href={contact.linkedinUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hover:opacity-80 transition-opacity"
-              title="View LinkedIn Profile"
-              data-testid="link-linkedin-header"
-            >
-              <img src={linkedinLogo.src} alt="LinkedIn" className="w-5 h-5" />
-            </a>
-          )}
           {contact.contactType && CONTACT_TYPE_CONFIG[contact.contactType] && (
             <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${CONTACT_TYPE_CONFIG[contact.contactType].color}`}>
               {CONTACT_TYPE_CONFIG[contact.contactType].label}
@@ -166,25 +152,13 @@ export default function ContactHeader({ contact, onFlagLinkedIn, onReportDataIss
               linkedinConfidence: contact.linkedinConfidence,
             }}
           />
-          {contact.linkedinUrl && (
-            <button
-              onClick={onFlagLinkedIn}
-              className="text-xs text-gray-500 hover:text-amber-600 hover:underline flex items-center gap-1"
-              title="Report incorrect LinkedIn profile"
-              data-testid="button-flag-linkedin"
-            >
-              <Flag className="w-3 h-3" />
-              Wrong profile?
-            </button>
-          )}
           <button
             onClick={onReportDataIssue}
-            className="text-xs text-gray-500 hover:text-amber-600 hover:underline flex items-center gap-1"
-            title="Report incorrect data for this contact"
+            className="text-gray-400 hover:text-amber-600 transition-colors p-1 rounded hover:bg-amber-50"
+            title="Report data issue"
             data-testid="button-report-data-issue"
           >
-            <Flag className="w-3 h-3" />
-            Report data issue
+            <Flag className="w-4 h-4" />
           </button>
         </div>
       </div>

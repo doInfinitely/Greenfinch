@@ -1,6 +1,7 @@
 'use client';
 
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ExternalLink } from 'lucide-react';
+import linkedinLogo from '@/assets/linkedin-logo.png';
 import { 
   EmailStatusIcon, 
   PhoneStatusIcon,
@@ -111,6 +112,25 @@ export default function ContactInfo({ contact }: ContactInfoProps) {
               </div>
             )}
           </div>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-500 mb-1">LinkedIn</label>
+          {contact.linkedinUrl ? (
+            <a
+              href={contact.linkedinUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 px-3 py-1.5 border border-gray-200 rounded-lg text-sm text-gray-700 hover:border-blue-300 hover:bg-blue-50 transition-colors"
+              data-testid="link-linkedin-profile"
+            >
+              <img src={linkedinLogo.src} alt="LinkedIn" className="w-4 h-4" />
+              <span>View Profile</span>
+              <ExternalLink className="w-3.5 h-3.5 text-gray-400" />
+            </a>
+          ) : (
+            <span className="text-gray-400">&mdash;</span>
+          )}
         </div>
         
         {contact.reviewReason && (

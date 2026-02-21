@@ -362,7 +362,7 @@ export default function ContactDetailPage() {
           </button>
           
           <div className="flex flex-col gap-4">
-            <ContactHeader contact={contact} onFlagLinkedIn={handleFlagLinkedIn} onReportDataIssue={() => setShowDataIssueDialog(true)} />
+            <ContactHeader contact={contact} onReportDataIssue={() => setShowDataIssueDialog(true)} />
             
             {showLinkedInAlternatives && (
               <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowLinkedInAlternatives(false)}>
