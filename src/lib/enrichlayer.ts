@@ -1,6 +1,43 @@
 const ENRICHLAYER_API_KEY = process.env.ENRICHLAYER_API_KEY;
 const ENRICHLAYER_BASE_URL = 'https://enrichlayer.com/api/v2';
 
+const FETCH_TIMEOUT_MS = 10000;
+
+const CIRCUIT_BREAKER_THRESHOLD = 3;
+const CIRCUIT_BREAKER_COOLDOWN_MS = 5 * 60 * 1000;
+let circuitFailureCount = 0;
+let circuitOpenedAt: number | null = null;
+
+function isCircuitOpen(): boolean {
+  if (circuitOpenedAt === null) return false;
+  if (Date.now() - circuitOpenedAt > CIRCUIT_BREAKER_COOLDOWN_MS) {
+    circuitFailureCount = 0;
+    circuitOpenedAt = null;
+    console.log('[EnrichLayer] Circuit breaker reset after cooldown');
+    return false;
+  }
+  return true;
+}
+
+function recordCircuitFailure(): void {
+  circuitFailureCount++;
+  if (circuitFailureCount >= CIRCUIT_BREAKER_THRESHOLD && circuitOpenedAt === null) {
+    circuitOpenedAt = Date.now();
+    console.warn(`[EnrichLayer] Circuit breaker OPEN after ${circuitFailureCount} failures. Skipping calls for ${CIRCUIT_BREAKER_COOLDOWN_MS / 1000}s`);
+  }
+}
+
+function recordCircuitSuccess(): void {
+  circuitFailureCount = 0;
+  circuitOpenedAt = null;
+}
+
+function createTimeoutSignal(): AbortSignal {
+  const controller = new AbortController();
+  setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  return controller.signal;
+}
+
 // Rate limiting: 20 requests per minute (paid plan)
 const RATE_LIMIT_REQUESTS = 20;
 const RATE_LIMIT_WINDOW_MS = 60000;
@@ -109,6 +146,10 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
     return { success: false, error: 'EnrichLayer API key not configured' };
   }
 
+  if (isCircuitOpen()) {
+    return { success: false, error: 'EnrichLayer temporarily unavailable' };
+  }
+
   try {
     await waitForRateLimit();
     const params = new URLSearchParams();
@@ -137,11 +178,22 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
         'Authorization': `Bearer ${ENRICHLAYER_API_KEY}`,
         'Content-Type': 'application/json',
       },
+      signal: createTimeoutSignal(),
     });
+
+    if (response.status === 404) {
+      recordCircuitSuccess();
+      return { success: false, error: 'Person not found in EnrichLayer database' };
+    }
+
+    if (response.status === 429) {
+      return { success: false, error: 'Rate limited' };
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[EnrichLayer] API error:', response.status, errorText);
+      recordCircuitFailure();
       return { success: false, error: `API error: ${response.status} - ${errorText}` };
     }
 
@@ -149,6 +201,7 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
     console.log('[EnrichLayer] Person lookup response:', JSON.stringify(data).slice(0, 500));
 
     if (!data || data.error) {
+      recordCircuitSuccess();
       return { success: false, error: data?.error || 'No data returned', rawResponse: data };
     }
 
@@ -159,6 +212,7 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
     
     // If no LinkedIn URL found, person wasn't matched
     if (!linkedinUrl) {
+      recordCircuitSuccess();
       return { 
         success: false, 
         error: 'Person not found in EnrichLayer database',
@@ -166,6 +220,7 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
       };
     }
     
+    recordCircuitSuccess();
     return {
       success: true,
       linkedinUrl,
@@ -185,8 +240,10 @@ export async function lookupPerson(input: EnrichLayerPersonInput): Promise<Enric
       rawResponse: data,
     };
   } catch (error) {
-    console.error('[EnrichLayer] Person lookup error:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    const isTimeout = error instanceof Error && error.name === 'AbortError';
+    console.error(`[EnrichLayer] Person lookup ${isTimeout ? 'timed out' : 'error'}:`, error);
+    recordCircuitFailure();
+    return { success: false, error: isTimeout ? 'Request timed out' : (error instanceof Error ? error.message : 'Unknown error') };
   }
 }
 
@@ -199,6 +256,10 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
   if (!ENRICHLAYER_API_KEY) {
     console.error('[EnrichLayer] API key not configured');
     return { success: false, error: 'EnrichLayer API key not configured' };
+  }
+
+  if (isCircuitOpen()) {
+    return { success: false, error: 'EnrichLayer temporarily unavailable' };
   }
 
   try {
@@ -231,11 +292,22 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
         'Authorization': `Bearer ${ENRICHLAYER_API_KEY}`,
         'Content-Type': 'application/json',
       },
+      signal: createTimeoutSignal(),
     });
+
+    if (response.status === 404) {
+      recordCircuitSuccess();
+      return { success: false, error: 'Profile not found' };
+    }
+
+    if (response.status === 429) {
+      return { success: false, error: 'Rate limited' };
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[EnrichLayer] API error:', response.status, errorText);
+      recordCircuitFailure();
       return { success: false, error: `API error: ${response.status} - ${errorText}` };
     }
 
@@ -243,6 +315,7 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
     console.log('[EnrichLayer] Profile enrichment response:', JSON.stringify(data).slice(0, 500));
 
     if (!data || data.error) {
+      recordCircuitSuccess();
       return { success: false, error: data?.error || 'No data returned', rawResponse: data };
     }
 
@@ -250,6 +323,7 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
     const personalEmail = data.personal_emails?.[0] || data.personal_email;
     const personalPhone = data.personal_numbers?.[0] || data.personal_contact_number;
     
+    recordCircuitSuccess();
     return {
       success: true,
       linkedinUrl: data.linkedin_url ?? (data.public_identifier ? `https://www.linkedin.com/in/${data.public_identifier}` : linkedinUrl),
@@ -289,8 +363,10 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
       rawResponse: data,
     };
   } catch (error) {
-    console.error('[EnrichLayer] Profile enrichment error:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    const isTimeout = error instanceof Error && error.name === 'AbortError';
+    console.error(`[EnrichLayer] Profile enrichment ${isTimeout ? 'timed out' : 'error'}:`, error);
+    recordCircuitFailure();
+    return { success: false, error: isTimeout ? 'Request timed out' : (error instanceof Error ? error.message : 'Unknown error') };
   }
 }
 
@@ -332,6 +408,10 @@ export async function lookupWorkEmail(linkedinUrl: string, options?: {
     return { success: false, email: null, status: null, error: 'EnrichLayer API key not configured' };
   }
 
+  if (isCircuitOpen()) {
+    return { success: false, email: null, status: null, error: 'EnrichLayer temporarily unavailable' };
+  }
+
   try {
     await waitForRateLimit();
     const params = new URLSearchParams();
@@ -357,11 +437,22 @@ export async function lookupWorkEmail(linkedinUrl: string, options?: {
         'Authorization': `Bearer ${ENRICHLAYER_API_KEY}`,
         'Accept': 'application/json',
       },
+      signal: createTimeoutSignal(),
     });
+
+    if (response.status === 404) {
+      recordCircuitSuccess();
+      return { success: false, email: null, status: 'not_found', error: 'Work email not found' };
+    }
+
+    if (response.status === 429) {
+      return { success: false, email: null, status: null, error: 'Rate limited' };
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
       console.error('[EnrichLayer] Work email API error:', response.status, errorText);
+      recordCircuitFailure();
       return { success: false, email: null, status: null, error: `API error: ${response.status} - ${errorText}` };
     }
 
@@ -386,6 +477,7 @@ export async function lookupWorkEmail(linkedinUrl: string, options?: {
         }
       }
       
+      recordCircuitSuccess();
       return {
         success: true,
         email: data.email,
@@ -396,6 +488,7 @@ export async function lookupWorkEmail(linkedinUrl: string, options?: {
 
     // If email_queue_count > 0, the request is still processing (async)
     if (data.email_queue_count > 0) {
+      recordCircuitSuccess();
       return {
         success: false,
         email: null,
@@ -404,6 +497,7 @@ export async function lookupWorkEmail(linkedinUrl: string, options?: {
       };
     }
 
+    recordCircuitSuccess();
     return {
       success: false,
       email: null,
@@ -411,8 +505,10 @@ export async function lookupWorkEmail(linkedinUrl: string, options?: {
       error: data.message || 'Work email not found',
     };
   } catch (error) {
-    console.error('[EnrichLayer] Work email lookup error:', error);
-    return { success: false, email: null, status: null, error: error instanceof Error ? error.message : 'Unknown error' };
+    const isTimeout = error instanceof Error && error.name === 'AbortError';
+    console.error(`[EnrichLayer] Work email lookup ${isTimeout ? 'timed out' : 'error'}:`, error);
+    recordCircuitFailure();
+    return { success: false, email: null, status: null, error: isTimeout ? 'Request timed out' : (error instanceof Error ? error.message : 'Unknown error') };
   }
 }
 
@@ -428,12 +524,15 @@ export interface ProfilePictureResult {
  */
 export async function getProfilePicture(linkedinUrl: string): Promise<ProfilePictureResult> {
   if (!ENRICHLAYER_API_KEY) {
-    console.error('[EnrichLayer] API key not configured');
     return { success: false, error: 'EnrichLayer API key not configured' };
   }
 
   if (!linkedinUrl) {
     return { success: false, error: 'LinkedIn URL required' };
+  }
+
+  if (isCircuitOpen()) {
+    return { success: false, error: 'EnrichLayer temporarily unavailable' };
   }
 
   try {
@@ -451,38 +550,39 @@ export async function getProfilePicture(linkedinUrl: string): Promise<ProfilePic
         'Authorization': `Bearer ${ENRICHLAYER_API_KEY}`,
         'Accept': 'application/json',
       },
+      signal: createTimeoutSignal(),
     });
 
     if (response.status === 404) {
-      console.log(`[EnrichLayer] Profile picture not found for: ${linkedinUrl}`);
+      recordCircuitSuccess();
       return { success: false, error: 'Profile picture not found' };
     }
 
     if (response.status === 429) {
-      console.warn('[EnrichLayer] Rate limited');
       return { success: false, error: 'Rate limited' };
     }
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[EnrichLayer] API error: ${response.status} ${errorText}`);
+      recordCircuitFailure();
       return { success: false, error: `API error: ${response.status}` };
     }
 
     const data = await response.json();
-    console.log('[EnrichLayer] Profile picture response:', JSON.stringify(data));
 
     const pictureUrl = data.profile_pic_url || data.tmp_profile_pic_url || data.url;
     
     if (pictureUrl) {
-      console.log(`[EnrichLayer] Successfully fetched profile picture`);
+      recordCircuitSuccess();
       return { success: true, url: pictureUrl };
     }
 
+    recordCircuitSuccess();
     return { success: false, error: 'No profile picture URL in response' };
   } catch (error) {
-    console.error('[EnrichLayer] Error fetching profile picture:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    const isTimeout = error instanceof Error && error.name === 'AbortError';
+    console.warn(`[EnrichLayer] Profile picture ${isTimeout ? 'timed out' : 'failed'}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    recordCircuitFailure();
+    return { success: false, error: isTimeout ? 'Request timed out' : 'Request failed' };
   }
 }
 
@@ -543,6 +643,10 @@ export async function resolveCompanyByDomain(domain: string): Promise<CompanyRes
     return { success: false, error: 'API key not configured' };
   }
 
+  if (isCircuitOpen()) {
+    return { success: false, error: 'EnrichLayer temporarily unavailable' };
+  }
+
   try {
     await waitForRateLimit();
 
@@ -558,9 +662,11 @@ export async function resolveCompanyByDomain(domain: string): Promise<CompanyRes
         'Authorization': `Bearer ${ENRICHLAYER_API_KEY}`,
         'Accept': 'application/json',
       },
+      signal: createTimeoutSignal(),
     });
 
     if (response.status === 404) {
+      recordCircuitSuccess();
       console.log(`[EnrichLayer] Company not found for domain: ${domain}`);
       return { success: false, error: 'Company not found' };
     }
@@ -573,20 +679,25 @@ export async function resolveCompanyByDomain(domain: string): Promise<CompanyRes
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[EnrichLayer] API error: ${response.status} ${errorText}`);
+      recordCircuitFailure();
       return { success: false, error: `API error: ${response.status}` };
     }
 
     const data = await response.json();
     
     if (data.url) {
+      recordCircuitSuccess();
       console.log(`[EnrichLayer] Resolved ${domain} to: ${data.url}`);
       return { success: true, linkedinUrl: data.url };
     }
 
+    recordCircuitSuccess();
     return { success: false, error: 'No LinkedIn URL in response' };
   } catch (error) {
-    console.error('[EnrichLayer] Error resolving company:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    const isTimeout = error instanceof Error && error.name === 'AbortError';
+    console.error(`[EnrichLayer] Company resolve ${isTimeout ? 'timed out' : 'error'}:`, error);
+    recordCircuitFailure();
+    return { success: false, error: isTimeout ? 'Request timed out' : (error instanceof Error ? error.message : 'Unknown error') };
   }
 }
 
@@ -598,6 +709,10 @@ export async function getCompanyProfile(linkedinUrl: string): Promise<CompanyPro
   if (!ENRICHLAYER_API_KEY) {
     console.warn('[EnrichLayer] API key not configured');
     return { success: false, error: 'API key not configured' };
+  }
+
+  if (isCircuitOpen()) {
+    return { success: false, error: 'EnrichLayer temporarily unavailable' };
   }
 
   try {
@@ -618,9 +733,11 @@ export async function getCompanyProfile(linkedinUrl: string): Promise<CompanyPro
         'Authorization': `Bearer ${ENRICHLAYER_API_KEY}`,
         'Accept': 'application/json',
       },
+      signal: createTimeoutSignal(),
     });
 
     if (response.status === 404) {
+      recordCircuitSuccess();
       console.log(`[EnrichLayer] Company profile not found: ${linkedinUrl}`);
       return { success: false, error: 'Company not found' };
     }
@@ -638,6 +755,7 @@ export async function getCompanyProfile(linkedinUrl: string): Promise<CompanyPro
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`[EnrichLayer] API error: ${response.status} ${errorText}`);
+      recordCircuitFailure();
       return { success: false, error: `API error: ${response.status}` };
     }
 
@@ -654,6 +772,7 @@ export async function getCompanyProfile(linkedinUrl: string): Promise<CompanyPro
     }
 
     // Map response to our schema
+    recordCircuitSuccess();
     const result: CompanyProfileResult = {
       success: true,
       data: {
@@ -692,8 +811,10 @@ export async function getCompanyProfile(linkedinUrl: string): Promise<CompanyPro
 
     return result;
   } catch (error) {
-    console.error('[EnrichLayer] Error getting company profile:', error);
-    return { success: false, error: error instanceof Error ? error.message : 'Unknown error' };
+    const isTimeout = error instanceof Error && error.name === 'AbortError';
+    console.error(`[EnrichLayer] Company profile ${isTimeout ? 'timed out' : 'error'}:`, error);
+    recordCircuitFailure();
+    return { success: false, error: isTimeout ? 'Request timed out' : (error instanceof Error ? error.message : 'Unknown error') };
   }
 }
 
@@ -702,6 +823,10 @@ export async function getCompanyProfile(linkedinUrl: string): Promise<CompanyPro
  * Cost: ~6 credits total (1 for resolve + 5 for profile)
  */
 export async function enrichCompanyByDomain(domain: string): Promise<CompanyProfileResult> {
+  if (isCircuitOpen()) {
+    return { success: false, error: 'EnrichLayer temporarily unavailable' };
+  }
+
   console.log(`[EnrichLayer] Enriching company by domain: ${domain}`);
   
   // Step 1: Resolve domain to LinkedIn URL
