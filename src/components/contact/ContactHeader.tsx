@@ -17,8 +17,7 @@ interface ContactHeaderProps {
 }
 
 export default function ContactHeader({ contact, onReportDataIssue }: ContactHeaderProps) {
-  const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(null);
-  const [isLoadingPhoto, setIsLoadingPhoto] = useState(false);
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState<string | null>(contact?.photoUrl || null);
   const photoFetchAttemptedRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -26,22 +25,19 @@ export default function ContactHeader({ contact, onReportDataIssue }: ContactHea
     
     if (!contact) {
       setProfilePhotoUrl(null);
-      setIsLoadingPhoto(false);
       return;
     }
     
     if (contact.photoUrl) {
       setProfilePhotoUrl(contact.photoUrl);
-      setIsLoadingPhoto(false);
       return;
     }
     
     if (contact.linkedinUrl && !contact.photoUrl && photoFetchAttemptedRef.current !== contact.id) {
       photoFetchAttemptedRef.current = contact.id;
-      setIsLoadingPhoto(true);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const timeoutId = setTimeout(() => controller.abort(), 12000);
       
       fetch(`/api/contacts/${contact.id}/profile-photo`, { signal: controller.signal })
         .then(res => res.json())
@@ -51,17 +47,9 @@ export default function ContactHeader({ contact, onReportDataIssue }: ContactHea
             setProfilePhotoUrl(data.url);
           }
         })
-        .catch(err => {
-          if (!isMounted) return;
-          if (err.name !== 'AbortError') {
-            console.error('Failed to auto-fetch profile photo:', err);
-          }
-        })
+        .catch(() => {})
         .finally(() => {
           clearTimeout(timeoutId);
-          if (isMounted) {
-            setIsLoadingPhoto(false);
-          }
         });
     }
     
@@ -72,27 +60,19 @@ export default function ContactHeader({ contact, onReportDataIssue }: ContactHea
     <div className="flex items-start gap-4">
       <div className="relative flex-shrink-0" data-testid="contact-avatar-container">
         <Avatar className="w-20 h-20" data-testid="contact-avatar">
-          {isLoadingPhoto ? (
-            <AvatarFallback className="bg-muted" data-testid="avatar-loading">
-              <div className="w-6 h-6 border-2 border-muted-foreground border-t-transparent rounded-full animate-spin"></div>
-            </AvatarFallback>
-          ) : (
-            <>
-              {profilePhotoUrl && (
-                <AvatarImage 
-                  src={profilePhotoUrl} 
-                  alt={contact.fullName || 'Contact'}
-                  onError={() => setProfilePhotoUrl(null)}
-                  data-testid="avatar-image"
-                />
-              )}
-              <AvatarFallback className="bg-green-100 text-green-700 text-2xl font-semibold" data-testid="avatar-fallback">
-                {contact.fullName
-                  ? contact.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
-                  : '?'}
-              </AvatarFallback>
-            </>
+          {profilePhotoUrl && (
+            <AvatarImage 
+              src={profilePhotoUrl} 
+              alt={contact.fullName || 'Contact'}
+              onError={() => setProfilePhotoUrl(null)}
+              data-testid="avatar-image"
+            />
           )}
+          <AvatarFallback className="bg-green-100 text-green-700 text-2xl font-semibold" data-testid="avatar-fallback">
+            {contact.fullName
+              ? contact.fullName.split(' ').map(n => n[0]).slice(0, 2).join('').toUpperCase()
+              : '?'}
+          </AvatarFallback>
         </Avatar>
       </div>
       
