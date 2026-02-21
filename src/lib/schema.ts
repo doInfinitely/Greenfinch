@@ -376,6 +376,10 @@ export const organizations = pgTable('organizations', {
   phoneNumbers: json('phone_numbers').$type<string[]>(),
   emailAddresses: json('email_addresses').$type<string[]>(),
   
+  // PDL company identifier for parent/subsidiary resolution
+  pdlCompanyId: text('pdl_company_id'),
+  affiliatedPdlIds: json('affiliated_pdl_ids').$type<string[]>(),
+
   // Enrichment metadata - provider tracking for cascade (Apollo → EnrichLayer → PDL)
   providerId: text('provider_id'), // ID from the enrichment provider (e.g., Apollo org ID)
   enrichmentSource: text('enrichment_source'), // 'apollo', 'enrichlayer', 'pdl'
@@ -396,6 +400,7 @@ export const organizations = pgTable('organizations', {
 }, (table) => ({
   parentOrgIdx: index('idx_organizations_parent').on(table.parentOrgId),
   ultimateParentOrgIdx: index('idx_organizations_ultimate_parent').on(table.ultimateParentOrgId),
+  pdlCompanyIdx: index('idx_organizations_pdl_company_id').on(table.pdlCompanyId),
 }));
 
 // Junction: Property <-> Contact

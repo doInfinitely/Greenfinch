@@ -34,6 +34,10 @@ export interface OrganizationEnrichmentResult {
   enrichmentSource: 'pdl' | 'crustdata' | null;
   enrichedAt: Date | null;
   
+  pdlCompanyId: string | null;
+  affiliatedProfiles: string[] | null;
+  alternativeDomains: string[] | null;
+
   name: string | null;
   description: string | null;
   industry: string | null;
@@ -229,6 +233,9 @@ export async function enrichOrganizationCascade(
     providerId: null,
     enrichmentSource: null,
     enrichedAt: null,
+    pdlCompanyId: null,
+    affiliatedProfiles: null,
+    alternativeDomains: null,
     name: null,
     description: null,
     industry: null,
@@ -277,6 +284,10 @@ export async function enrichOrganizationCascade(
       enrichmentSource: 'pdl',
       enrichedAt: new Date(),
       
+      pdlCompanyId: pdlResult.pdlCompanyId || null,
+      affiliatedProfiles: pdlResult.affiliatedProfiles || null,
+      alternativeDomains: pdlResult.alternativeDomains || null,
+
       name: pdlResult.displayName || pdlResult.name || null,
       description: pdlResult.description || null,
       industry: pdlResult.industry || null,
@@ -332,6 +343,10 @@ export async function enrichOrganizationCascade(
     providerId: null,
     enrichmentSource: 'crustdata',
     enrichedAt: new Date(),
+
+    pdlCompanyId: null,
+    affiliatedProfiles: null,
+    alternativeDomains: null,
     
     name: crustdataResult.companyName || null,
     description: crustdataResult.description || null,

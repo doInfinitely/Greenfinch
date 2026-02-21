@@ -2,6 +2,7 @@ import { db } from './db';
 import { organizations } from './schema';
 import { eq } from 'drizzle-orm';
 import { enrichOrganizationCascade, OrganizationEnrichmentResult as CascadeResult } from './cascade-enrichment';
+import { enrichCompanyPDL } from './pdl';
 
 export interface OrganizationEnrichmentResult {
   success: boolean;
@@ -139,6 +140,9 @@ export async function enrichOrganizationByDomain(
     lastEnrichedAt: cascadeResult.enrichedAt || new Date(),
     rawEnrichmentJson: (cascadeResult.pdlRaw || cascadeResult.crustdataRaw) ? { pdl: cascadeResult.pdlRaw || null, crustdata: cascadeResult.crustdataRaw || null } : undefined,
     
+    pdlCompanyId: cascadeResult.pdlCompanyId || undefined,
+    affiliatedPdlIds: cascadeResult.affiliatedProfiles || undefined,
+
     pdlEnriched: !!cascadeResult.pdlRaw,
     pdlEnrichedAt: cascadeResult.pdlRaw ? new Date() : undefined,
     pdlRawResponse: cascadeResult.pdlRaw || undefined,
@@ -160,6 +164,11 @@ export async function enrichOrganizationByDomain(
   
   console.log(`[OrgEnrichment] Successfully enriched ${domain} (${cascadeResult.name}) via ${cascadeResult.enrichmentSource} - Industry: ${cascadeResult.industry}, Employees: ${cascadeResult.employeesRange}`);
   
+  if (cascadeResult.affiliatedProfiles && cascadeResult.affiliatedProfiles.length > 0) {
+    resolveAffiliatedCompanies(orgRecord.id, cascadeResult.affiliatedProfiles)
+      .catch(err => console.error(`[OrgEnrichment] Error resolving affiliated companies for ${domain}:`, err));
+  }
+
   return {
     success: true,
     orgId: orgRecord.id,
@@ -184,4 +193,148 @@ export async function enrichOrganizationById(orgId: string): Promise<Organizatio
     name: org.name || undefined,
     linkedinUrl: org.linkedinHandle ? `https://linkedin.com/company/${org.linkedinHandle}` : undefined,
   });
+}
+
+const MAX_AFFILIATED_LOOKUPS = 8;
+
+export async function resolveAffiliatedCompanies(
+  orgId: string,
+  affiliatedPdlIds: string[]
+): Promise<void> {
+  if (!affiliatedPdlIds || affiliatedPdlIds.length === 0) return;
+
+  const idsToResolve = affiliatedPdlIds.slice(0, MAX_AFFILIATED_LOOKUPS);
+  console.log(`[OrgEnrichment] Resolving ${idsToResolve.length} affiliated companies for org ${orgId}`);
+
+  for (const pdlId of idsToResolve) {
+    try {
+      const existing = await db.query.organizations.findFirst({
+        where: eq(organizations.pdlCompanyId, pdlId),
+      });
+
+      if (existing) {
+        console.log(`[OrgEnrichment] Affiliated company ${pdlId} already in DB as "${existing.name}" (${existing.domain})`);
+        continue;
+      }
+
+      const pdlResult = await enrichCompanyPDL('', { pdlId });
+      if (!pdlResult.found || !pdlResult.name) {
+        console.log(`[OrgEnrichment] PDL lookup for affiliated ID ${pdlId} — not found`);
+        continue;
+      }
+
+      const domain = pdlResult.website
+        ? pdlResult.website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
+        : null;
+
+      if (domain) {
+        const existingByDomain = await db.query.organizations.findFirst({
+          where: eq(organizations.domain, domain),
+        });
+
+        if (existingByDomain) {
+          if (!existingByDomain.pdlCompanyId) {
+            await db.update(organizations)
+              .set({
+                pdlCompanyId: pdlResult.pdlCompanyId,
+                affiliatedPdlIds: pdlResult.affiliatedProfiles || undefined,
+                updatedAt: new Date(),
+              })
+              .where(eq(organizations.id, existingByDomain.id));
+          }
+          console.log(`[OrgEnrichment] Affiliated company ${pdlId} matched existing org "${existingByDomain.name}" by domain ${domain}`);
+          continue;
+        }
+      }
+
+      const displayName = pdlResult.displayName || pdlResult.name;
+      const [inserted] = await db.insert(organizations)
+        .values({
+          name: displayName,
+          domain: domain || undefined,
+          pdlCompanyId: pdlResult.pdlCompanyId,
+          affiliatedPdlIds: pdlResult.affiliatedProfiles || undefined,
+          description: pdlResult.description || undefined,
+          industry: pdlResult.industry || undefined,
+          employees: pdlResult.employeeCount || undefined,
+          employeesRange: pdlResult.employeeRange || undefined,
+          foundedYear: pdlResult.foundedYear || undefined,
+          city: pdlResult.city || undefined,
+          state: pdlResult.state || undefined,
+          country: pdlResult.country || undefined,
+          logoUrl: pdlResult.logoUrl || undefined,
+          enrichmentSource: 'pdl',
+          enrichmentStatus: 'complete',
+          pdlEnriched: true,
+          pdlEnrichedAt: new Date(),
+          pdlRawResponse: pdlResult.raw || undefined,
+          lastEnrichedAt: new Date(),
+        })
+        .returning({ id: organizations.id });
+
+      console.log(`[OrgEnrichment] Created affiliated company "${displayName}" (${domain || 'no domain'}) — PDL ID: ${pdlId}`);
+    } catch (err) {
+      console.error(`[OrgEnrichment] Error resolving affiliated company ${pdlId}:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
+
+async function findOrgByDomainOrName(domain: string | null, companyName: string | null): Promise<typeof organizations.$inferSelect | null> {
+  if (domain) {
+    const norm = domain.toLowerCase().trim().replace(/^www\./, '');
+    const byDomain = await db.query.organizations.findFirst({ where: eq(organizations.domain, norm) });
+    if (byDomain) return byDomain;
+  }
+  if (companyName) {
+    const byName = await db.query.organizations.findFirst({ where: eq(organizations.name, companyName) });
+    if (byName) return byName;
+  }
+  return null;
+}
+
+export async function areCompaniesAffiliated(
+  domain1: string | null,
+  domain2: string | null,
+  companyName1?: string | null,
+  companyName2?: string | null
+): Promise<boolean> {
+  if (domain1 && domain2) {
+    const norm1 = domain1.toLowerCase().trim().replace(/^www\./, '');
+    const norm2 = domain2.toLowerCase().trim().replace(/^www\./, '');
+    if (norm1 === norm2) return true;
+  }
+
+  const [org1, org2] = await Promise.all([
+    findOrgByDomainOrName(domain1, companyName1 || null),
+    findOrgByDomainOrName(domain2, companyName2 || null),
+  ]);
+
+  if (!org1 || !org2) return false;
+
+  if (org1.pdlCompanyId && org2.affiliatedPdlIds) {
+    const affiliates2 = org2.affiliatedPdlIds as string[];
+    if (affiliates2.includes(org1.pdlCompanyId)) return true;
+  }
+  if (org2.pdlCompanyId && org1.affiliatedPdlIds) {
+    const affiliates1 = org1.affiliatedPdlIds as string[];
+    if (affiliates1.includes(org2.pdlCompanyId)) return true;
+  }
+
+  if (org1.pdlCompanyId && org2.pdlCompanyId && org1.pdlCompanyId === org2.pdlCompanyId) return true;
+
+  const norm1 = org1.domain?.toLowerCase().trim().replace(/^www\./, '') || '';
+  const norm2 = org2.domain?.toLowerCase().trim().replace(/^www\./, '') || '';
+
+  if (norm1 && norm2 && norm1 === norm2) return true;
+
+  if (org1.parentDomain === norm2 || org2.parentDomain === norm1) return true;
+  if (norm1 && org2.ultimateParentDomain === norm1) return true;
+  if (norm2 && org1.ultimateParentDomain === norm2) return true;
+  if (org1.ultimateParentDomain && org2.ultimateParentDomain && 
+      org1.ultimateParentDomain === org2.ultimateParentDomain) return true;
+
+  if (org1.parentOrgId === org2.id || org2.parentOrgId === org1.id) return true;
+  if (org1.ultimateParentOrgId && org1.ultimateParentOrgId === org2.ultimateParentOrgId) return true;
+
+  return false;
 }

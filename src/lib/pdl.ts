@@ -37,6 +37,9 @@ export interface PDLPersonResult {
 
 export interface PDLCompanyResult {
   found: boolean;
+  pdlCompanyId: string | null;
+  affiliatedProfiles: string[] | null;
+  alternativeDomains: string[] | null;
   name: string | null;
   displayName: string | null;
   description: string | null;
@@ -130,6 +133,9 @@ function emptyPersonResult(): PDLPersonResult {
 function emptyCompanyResult(): PDLCompanyResult {
   return {
     found: false,
+    pdlCompanyId: null,
+    affiliatedProfiles: null,
+    alternativeDomains: null,
     name: null,
     displayName: null,
     description: null,
@@ -446,7 +452,7 @@ export async function enrichPersonPDL(
 
 export async function enrichCompanyPDL(
   domain: string,
-  options: { name?: string; linkedinUrl?: string; locality?: string; region?: string; ticker?: string } = {}
+  options: { name?: string; linkedinUrl?: string; locality?: string; region?: string; ticker?: string; pdlId?: string } = {}
 ): Promise<PDLCompanyResult> {
   const apiKey = process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY;
   
@@ -455,7 +461,7 @@ export async function enrichCompanyPDL(
     return emptyCompanyResult();
   }
 
-  if (!domain && !options.name && !options.linkedinUrl && !options.ticker) {
+  if (!domain && !options.name && !options.linkedinUrl && !options.ticker && !options.pdlId) {
     console.warn('[PDL] No identifiers provided for company enrichment');
     return emptyCompanyResult();
   }
@@ -502,6 +508,13 @@ export async function enrichCompanyPDL(
             titlecase: 'true',
             min_likelihood: '5',
           });
+
+          if (options.pdlId) {
+            baseParams.set('pdl_id', options.pdlId);
+            const pdlIdAttempt = await attemptEnrich(baseParams, 'pdl_id lookup');
+            if (pdlIdAttempt.found) return pdlIdAttempt;
+            return { found: false };
+          }
 
           if (domain) baseParams.set('website', domain);
           if (options.name) baseParams.set('name', options.name);
@@ -579,6 +592,11 @@ export async function enrichCompanyPDL(
 
     return {
       found: true,
+      pdlCompanyId: company.id || null,
+      affiliatedProfiles: Array.isArray(company.affiliated_profiles) && company.affiliated_profiles.length > 0
+        ? company.affiliated_profiles : null,
+      alternativeDomains: Array.isArray(company.alternative_domains) && company.alternative_domains.length > 0
+        ? company.alternative_domains : null,
       name: company.name || null,
       displayName: company.display_name || company.name || null,
       description: company.summary || company.description || null,

@@ -251,19 +251,19 @@ export async function POST(
         const updatedPCs = await db
           .update(propertyContacts)
           .set({
-            relationshipStatus: 'former',
+            relationshipStatus: 'job_change_detected',
             relationshipStatusReason: result.employerLeftReason,
           })
           .where(
             and(
               eq(propertyContacts.contactId, id),
-              sql`(${propertyContacts.relationshipStatus} IS NULL OR ${propertyContacts.relationshipStatus} != 'former')`
+              sql`(${propertyContacts.relationshipStatus} IS NULL OR ${propertyContacts.relationshipStatus} != 'job_change_detected')`
             )
           )
           .returning();
         
         if (updatedPCs.length > 0) {
-          console.log(`[EnrichContact] Marked ${updatedPCs.length} property-contact relationship(s) as 'former' for ${contact.fullName}`);
+          console.log(`[EnrichContact] Marked ${updatedPCs.length} property-contact relationship(s) as 'job_change_detected' for ${contact.fullName}`);
         }
 
         const updatedOrgs = await db

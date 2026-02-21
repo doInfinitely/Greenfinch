@@ -95,7 +95,7 @@ export interface Contact {
   reviewReason?: string | null;
   emailValidationStatus?: 'valid' | 'invalid' | 'pending' | 'not_validated' | 'unknown' | 'catch-all';
   photoUrl?: string | null;
-  relationshipStatus?: 'active' | 'former' | null;
+  relationshipStatus?: 'active' | 'former' | 'job_change_detected' | null;
   relationshipStatusReason?: string | null;
 }
 

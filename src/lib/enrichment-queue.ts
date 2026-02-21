@@ -8,6 +8,7 @@ import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpo
 import { isCircuitBreakerError } from './rate-limiter';
 import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
+import { areCompaniesAffiliated } from './organization-enrichment';
 import { findExistingContactByIdentifiers, flagPotentialDuplicateById, normalizeName as normalizeNameDedup, normalizeDomain as normalizeDomainDedup } from './deduplication';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
@@ -763,13 +764,13 @@ export async function runCascadeEnrichmentOnSavedRecords(
         try {
           const aiCompany = contact.employerName;
           const aiDomain = contact.companyDomain;
-          let markedFormer = false;
-          let formerReason = '';
+          let jobChangeDetected = false;
+          let changeReason = '';
 
           if (result.employerLeftDetected) {
-            formerReason = result.employerLeftReason || `${contact.fullName} no longer appears to be at ${aiCompany || 'the company'}`;
-            console.log(`[RoleVerification] EMPLOYER LEFT: ${formerReason}`);
-            markedFormer = true;
+            changeReason = result.employerLeftReason || `${contact.fullName} no longer appears to be at ${aiCompany || 'the company'}`;
+            console.log(`[RoleVerification] EMPLOYER LEFT: ${changeReason}`);
+            jobChangeDetected = true;
           } else {
             const hasCrustdataCompany = !!result.crustdataCompany;
             const enrichedCompany = result.crustdataCompany || result.pdlCompany;
@@ -786,25 +787,37 @@ export async function runCascadeEnrichmentOnSavedRecords(
               const titleStillMatches = contact.title && enrichedTitle && 
                 contact.title.toLowerCase().replace(/[^a-z0-9]/g, '') === enrichedTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-              if (!hasCrustdataCompany && isVolunteerOrBoard) {
+              let affiliated = false;
+              try {
+                affiliated = await areCompaniesAffiliated(aiDomain, enrichedDomain, aiCompany, enrichedCompany);
+                if (affiliated) {
+                  console.log(`[RoleVerification] Companies are affiliated (parent/subsidiary): "${aiCompany}" (${aiDomain}) ↔ "${enrichedCompany}" (${enrichedDomain}) — skipping job change flag`);
+                }
+              } catch (err) {
+                console.warn('[RoleVerification] Affiliation check failed, continuing with other checks:', err instanceof Error ? err.message : err);
+              }
+
+              if (affiliated) {
+                // Parent/subsidiary — not a job change
+              } else if (!hasCrustdataCompany && isVolunteerOrBoard) {
                 console.log(`[RoleVerification] Skipping PDL-only mismatch — PDL title "${pdlTitle}" appears to be a volunteer/board role, not primary employment`);
               } else if (!hasCrustdataCompany && result.crustdataTitle && companiesMatch(result.crustdataTitle, contact.title)) {
                 console.log(`[RoleVerification] Skipping PDL-only mismatch — Crustdata title "${result.crustdataTitle}" matches AI title, but Crustdata has no company. PDL company "${enrichedCompany}" may not be primary employer`);
               } else if (!hasCrustdataCompany && titleStillMatches) {
                 console.log(`[RoleVerification] Skipping PDL-only mismatch — title "${enrichedTitle}" matches existing title "${contact.title}". PDL company "${enrichedCompany}" is likely a parent/subsidiary of "${aiCompany}"`);
               } else {
-                formerReason = `${contact.fullName} now at ${enrichedCompany}${enrichedTitle ? ` as ${enrichedTitle}` : ''} (was ${aiCompany || 'unknown'} for this property). Source: ${hasCrustdataCompany ? 'Crustdata' : 'PDL'}`;
-                console.log(`[RoleVerification] MISMATCH: ${formerReason}`);
-                markedFormer = true;
+                changeReason = `${contact.fullName} now at ${enrichedCompany}${enrichedTitle ? ` as ${enrichedTitle}` : ''} (was ${aiCompany || 'unknown'} for this property). Source: ${hasCrustdataCompany ? 'Crustdata' : 'PDL'}`;
+                console.log(`[RoleVerification] MISMATCH: ${changeReason}`);
+                jobChangeDetected = true;
               }
             }
           }
 
-          if (markedFormer) {
+          if (jobChangeDetected) {
             await db.update(propertyContacts)
               .set({
-                relationshipStatus: 'former',
-                relationshipStatusReason: formerReason,
+                relationshipStatus: 'job_change_detected',
+                relationshipStatusReason: changeReason,
                 relationshipVerifiedAt: new Date(),
               })
               .where(
@@ -813,15 +826,6 @@ export async function runCascadeEnrichmentOnSavedRecords(
                   eq(propertyContacts.contactId, contactId)
                 )
               );
-
-            await db.update(contactOrganizations)
-              .set({ isCurrent: false })
-              .where(
-                and(
-                  eq(contactOrganizations.contactId, contactId),
-                  eq(contactOrganizations.isCurrent, true)
-                )
-              ).catch(err => console.error('[RoleVerification] Failed to update contact_organizations:', err));
 
             const [pcRow, prop] = await Promise.all([
               db.query.propertyContacts.findFirst({
@@ -913,7 +917,7 @@ async function searchForReplacement(
     const existingFormerLinks = await db.select().from(propertyContacts).where(
       and(
         eq(propertyContacts.propertyId, propertyId),
-        eq(propertyContacts.relationshipStatus, 'former')
+        eq(propertyContacts.relationshipStatus, 'job_change_detected')
       )
     );
     for (const link of existingFormerLinks) {

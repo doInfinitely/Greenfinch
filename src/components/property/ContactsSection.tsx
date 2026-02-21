@@ -22,8 +22,8 @@ const ROLE_PRIORITY: Record<string, number> = {
 
 function sortContactsByRelevance(contacts: Contact[]): Contact[] {
   return [...contacts].sort((a, b) => {
-    const formerA = a.relationshipStatus === 'former' ? 1 : 0;
-    const formerB = b.relationshipStatus === 'former' ? 1 : 0;
+    const formerA = (a.relationshipStatus === 'former' || a.relationshipStatus === 'job_change_detected') ? 1 : 0;
+    const formerB = (b.relationshipStatus === 'former' || b.relationshipStatus === 'job_change_detected') ? 1 : 0;
     if (formerA !== formerB) return formerA - formerB;
     const priorityA = ROLE_PRIORITY[a.role] || 99;
     const priorityB = ROLE_PRIORITY[b.role] || 99;
@@ -93,7 +93,7 @@ export default function ContactsSection({
       {contacts.length > 0 ? (
         <div className="space-y-3">
           {sortContactsByRelevance(contacts).map((contact, i) => {
-            const isFormer = contact.relationshipStatus === 'former';
+            const isFormer = contact.relationshipStatus === 'former' || contact.relationshipStatus === 'job_change_detected';
             const bestPhone = getBestPhone(contact);
             const formattedPhone = bestPhone ? formatPhoneNumber(bestPhone, contact.phoneExtension) : null;
             return (
@@ -114,8 +114,8 @@ export default function ContactsSection({
                         </span>
                       )}
                       {isFormer && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-red-100 text-red-700">
-                          Former
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
+                          May have changed jobs
                         </span>
                       )}
                     </div>

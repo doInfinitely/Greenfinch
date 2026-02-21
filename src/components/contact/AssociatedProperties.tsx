@@ -123,9 +123,9 @@ export default function AssociatedProperties({ properties }: AssociatedPropertie
                       </span>
                     ))}
                   </div>
-                  {prop.relationshipStatus === 'former' && (
-                    <span className="text-xs text-orange-600 font-medium" data-testid={`badge-former-${prop.propertyKey || prop.id}`}>
-                      Former
+                  {prop.relationshipStatus === 'job_change_detected' && (
+                    <span className="text-xs text-amber-600 font-medium" data-testid={`badge-job-change-${prop.propertyKey || prop.id}`}>
+                      May have changed jobs
                     </span>
                   )}
                 </div>
