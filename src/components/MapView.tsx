@@ -73,8 +73,9 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
   const propertyHandlersAdded = useRef(false);
   const lastFlyToRef = useRef<string | null>(null);
   const currentStyle = useRef<string>(MAP_STYLE);
+  const isStyleSwitching = useRef(false);
   const parcelHoverDebounceRef = useRef<NodeJS.Timeout | null>(null);
-  const currentHoveredLlUuid = useRef<string | null>(null);
+  const currentHoveredParcelnumb = useRef<string | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapToken, setMapToken] = useState<string>('');
   const [regridToken, setRegridToken] = useState<string>('');
@@ -292,11 +293,11 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
 
       if (e.features && e.features.length > 0) {
         const feature = e.features[0];
-        const llUuid = feature.properties?.ll_uuid || (typeof feature.id === 'string' ? feature.id : null);
+        const parcelnumb = feature.properties?.parcelnumb;
         
-        if (llUuid) {
+        if (parcelnumb) {
           try {
-            const response = await fetch(`/api/parcels/resolve?ll_uuid=${encodeURIComponent(llUuid)}`);
+            const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
             if (response.ok) {
               const data = await response.json();
               if (data.propertyKey) {
@@ -321,7 +322,7 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       
       const feature = e.features[0];
       const featureId = feature.id;
-      const llUuid = feature.properties?.ll_uuid || (typeof featureId === 'string' ? featureId : null);
+      const parcelnumb = feature.properties?.parcelnumb;
       
       if (hoveredParcelId.current !== null && hoveredParcelId.current !== featureId) {
         try {
@@ -346,8 +347,8 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
         }
       }
 
-      if (llUuid && llUuid !== currentHoveredLlUuid.current) {
-        currentHoveredLlUuid.current = llUuid;
+      if (parcelnumb && parcelnumb !== currentHoveredParcelnumb.current) {
+        currentHoveredParcelnumb.current = parcelnumb;
         
         if (parcelHoverDebounceRef.current) {
           clearTimeout(parcelHoverDebounceRef.current);
@@ -356,12 +357,12 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
         const lngLat = e.lngLat;
         
         parcelHoverDebounceRef.current = setTimeout(async () => {
-          if (currentHoveredLlUuid.current !== llUuid) return;
+          if (currentHoveredParcelnumb.current !== parcelnumb) return;
           
           const now = Date.now();
-          const cachedTimestamp = cacheTimestamps.get(llUuid);
-          if (cachedTimestamp && (now - cachedTimestamp) < CACHE_TTL && parcelPropertyCache.has(llUuid)) {
-            const cached = parcelPropertyCache.get(llUuid);
+          const cachedTimestamp = cacheTimestamps.get(parcelnumb);
+          if (cachedTimestamp && (now - cachedTimestamp) < CACHE_TTL && parcelPropertyCache.has(parcelnumb)) {
+            const cached = parcelPropertyCache.get(parcelnumb);
             if (cached && map.current && hoverPopup.current) {
               const displayName = cached.displayName || 'Unknown Property';
               const popupContent = `<div style="font-size: 12px; max-width: 200px;">
@@ -374,16 +375,16 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
           }
           
           try {
-            const response = await fetch(`/api/parcels/resolve?ll_uuid=${encodeURIComponent(llUuid)}`);
+            const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
             if (response.ok) {
               const data: ParcelPropertyInfo = await response.json();
               if (!data.displayName) {
                 data.displayName = 'Unknown Property';
               }
-              parcelPropertyCache.set(llUuid, data);
-              cacheTimestamps.set(llUuid, Date.now());
+              parcelPropertyCache.set(parcelnumb, data);
+              cacheTimestamps.set(parcelnumb, Date.now());
               
-              if (currentHoveredLlUuid.current === llUuid && map.current && hoverPopup.current) {
+              if (currentHoveredParcelnumb.current === parcelnumb && map.current && hoverPopup.current) {
                 const popupContent = `<div style="font-size: 12px; max-width: 200px;">
                   <div style="font-weight: 500;">${data.displayName}</div>
                   ${data.subcategory || data.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${data.subcategory || data.category}</div>` : ''}
@@ -391,8 +392,8 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
                 hoverPopup.current.setLngLat(lngLat).setHTML(popupContent).addTo(map.current);
               }
             } else {
-              parcelPropertyCache.set(llUuid, null);
-              cacheTimestamps.set(llUuid, Date.now());
+              parcelPropertyCache.set(parcelnumb, null);
+              cacheTimestamps.set(parcelnumb, Date.now());
             }
           } catch (error) {
             console.error('Failed to resolve parcel for tooltip:', error);
@@ -410,7 +411,7 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
         clearTimeout(parcelHoverDebounceRef.current);
         parcelHoverDebounceRef.current = null;
       }
-      currentHoveredLlUuid.current = null;
+      currentHoveredParcelnumb.current = null;
       
       if (hoverPopup.current) {
         hoverPopup.current.remove();

@@ -945,10 +945,160 @@ export async function runIngestion(
     }
   }
   
+  const parentResult = await ingestParentAccounts();
+  stats.propertiesSaved += parentResult.ingested;
+  stats.errors += parentResult.errors;
+  
   stats.durationMs = Date.now() - startTime;
   console.log(`[Ingestion] Complete in ${Math.round(stats.durationMs / 1000)}s: ${stats.propertiesSaved} new, ${stats.propertiesUpdated} updated, ${stats.errors} errors`);
   
   return stats;
+}
+
+export async function getParentAccountsByAccountNums(
+  accountNums: string[]
+): Promise<DCadCommercialProperty[]> {
+  if (accountNums.length === 0) return [];
+  
+  const accountNumsList = accountNums.map(a => `'${a.replace(/'/g, "''")}'`).join(', ');
+  
+  const sql = `
+    SELECT 
+      cp.PARCEL_ID,
+      ai.GIS_PARCEL_ID,
+      r."ll_uuid" AS REGRID_LL_UUID,
+      cp."address",
+      cp.CITY,
+      cp.ZIP,
+      cp."lat",
+      cp."lon",
+      cp."usedesc",
+      cp."usecode",
+      cp.REGRID_YEAR_BUILT,
+      cp.REGRID_NUM_STORIES,
+      cp.REGRID_IMPROV_VAL,
+      cp.REGRID_LAND_VAL,
+      cp.REGRID_TOTAL_VAL,
+      cp.LOT_ACRES,
+      cp.LOT_SQFT,
+      cp.BLDG_FOOTPRINT_SQFT,
+      cp.ACCOUNT_NUM,
+      cp.DIVISION_CD,
+      cp.DCAD_IMPROV_VAL,
+      cp.DCAD_LAND_VAL,
+      cp.DCAD_TOTAL_VAL,
+      cp.BLDG_CLASS_CD,
+      cp.CITY_JURIS_DESC,
+      cp.ISD_JURIS_DESC,
+      cp.BIZ_NAME,
+      cp.OWNER_NAME1,
+      cp.OWNER_NAME2,
+      cp.OWNER_ADDRESS_LINE1,
+      cp.OWNER_CITY,
+      cp.OWNER_STATE,
+      cp.OWNER_ZIPCODE,
+      cp.OWNER_PHONE,
+      cp.DEED_TXFR_DATE,
+      cp.DCAD_ZONING,
+      cp.FRONT_DIM,
+      cp.DEPTH_DIM,
+      cp.LAND_AREA,
+      cp.LAND_AREA_UOM,
+      cp.LAND_COST_PER_UOM,
+      cp.TAX_OBJ_ID,
+      cp.PROPERTY_NAME,
+      cp.BLDG_CLASS_DESC,
+      cp.DCAD_YEAR_BUILT,
+      cp.REMODEL_YR,
+      cp.GROSS_BLDG_AREA,
+      cp.DCAD_NUM_STORIES,
+      cp.NUM_UNITS,
+      cp.NET_LEASE_AREA,
+      cp.CONSTRUCTION_TYPE,
+      cp.FOUNDATION_TYPE,
+      cp.HEATING_TYPE,
+      cp.AC_TYPE,
+      cp.QUALITY_GRADE,
+      cp.CONDITION_GRADE,
+      aa.SPTD_CODE,
+      land.AREA_SIZE AS LAND_AREA_SIZE,
+      land.AREA_UOM_DESC AS LAND_AREA_UOM_DESC
+    FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
+    JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
+    JOIN ${ACCOUNT_INFO_TABLE} ai ON cp.ACCOUNT_NUM = ai.ACCOUNT_NUM
+    LEFT JOIN ${LAND_TABLE} land ON cp.ACCOUNT_NUM = land.ACCOUNT_NUM AND land.APPRAISAL_YR = 2025
+    LEFT JOIN ${REGRID_TABLE} r ON ai.GIS_PARCEL_ID = r."parcelnumb"
+    WHERE cp.ACCOUNT_NUM IN (${accountNumsList})
+    ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
+  `;
+  
+  const rows = await executeQuery<any>(sql);
+  return rows.map(mapRowToProperty);
+}
+
+async function ingestParentAccounts(): Promise<{ ingested: number; errors: number }> {
+  const result = { ingested: 0, errors: 0 };
+  
+  const allProps = await db
+    .select({
+      propertyKey: properties.propertyKey,
+      gisParcelId: properties.dcadGisParcelId,
+    })
+    .from(properties);
+
+  const existingKeys = new Set(allProps.map(p => p.propertyKey));
+  
+  const missingParentAccountNums = new Set<string>();
+  for (const prop of allProps) {
+    if (prop.gisParcelId && prop.gisParcelId !== prop.propertyKey && !existingKeys.has(prop.gisParcelId)) {
+      missingParentAccountNums.add(prop.gisParcelId);
+    }
+  }
+  
+  if (missingParentAccountNums.size === 0) {
+    console.log(`[Ingestion] No missing parent accounts to ingest`);
+    return result;
+  }
+  
+  console.log(`[Ingestion] Found ${missingParentAccountNums.size} missing parent accounts, fetching from Snowflake...`);
+  console.log(`[Ingestion] Missing parent account nums (first 10): ${Array.from(missingParentAccountNums).slice(0, 10).join(', ')}`);
+  
+  const batchSize = 100;
+  const accountNumsArray = Array.from(missingParentAccountNums);
+  let notFoundCount = 0;
+  
+  for (let i = 0; i < accountNumsArray.length; i += batchSize) {
+    const batch = accountNumsArray.slice(i, i + batchSize);
+    
+    try {
+      const parentProperties = await getParentAccountsByAccountNums(batch);
+      const batchNotFound = batch.length - parentProperties.length;
+      notFoundCount += batchNotFound;
+      console.log(`[Ingestion] Fetched ${parentProperties.length}/${batch.length} parent accounts from Snowflake (batch ${Math.floor(i / batchSize) + 1})${batchNotFound > 0 ? ` - ${batchNotFound} not found in source table` : ''}`);
+      
+      const aggregated = aggregatePropertiesByParcel(parentProperties);
+      
+      for (const prop of aggregated) {
+        try {
+          await upsertAggregatedPropertyToPostgres(prop);
+          result.ingested++;
+        } catch (error) {
+          result.errors++;
+          console.error(`[Ingestion] Error saving parent property ${prop.parcelId}:`, error instanceof Error ? error.message : error);
+        }
+      }
+    } catch (error) {
+      result.errors += batch.length;
+      console.error(`[Ingestion] Error fetching parent accounts batch:`, error instanceof Error ? error.message : error);
+    }
+  }
+  
+  if (notFoundCount > 0) {
+    console.warn(`[Ingestion] ${notFoundCount} parent accounts not found in COMMERCIAL_PROPERTIES_TABLE - these may require a broader source table`);
+  }
+  
+  console.log(`[Ingestion] Parent account ingestion: ${result.ingested} ingested, ${result.errors} errors`);
+  return result;
 }
 
 export interface MultiZipIngestionStats {
@@ -987,6 +1137,10 @@ export async function runMultiZipIngestion(
     stats.errors += zipStats.errors;
     stats.zipCodeStats[zipCode] = zipStats;
   }
+  
+  const parentResult = await ingestParentAccounts();
+  stats.propertiesSaved += parentResult.ingested;
+  stats.errors += parentResult.errors;
   
   stats.durationMs = Date.now() - startTime;
   console.log(`\n[Ingestion] Multi-ZIP ingestion complete in ${Math.round(stats.durationMs / 1000)}s`);
@@ -1059,6 +1213,10 @@ export async function runAllZipsIngestion(
       console.error(`[Ingestion] Error saving property ${prop.parcelId}:`, error instanceof Error ? error.message : error);
     }
   }
+  
+  const parentResult = await ingestParentAccounts();
+  stats.propertiesSaved += parentResult.ingested;
+  stats.errors += parentResult.errors;
   
   stats.durationMs = Date.now() - startTime;
   console.log(`[Ingestion] All-ZIP ingestion complete in ${Math.round(stats.durationMs / 1000)}s: ${stats.propertiesSaved} new, ${stats.propertiesUpdated} updated, ${stats.errors} errors`);

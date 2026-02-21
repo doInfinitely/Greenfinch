@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
-import { sql } from 'drizzle-orm';
 import { normalizeCommonName } from '@/lib/normalization';
 
 export async function GET() {
@@ -10,15 +9,12 @@ export async function GET() {
       .select({
         propertyKey: properties.propertyKey,
         gisParcelId: properties.dcadGisParcelId,
-        llUuid: properties.sourceLlUuid,
         commonName: properties.commonName,
         bizName: properties.dcadBizName,
         address: properties.validatedAddress,
         regridAddress: properties.regridAddress,
         category: properties.assetCategory,
         subcategory: properties.assetSubcategory,
-        isParentProperty: properties.isParentProperty,
-        parentPropertyKey: properties.parentPropertyKey,
       })
       .from(properties);
 
@@ -27,76 +23,31 @@ export async function GET() {
       propertyMap.set(row.propertyKey, row);
     }
 
-    const gisGroups = new Map<string, typeof rows[0][]>();
-    for (const row of rows) {
-      if (row.gisParcelId) {
-        const group = gisGroups.get(row.gisParcelId);
-        if (group) {
-          group.push(row);
-        } else {
-          gisGroups.set(row.gisParcelId, [row]);
-        }
-      }
-    }
-
     const index: Record<string, { pk: string; n: string | null; a: string | null; c: string | null; s: string | null }> = {};
 
     for (const row of rows) {
       const gisParcelId = row.gisParcelId;
 
-      let resolvedProperty = row;
+      let parentProperty = row;
 
       if (gisParcelId && gisParcelId !== row.propertyKey) {
         const gisParent = propertyMap.get(gisParcelId);
         if (gisParent) {
-          resolvedProperty = gisParent;
-        } else {
-          const siblings = gisGroups.get(gisParcelId);
-          if (siblings && siblings.length > 0) {
-            const selfRef = siblings.find(s => s.propertyKey === s.gisParcelId);
-            resolvedProperty = selfRef || siblings[0];
-          }
+          parentProperty = gisParent;
         }
       }
 
-      const displayName = resolvedProperty.commonName
-        ? normalizeCommonName(resolvedProperty.commonName)
-        : resolvedProperty.bizName || null;
+      const displayName = parentProperty.commonName
+        ? normalizeCommonName(parentProperty.commonName)
+        : parentProperty.bizName || null;
 
       index[row.propertyKey] = {
-        pk: resolvedProperty.propertyKey,
+        pk: parentProperty.propertyKey,
         n: displayName,
-        a: resolvedProperty.address || resolvedProperty.regridAddress || null,
-        c: resolvedProperty.category || null,
-        s: resolvedProperty.subcategory || null,
+        a: parentProperty.address || parentProperty.regridAddress || null,
+        c: parentProperty.category || null,
+        s: parentProperty.subcategory || null,
       };
-    }
-
-    for (const [gisId, group] of gisGroups.entries()) {
-      if (!index[gisId]) {
-        const selfRef = group.find(s => s.propertyKey === s.gisParcelId);
-        const representative = selfRef || group[0];
-        const resolvedProp = propertyMap.get(representative.propertyKey) || representative;
-        const name = resolvedProp.commonName
-          ? normalizeCommonName(resolvedProp.commonName)
-          : resolvedProp.bizName || null;
-        index[gisId] = {
-          pk: resolvedProp.propertyKey,
-          n: name,
-          a: resolvedProp.address || resolvedProp.regridAddress || null,
-          c: resolvedProp.category || null,
-          s: resolvedProp.subcategory || null,
-        };
-      }
-    }
-
-    for (const row of rows) {
-      if (row.llUuid && !index[`ll:${row.llUuid}`]) {
-        const entry = index[row.propertyKey];
-        if (entry) {
-          index[`ll:${row.llUuid}`] = entry;
-        }
-      }
     }
 
     const response = NextResponse.json(index);
