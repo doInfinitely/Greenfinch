@@ -8,7 +8,7 @@ import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpo
 import { isCircuitBreakerError } from './rate-limiter';
 import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
-import { areCompaniesAffiliated } from './organization-enrichment';
+import { areCompaniesAffiliated, ensureEmployerOrgEnriched } from './organization-enrichment';
 import { findExistingContactByIdentifiers, flagPotentialDuplicateById, normalizeName as normalizeNameDedup, normalizeDomain as normalizeDomainDedup } from './deduplication';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
@@ -593,8 +593,19 @@ export async function runCascadeEnrichmentOnSavedRecords(
         if (result.sicCodes) updateData.sicCodes = result.sicCodes;
         if (result.naicsCodes) updateData.naicsCodes = result.naicsCodes;
         if (result.tags) updateData.tags = result.tags;
-        if (result.pdlRaw) updateData.pdlRawResponse = result.pdlRaw;
-        if (result.crustdataRaw) updateData.crustdataRawResponse = result.crustdataRaw;
+        if (result.pdlRaw) {
+          updateData.pdlRawResponse = result.pdlRaw;
+          updateData.pdlEnriched = true;
+          updateData.pdlEnrichedAt = new Date();
+        }
+        if (result.pdlCompanyId) updateData.pdlCompanyId = result.pdlCompanyId;
+        if (result.affiliatedProfiles) updateData.affiliatedPdlIds = result.affiliatedProfiles;
+        if (result.datasetVersion) updateData.pdlDataVersion = result.datasetVersion;
+        if (result.crustdataRaw) {
+          updateData.crustdataRawResponse = result.crustdataRaw;
+          updateData.crustdataEnriched = true;
+          updateData.crustdataEnrichedAt = new Date();
+        }
 
         await db.update(organizations)
           .set(updateData)
@@ -862,6 +873,22 @@ export async function runCascadeEnrichmentOnSavedRecords(
         } catch (verifyErr) {
           console.error(`[RoleVerification] Error verifying role for ${contact.fullName}:`, verifyErr);
         }
+      }
+
+      const employerDomain = result.pdlCompanyDomain || result.crustdataCompanyDomain || result.companyDomain || contact.companyDomain;
+      const employerName = result.pdlCompany || result.crustdataCompany || result.company || contact.employerName;
+      const employerPdlId = result.companyPdlId || null;
+
+      if (employerDomain || employerName || employerPdlId) {
+        ensureEmployerOrgEnriched({
+          contactId,
+          companyDomain: employerDomain || null,
+          companyName: employerName || null,
+          companyPdlId: employerPdlId,
+          contactTitle: result.pdlTitle || result.crustdataTitle || result.title || contact.title || null,
+        }).catch(err => {
+          console.error(`[CascadeEnrichment] Error ensuring employer org for ${contact.fullName}:`, err instanceof Error ? err.message : err);
+        });
       }
     } catch (err) {
       console.error(`[CascadeEnrichment] Error enriching contact ${contactId}:`, err);

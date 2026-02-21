@@ -37,6 +37,7 @@ export interface OrganizationEnrichmentResult {
   pdlCompanyId: string | null;
   affiliatedProfiles: string[] | null;
   alternativeDomains: string[] | null;
+  datasetVersion: string | null;
 
   name: string | null;
   description: string | null;
@@ -97,6 +98,7 @@ export interface ContactEnrichmentResult {
   
   company: string | null;
   companyDomain: string | null;
+  companyPdlId: string | null;
   linkedinUrl: string | null;
   location: string | null;
   photoUrl: string | null;
@@ -236,6 +238,7 @@ export async function enrichOrganizationCascade(
     pdlCompanyId: null,
     affiliatedProfiles: null,
     alternativeDomains: null,
+    datasetVersion: null,
     name: null,
     description: null,
     industry: null,
@@ -287,6 +290,7 @@ export async function enrichOrganizationCascade(
       pdlCompanyId: pdlResult.pdlCompanyId || null,
       affiliatedProfiles: pdlResult.affiliatedProfiles || null,
       alternativeDomains: pdlResult.alternativeDomains || null,
+      datasetVersion: pdlResult.datasetVersion || null,
 
       name: pdlResult.displayName || pdlResult.name || null,
       description: pdlResult.description || null,
@@ -347,6 +351,7 @@ export async function enrichOrganizationCascade(
     pdlCompanyId: null,
     affiliatedProfiles: null,
     alternativeDomains: null,
+    datasetVersion: null,
     
     name: crustdataResult.companyName || null,
     description: crustdataResult.description || null,
@@ -781,6 +786,7 @@ export async function enrichContactCascade(
     
     company: finalCompany,
     companyDomain: finalCompanyDomain,
+    companyPdlId: pdlData?.companyPdlId || null,
     linkedinUrl: finalLinkedin,
     location: finalLocation,
     photoUrl: pdlData?.photoUrl || crustdataData?.profilePictureUrl || null,
@@ -853,6 +859,7 @@ function buildEmptyResult(fullName: string, firstName: string, lastName: string,
     title: null,
     company: null,
     companyDomain: null,
+    companyPdlId: null,
     linkedinUrl: null,
     location: null,
     photoUrl: null,

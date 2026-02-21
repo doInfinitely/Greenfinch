@@ -1,6 +1,6 @@
 import { db } from './db';
-import { organizations } from './schema';
-import { eq } from 'drizzle-orm';
+import { organizations, contacts, contactOrganizations } from './schema';
+import { eq, and } from 'drizzle-orm';
 import { enrichOrganizationCascade, OrganizationEnrichmentResult as CascadeResult } from './cascade-enrichment';
 import { enrichCompanyPDL } from './pdl';
 
@@ -145,6 +145,7 @@ export async function enrichOrganizationByDomain(
 
     pdlEnriched: !!cascadeResult.pdlRaw,
     pdlEnrichedAt: cascadeResult.pdlRaw ? new Date() : undefined,
+    pdlDataVersion: cascadeResult.datasetVersion || undefined,
     pdlRawResponse: cascadeResult.pdlRaw || undefined,
     crustdataRawResponse: cascadeResult.crustdataRaw || undefined,
     crustdataEnriched: !!cascadeResult.crustdataRaw,
@@ -193,6 +194,139 @@ export async function enrichOrganizationById(orgId: string): Promise<Organizatio
     name: org.name || undefined,
     linkedinUrl: org.linkedinHandle ? `https://linkedin.com/company/${org.linkedinHandle}` : undefined,
   });
+}
+
+export async function ensureEmployerOrgEnriched(opts: {
+  contactId: string;
+  companyDomain: string | null;
+  companyName: string | null;
+  companyPdlId: string | null;
+  contactTitle: string | null;
+}): Promise<{ orgId: string | null }> {
+  const { contactId, companyDomain, companyName, companyPdlId, contactTitle } = opts;
+
+  if (!companyDomain && !companyName && !companyPdlId) {
+    return { orgId: null };
+  }
+
+  try {
+    let orgRecord: typeof organizations.$inferSelect | null = null;
+
+    if (companyPdlId) {
+      orgRecord = await db.query.organizations.findFirst({
+        where: eq(organizations.pdlCompanyId, companyPdlId),
+      });
+    }
+
+    if (!orgRecord && companyDomain) {
+      const norm = normalizeDomain(companyDomain);
+      orgRecord = await db.query.organizations.findFirst({
+        where: eq(organizations.domain, norm),
+      });
+    }
+
+    if (!orgRecord && companyName) {
+      orgRecord = await db.query.organizations.findFirst({
+        where: eq(organizations.name, companyName),
+      });
+    }
+
+    if (!orgRecord) {
+      const domain = companyDomain ? normalizeDomain(companyDomain) : null;
+      const derivedName = companyName || (domain
+        ? domain.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+        : 'Unknown');
+
+      const [inserted] = await db.insert(organizations)
+        .values({
+          name: derivedName,
+          domain: domain || undefined,
+          pdlCompanyId: companyPdlId || undefined,
+          enrichmentStatus: 'pending',
+        })
+        .onConflictDoNothing()
+        .returning({ id: organizations.id });
+
+      if (inserted) {
+        orgRecord = await db.query.organizations.findFirst({
+          where: eq(organizations.id, inserted.id),
+        });
+        console.log(`[OrgEnrichment] Created employer org: "${derivedName}" (${domain || 'no domain'}) for contact ${contactId}`);
+      } else if (domain) {
+        orgRecord = await db.query.organizations.findFirst({
+          where: eq(organizations.domain, domain),
+        });
+      }
+    }
+
+    if (!orgRecord) {
+      return { orgId: null };
+    }
+
+    await db.insert(contactOrganizations)
+      .values({
+        contactId,
+        orgId: orgRecord.id,
+        title: contactTitle,
+        isCurrent: true,
+      })
+      .onConflictDoNothing();
+
+    const needsPdlEnrichment = !orgRecord.pdlEnriched;
+
+    if (needsPdlEnrichment) {
+      const domain = orgRecord.domain || companyDomain;
+      const pdlId = orgRecord.pdlCompanyId || companyPdlId;
+
+      console.log(`[OrgEnrichment] Enriching employer org "${orgRecord.name}" via PDL company enrich (pdlId=${pdlId}, domain=${domain})`);
+
+      if (domain) {
+        enrichOrganizationByDomain(domain, {
+          name: companyName || orgRecord.name || undefined,
+        }).catch(err => {
+          console.error(`[OrgEnrichment] Error enriching employer org "${orgRecord!.name}":`, err instanceof Error ? err.message : err);
+        });
+      } else if (pdlId) {
+        enrichCompanyPDL('', { pdlId }).then(async (pdlResult) => {
+          if (!pdlResult.found) return;
+          const now = new Date();
+          await db.update(organizations)
+            .set({
+              name: pdlResult.displayName || pdlResult.name || orgRecord!.name,
+              description: pdlResult.description || undefined,
+              domain: pdlResult.website ? pdlResult.website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '') : undefined,
+              industry: pdlResult.industry || undefined,
+              employees: pdlResult.employeeCount || undefined,
+              employeesRange: pdlResult.employeeRange || undefined,
+              foundedYear: pdlResult.foundedYear || undefined,
+              city: pdlResult.city || undefined,
+              state: pdlResult.state || undefined,
+              country: pdlResult.country || undefined,
+              logoUrl: pdlResult.logoUrl || undefined,
+              pdlCompanyId: pdlResult.pdlCompanyId || undefined,
+              affiliatedPdlIds: pdlResult.affiliatedProfiles || undefined,
+              pdlEnriched: true,
+              pdlEnrichedAt: now,
+              pdlDataVersion: pdlResult.datasetVersion || undefined,
+              pdlRawResponse: pdlResult.raw || undefined,
+              enrichmentSource: 'pdl',
+              enrichmentStatus: 'complete',
+              lastEnrichedAt: now,
+              updatedAt: now,
+            })
+            .where(eq(organizations.id, orgRecord!.id));
+          console.log(`[OrgEnrichment] PDL-ID enriched employer org "${pdlResult.name}" for contact ${contactId}`);
+        }).catch(err => {
+          console.error(`[OrgEnrichment] Error enriching employer org by PDL ID:`, err instanceof Error ? err.message : err);
+        });
+      }
+    }
+
+    return { orgId: orgRecord.id };
+  } catch (err) {
+    console.error(`[OrgEnrichment] Error ensuring employer org enriched for contact ${contactId}:`, err instanceof Error ? err.message : err);
+    return { orgId: null };
+  }
 }
 
 const MAX_AFFILIATED_LOOKUPS = 8;

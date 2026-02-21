@@ -23,6 +23,7 @@ export interface PDLPersonResult {
   titleSubRole: string | null;
   companyName: string | null;
   companyDomain: string | null;
+  companyPdlId: string | null;
   location: string | null;
   city: string | null;
   state: string | null;
@@ -40,6 +41,7 @@ export interface PDLCompanyResult {
   pdlCompanyId: string | null;
   affiliatedProfiles: string[] | null;
   alternativeDomains: string[] | null;
+  datasetVersion: string | null;
   name: string | null;
   displayName: string | null;
   description: string | null;
@@ -118,6 +120,7 @@ function emptyPersonResult(): PDLPersonResult {
     titleSubRole: null,
     companyName: null,
     companyDomain: null,
+    companyPdlId: null,
     location: null,
     city: null,
     state: null,
@@ -136,6 +139,7 @@ function emptyCompanyResult(): PDLCompanyResult {
     pdlCompanyId: null,
     affiliatedProfiles: null,
     alternativeDomains: null,
+    datasetVersion: null,
     name: null,
     displayName: null,
     description: null,
@@ -426,6 +430,7 @@ export async function enrichPersonPDL(
       titleSubRole: person.job_title_sub_role || expTitleSubRole || null,
       companyName: personCompanyName,
       companyDomain: resultData.companyDomain,
+      companyPdlId: person.job_company_id || latestExp.company?.id || null,
       location: person.location_name || null,
       city: person.location_locality || null,
       state: person.location_region || null,
@@ -597,6 +602,7 @@ export async function enrichCompanyPDL(
         ? company.affiliated_profiles : null,
       alternativeDomains: Array.isArray(company.alternative_domains) && company.alternative_domains.length > 0
         ? company.alternative_domains : null,
+      datasetVersion: company.dataset_version || null,
       name: company.name || null,
       displayName: company.display_name || company.name || null,
       description: company.summary || company.description || null,

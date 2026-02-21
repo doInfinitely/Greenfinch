@@ -389,6 +389,7 @@ export const organizations = pgTable('organizations', {
   
   pdlEnriched: boolean('pdl_enriched').default(false),
   pdlEnrichedAt: timestamp('pdl_enriched_at'),
+  pdlDataVersion: text('pdl_data_version'),
   
   pdlRawResponse: json('pdl_raw_response'),
   crustdataRawResponse: json('crustdata_raw_response'),

@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { contacts, contactSnapshots, userContactVersions, propertyContacts, contactOrganizations } from '@/lib/schema';
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { enrichContactCascade } from '@/lib/cascade-enrichment';
+import { ensureEmployerOrgEnriched } from '@/lib/organization-enrichment';
 import { requireSession, getUserId } from '@/lib/auth';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -283,6 +284,22 @@ export async function POST(
       } catch (relError) {
         console.error(`[EnrichContact] Failed to update relationship status for ${contact.fullName}:`, relError);
       }
+    }
+
+    const employerDomain = updatedContact.companyDomain || result.pdlCompanyDomain || result.crustdataCompanyDomain || null;
+    const employerName = updatedContact.employerName || result.pdlCompany || result.crustdataCompany || null;
+    const employerPdlId = result.companyPdlId || null;
+
+    if (employerDomain || employerName || employerPdlId) {
+      ensureEmployerOrgEnriched({
+        contactId: id,
+        companyDomain: employerDomain,
+        companyName: employerName,
+        companyPdlId: employerPdlId,
+        contactTitle: updatedContact.title || result.pdlTitle || result.crustdataTitle || null,
+      }).catch(err => {
+        console.error(`[EnrichContact] Error ensuring employer org:`, err instanceof Error ? err.message : err);
+      });
     }
 
     const afterSnapshot = captureSnapshot(updatedContact);
