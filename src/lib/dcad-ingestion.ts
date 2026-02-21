@@ -1126,54 +1126,34 @@ export async function buildParcelnumbMapping(): Promise<{ mapped: number; errors
   }
   
   // Pass 2: BPP accounts (SPTD_CODE LIKE 'L%') from ACCOUNT_APPRL_YEAR joined with ACCOUNT_INFO
-  // These accounts may not have been picked up in pass 1 if their GIS_PARCEL_ID is null/different
-  try {
-    console.log(`[Ingestion] Pass 2: Fetching BPP accounts (L-codes) from ACCOUNT_APPRL_YEAR...`);
-    const allGisIdsList = gisParcelIds.map(id => `'${id.replace(/'/g, "''")}'`).join(', ');
+  // These accounts may not have been picked up in pass 1 if their GIS_PARCEL_ID is null/different in ACCOUNT_INFO
+  console.log(`[Ingestion] Pass 2: Fetching BPP accounts (L-codes) from ACCOUNT_APPRL_YEAR...`);
+  for (let i = 0; i < gisParcelIds.length; i += batchSize) {
+    const batch = gisParcelIds.slice(i, i + batchSize);
+    const gisIdsList = batch.map(id => `'${id.replace(/'/g, "''")}'`).join(', ');
     
-    const bppQuery = `
-      SELECT DISTINCT aa.ACCOUNT_NUM, ai.GIS_PARCEL_ID
-      FROM ${ACCOUNT_APPRL_TABLE} aa
-      JOIN ${ACCOUNT_INFO_TABLE} ai ON aa.ACCOUNT_NUM = ai.ACCOUNT_NUM
-      WHERE aa.APPRAISAL_YR = 2025
-        AND aa.SPTD_CODE LIKE 'L%'
-        AND ai.GIS_PARCEL_ID IN (${allGisIdsList})
-    `;
-    
-    const bppRows = await executeQuery<{ ACCOUNT_NUM: string; GIS_PARCEL_ID: string }>(bppQuery);
-    totalFromSnowflake += bppRows.length;
-    const bppMappings = processRows(bppRows);
-    await upsertMappings(bppMappings);
-    
-    console.log(`[Ingestion] Pass 2 BPP: ${bppRows.length} accounts from Snowflake, ${bppMappings.length} new mappings`);
-  } catch (error) {
-    result.errors++;
-    console.error(`[Ingestion] Error in parcelnumb mapping pass 2 (BPP):`, error instanceof Error ? error.message : error);
-  }
-  
-  // Pass 3: Get Regrid parcelnumbs for all parcels that share ll_stack_uuid with our properties
-  // Regrid tiles use their own parcelnumb format which may differ from DCAD ACCOUNT_NUM
-  try {
-    console.log(`[Ingestion] Pass 3: Fetching Regrid parcelnumbs via ll_stack_uuid...`);
-    const allGisIdsList = gisParcelIds.map(id => `'${id.replace(/'/g, "''")}'`).join(', ');
-    
-    const regridQuery = `
-      SELECT DISTINCT r2."parcelnumb" AS ACCOUNT_NUM, parent_r."parcelnumb" AS GIS_PARCEL_ID
-      FROM ${REGRID_TABLE} parent_r
-      JOIN ${REGRID_TABLE} r2 ON parent_r."ll_stack_uuid" = r2."ll_stack_uuid"
-      WHERE parent_r."parcelnumb" IN (${allGisIdsList})
-        AND r2."parcelnumb" != parent_r."parcelnumb"
-    `;
-    
-    const regridRows = await executeQuery<{ ACCOUNT_NUM: string; GIS_PARCEL_ID: string }>(regridQuery);
-    totalFromSnowflake += regridRows.length;
-    const regridMappings = processRows(regridRows);
-    await upsertMappings(regridMappings);
-    
-    console.log(`[Ingestion] Pass 3 Regrid: ${regridRows.length} parcels from Snowflake, ${regridMappings.length} new mappings`);
-  } catch (error) {
-    result.errors++;
-    console.error(`[Ingestion] Error in parcelnumb mapping pass 3 (Regrid):`, error instanceof Error ? error.message : error);
+    try {
+      const bppQuery = `
+        SELECT DISTINCT aa.ACCOUNT_NUM, ai.GIS_PARCEL_ID
+        FROM ${ACCOUNT_APPRL_TABLE} aa
+        JOIN ${ACCOUNT_INFO_TABLE} ai ON aa.ACCOUNT_NUM = ai.ACCOUNT_NUM
+        WHERE aa.APPRAISAL_YR = 2025
+          AND aa.SPTD_CODE LIKE 'L%'
+          AND ai.GIS_PARCEL_ID IN (${gisIdsList})
+      `;
+      
+      const bppRows = await executeQuery<{ ACCOUNT_NUM: string; GIS_PARCEL_ID: string }>(bppQuery);
+      totalFromSnowflake += bppRows.length;
+      const bppMappings = processRows(bppRows);
+      await upsertMappings(bppMappings);
+      
+      if (bppMappings.length > 0) {
+        console.log(`[Ingestion] Pass 2 BPP batch ${Math.floor(i / batchSize) + 1}: ${bppRows.length} accounts, ${bppMappings.length} new mappings`);
+      }
+    } catch (error) {
+      result.errors++;
+      console.error(`[Ingestion] Error in parcelnumb mapping pass 2 batch:`, error instanceof Error ? error.message : error);
+    }
   }
   
   console.log(`[Ingestion] Parcelnumb mapping complete: ${totalFromSnowflake} total accounts, ${alreadyInProperties} already in properties, ${result.mapped} new mappings, ${result.errors} errors`);
