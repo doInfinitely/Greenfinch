@@ -24,6 +24,7 @@ import { enrichPersonCrustdata, enrichCompanyCrustdata } from './crustdata';
 import { verifyEmail as verifyEmailFindymail, findEmailByName, findLinkedInByEmail } from './findymail';
 import { findEmail as findEmailHunter } from './hunter';
 import { searchLinkedInProfile } from './serp-linkedin';
+import { normalizeDomain } from './normalization';
 
 export type ConfidenceFlag = 'verified' | 'pdl_matched' | 'unverified' | 'email_only' | 'insufficient_input' | 'no_match';
 export type EmailSource = 'input_verified' | 'input_invalid' | 'findymail_finder' | 'hunter_finder' | null;
@@ -156,14 +157,10 @@ const DOMAIN_ALIASES: Record<string, string[]> = {
   'northparkcntr.com': ['northparkcenter.com'],
 };
 
-function normalizeDomainForComparison(domain: string): string {
-  return domain.toLowerCase().trim().replace(/^www\./, '').replace(/\/$/, '');
-}
-
 function domainsMatch(domain1: string | null, domain2: string | null): boolean {
   if (!domain1 || !domain2) return false;
-  const d1 = normalizeDomainForComparison(domain1);
-  const d2 = normalizeDomainForComparison(domain2);
+  const d1 = normalizeDomain(domain1).replace(/\/$/, '');
+  const d2 = normalizeDomain(domain2).replace(/\/$/, '');
   
   if (d1 === d2) return true;
   
@@ -227,7 +224,7 @@ export async function enrichOrganizationCascade(
   domain: string,
   options: { name?: string; linkedinUrl?: string } = {}
 ): Promise<OrganizationEnrichmentResult> {
-  const normalizedDomain = domain.toLowerCase().trim().replace(/^www\./, '');
+  const normalizedDomain = normalizeDomain(domain);
   console.log(`[CascadeEnrichment] Starting org enrichment (PDL → Crustdata fallback) for domain: ${normalizedDomain}`);
   
   const emptyResult: OrganizationEnrichmentResult = {

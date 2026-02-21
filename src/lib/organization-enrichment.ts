@@ -1,18 +1,15 @@
 import { db } from './db';
-import { organizations, contacts, contactOrganizations } from './schema';
-import { eq, and } from 'drizzle-orm';
+import { organizations, contactOrganizations } from './schema';
+import { eq } from 'drizzle-orm';
 import { enrichOrganizationCascade, OrganizationEnrichmentResult as CascadeResult } from './cascade-enrichment';
 import { enrichCompanyPDL } from './pdl';
+import { normalizeDomain } from './normalization';
 
 export interface OrganizationEnrichmentResult {
   success: boolean;
   orgId: string;
   enrichedData: CascadeResult | null;
   error?: string;
-}
-
-function normalizeDomain(domain: string): string {
-  return domain.toLowerCase().trim().replace(/^www\./, '');
 }
 
 async function findOrCreateOrgByDomain(domain: string): Promise<{ id: string; isNew: boolean; needsEnrichment: boolean }> {
@@ -415,7 +412,7 @@ export async function resolveAffiliatedCompanies(
 
 async function findOrgByDomainOrName(domain: string | null, companyName: string | null): Promise<typeof organizations.$inferSelect | null> {
   if (domain) {
-    const norm = domain.toLowerCase().trim().replace(/^www\./, '');
+    const norm = normalizeDomain(domain);
     const byDomain = await db.query.organizations.findFirst({ where: eq(organizations.domain, norm) });
     if (byDomain) return byDomain;
   }
@@ -433,8 +430,8 @@ export async function areCompaniesAffiliated(
   companyName2?: string | null
 ): Promise<boolean> {
   if (domain1 && domain2) {
-    const norm1 = domain1.toLowerCase().trim().replace(/^www\./, '');
-    const norm2 = domain2.toLowerCase().trim().replace(/^www\./, '');
+    const norm1 = normalizeDomain(domain1);
+    const norm2 = normalizeDomain(domain2);
     if (norm1 === norm2) return true;
   }
 
@@ -456,8 +453,8 @@ export async function areCompaniesAffiliated(
 
   if (org1.pdlCompanyId && org2.pdlCompanyId && org1.pdlCompanyId === org2.pdlCompanyId) return true;
 
-  const norm1 = org1.domain?.toLowerCase().trim().replace(/^www\./, '') || '';
-  const norm2 = org2.domain?.toLowerCase().trim().replace(/^www\./, '') || '';
+  const norm1 = org1.domain ? normalizeDomain(org1.domain) : '';
+  const norm2 = org2.domain ? normalizeDomain(org2.domain) : '';
 
   if (norm1 && norm2 && norm1 === norm2) return true;
 

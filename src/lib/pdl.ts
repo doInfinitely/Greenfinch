@@ -1,5 +1,6 @@
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { rateLimiters, withRetry } from './rate-limiter';
+import { normalizeDomain } from './normalization';
 
 const PDL_API_BASE = 'https://api.peopledatalabs.com/v5';
 
@@ -70,10 +71,6 @@ function normalizeFirstName(name: string): string {
 
 function normalizeLastName(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z]/g, '');
-}
-
-function normalizeDomain(domain: string): string {
-  return domain.toLowerCase().trim().replace(/^www\./, '');
 }
 
 function strictMatch(

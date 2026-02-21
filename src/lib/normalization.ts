@@ -121,6 +121,14 @@ export function normalizeCounty(county: string | null | undefined): string {
   return county.split(/\s+/).map(toTitleCase).join(' ');
 }
 
+/**
+ * Normalize a domain for comparison/storage.
+ * Strips www. prefix, lowercases, and trims whitespace.
+ */
+export function normalizeDomain(domain: string): string {
+  return domain.toLowerCase().trim().replace(/^www\./, '');
+}
+
 export function capitalizeSentences(text: string | null | undefined): string {
   if (!text) return '';
   return text.replace(/(^|[.!?]\s+)([a-z])/g, (_, prefix, char) => prefix + char.toUpperCase());

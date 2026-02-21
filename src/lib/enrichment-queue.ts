@@ -897,6 +897,36 @@ export async function runCascadeEnrichmentOnSavedRecords(
 }
 
 const replacementSearchCooldown = new Map<string, number>();
+const MAX_COOLDOWN_ENTRIES = 5000;
+
+function cleanupReplacementCooldown(): void {
+  const now = Date.now();
+  const twentyFourHoursMs = 24 * 60 * 60 * 1000;
+  let removedCount = 0;
+
+  for (const [key, timestamp] of replacementSearchCooldown.entries()) {
+    if (now - timestamp > twentyFourHoursMs) {
+      replacementSearchCooldown.delete(key);
+      removedCount++;
+    }
+  }
+
+  if (removedCount > 0) {
+    console.log(`[CleanupCooldown] Removed ${removedCount} expired entries from replacementSearchCooldown`);
+  }
+
+  // If the map still exceeds max entries after cleanup, remove oldest entries
+  if (replacementSearchCooldown.size > MAX_COOLDOWN_ENTRIES) {
+    const entriesToRemove = replacementSearchCooldown.size - MAX_COOLDOWN_ENTRIES;
+    let removed = 0;
+    for (const [key, timestamp] of replacementSearchCooldown.entries()) {
+      if (removed >= entriesToRemove) break;
+      replacementSearchCooldown.delete(key);
+      removed++;
+    }
+    console.log(`[CleanupCooldown] Removed ${removed} oldest entries to enforce MAX_COOLDOWN_ENTRIES limit`);
+  }
+}
 
 async function searchForReplacement(
   propertyId: string,
@@ -1564,6 +1594,9 @@ export interface StartBatchOptions {
 }
 
 export async function startBatch(options: StartBatchOptions): Promise<BatchStatus> {
+  // Clean up expired cooldown entries
+  cleanupReplacementCooldown();
+  
   // Try to acquire distributed lock (Redis) or in-memory lock
   if (isRedisConfigured()) {
     const lockAcquired = await acquireLock(REDIS_LOCK_KEY, BATCH_LOCK_TTL_SECONDS);
