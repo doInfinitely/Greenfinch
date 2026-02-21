@@ -1065,61 +1065,115 @@ export async function buildParcelnumbMapping(): Promise<{ mapped: number; errors
   let totalFromSnowflake = 0;
   let alreadyInProperties = 0;
   
+  async function upsertMappings(mappings: { accountNum: string; gisParcelId: string; parentPropertyKey: string | null }[]) {
+    if (mappings.length === 0) return;
+    const insertBatchSize = 1000;
+    for (let j = 0; j < mappings.length; j += insertBatchSize) {
+      const insertBatch = mappings.slice(j, j + insertBatchSize);
+      await db.insert(parcelnumbMapping)
+        .values(insertBatch)
+        .onConflictDoUpdate({
+          target: parcelnumbMapping.accountNum,
+          set: {
+            gisParcelId: sql`EXCLUDED.gis_parcel_id`,
+            parentPropertyKey: sql`EXCLUDED.parent_property_key`,
+          },
+        });
+    }
+    result.mapped += mappings.length;
+  }
+  
+  function processRows(rows: { ACCOUNT_NUM: string; GIS_PARCEL_ID: string }[]) {
+    const mappings: { accountNum: string; gisParcelId: string; parentPropertyKey: string | null }[] = [];
+    for (const row of rows) {
+      if (!row.ACCOUNT_NUM || !row.GIS_PARCEL_ID) continue;
+      if (existingKeys.has(row.ACCOUNT_NUM)) {
+        alreadyInProperties++;
+        continue;
+      }
+      const parentKey = existingKeys.has(row.GIS_PARCEL_ID) ? row.GIS_PARCEL_ID : null;
+      mappings.push({
+        accountNum: row.ACCOUNT_NUM,
+        gisParcelId: row.GIS_PARCEL_ID,
+        parentPropertyKey: parentKey,
+      });
+    }
+    return mappings;
+  }
+  
+  // Pass 1: All accounts in ACCOUNT_INFO that share a GIS_PARCEL_ID with our properties
   for (let i = 0; i < gisParcelIds.length; i += batchSize) {
     const batch = gisParcelIds.slice(i, i + batchSize);
     const gisIdsList = batch.map(id => `'${id.replace(/'/g, "''")}'`).join(', ');
     
     try {
       const sfQuery = `
-        SELECT ai.ACCOUNT_NUM, ai.GIS_PARCEL_ID
+        SELECT DISTINCT ai.ACCOUNT_NUM, ai.GIS_PARCEL_ID
         FROM ${ACCOUNT_INFO_TABLE} ai
         WHERE ai.GIS_PARCEL_ID IN (${gisIdsList})
       `;
       
       const rows = await executeQuery<{ ACCOUNT_NUM: string; GIS_PARCEL_ID: string }>(sfQuery);
       totalFromSnowflake += rows.length;
+      const mappings = processRows(rows);
+      await upsertMappings(mappings);
       
-      const mappings: { accountNum: string; gisParcelId: string; parentPropertyKey: string | null }[] = [];
-      
-      for (const row of rows) {
-        if (!row.ACCOUNT_NUM || !row.GIS_PARCEL_ID) continue;
-        
-        if (existingKeys.has(row.ACCOUNT_NUM)) {
-          alreadyInProperties++;
-          continue;
-        }
-        
-        const parentKey = existingKeys.has(row.GIS_PARCEL_ID) ? row.GIS_PARCEL_ID : null;
-        
-        mappings.push({
-          accountNum: row.ACCOUNT_NUM,
-          gisParcelId: row.GIS_PARCEL_ID,
-          parentPropertyKey: parentKey,
-        });
-      }
-      
-      if (mappings.length > 0) {
-        const insertBatchSize = 1000;
-        for (let j = 0; j < mappings.length; j += insertBatchSize) {
-          const insertBatch = mappings.slice(j, j + insertBatchSize);
-          await db.insert(parcelnumbMapping)
-            .values(insertBatch)
-            .onConflictDoUpdate({
-              target: parcelnumbMapping.accountNum,
-              set: {
-                gisParcelId: sql`EXCLUDED.gis_parcel_id`,
-                parentPropertyKey: sql`EXCLUDED.parent_property_key`,
-              },
-            });
-        }
-        result.mapped += mappings.length;
-      }
-      
-      console.log(`[Ingestion] Parcelnumb mapping batch ${Math.floor(i / batchSize) + 1}: ${rows.length} accounts from Snowflake, ${mappings.length} new mappings`);
+      console.log(`[Ingestion] Parcelnumb mapping pass 1 batch ${Math.floor(i / batchSize) + 1}: ${rows.length} accounts, ${mappings.length} new mappings`);
     } catch (error) {
       result.errors++;
-      console.error(`[Ingestion] Error building parcelnumb mapping batch:`, error instanceof Error ? error.message : error);
+      console.error(`[Ingestion] Error in parcelnumb mapping pass 1:`, error instanceof Error ? error.message : error);
     }
+  }
+  
+  // Pass 2: BPP accounts (SPTD_CODE LIKE 'L%') from ACCOUNT_APPRL_YEAR joined with ACCOUNT_INFO
+  // These accounts may not have been picked up in pass 1 if their GIS_PARCEL_ID is null/different
+  try {
+    console.log(`[Ingestion] Pass 2: Fetching BPP accounts (L-codes) from ACCOUNT_APPRL_YEAR...`);
+    const allGisIdsList = gisParcelIds.map(id => `'${id.replace(/'/g, "''")}'`).join(', ');
+    
+    const bppQuery = `
+      SELECT DISTINCT aa.ACCOUNT_NUM, ai.GIS_PARCEL_ID
+      FROM ${ACCOUNT_APPRL_TABLE} aa
+      JOIN ${ACCOUNT_INFO_TABLE} ai ON aa.ACCOUNT_NUM = ai.ACCOUNT_NUM
+      WHERE aa.APPRAISAL_YR = 2025
+        AND aa.SPTD_CODE LIKE 'L%'
+        AND ai.GIS_PARCEL_ID IN (${allGisIdsList})
+    `;
+    
+    const bppRows = await executeQuery<{ ACCOUNT_NUM: string; GIS_PARCEL_ID: string }>(bppQuery);
+    totalFromSnowflake += bppRows.length;
+    const bppMappings = processRows(bppRows);
+    await upsertMappings(bppMappings);
+    
+    console.log(`[Ingestion] Pass 2 BPP: ${bppRows.length} accounts from Snowflake, ${bppMappings.length} new mappings`);
+  } catch (error) {
+    result.errors++;
+    console.error(`[Ingestion] Error in parcelnumb mapping pass 2 (BPP):`, error instanceof Error ? error.message : error);
+  }
+  
+  // Pass 3: Get Regrid parcelnumbs for all parcels that share ll_stack_uuid with our properties
+  // Regrid tiles use their own parcelnumb format which may differ from DCAD ACCOUNT_NUM
+  try {
+    console.log(`[Ingestion] Pass 3: Fetching Regrid parcelnumbs via ll_stack_uuid...`);
+    const allGisIdsList = gisParcelIds.map(id => `'${id.replace(/'/g, "''")}'`).join(', ');
+    
+    const regridQuery = `
+      SELECT DISTINCT r2."parcelnumb" AS ACCOUNT_NUM, parent_r."parcelnumb" AS GIS_PARCEL_ID
+      FROM ${REGRID_TABLE} parent_r
+      JOIN ${REGRID_TABLE} r2 ON parent_r."ll_stack_uuid" = r2."ll_stack_uuid"
+      WHERE parent_r."parcelnumb" IN (${allGisIdsList})
+        AND r2."parcelnumb" != parent_r."parcelnumb"
+    `;
+    
+    const regridRows = await executeQuery<{ ACCOUNT_NUM: string; GIS_PARCEL_ID: string }>(regridQuery);
+    totalFromSnowflake += regridRows.length;
+    const regridMappings = processRows(regridRows);
+    await upsertMappings(regridMappings);
+    
+    console.log(`[Ingestion] Pass 3 Regrid: ${regridRows.length} parcels from Snowflake, ${regridMappings.length} new mappings`);
+  } catch (error) {
+    result.errors++;
+    console.error(`[Ingestion] Error in parcelnumb mapping pass 3 (Regrid):`, error instanceof Error ? error.message : error);
   }
   
   console.log(`[Ingestion] Parcelnumb mapping complete: ${totalFromSnowflake} total accounts, ${alreadyInProperties} already in properties, ${result.mapped} new mappings, ${result.errors} errors`);
