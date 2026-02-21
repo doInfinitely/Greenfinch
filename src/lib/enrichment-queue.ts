@@ -783,10 +783,15 @@ export async function runCascadeEnrichmentOnSavedRecords(
               const pdlTitle = result.pdlTitle || '';
               const isVolunteerOrBoard = /\b(volunteer|board member|commissioner|advisory|trustee|fellow|adjunct)\b/i.test(pdlTitle);
 
+              const titleStillMatches = contact.title && enrichedTitle && 
+                contact.title.toLowerCase().replace(/[^a-z0-9]/g, '') === enrichedTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
+
               if (!hasCrustdataCompany && isVolunteerOrBoard) {
                 console.log(`[RoleVerification] Skipping PDL-only mismatch — PDL title "${pdlTitle}" appears to be a volunteer/board role, not primary employment`);
               } else if (!hasCrustdataCompany && result.crustdataTitle && companiesMatch(result.crustdataTitle, contact.title)) {
                 console.log(`[RoleVerification] Skipping PDL-only mismatch — Crustdata title "${result.crustdataTitle}" matches AI title, but Crustdata has no company. PDL company "${enrichedCompany}" may not be primary employer`);
+              } else if (!hasCrustdataCompany && titleStillMatches) {
+                console.log(`[RoleVerification] Skipping PDL-only mismatch — title "${enrichedTitle}" matches existing title "${contact.title}". PDL company "${enrichedCompany}" is likely a parent/subsidiary of "${aiCompany}"`);
               } else {
                 formerReason = `${contact.fullName} now at ${enrichedCompany}${enrichedTitle ? ` as ${enrichedTitle}` : ''} (was ${aiCompany || 'unknown'} for this property). Source: ${hasCrustdataCompany ? 'Crustdata' : 'PDL'}`;
                 console.log(`[RoleVerification] MISMATCH: ${formerReason}`);
