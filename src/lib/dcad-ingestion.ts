@@ -1,6 +1,6 @@
 import { db } from './db';
-import { properties, parcelToProperty } from './schema';
-import { eq, sql } from 'drizzle-orm';
+import { properties, parcelToProperty, parcelnumbMapping } from './schema';
+import { eq, sql, inArray } from 'drizzle-orm';
 import { normalizeAddress, normalizeOwnerName, normalizeCity } from './normalization';
 import { INCLUDED_SPTD_CODES } from './property-classifications';
 import { executeQuery } from './snowflake';
@@ -949,6 +949,9 @@ export async function runIngestion(
   stats.propertiesSaved += parentResult.ingested;
   stats.errors += parentResult.errors;
   
+  const mappingResult = await buildParcelnumbMapping();
+  if (mappingResult.errors > 0) stats.errors += mappingResult.errors;
+  
   stats.durationMs = Date.now() - startTime;
   console.log(`[Ingestion] Complete in ${Math.round(stats.durationMs / 1000)}s: ${stats.propertiesSaved} new, ${stats.propertiesUpdated} updated, ${stats.errors} errors`);
   
@@ -1034,6 +1037,93 @@ export async function getParentAccountsByAccountNums(
   
   const rows = await executeQuery<any>(sql);
   return rows.map(mapRowToProperty);
+}
+
+export async function buildParcelnumbMapping(): Promise<{ mapped: number; errors: number }> {
+  const result = { mapped: 0, errors: 0 };
+  
+  const allGisIds = await db
+    .selectDistinct({ gisParcelId: properties.dcadGisParcelId })
+    .from(properties);
+  
+  const gisParcelIds = allGisIds
+    .map(r => r.gisParcelId)
+    .filter((id): id is string => !!id && id.length > 0);
+  
+  if (gisParcelIds.length === 0) {
+    console.log(`[Ingestion] No GIS parcel IDs found, skipping parcelnumb mapping`);
+    return result;
+  }
+  
+  console.log(`[Ingestion] Building parcelnumb mapping for ${gisParcelIds.length} distinct GIS parcel IDs...`);
+  
+  const existingKeys = new Set(
+    (await db.select({ pk: properties.propertyKey }).from(properties)).map(r => r.pk)
+  );
+  
+  const batchSize = 500;
+  let totalFromSnowflake = 0;
+  let alreadyInProperties = 0;
+  
+  for (let i = 0; i < gisParcelIds.length; i += batchSize) {
+    const batch = gisParcelIds.slice(i, i + batchSize);
+    const gisIdsList = batch.map(id => `'${id.replace(/'/g, "''")}'`).join(', ');
+    
+    try {
+      const sfQuery = `
+        SELECT ai.ACCOUNT_NUM, ai.GIS_PARCEL_ID
+        FROM ${ACCOUNT_INFO_TABLE} ai
+        WHERE ai.GIS_PARCEL_ID IN (${gisIdsList})
+      `;
+      
+      const rows = await executeQuery<{ ACCOUNT_NUM: string; GIS_PARCEL_ID: string }>(sfQuery);
+      totalFromSnowflake += rows.length;
+      
+      const mappings: { accountNum: string; gisParcelId: string; parentPropertyKey: string | null }[] = [];
+      
+      for (const row of rows) {
+        if (!row.ACCOUNT_NUM || !row.GIS_PARCEL_ID) continue;
+        
+        if (existingKeys.has(row.ACCOUNT_NUM)) {
+          alreadyInProperties++;
+          continue;
+        }
+        
+        const parentKey = existingKeys.has(row.GIS_PARCEL_ID) ? row.GIS_PARCEL_ID : null;
+        
+        mappings.push({
+          accountNum: row.ACCOUNT_NUM,
+          gisParcelId: row.GIS_PARCEL_ID,
+          parentPropertyKey: parentKey,
+        });
+      }
+      
+      if (mappings.length > 0) {
+        const insertBatchSize = 1000;
+        for (let j = 0; j < mappings.length; j += insertBatchSize) {
+          const insertBatch = mappings.slice(j, j + insertBatchSize);
+          await db.insert(parcelnumbMapping)
+            .values(insertBatch)
+            .onConflictDoUpdate({
+              target: parcelnumbMapping.accountNum,
+              set: {
+                gisParcelId: sql`EXCLUDED.gis_parcel_id`,
+                parentPropertyKey: sql`EXCLUDED.parent_property_key`,
+              },
+            });
+        }
+        result.mapped += mappings.length;
+      }
+      
+      console.log(`[Ingestion] Parcelnumb mapping batch ${Math.floor(i / batchSize) + 1}: ${rows.length} accounts from Snowflake, ${mappings.length} new mappings`);
+    } catch (error) {
+      result.errors++;
+      console.error(`[Ingestion] Error building parcelnumb mapping batch:`, error instanceof Error ? error.message : error);
+    }
+  }
+  
+  console.log(`[Ingestion] Parcelnumb mapping complete: ${totalFromSnowflake} total accounts, ${alreadyInProperties} already in properties, ${result.mapped} new mappings, ${result.errors} errors`);
+  return result;
 }
 
 async function ingestParentAccounts(): Promise<{ ingested: number; errors: number }> {
@@ -1142,6 +1232,9 @@ export async function runMultiZipIngestion(
   stats.propertiesSaved += parentResult.ingested;
   stats.errors += parentResult.errors;
   
+  const mappingResult = await buildParcelnumbMapping();
+  if (mappingResult.errors > 0) stats.errors += mappingResult.errors;
+  
   stats.durationMs = Date.now() - startTime;
   console.log(`\n[Ingestion] Multi-ZIP ingestion complete in ${Math.round(stats.durationMs / 1000)}s`);
   console.log(`[Ingestion] Total: ${stats.propertiesSaved} new, ${stats.propertiesUpdated} updated, ${stats.errors} errors across ${zipCodes.length} ZIPs`);
@@ -1217,6 +1310,9 @@ export async function runAllZipsIngestion(
   const parentResult = await ingestParentAccounts();
   stats.propertiesSaved += parentResult.ingested;
   stats.errors += parentResult.errors;
+  
+  const mappingResult = await buildParcelnumbMapping();
+  if (mappingResult.errors > 0) stats.errors += mappingResult.errors;
   
   stats.durationMs = Date.now() - startTime;
   console.log(`[Ingestion] All-ZIP ingestion complete in ${Math.round(stats.durationMs / 1000)}s: ${stats.propertiesSaved} new, ${stats.propertiesUpdated} updated, ${stats.errors} errors`);

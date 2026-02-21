@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { properties } from '@/lib/schema';
+import { properties, parcelnumbMapping } from '@/lib/schema';
 import { normalizeCommonName } from '@/lib/normalization';
 
 export async function GET() {
@@ -48,6 +48,34 @@ export async function GET() {
         c: parentProperty.category || null,
         s: parentProperty.subcategory || null,
       };
+    }
+
+    const mappingRows = await db
+      .select({
+        accountNum: parcelnumbMapping.accountNum,
+        parentPropertyKey: parcelnumbMapping.parentPropertyKey,
+      })
+      .from(parcelnumbMapping);
+
+    for (const mapping of mappingRows) {
+      if (index[mapping.accountNum]) continue;
+
+      if (mapping.parentPropertyKey) {
+        const parent = propertyMap.get(mapping.parentPropertyKey);
+        if (parent) {
+          const displayName = parent.commonName
+            ? normalizeCommonName(parent.commonName)
+            : parent.bizName || null;
+
+          index[mapping.accountNum] = {
+            pk: parent.propertyKey,
+            n: displayName,
+            a: parent.address || parent.regridAddress || null,
+            c: parent.category || null,
+            s: parent.subcategory || null,
+          };
+        }
+      }
     }
 
     const response = NextResponse.json(index);

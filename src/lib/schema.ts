@@ -474,6 +474,17 @@ export const parcelToProperty = pgTable('parcel_to_property', {
   propertyKeyIdx: index('idx_parcel_property_key').on(table.propertyKey),
 }));
 
+// Maps ALL DCAD account numbers to their GIS parcel ID and resolved parent property
+// This enables Regrid tile parcelnumb → parent property resolution for accounts we didn't ingest as full properties
+export const parcelnumbMapping = pgTable('parcelnumb_mapping', {
+  accountNum: text('account_num').primaryKey(),
+  gisParcelId: text('gis_parcel_id').notNull(),
+  parentPropertyKey: text('parent_property_key'),
+}, (table) => ({
+  gisParcelIdx: index('idx_parcelnumb_gis_parcel').on(table.gisParcelId),
+  parentPropIdx: index('idx_parcelnumb_parent_prop').on(table.parentPropertyKey),
+}));
+
 // Waitlist signups
 export const waitlistSignups = pgTable('waitlist_signups', {
   id: uuid('id').primaryKey().defaultRandom(),
