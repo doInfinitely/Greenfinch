@@ -22,22 +22,14 @@ export interface DashboardMapConfig {
   onError?: (error: string) => void;
 }
 
-interface ParcelIndexEntry {
-  pk: string;
-  n: string | null;
-  a: string | null;
-  c: string | null;
-  s: string | null;
-}
-
 export class DashboardMap {
   private map: mapboxgl.Map | null = null;
   private config: DashboardMapConfig;
   private isDestroyed = false;
   private currentData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
   private debugLogging = true;
-  private parcelIndexLoaded = false;
-  private parcelIndex: Map<string, ParcelIndexEntry> = new Map();
+  private bulkLoaded = false;
+  private propertyIndex: Map<string, { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string; llUuid?: string }> = new Map();
   private hoverPopup: mapboxgl.Popup | null = null;
   private hoveredParcelId: string | number | null = null;
   private currentStyle: string = SATELLITE_STREETS_STYLE;
@@ -47,7 +39,6 @@ export class DashboardMap {
   private handlersRegistered = false;
   private resizeObserver: ResizeObserver | null = null;
   private searchMarker: mapboxgl.Marker | null = null;
-  private currentHoveredParcelId: string | null = null;
 
   constructor(config: DashboardMapConfig) {
     this.config = config;
@@ -163,7 +154,7 @@ export class DashboardMap {
         data: this.currentData,
         cluster: true,
         clusterMaxZoom: 14,
-        clusterRadius: 80,
+        clusterRadius: 160,
       });
     }
 
@@ -277,8 +268,11 @@ export class DashboardMap {
     this.handlersRegistered = true;
 
     this.map.on('click', 'clusters', this.onClusterClick);
+    this.map.on('click', 'property-points', this.onPropertyPointClick);
     this.map.on('mouseenter', 'clusters', this.onCursorPointer);
     this.map.on('mouseleave', 'clusters', this.onCursorDefault);
+    this.map.on('mouseenter', 'property-points', this.onCursorPointer);
+    this.map.on('mouseleave', 'property-points', this.onCursorDefault);
     this.map.on('mouseenter', 'parcels-fill', this.onCursorPointer);
     this.map.on('mousemove', 'parcels-fill', this.onParcelHover);
     this.map.on('mouseleave', 'parcels-fill', this.onParcelLeave);
@@ -296,6 +290,14 @@ export class DashboardMap {
     });
   };
 
+  private onPropertyPointClick = (e: mapboxgl.MapLayerMouseEvent) => {
+    if (!e.features?.length) return;
+    const propertyKey = e.features[0].properties?.propertyKey;
+    if (propertyKey && this.config.onPropertyClick) {
+      this.config.onPropertyClick(propertyKey);
+    }
+  };
+
   private onCursorPointer = () => {
     if (this.map) this.map.getCanvas().style.cursor = 'pointer';
   };
@@ -304,7 +306,14 @@ export class DashboardMap {
     if (this.map) this.map.getCanvas().style.cursor = '';
   };
 
+  private currentHoveredParcelId: string | null = null;
+  private tooltipCache: Map<string, { displayName: string; address: string | null; category?: string; subcategory?: string; propertyKey?: string }> = new Map();
+  private pendingApiCalls: Set<string> = new Set();
+
   private onParcelHover = (e: mapboxgl.MapLayerMouseEvent) => {
+    if (this.debugLogging && !this.styleReady) {
+      console.log('[ParcelHover] BLOCKED: styleReady=false');
+    }
     if (!this.map || !this.styleReady || !e.features?.length) return;
 
     const feature = e.features[0];
@@ -335,86 +344,171 @@ export class DashboardMap {
 
     const props = feature.properties || {};
     const center = e.lngLat;
-    const parcelnumb = props.parcelnumb_no_formatting || props.parcelnumb || props.apn;
-    const llUuid = props.ll_uuid || (feature.id ? String(feature.id) : null);
-
-    if (!parcelnumb && !llUuid) {
+    
+    const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
+    const llUuid = props.ll_uuid || (featureId != null ? String(featureId) : null);
+    const parcelId = llUuid || parcelnumb;
+    
+    if (this.debugLogging) {
+      console.log('[ParcelHover] featureId:', featureId, 'type:', typeof featureId, 'props.ll_uuid:', props.ll_uuid, 'parcelnumb:', parcelnumb, 'resolved llUuid:', llUuid, 'parcelId:', parcelId, 'indexSize:', this.propertyIndex.size);
+    }
+    
+    if (!parcelId) {
       if (this.hoverPopup) this.hoverPopup.remove();
       this.currentHoveredParcelId = null;
       return;
     }
 
-    const parcelId = parcelnumb || llUuid;
-    if (parcelId === this.currentHoveredParcelId) return;
+    const isSameParcel = parcelId === this.currentHoveredParcelId;
     this.currentHoveredParcelId = parcelId;
 
-    this.resolveAndShowTooltip(center, parcelnumb, llUuid, props);
-  };
-
-  private resolveParcelNumber(parcelnumb: string): ParcelIndexEntry | null {
-    const normalized = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
-    const exact = this.parcelIndex.get(normalized);
-    if (exact) return exact;
-
-    for (let len = normalized.length - 1; len >= 10; len--) {
-      const prefix = `prefix:${normalized.substring(0, len)}`;
-      const prefixMatch = this.parcelIndex.get(prefix);
-      if (prefixMatch) return prefixMatch;
-    }
-
-    if (this.debugLogging) {
-      console.log('[ParcelResolve] MISS for:', parcelnumb, '→ normalized:', normalized, '| index size:', this.parcelIndex.size);
-    }
-    return null;
-  }
-
-  private resolveAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string | null, llUuid: string | null, regridProps: Record<string, any>) {
-    let entry: ParcelIndexEntry | null = null;
-    if (parcelnumb) {
-      entry = this.resolveParcelNumber(parcelnumb);
-    }
-    if (!entry && llUuid) {
-      entry = this.parcelIndex.get(`ll:${llUuid}`) || null;
-    }
-
-    if (entry) {
-      const displayName = entry.n
-        ? normalizeCommonName(entry.n)
-        : entry.a || 'Unknown Property';
-
+    const cached = this.tooltipCache.get(parcelId);
+    if (cached) {
       this.showTooltip(center, {
-        displayName,
-        address: entry.a,
-        category: entry.c,
-        subcategory: entry.s,
+        commonName: cached.displayName,
+        address: cached.address,
+        category: cached.category,
+        subcategory: cached.subcategory,
       });
-    } else {
-      const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
+      return;
+    }
+
+    let propertyInfo: ReturnType<typeof this.findPropertyByLlUuid> = null;
+    if (llUuid) {
+      propertyInfo = this.findPropertyByLlUuid(llUuid);
+    }
+    if (!propertyInfo && parcelnumb) {
+      propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
+    }
+
+    if (!propertyInfo) {
+      propertyInfo = this.findPropertyMarkerAtPoint(e.point);
+      if (this.debugLogging && propertyInfo && !isSameParcel) {
+        console.log('[ParcelHover] marker fallback →', propertyInfo.propertyKey, propertyInfo.commonName);
+      }
+    }
+
+    if (this.debugLogging && !isSameParcel) {
+      console.log('[ParcelHover] clientMatch:', !!propertyInfo, propertyInfo ? `${propertyInfo.commonName || propertyInfo.address}` : 'none', 'hasLlIndex:', llUuid ? this.propertyIndex.has(`ll:${llUuid}`) : 'n/a');
+    }
+
+    if (propertyInfo) {
+      this.tooltipCache.set(parcelId, {
+        displayName: propertyInfo.commonName || propertyInfo.address || 'Unknown Property',
+        address: propertyInfo.address,
+        category: propertyInfo.category,
+        subcategory: propertyInfo.subcategory,
+        propertyKey: propertyInfo.propertyKey,
+      });
+      this.showTooltip(center, propertyInfo);
+    } else if ((parcelnumb || llUuid) && !isSameParcel && !this.pendingApiCalls.has(parcelId)) {
+      this.fetchAndShowTooltip(center, parcelnumb, parcelId, props, llUuid);
+    } else if (!this.pendingApiCalls.has(parcelId)) {
+      const regridAddress = props.address || props.siteaddr || props.mail_addres;
       if (regridAddress) {
         this.showTooltip(center, {
-          displayName: regridAddress,
+          commonName: null,
           address: regridAddress,
-          category: null,
-          subcategory: null,
+          isUnimported: true,
         });
-      } else {
+      } else if (!isSameParcel) {
         if (this.hoverPopup) this.hoverPopup.remove();
       }
     }
-  }
+  };
 
   private showTooltip(
     center: mapboxgl.LngLat, 
-    info: { displayName: string; address: string | null; category?: string | null; subcategory?: string | null }
+    propertyInfo: { commonName: string | null; address: string | null; category?: string; subcategory?: string; isUnimported?: boolean }
   ) {
+    const displayName = propertyInfo.commonName 
+      ? normalizeCommonName(propertyInfo.commonName) 
+      : propertyInfo.address || 'Unknown Property';
+    
     const popupContent = `<div style="font-size: 12px; max-width: 220px;">
-      <div style="font-weight: 600;">${info.displayName}</div>
-      ${info.subcategory || info.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${info.subcategory || info.category}</div>` : ''}
+      <div style="font-weight: 600;">${displayName}</div>
+      ${propertyInfo.subcategory || propertyInfo.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${propertyInfo.subcategory || propertyInfo.category}</div>` : ''}
     </div>`;
     
     if (this.hoverPopup && this.map) {
       this.hoverPopup.setLngLat(center).setHTML(popupContent).addTo(this.map);
     }
+  }
+
+  private async fetchAndShowTooltip(center: mapboxgl.LngLat, parcelnumb: string | null, parcelId: string, regridProps?: Record<string, any>, llUuid?: string | null) {
+    this.pendingApiCalls.add(parcelId);
+    try {
+      const params = new URLSearchParams();
+      if (parcelnumb) params.set('parcelnumb', parcelnumb);
+      if (llUuid) params.set('ll_uuid', llUuid);
+      const response = await fetch(`/api/parcels/resolve?${params.toString()}`);
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.displayName) {
+          this.tooltipCache.set(parcelId, {
+            displayName: data.displayName,
+            address: data.address,
+            category: data.category,
+            subcategory: data.subcategory,
+            propertyKey: data.propertyKey,
+          });
+          
+          if (this.currentHoveredParcelId === parcelId) {
+            this.showTooltip(center, {
+              commonName: data.displayName,
+              address: data.address,
+              category: data.category,
+              subcategory: data.subcategory,
+            });
+          }
+          return;
+        }
+      }
+      
+      if (this.currentHoveredParcelId === parcelId && regridProps) {
+        const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
+        if (regridAddress) {
+          this.tooltipCache.set(parcelId, {
+            displayName: regridAddress,
+            address: regridAddress,
+          });
+          this.showTooltip(center, {
+            commonName: null,
+            address: regridAddress,
+            isUnimported: true,
+          });
+        }
+      }
+    } catch (err) {
+      if (this.currentHoveredParcelId === parcelId && regridProps) {
+        const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
+        if (regridAddress) {
+          this.showTooltip(center, {
+            commonName: null,
+            address: regridAddress,
+            isUnimported: true,
+          });
+        }
+      }
+    } finally {
+      this.pendingApiCalls.delete(parcelId);
+    }
+  }
+
+  private findPropertyByParcelNumber(parcelnumb: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
+    const normalizedParcel = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
+    
+    const exact = this.propertyIndex.get(`pk:${normalizedParcel}`);
+    if (exact) return exact;
+    
+    for (let len = normalizedParcel.length - 1; len >= 10; len--) {
+      const prefix = normalizedParcel.substring(0, len);
+      const prefixMatch = this.propertyIndex.get(`prefix:${prefix}`);
+      if (prefixMatch) return prefixMatch;
+    }
+    
+    return null;
   }
 
   private onParcelLeave = () => {
@@ -440,27 +534,148 @@ export class DashboardMap {
     }
   };
 
-  private onParcelClick = (e: mapboxgl.MapLayerMouseEvent) => {
+  private onParcelClick = async (e: mapboxgl.MapLayerMouseEvent) => {
     if (!e.features?.length || !this.config.onPropertyClick || !this.map) return;
 
+    const hitbox: [mapboxgl.PointLike, mapboxgl.PointLike] = [
+      [e.point.x - 3, e.point.y - 3],
+      [e.point.x + 3, e.point.y + 3],
+    ];
+    const markerFeatures = this.map.queryRenderedFeatures(hitbox, {
+      layers: this.map.getLayer('property-points') ? ['property-points'] : [],
+    });
+    if (markerFeatures && markerFeatures.length > 0) {
+      const markerProps = markerFeatures[0].properties as any;
+      if (markerProps?.propertyKey) {
+        if (this.debugLogging) {
+          console.log('[ParcelClick] Direct marker hit →', markerProps.propertyKey);
+        }
+        this.config.onPropertyClick(markerProps.propertyKey);
+        return;
+      }
+    }
+    
     const feature = e.features[0];
     const props = feature.properties || {};
-    const parcelnumb = props.parcelnumb_no_formatting || props.parcelnumb || props.apn;
-    const llUuid = props.ll_uuid || (feature.id ? String(feature.id) : null);
+    const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
+    const llUuid = props.ll_uuid || (feature.id != null ? String(feature.id) : null);
+    
+    const parcelId = llUuid || parcelnumb;
 
-    if (!parcelnumb && !llUuid) return;
+    if (this.debugLogging) {
+      console.log('[ParcelClick] featureId:', feature.id, 'type:', typeof feature.id, 'llUuid:', llUuid, 'parcelnumb:', parcelnumb, 'parcelId:', parcelId);
+    }
 
-    let entry: ParcelIndexEntry | null = null;
+    if (parcelId) {
+      const cached = this.tooltipCache.get(parcelId);
+      if (cached?.propertyKey) {
+        if (this.debugLogging) console.log('[ParcelClick] Cache hit →', cached.propertyKey);
+        this.config.onPropertyClick(cached.propertyKey);
+        return;
+      }
+    }
+    
+    if (llUuid) {
+      const propertyInfo = this.findPropertyByLlUuid(llUuid);
+      if (propertyInfo?.propertyKey) {
+        if (this.debugLogging) console.log('[ParcelClick] ll_uuid match →', propertyInfo.propertyKey);
+        this.config.onPropertyClick(propertyInfo.propertyKey);
+        return;
+      }
+    }
+
     if (parcelnumb) {
-      entry = this.resolveParcelNumber(parcelnumb);
+      const propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
+      if (propertyInfo?.propertyKey) {
+        if (this.debugLogging) console.log('[ParcelClick] parcelnumb match →', propertyInfo.propertyKey);
+        this.config.onPropertyClick(propertyInfo.propertyKey);
+        return;
+      }
     }
-    if (!entry && llUuid) {
-      entry = this.parcelIndex.get(`ll:${llUuid}`) || null;
+
+    const markerMatch = this.findPropertyMarkerAtPoint(e.point);
+    if (markerMatch?.propertyKey) {
+      if (this.debugLogging) console.log('[ParcelClick] marker fallback →', markerMatch.propertyKey, markerMatch.commonName);
+      this.config.onPropertyClick(markerMatch.propertyKey);
+      return;
     }
-    if (entry) {
-      this.config.onPropertyClick(entry.pk);
+
+    if (parcelnumb || llUuid) {
+      try {
+        const params = new URLSearchParams();
+        if (parcelnumb) params.set('parcelnumb', parcelnumb);
+        if (llUuid) params.set('ll_uuid', llUuid);
+        if (this.debugLogging) console.log('[ParcelClick] API fallback →', params.toString());
+        const response = await fetch(`/api/parcels/resolve?${params.toString()}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.propertyKey) {
+            if (this.debugLogging) console.log('[ParcelClick] API resolved →', data.propertyKey);
+            this.config.onPropertyClick(data.propertyKey);
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Parcel lookup failed', err);
+      }
     }
+    if (this.debugLogging) console.log('[ParcelClick] No match found');
   };
+
+  private findPropertyByLlUuid(llUuid: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
+    return this.propertyIndex.get(`ll:${llUuid}`) || null;
+  }
+
+  private findPropertyMarkerAtPoint(point: mapboxgl.Point, maxDistMeters: number = 300): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
+    if (!this.map || !this.map.getLayer('property-points')) return null;
+    const clickLngLat = this.map.unproject(point);
+    const canvas = this.map.getCanvas();
+    const viewportBbox: [mapboxgl.PointLike, mapboxgl.PointLike] = [[0, 0], [canvas.width, canvas.height]];
+    const allMarkers = this.map.queryRenderedFeatures(viewportBbox, { layers: ['property-points'] });
+    if (!allMarkers || allMarkers.length === 0) return null;
+
+    let closest: { propertyKey: string; dist: number; props: any } | null = null;
+    for (const marker of allMarkers) {
+      const geom = marker.geometry as GeoJSON.Point;
+      if (!geom || geom.type !== 'Point') continue;
+      const [lng, lat] = geom.coordinates;
+      const dlat = (lat - clickLngLat.lat) * 111320;
+      const dlng = (lng - clickLngLat.lng) * 111320 * Math.cos(clickLngLat.lat * Math.PI / 180);
+      const dist = Math.sqrt(dlat * dlat + dlng * dlng);
+      if (dist < maxDistMeters && (!closest || dist < closest.dist)) {
+        const p = marker.properties as any;
+        if (p?.propertyKey) {
+          closest = { propertyKey: p.propertyKey, dist, props: p };
+        }
+      }
+    }
+
+    if (closest) {
+      if (this.debugLogging) {
+        console.log('[MarkerFallback] closest marker:', closest.propertyKey, 'dist:', Math.round(closest.dist), 'm');
+      }
+      const indexed = this.propertyIndex.get(`pk:${closest.propertyKey}`);
+      if (indexed) return indexed;
+      return {
+        propertyKey: closest.propertyKey,
+        commonName: closest.props.commonName || null,
+        address: closest.props.address || null,
+        category: closest.props.category,
+        subcategory: closest.props.subcategory,
+      };
+    }
+    return null;
+  }
+
+  private getPropertyAddress(propertyKey: string): string | null {
+    for (const feature of this.currentData.features) {
+      const props = feature.properties as any;
+      if (props?.propertyKey === propertyKey) {
+        return props?.address || null;
+      }
+    }
+    return null;
+  }
 
   private updateLayerVisibility() {
     if (!this.map) return;
@@ -496,7 +711,8 @@ export class DashboardMap {
 
   setData(geojson: GeoJSON.FeatureCollection) {
     this.currentData = geojson;
-    this.loadParcelIndex();
+    this.buildPropertyIndex();
+    this.loadBulkParcelMappings();
     
     if (!this.map) return;
 
@@ -506,46 +722,109 @@ export class DashboardMap {
     }
   }
 
-  private async loadParcelIndex() {
-    if (this.parcelIndexLoaded) return;
-    this.parcelIndexLoaded = true;
+  private async loadBulkParcelMappings() {
+    if (this.bulkLoaded) return;
+    this.bulkLoaded = true;
     try {
       const response = await fetch('/api/parcels/parcel-index');
       if (!response.ok) return;
-      const data: Record<string, ParcelIndexEntry> = await response.json();
+      const data: Record<string, { pk: string; n: string | null; a: string | null; c: string | null; s: string | null }> = await response.json();
       
-      this.parcelIndex.clear();
-
-      for (const [key, entry] of Object.entries(data)) {
+      let added = 0;
+      for (const [key, info] of Object.entries(data)) {
         if (key.startsWith('ll:')) {
-          this.parcelIndex.set(key, entry);
-          continue;
-        }
-
-        const normalizedKey = key.replace(/[-\s]/g, '').toUpperCase();
-        this.parcelIndex.set(normalizedKey, entry);
-
-        for (let len = normalizedKey.length - 1; len >= 10; len--) {
-          const prefixKey = `prefix:${normalizedKey.substring(0, len)}`;
-          const existing = this.parcelIndex.get(prefixKey);
-          if (!existing) {
-            this.parcelIndex.set(prefixKey, entry);
-          } else {
-            const existingNorm = existing.pk.replace(/[-\s]/g, '').toUpperCase();
-            const existingTrailingZeros = (existingNorm.match(/0+$/) || [''])[0].length;
-            const newTrailingZeros = (normalizedKey.match(/0+$/) || [''])[0].length;
-            if (newTrailingZeros > existingTrailingZeros) {
-              this.parcelIndex.set(prefixKey, entry);
+          if (!this.propertyIndex.has(key)) {
+            const existing = this.propertyIndex.get(`pk:${info.pk.replace(/[-\s]/g, '').toUpperCase()}`);
+            this.propertyIndex.set(key, {
+              propertyKey: info.pk,
+              commonName: info.n || existing?.commonName || null,
+              address: info.a || existing?.address || null,
+              category: info.c || existing?.category || undefined,
+              subcategory: info.s || existing?.subcategory || undefined,
+              llUuid: key.replace('ll:', ''),
+            });
+            added++;
+          }
+        } else {
+          const normalizedKey = key.replace(/[-\s]/g, '').toUpperCase();
+          if (!this.propertyIndex.has(`pk:${normalizedKey}`)) {
+            this.propertyIndex.set(`pk:${normalizedKey}`, {
+              propertyKey: info.pk,
+              commonName: info.n || null,
+              address: info.a || null,
+              category: info.c || undefined,
+              subcategory: info.s || undefined,
+            });
+            
+            for (let len = normalizedKey.length - 1; len >= 10; len--) {
+              const prefixKey = `prefix:${normalizedKey.substring(0, len)}`;
+              if (!this.propertyIndex.has(prefixKey)) {
+                this.propertyIndex.set(prefixKey, {
+                  propertyKey: info.pk,
+                  commonName: info.n || null,
+                  address: info.a || null,
+                  category: info.c || undefined,
+                  subcategory: info.s || undefined,
+                });
+              }
             }
+            added++;
+          }
+        }
+      }
+      if (this.debugLogging) {
+        console.log('[BulkLookup] Loaded', Object.keys(data).length, 'entries, added', added, 'new entries. Index now:', this.propertyIndex.size);
+      }
+    } catch (err) {
+      console.warn('[BulkLookup] Failed to load parcel mappings:', err);
+    }
+  }
+
+  private buildPropertyIndex() {
+    this.propertyIndex.clear();
+    
+    let llCount = 0;
+    for (const feature of this.currentData.features) {
+      const props = feature.properties as any;
+      if (!props?.propertyKey) continue;
+      
+      const info = {
+        propertyKey: props.propertyKey,
+        commonName: props.commonName || null,
+        address: props.address || null,
+        category: props.category || null,
+        subcategory: props.subcategory || null,
+        llUuid: props.llUuid || null,
+      };
+      
+      const normalizedKey = props.propertyKey.replace(/[-\s]/g, '').toUpperCase();
+      this.propertyIndex.set(`pk:${normalizedKey}`, info);
+      
+      for (let len = normalizedKey.length - 1; len >= 10; len--) {
+        const prefix = normalizedKey.substring(0, len);
+        const existingKey = `prefix:${prefix}`;
+        const existing = this.propertyIndex.get(existingKey);
+        
+        if (!existing) {
+          this.propertyIndex.set(existingKey, info);
+        } else {
+          const existingNormalized = existing.propertyKey.replace(/[-\s]/g, '').toUpperCase();
+          const existingTrailingZeros = (existingNormalized.match(/0+$/) || [''])[0].length;
+          const newTrailingZeros = (normalizedKey.match(/0+$/) || [''])[0].length;
+          if (newTrailingZeros > existingTrailingZeros) {
+            this.propertyIndex.set(existingKey, info);
           }
         }
       }
       
-      if (this.debugLogging) {
-        console.log('[ParcelIndex] Loaded', Object.keys(data).length, 'properties,', this.parcelIndex.size, 'total index entries (with prefixes)');
+      if (props.llUuid) {
+        this.propertyIndex.set(`ll:${props.llUuid}`, info);
+        llCount++;
       }
-    } catch (err) {
-      console.warn('[ParcelIndex] Failed to load:', err);
+    }
+    
+    if (this.debugLogging) {
+      console.log('[BuildIndex] features:', this.currentData.features.length, 'indexSize:', this.propertyIndex.size, 'llEntries:', llCount);
     }
   }
 
