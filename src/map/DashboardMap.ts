@@ -108,17 +108,6 @@ export class DashboardMap {
       this.emitBounds();
     });
 
-    this.map.on('sourcedata', (e) => {
-      if (this.isDestroyed || !this.map || !this.styleReady) return;
-      if (e.sourceId === 'regrid' && e.isSourceLoaded) {
-        this.map.triggerRepaint();
-      }
-    });
-
-    this.map.on('idle', () => {
-      if (this.isDestroyed || !this.map || !this.styleReady) return;
-      this.map.triggerRepaint();
-    });
 
     this.map.on('zoom', () => {
       if (this.isDestroyed || !this.map || !this.styleReady) return;
@@ -376,13 +365,6 @@ export class DashboardMap {
       propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
     }
 
-    if (!propertyInfo) {
-      propertyInfo = this.findPropertyMarkerAtPoint(e.point);
-      if (this.debugLogging && propertyInfo && !isSameParcel) {
-        console.log('[ParcelHover] marker fallback →', propertyInfo.propertyKey, propertyInfo.commonName);
-      }
-    }
-
     if (this.debugLogging && !isSameParcel) {
       console.log('[ParcelHover] clientMatch:', !!propertyInfo, propertyInfo ? `${propertyInfo.commonName || propertyInfo.address}` : 'none');
     }
@@ -400,10 +382,11 @@ export class DashboardMap {
       this.fetchAndShowTooltip(center, parcelnumb, props);
     } else if (!this.pendingApiCalls.has(parcelnumb)) {
       const regridAddress = props.address || props.siteaddr || props.mail_addres;
-      if (regridAddress) {
+      const regridOwner = props.owner || props.owner1;
+      if (regridAddress || regridOwner) {
         this.showTooltip(center, {
-          commonName: null,
-          address: regridAddress,
+          commonName: regridOwner || null,
+          address: regridAddress || null,
           isUnimported: true,
         });
       } else if (!isSameParcel) {
@@ -420,9 +403,17 @@ export class DashboardMap {
       ? normalizeCommonName(propertyInfo.commonName) 
       : propertyInfo.address || 'Unknown Property';
     
+    const addressLine = propertyInfo.commonName && propertyInfo.address 
+      ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${propertyInfo.address}</div>` 
+      : '';
+    const categoryLine = propertyInfo.subcategory || propertyInfo.category 
+      ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${propertyInfo.subcategory || propertyInfo.category}</div>` 
+      : '';
+    
     const popupContent = `<div style="font-size: 12px; max-width: 220px;">
       <div style="font-weight: 600;">${displayName}</div>
-      ${propertyInfo.subcategory || propertyInfo.category ? `<div style="color: #6b7280; font-size: 11px; margin-top: 2px;">${propertyInfo.subcategory || propertyInfo.category}</div>` : ''}
+      ${addressLine}
+      ${categoryLine}
     </div>`;
     
     if (this.hoverPopup && this.map) {
@@ -460,14 +451,15 @@ export class DashboardMap {
       
       if (this.currentHoveredParcelId === parcelnumb && regridProps) {
         const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
-        if (regridAddress) {
+        const regridOwner = regridProps.owner || regridProps.owner1;
+        if (regridAddress || regridOwner) {
           this.tooltipCache.set(parcelnumb, {
-            displayName: regridAddress,
+            displayName: regridOwner || regridAddress,
             address: regridAddress,
           });
           this.showTooltip(center, {
-            commonName: null,
-            address: regridAddress,
+            commonName: regridOwner || null,
+            address: regridAddress || null,
             isUnimported: true,
           });
         }
@@ -475,10 +467,11 @@ export class DashboardMap {
     } catch (err) {
       if (this.currentHoveredParcelId === parcelnumb && regridProps) {
         const regridAddress = regridProps.address || regridProps.siteaddr || regridProps.mail_addres;
-        if (regridAddress) {
+        const regridOwner = regridProps.owner || regridProps.owner1;
+        if (regridAddress || regridOwner) {
           this.showTooltip(center, {
-            commonName: null,
-            address: regridAddress,
+            commonName: regridOwner || null,
+            address: regridAddress || null,
             isUnimported: true,
           });
         }
@@ -490,17 +483,7 @@ export class DashboardMap {
 
   private findPropertyByParcelNumber(parcelnumb: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
     const normalizedParcel = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
-    
-    const exact = this.propertyIndex.get(`pk:${normalizedParcel}`);
-    if (exact) return exact;
-    
-    for (let len = normalizedParcel.length - 1; len >= 10; len--) {
-      const prefix = normalizedParcel.substring(0, len);
-      const prefixMatch = this.propertyIndex.get(`prefix:${prefix}`);
-      if (prefixMatch) return prefixMatch;
-    }
-    
-    return null;
+    return this.propertyIndex.get(normalizedParcel) || null;
   }
 
   private onParcelLeave = () => {
@@ -574,13 +557,6 @@ export class DashboardMap {
       return;
     }
 
-    const markerMatch = this.findPropertyMarkerAtPoint(e.point);
-    if (markerMatch?.propertyKey) {
-      if (this.debugLogging) console.log('[ParcelClick] marker fallback →', markerMatch.propertyKey, markerMatch.commonName);
-      this.config.onPropertyClick(markerMatch.propertyKey);
-      return;
-    }
-
     try {
       if (this.debugLogging) console.log('[ParcelClick] API fallback → parcelnumb:', parcelnumb);
       const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
@@ -597,47 +573,6 @@ export class DashboardMap {
     }
     if (this.debugLogging) console.log('[ParcelClick] No match found');
   };
-
-  private findPropertyMarkerAtPoint(point: mapboxgl.Point, maxDistMeters: number = 300): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
-    if (!this.map || !this.map.getLayer('property-points')) return null;
-    const clickLngLat = this.map.unproject(point);
-    const canvas = this.map.getCanvas();
-    const viewportBbox: [mapboxgl.PointLike, mapboxgl.PointLike] = [[0, 0], [canvas.width, canvas.height]];
-    const allMarkers = this.map.queryRenderedFeatures(viewportBbox, { layers: ['property-points'] });
-    if (!allMarkers || allMarkers.length === 0) return null;
-
-    let closest: { propertyKey: string; dist: number; props: any } | null = null;
-    for (const marker of allMarkers) {
-      const geom = marker.geometry as GeoJSON.Point;
-      if (!geom || geom.type !== 'Point') continue;
-      const [lng, lat] = geom.coordinates;
-      const dlat = (lat - clickLngLat.lat) * 111320;
-      const dlng = (lng - clickLngLat.lng) * 111320 * Math.cos(clickLngLat.lat * Math.PI / 180);
-      const dist = Math.sqrt(dlat * dlat + dlng * dlng);
-      if (dist < maxDistMeters && (!closest || dist < closest.dist)) {
-        const p = marker.properties as any;
-        if (p?.propertyKey) {
-          closest = { propertyKey: p.propertyKey, dist, props: p };
-        }
-      }
-    }
-
-    if (closest) {
-      if (this.debugLogging) {
-        console.log('[MarkerFallback] closest marker:', closest.propertyKey, 'dist:', Math.round(closest.dist), 'm');
-      }
-      const indexed = this.propertyIndex.get(`pk:${closest.propertyKey}`);
-      if (indexed) return indexed;
-      return {
-        propertyKey: closest.propertyKey,
-        commonName: closest.props.commonName || null,
-        address: closest.props.address || null,
-        category: closest.props.category,
-        subcategory: closest.props.subcategory,
-      };
-    }
-    return null;
-  }
 
   private getPropertyAddress(propertyKey: string): string | null {
     for (const feature of this.currentData.features) {
@@ -705,27 +640,14 @@ export class DashboardMap {
       let added = 0;
       for (const [key, info] of Object.entries(data)) {
         const normalizedKey = key.replace(/[-\s]/g, '').toUpperCase();
-        if (!this.propertyIndex.has(`pk:${normalizedKey}`)) {
-          this.propertyIndex.set(`pk:${normalizedKey}`, {
+        if (!this.propertyIndex.has(normalizedKey)) {
+          this.propertyIndex.set(normalizedKey, {
             propertyKey: info.pk,
             commonName: info.n || null,
             address: info.a || null,
             category: info.c || undefined,
             subcategory: info.s || undefined,
           });
-          
-          for (let len = normalizedKey.length - 1; len >= 10; len--) {
-            const prefixKey = `prefix:${normalizedKey.substring(0, len)}`;
-            if (!this.propertyIndex.has(prefixKey)) {
-              this.propertyIndex.set(prefixKey, {
-                propertyKey: info.pk,
-                commonName: info.n || null,
-                address: info.a || null,
-                category: info.c || undefined,
-                subcategory: info.s || undefined,
-              });
-            }
-          }
           added++;
         }
       }
@@ -753,24 +675,7 @@ export class DashboardMap {
       };
       
       const normalizedKey = props.propertyKey.replace(/[-\s]/g, '').toUpperCase();
-      this.propertyIndex.set(`pk:${normalizedKey}`, info);
-      
-      for (let len = normalizedKey.length - 1; len >= 10; len--) {
-        const prefix = normalizedKey.substring(0, len);
-        const existingKey = `prefix:${prefix}`;
-        const existing = this.propertyIndex.get(existingKey);
-        
-        if (!existing) {
-          this.propertyIndex.set(existingKey, info);
-        } else {
-          const existingNormalized = existing.propertyKey.replace(/[-\s]/g, '').toUpperCase();
-          const existingTrailingZeros = (existingNormalized.match(/0+$/) || [''])[0].length;
-          const newTrailingZeros = (normalizedKey.match(/0+$/) || [''])[0].length;
-          if (newTrailingZeros > existingTrailingZeros) {
-            this.propertyIndex.set(existingKey, info);
-          }
-        }
-      }
+      this.propertyIndex.set(normalizedKey, info);
     }
     
     if (this.debugLogging) {
