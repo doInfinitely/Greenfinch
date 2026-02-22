@@ -112,7 +112,7 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       data: geojson,
       cluster: true,
       clusterMaxZoom: 13,
-      clusterRadius: 60,
+      clusterRadius: 400,
       clusterMinPoints: 1,
     });
 
