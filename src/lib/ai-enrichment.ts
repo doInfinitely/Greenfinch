@@ -3,6 +3,7 @@ import type { CommercialProperty, DCADBuilding } from "./snowflake";
 import { ASSET_CATEGORIES, GEMINI_MODEL } from "./constants";
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { rateLimiters } from './rate-limiter';
+import { validatePropertyWebsite, validateAndCleanDomain } from './domain-validator';
 import * as fs from 'fs';
 import * as path from 'path';
 let vertexCredentialsReady = false;
@@ -591,6 +592,11 @@ SEARCH SEQUENCE:
 3. Search "${deedOwner} Texas" on OpenCorporates or TX Secretary of State to find the entity behind the LLC/trust
 4. Search for news about acquisitions or sales of ${classification.propertyName} around ${deedDate} to identify the beneficial owner
 
+CRITICAL DOMAIN RULES:
+- For "site" and "domain": ONLY use URLs/domains you found in actual search results or web pages you visited. NEVER guess or construct a domain from a company name.
+- Use the EXACT domain from the URL where you found the property listing or company info. For example, if you found info at "crestviewcompanies.com/properties/...", use "crestviewcompanies.com" — do NOT invent "crestviewre.com" or similar.
+- If you cannot find the company's actual website in search results, set the domain to null rather than guessing.
+
 Return JSON:
 {"mgmt":{"name":"Co|null","domain":"co.com|null","c":0.0-1.0},"owner":{"name":"Entity|null","type":"REIT|PE|Family Office|Individual|Corporation|Institutional|Syndicator|null","c":0.0-1.0},"site":"https://property-site.com|null","phone":"+1XXXXXXXXXX|null","summary":"2 sentences max: who owns it, who manages it."}`;
 
@@ -667,8 +673,45 @@ Return JSON:
 
       const validated = crossValidateOwnership(ownershipData);
 
+      const mgmtName = validated.managementCompany.name || undefined;
+      if (validated.propertyWebsite) {
+        const websiteResult = await validatePropertyWebsite(
+          validated.propertyWebsite,
+          classification.propertyName,
+          mgmtName
+        );
+        if (!websiteResult.validatedUrl) {
+          console.warn(`[FocusedEnrichment] Stage 2: Property website "${validated.propertyWebsite}" failed validation, clearing`);
+          validated.propertyWebsite = null;
+        } else {
+          validated.propertyWebsite = websiteResult.validatedUrl;
+          if (websiteResult.extractedDomain && validated.managementCompany.domain) {
+            const aiDomain = validated.managementCompany.domain.toLowerCase();
+            const siteDomain = websiteResult.extractedDomain.toLowerCase();
+            if (aiDomain !== siteDomain && !aiDomain.includes(siteDomain) && !siteDomain.includes(aiDomain)) {
+              console.log(`[FocusedEnrichment] Stage 2: Mgmt domain "${aiDomain}" differs from validated website domain "${siteDomain}" — using website domain`);
+              validated.managementCompany.domain = websiteResult.extractedDomain;
+            }
+          }
+        }
+      }
+
+      if (validated.managementCompany.domain) {
+        const validatedMgmtDomain = await validateAndCleanDomain(
+          validated.managementCompany.domain,
+          mgmtName,
+          'mgmt company domain'
+        );
+        if (!validatedMgmtDomain) {
+          console.warn(`[FocusedEnrichment] Stage 2: Mgmt domain "${validated.managementCompany.domain}" failed validation, clearing`);
+          validated.managementCompany.domain = null;
+        } else {
+          validated.managementCompany.domain = validatedMgmtDomain;
+        }
+      }
+
       console.log(`[FocusedEnrichment] Stage 2 complete with ${sources.length} grounded sources`);
-      console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${validated.propertyWebsite || 'none'}, phone: ${validated.propertyPhone || 'none'}, mgmt: ${validated.managementCompany.name || 'none'}`);
+      console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${validated.propertyWebsite || 'none'}, phone: ${validated.propertyPhone || 'none'}, mgmt: ${validated.managementCompany.name || 'none'} (${validated.managementCompany.domain || 'no domain'})`);
 
       return {
         data: validated,

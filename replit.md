@@ -1,7 +1,7 @@
 # greenfinch.ai - Commercial Property Prospecting Tool
 
 ## Overview
-greenfinch.ai is an AI-native commercial real estate prospecting CRM. It aggregates parcel data, enriches properties using AI, and provides multi-source contact enrichment. The system offers property intelligence, validated contact information, pipeline management, and multi-view filtering, aiming to build a proprietary data flywheel. The MVP targets ZIP 75225 in Dallas, TX, with an architecture designed for nationwide expansion. The project's ambition is to build a scalable, data-driven platform that revolutionizes commercial real estate prospecting.
+greenfinch.ai is an AI-native commercial real estate prospecting CRM designed to revolutionize commercial real estate prospecting. It aggregates parcel data, enriches properties using AI, and provides multi-source contact enrichment. The system offers property intelligence, validated contact information, pipeline management, and multi-view filtering to build a proprietary data flywheel. The architecture is designed for nationwide expansion, with an MVP targeting ZIP 75225 in Dallas, TX.
 
 ## User Preferences
 - Preferred communication style: Simple, everyday language
@@ -19,51 +19,46 @@ greenfinch.ai is an AI-native commercial real estate prospecting CRM. It aggrega
 ## System Architecture
 
 ### Framework and Core Technologies
-The project is built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL (Neon-backed), and runs on Node.js 20. Redis (Upstash) is used for distributed caching and locking.
+Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL (Neon-backed), and runs on Node.js 20. Redis (Upstash) is used for distributed caching and locking.
 
 ### Core Design Principles
 - **Modular Project Structure**: Code is organized by feature and concern.
-- **Data-Driven UI**: Interactive maps (Mapbox GL), dashboards, and detailed views for properties and contacts.
-- **Robust Authentication**: Clerk Auth with Role-Based Access Control (RBAC) via Clerk Organizations, with per-route authentication checks.
+- **Data-Driven UI**: Interactive maps (Mapbox GL), dashboards, and detailed views.
+- **Robust Authentication**: Clerk Auth with Role-Based Access Control (RBAC).
 - **Multi-stage Enrichment Pipelines**:
-    - **Contact Enrichment**: A 5-stage cascade for comprehensive contact data.
-    - **Organization Enrichment**: 2-stage process for company information.
-    - **Property AI Enrichment**: Utilizes Google Gemini AI via Vertex AI for property data and beneficial owner identification with search grounding.
-- **Asynchronous Processing**: Non-blocking enrichment queue system with Redis for background processing, distributed locking, and caching.
-- **Performance Optimizations**: Cursor pagination for APIs, Redis-based rate limiting, client-side debouncing, and optimized PostgreSQL indexing.
-- **User Engagement Features**: In-app notifications, @mentions, follow-up reminders, and unread property indicators.
-- **Responsive Design**: UI components adapt for mobile and desktop.
-- **UI/UX Standards**: Consistent navigation, clear actionable elements, and opaque backgrounds for overlay UI.
+    - **Contact Enrichment**: 5-stage cascade.
+    - **Organization Enrichment**: 2-stage process.
+    - **Property AI Enrichment**: Google Gemini AI via Vertex AI for property data and beneficial owner identification with search grounding.
+- **Asynchronous Processing**: Redis-based enrichment queue for background processing, distributed locking, and caching.
+- **Performance Optimizations**: Cursor pagination, Redis-based rate limiting, client-side debouncing, and optimized PostgreSQL indexing.
+- **UI/UX Standards**: Consistent navigation, clear actionable elements, opaque backgrounds for overlay UI, and responsive design.
 - **Property Classification**: Uses Texas PTAD state property type codes for commercial and multifamily.
 - **Parcel Aggregation**: Properties are aggregated by GIS_PARCEL_ID.
-- **API Standards**: Standardized API response envelope `{ success, data, error, meta }` with helpers for consistency.
-- **AI Enrichment Pipeline Refinements**: Split contact discovery, restructured ownership identification, source quality scoring, compact Stage 1 prompts, and contact deduplication.
-- **Contact Relationship Verification**: Compares current employer data against AI-discovered companies to verify relationships. Uses `job_change_detected` status (displayed as "May have changed jobs") instead of definitive "former" marking. Checks PDL-sourced parent/subsidiary relationships (`affiliated_profiles`) before flagging — if the "new" company is an affiliate of the original, no flag is raised. Organizations store `pdl_company_id` and `affiliated_pdl_ids` for relationship lookups via `areCompaniesAffiliated()`. Affiliated companies auto-resolved (up to 8) when an org is enriched. Triggers replacement searches when job changes are detected. Smart polling with exponential backoff for enrichment status.
-- **Automatic Employer Org Enrichment**: Every time a contact is enriched (batch or individual), the system automatically finds or creates the employer's organization record and triggers PDL Company Enrich using `job_company_id` from the person profile (preferred) or domain/name fallback. Stores the full raw PDL company JSON response (`pdl_raw_response`), `pdl_data_version` for tracking data freshness, and all key company fields. This ensures rich company data from the dedicated company endpoint vs limited data from person profiles. Function: `ensureEmployerOrgEnriched()` in `organization-enrichment.ts`. Contact-org junction (`contactOrganizations`) is automatically created.
-- **Employer Org Enrichment Gating**: `ensureEmployerOrgEnriched` only fires when the contact's employer (domain or name) matches one of the property's owner/management organizations. Prevents wasting PDL API calls on random past employers unrelated to the property. Owner/mgmt orgs are PDL-enriched directly during `saveEnrichmentToDb` via `enrichOrganizationByDomain`.
-- **Per-Service Rate Limiting**: Centralized `ServiceRateLimiter` (token bucket + concurrency + circuit breaker) in `src/lib/rate-limiter.ts` with `withRetry` for 429 errors. Configs: Gemini 900 RPM/50 concurrent, Findymail 250 concurrent, Crustdata 14 RPM/5 concurrent, PDL Person 90 RPM/30 concurrent, PDL Company 90 RPM/30 concurrent. Property concurrency set to 15.
-- **Circuit Breaker**: Per-service circuit breaker in `ServiceRateLimiter` (CLOSED → OPEN after N failures in rolling window → HALF_OPEN after cooldown → test call). Configs: Gemini/Findymail/PDL 5 failures/30s cooldown, Crustdata 3 failures/60s cooldown. Only counts 429, 5xx, timeouts, connection errors. Exponential backoff on repeated HALF_OPEN failures.
-- **Gemini Streaming**: All Gemini API calls use `generateContentStream` instead of `generateContent`. Streaming resets the TCP header timeout clock with each chunk, bypassing Node.js's hardcoded 300s fetch header timeout (SDK bug googleapis/js-genai#1277) without any SDK patching. `streamGeminiResponse()` helper collects all chunks into full text + grounding metadata, returning the same shape as `generateContent`. The `callGeminiWithTimeout` wrapper provides retry logic with exponential backoff for DEADLINE_EXCEEDED/5xx/429 errors. `httpOptions.timeout` set to 600s as a safety net.
-- **Enrichment Stage Checkpointing**: AI enrichment (`runFocusedEnrichment`) supports checkpoint-based resumption. Each stage (classification, ownership, contacts) saves checkpoint data on failure via `EnrichmentStageError`. Partial results (classification/ownership) saved to DB with `enrichmentStatus: 'partial'` so work isn't lost. Checkpoints stored in Redis (or in-memory fallback).
-- **Automatic Retry Pass**: After main batch completes, retryable failures are automatically retried with reduced concurrency (1/3 of normal) after a 10-second delay. Properties failing 3+ times become non-retryable. Circuit breaker errors always marked retryable.
-- **Adaptive Concurrency**: `AdaptiveConcurrencyController` monitors error rates over a sliding window. When error rate ≥ 40%, concurrency reduced by 40% (min 3). When error rate ≤ 10%, concurrency increased by 2 (up to original). Adjustments throttled to every 30 seconds. Items throttled with 2-5s delay when error rate is high.
-- **Batch Summary/Report**: `/api/admin/enrich-status` returns failure breakdown by stage and service, retryable vs permanent error counts, and per-service circuit breaker state (CLOSED/OPEN/HALF_OPEN).
-- **BullMQ Job Queue**: Persistent job queue using BullMQ + ioredis over Upstash Redis TCP connection. Jobs survive workflow/process restarts. Automatic 3-attempt retry with exponential backoff. Batch metadata stored in Redis with 2h TTL. Legacy in-process batch engine retained as fallback (pass `useLegacy=true`). Worker concurrency matches batch request. Worker `lockDuration=600s` and `stalledInterval=300s` to accommodate long Gemini API calls (up to 600s with search grounding via Vertex AI). Files: `src/lib/bullmq-connection.ts` (config), `src/lib/bullmq-enrichment.ts` (queue/worker/batch management). Requires `UPSTASH_REDIS_HOST`, `UPSTASH_REDIS_PORT`, `UPSTASH_REDIS_PASSWORD` secrets for TCP connection.
-- **Phone Research Waterfall**: On-demand 4-step phone lookup triggered via "Find Phone" button (not during automatic enrichment). Cascade: Findymail phone by LinkedIn → PDL person enrichment → Hunter email-finder phone → EnrichLayer LinkedIn profile phone. Stops at first success. Route: `/api/contacts/[id]/waterfall-phone`.
-- **Map Marker Colors**: All property markers and clusters are solid green (#16a34a) with white stroke for visibility on satellite. No pipeline-stage coloring on the map.
-- **Parcel Resolution**: NEVER use spatial proximity matching or marker-based resolution. Property markers are visual-only indicators — they must NEVER be used for click handling, hover resolution, or property lookup. Only the actual parcel polygon under the cursor is used for resolution. Uses a **pre-computed client-side parcel index** (`/api/parcels/parcel-index`) loaded once on map init, mapping every `property_key` (= Regrid parcelnumb) to its resolved parent property via `dcad_gis_parcel_id`. Hover/click does instant hash lookup by parcelnumb — no API calls. Display name priority: `common_name` (AI-determined) → `dcad_biz_name` → address. Child properties resolve to GIS parent; orphans (parent not in DB) use their own name. No fuzzy/prefix matching — exact match only. 150ms hover debounce prevents rapid mousemove flooding. If no match is found, show Regrid address only (never owner names). `/api/parcels/resolve` simplified to exact parcelnumb match with GIS parent resolution.
-- **Map Viewport Persistence**: Map center/zoom saved to sessionStorage when navigating to a property. Restored on return so user doesn't lose their place.
-- **Street View Scoring**: Panorama selection uses multi-candidate scoring to prefer road-facing views over alleyways/parking lots. Scores based on description keywords, link count, and distance.
-- **"New" Filter**: The view status filter shows "New" (blue dot = unviewed properties) instead of "Viewed", matching the app's visual language where blue dots indicate new/unviewed items.
-- **Enrichment Queue Links**: Queue items are always clickable/linkable to their property/contact/organization page, regardless of status (in-progress, failed, completed).
-- **Test credentials**: Clerk login with username `admin`, password `Me@tballH@mmy`.
+- **API Standards**: Standardized API response envelope `{ success, data, error, meta }`.
+- **Contact Relationship Verification**: Uses `job_change_detected` status, compares employer data against AI-discovered companies, and checks PDL-sourced parent/subsidiary relationships.
+- **Automatic Employer Org Enrichment**: Automatically finds or creates employer organization records and triggers PDL Company Enrich, ensuring rich company data.
+- **Employer Org Enrichment Gating**: Prevents unnecessary PDL API calls by enriching employer organizations only when relevant to property ownership/management.
+- **Per-Service Rate Limiting & Circuit Breaker**: Centralized `ServiceRateLimiter` with token bucket, concurrency control, and circuit breaker for external APIs.
+- **Gemini Streaming**: All Gemini API calls use `generateContentStream` to bypass Node.js fetch timeout issues, with retry logic and timeout settings.
+- **Domain Validation**: `src/lib/domain-validator.ts` validates domains/URLs returned by AI enrichment for DNS resolution, redirects, and content, rejecting parking services.
+- **Enrichment Stage Checkpointing**: AI enrichment supports checkpoint-based resumption, saving partial results to prevent data loss.
+- **Automatic Retry Pass**: Retryable failures are automatically reattempted with reduced concurrency.
+- **Adaptive Concurrency**: Monitors error rates and adjusts concurrency dynamically.
+- **BullMQ Job Queue**: Persistent job queue for robust background processing with automatic retries and metadata storage.
+- **Phone Research Waterfall**: On-demand 4-step phone lookup cascade using multiple providers.
+- **Map Marker Colors**: All property markers and clusters are solid green (#16a34a) with white stroke.
+- **Parcel Resolution**: Uses a pre-computed client-side parcel index for instant hash lookup by `parcelnumb` and GIS parent resolution; no spatial proximity matching.
+- **Map Viewport Persistence**: Map center/zoom saved to sessionStorage.
+- **Street View Scoring**: Panorama selection prefers road-facing views.
+- **"New" Filter**: Shows "New" (blue dot = unviewed properties) in the view status filter.
+- **Enrichment Queue Links**: Queue items are clickable and linkable to property/contact/organization pages.
 
 ## External Dependencies
 - **Snowflake**: Regrid parcel data ingestion.
 - **Mapbox**: Interactive mapping, geocoding, POI enrichment.
 - **Findymail**: Email finding, verification, reverse email lookup, phone lookup.
 - **Hunter.io**: Email finding, organization domain enrichment.
-- **People Data Labs (PDL)**: Primary person and company enrichment (min_likelihood=6 for person matches).
+- **People Data Labs (PDL)**: Primary person and company enrichment.
 - **Crustdata**: Contact and company verification.
 - **SerpAPI**: Google search-based LinkedIn profile discovery (fallback).
 - **Apollo.io**: People match API for contact creation.
@@ -71,14 +66,6 @@ The project is built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM 
 - **LeadMagic**: Secondary email validation.
 - **EnrichLayer**: LinkedIn-sourced company/contact data (currently unreachable).
 - **Clerk Auth**: User authentication, organization management, RBAC.
-- **Google Gemini via Vertex AI**: AI-based property enrichment (`gemini-3-flash-preview` with search grounding). Uses `GOOGLE_CLOUD_CREDENTIALS` service account JSON for authentication. Credentials written to `/tmp/gcp-service-account.json` at runtime with `GOOGLE_APPLICATION_CREDENTIALS` env var set automatically.
+- **Google Gemini via Vertex AI**: AI-based property enrichment (`gemini-3-flash-preview` with search grounding).
 - **Upstash Redis**: Distributed caching and locking.
-- **Logo.dev**: Company logo and brand data API (describe endpoint for logo, blurhash, brand colors, social links). API route: `/api/brand/[domain]`. Requires `LOGO_DEV_SECRET_KEY` secret.
-
-## Planned Fixes
-- [ ] **ENRICHLAYER-1**: EnrichLayer profile photo API call is failing (site currently timing out). When their service is restored: add a 10s fetch timeout with `AbortController` to `getProfilePicture()` and all other EnrichLayer functions in `src/lib/enrichlayer.ts`, add a circuit breaker to skip calls after repeated failures, and ensure the contact detail page and enrichment queue gracefully handle the timeout without blocking other operations.
-
-## Deferred
-- **PERF-2**: Server-side map clustering (defer until scaling beyond Dallas MVP)
-- **CODE-3**: Dual ID unification (large migration, plan separately)
-- **ENRICH-4**: Deep re-research mode for contacts. When re-researching via profile button: detect generic/role-based emails (hello@, info@, contact@, admin@, office@, support@, sales@, leasing@), add `deepResearch` flag to `enrichContactCascade` that runs ALL email providers (Findymail finder, Hunter, EnrichLayer, Crustdata) regardless of existing email validation, collect all discovered professional emails, pick best non-generic email as primary, and surface alternatives on the contact profile.
+- **Logo.dev**: Company logo and brand data API.
