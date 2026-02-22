@@ -156,7 +156,7 @@ export async function saveEnrichmentResults(
   result: FocusedEnrichmentResult
 ): Promise<{ propertyId: string; contactIds: string[]; orgIds: string[] }> {
   const [dbProperty] = await db
-    .select({ id: properties.id })
+    .select({ id: properties.id, city: properties.city, state: properties.state, zip: properties.zip })
     .from(properties)
     .where(eq(properties.propertyKey, propertyKey))
     .limit(1);
@@ -287,6 +287,9 @@ export async function saveEnrichmentResults(
       const result = await resolveOrganization({
         name: org.name,
         domain: org.domain,
+        locality: dbProperty.city || undefined,
+        region: dbProperty.state || undefined,
+        postalCode: dbProperty.zip || undefined,
       });
       const orgId = result.orgId;
       console.log(`[SaveEnrichment] Resolved ${org.orgType || 'related'} org "${org.name}" → ${orgId} (${result.matchedBy}, new=${result.isNew}, pdl=${result.pdlEnriched})`);
@@ -586,6 +589,21 @@ export async function runCascadeEnrichmentOnSavedRecords(
     } catch (err) {
       console.error(`[CascadeEnrichment] Error enriching org ${orgId}:`, err);
     }
+  }
+
+  let propertyCity: string | null = null;
+  let propertyState: string | null = null;
+  let propertyZip: string | null = null;
+  if (propertyId) {
+    try {
+      const propLoc = await db.select({ city: properties.city, state: properties.state, zip: properties.zip })
+        .from(properties).where(eq(properties.id, propertyId)).limit(1);
+      if (propLoc[0]) {
+        propertyCity = propLoc[0].city;
+        propertyState = propLoc[0].state;
+        propertyZip = propLoc[0].zip;
+      }
+    } catch {}
   }
 
   const propertyOrgDomains = new Set<string>();
@@ -894,6 +912,9 @@ export async function runCascadeEnrichmentOnSavedRecords(
             companyName: employerName || null,
             companyPdlId: employerPdlId,
             contactTitle: result.pdlTitle || result.crustdataTitle || result.title || contact.title || null,
+            locality: propertyCity,
+            region: propertyState,
+            postalCode: propertyZip,
           }).catch(err => {
             console.error(`[CascadeEnrichment] Error ensuring employer org for ${contact.fullName}:`, err instanceof Error ? err.message : err);
           });

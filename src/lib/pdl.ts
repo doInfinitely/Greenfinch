@@ -454,7 +454,7 @@ export async function enrichPersonPDL(
 
 export async function enrichCompanyPDL(
   domain: string,
-  options: { name?: string; linkedinUrl?: string; locality?: string; region?: string; ticker?: string; pdlId?: string } = {}
+  options: { name?: string; linkedinUrl?: string; locality?: string; region?: string; streetAddress?: string; postalCode?: string; country?: string; ticker?: string; pdlId?: string } = {}
 ): Promise<PDLCompanyResult> {
   const apiKey = process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY;
   
@@ -523,6 +523,9 @@ export async function enrichCompanyPDL(
           if (options.linkedinUrl) baseParams.set('profile', options.linkedinUrl);
           if (options.locality) baseParams.set('locality', options.locality);
           if (options.region) baseParams.set('region', options.region);
+          if (options.streetAddress) baseParams.set('street_address', options.streetAddress);
+          if (options.postalCode) baseParams.set('postal_code', options.postalCode);
+          if (options.country) baseParams.set('country', options.country);
           if (options.ticker) baseParams.set('ticker', options.ticker);
 
           const attempt1 = await attemptEnrich(baseParams, 'attempt 1 (all params)');
@@ -538,6 +541,9 @@ export async function enrichCompanyPDL(
             if (options.linkedinUrl) nameOnlyParams.set('profile', options.linkedinUrl);
             if (options.locality) nameOnlyParams.set('locality', options.locality);
             if (options.region) nameOnlyParams.set('region', options.region);
+            if (options.streetAddress) nameOnlyParams.set('street_address', options.streetAddress);
+            if (options.postalCode) nameOnlyParams.set('postal_code', options.postalCode);
+            if (options.country) nameOnlyParams.set('country', options.country);
 
             console.log('[PDL] Domain-based lookup failed, retrying with name-based lookup...');
             const attempt2 = await attemptEnrich(nameOnlyParams, 'attempt 2 (name only)');

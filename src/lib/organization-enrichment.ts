@@ -1,5 +1,5 @@
 import { db } from './db';
-import { organizations, contactOrganizations } from './schema';
+import { organizations, contactOrganizations, propertyOrganizations, properties } from './schema';
 import { eq } from 'drizzle-orm';
 import { enrichOrganizationCascade, OrganizationEnrichmentResult as CascadeResult } from './cascade-enrichment';
 import { enrichCompanyPDL, type PDLCompanyResult } from './pdl';
@@ -17,6 +17,10 @@ export interface ResolveOrgInput {
   domain?: string | null;
   linkedinUrl?: string | null;
   pdlCompanyId?: string | null;
+  locality?: string | null;
+  region?: string | null;
+  streetAddress?: string | null;
+  postalCode?: string | null;
 }
 
 export interface ResolveOrgResult {
@@ -91,10 +95,10 @@ function buildPdlUpdateData(pdlResult: PDLCompanyResult): Record<string, any> {
 }
 
 export async function resolveOrganization(input: ResolveOrgInput): Promise<ResolveOrgResult> {
-  const { name, domain, linkedinUrl, pdlCompanyId: inputPdlId } = input;
+  const { name, domain, linkedinUrl, pdlCompanyId: inputPdlId, locality, region, streetAddress, postalCode } = input;
   const normalizedDomain = domain ? normalizeDomain(domain) : null;
 
-  console.log(`[ResolveOrg] Resolving: "${name}" (domain=${normalizedDomain}, pdlId=${inputPdlId || 'none'})`);
+  console.log(`[ResolveOrg] Resolving: "${name}" (domain=${normalizedDomain}, pdlId=${inputPdlId || 'none'}, loc=${locality || 'none'},${region || 'none'})`);
 
   if (inputPdlId) {
     const byPdlId = await db.query.organizations.findFirst({
@@ -126,6 +130,10 @@ export async function resolveOrganization(input: ResolveOrgInput): Promise<Resol
       name,
       linkedinUrl: linkedinUrl || undefined,
       pdlId: inputPdlId || undefined,
+      locality: locality || undefined,
+      region: region || undefined,
+      streetAddress: streetAddress || undefined,
+      postalCode: postalCode || undefined,
     });
 
     if (pdlResult.found && pdlResult.pdlCompanyId) {
@@ -394,14 +402,66 @@ export async function enrichOrganizationById(orgId: string): Promise<Organizatio
     return { success: false, orgId, enrichedData: null, error: 'org_not_found' };
   }
   
-  if (!org.domain) {
-    return { success: false, orgId, enrichedData: null, error: 'no_domain' };
+  if (org.domain) {
+    return enrichOrganizationByDomain(org.domain, {
+      name: org.name || undefined,
+      linkedinUrl: org.linkedinHandle ? `https://linkedin.com/company/${org.linkedinHandle}` : undefined,
+    });
   }
-  
-  return enrichOrganizationByDomain(org.domain, {
-    name: org.name || undefined,
-    linkedinUrl: org.linkedinHandle ? `https://linkedin.com/company/${org.linkedinHandle}` : undefined,
-  });
+
+  if (!org.name) {
+    return { success: false, orgId, enrichedData: null, error: 'no_identifiers' };
+  }
+
+  let locality: string | undefined;
+  let region: string | undefined;
+  let postalCode: string | undefined;
+  try {
+    const propLink = await db.select({ propertyId: propertyOrganizations.propertyId })
+      .from(propertyOrganizations).where(eq(propertyOrganizations.orgId, orgId)).limit(1);
+    if (propLink[0]?.propertyId) {
+      const [prop] = await db.select({ city: properties.city, state: properties.state, zip: properties.zip })
+        .from(properties).where(eq(properties.id, propLink[0].propertyId)).limit(1);
+      if (prop) {
+        locality = prop.city || undefined;
+        region = prop.state || undefined;
+        postalCode = prop.zip || undefined;
+      }
+    }
+  } catch {}
+
+  console.log(`[OrgEnrichment] No domain for "${org.name}", trying PDL by name + location (${locality || 'unknown'}, ${region || 'unknown'})`);
+
+  try {
+    const pdlResult = await enrichCompanyPDL('', {
+      name: org.name,
+      linkedinUrl: org.linkedinHandle ? `https://linkedin.com/company/${org.linkedinHandle}` : undefined,
+      locality,
+      region,
+      postalCode,
+    });
+
+    if (pdlResult.found && pdlResult.pdlCompanyId) {
+      const updateData = buildPdlUpdateData(pdlResult);
+      await db.update(organizations)
+        .set(updateData)
+        .where(eq(organizations.id, orgId));
+      console.log(`[OrgEnrichment] PDL enriched "${org.name}" by name: ${pdlResult.name} (${pdlResult.website || 'no website'})`);
+
+      if (pdlResult.affiliatedProfiles?.length) {
+        resolveAffiliatedCompanies(orgId, pdlResult.affiliatedProfiles)
+          .catch(err => console.error(`[OrgEnrichment] Error resolving affiliates for ${org.name}:`, err));
+      }
+
+      return { success: true, orgId, enrichedData: null };
+    }
+
+    console.log(`[OrgEnrichment] PDL found nothing for "${org.name}" by name`);
+    return { success: false, orgId, enrichedData: null, error: 'pdl_not_found' };
+  } catch (err) {
+    console.error(`[OrgEnrichment] PDL name-based enrichment failed for "${org.name}":`, err instanceof Error ? err.message : err);
+    return { success: false, orgId, enrichedData: null, error: 'pdl_error' };
+  }
 }
 
 export async function ensureEmployerOrgEnriched(opts: {
@@ -410,8 +470,11 @@ export async function ensureEmployerOrgEnriched(opts: {
   companyName: string | null;
   companyPdlId: string | null;
   contactTitle: string | null;
+  locality?: string | null;
+  region?: string | null;
+  postalCode?: string | null;
 }): Promise<{ orgId: string | null }> {
-  const { contactId, companyDomain, companyName, companyPdlId, contactTitle } = opts;
+  const { contactId, companyDomain, companyName, companyPdlId, contactTitle, locality, region, postalCode } = opts;
 
   if (!companyDomain && !companyName && !companyPdlId) {
     return { orgId: null };
@@ -426,6 +489,9 @@ export async function ensureEmployerOrgEnriched(opts: {
       name: orgName,
       domain: companyDomain,
       pdlCompanyId: companyPdlId,
+      locality: locality || undefined,
+      region: region || undefined,
+      postalCode: postalCode || undefined,
     });
 
     console.log(`[OrgEnrichment] Employer org resolved: "${orgName}" → ${result.orgId} (${result.matchedBy}, new=${result.isNew}, pdl=${result.pdlEnriched})`);

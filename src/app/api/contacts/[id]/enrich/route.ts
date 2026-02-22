@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { contacts, contactSnapshots, userContactVersions, propertyContacts, contactOrganizations } from '@/lib/schema';
+import { contacts, contactSnapshots, userContactVersions, propertyContacts, contactOrganizations, properties } from '@/lib/schema';
 import { eq, desc, sql, and } from 'drizzle-orm';
 import { enrichContactCascade } from '@/lib/cascade-enrichment';
 import { ensureEmployerOrgEnriched } from '@/lib/organization-enrichment';
@@ -291,12 +291,25 @@ export async function POST(
     const employerPdlId = result.companyPdlId || null;
 
     if (employerDomain || employerName || employerPdlId) {
+      const propLink = await db.select({ propertyId: propertyContacts.propertyId })
+        .from(propertyContacts).where(eq(propertyContacts.contactId, id)).limit(1);
+      let empLocality: string | null = null;
+      let empRegion: string | null = null;
+      let empPostalCode: string | null = null;
+      if (propLink[0]?.propertyId) {
+        const [prop] = await db.select({ city: properties.city, state: properties.state, zip: properties.zip })
+          .from(properties).where(eq(properties.id, propLink[0].propertyId)).limit(1);
+        if (prop) { empLocality = prop.city; empRegion = prop.state; empPostalCode = prop.zip; }
+      }
       ensureEmployerOrgEnriched({
         contactId: id,
         companyDomain: employerDomain,
         companyName: employerName,
         companyPdlId: employerPdlId,
         contactTitle: updatedContact.title || result.pdlTitle || result.crustdataTitle || null,
+        locality: empLocality,
+        region: empRegion,
+        postalCode: empPostalCode,
       }).catch(err => {
         console.error(`[EnrichContact] Error ensuring employer org:`, err instanceof Error ? err.message : err);
       });
