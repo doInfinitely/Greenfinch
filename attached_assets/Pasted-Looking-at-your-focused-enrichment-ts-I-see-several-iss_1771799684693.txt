@@ -1,0 +1,104 @@
+Looking at your `focused-enrichment.ts`, I see several issues across the prompts and configuration. Let me break down my observations and suggested changes.
+
+## Temperature Setting
+
+Your temperature of 0.1 is fine for structured JSON extraction — that's the right call. I wouldn't change it. Low temperature reduces hallucination in factual lookups.
+
+## Stage 2 (Ownership) — Domain Hallucination Problem
+
+The "CRITICAL DOMAIN RULES" section you added is good in intent but the problem is likely that Gemini with Google Search grounding doesn't always respect negative instructions well. The prompt says "NEVER guess" but the model still does. A more effective approach is to restructure the output format to force the model to cite its source for the domain:
+
+**Current:**
+```
+"domain":"co.com|null"
+```
+
+**Suggested — require URL evidence:**
+```json
+{"mgmt":{"name":"Co|null","domain":"co.com|null","domainSource":"exact URL where you found this domain","c":0.0-1.0}, ...}
+```
+
+Then in your parsing code, you can add a check: if `domainSource` is null/empty but `domain` is non-null, treat the domain with much lower confidence or null it out. This is a lightweight chain-of-thought forcing mechanism — it's harder for the model to hallucinate a source URL alongside a hallucinated domain.
+
+Beyond that, in the prompt itself I'd replace:
+
+```
+CRITICAL DOMAIN RULES:
+- For "site" and "domain": ONLY use URLs/domains you found in actual search results...
+- Use the EXACT domain from the URL where you found the property listing...
+- If you cannot find the company's actual website in search results, set the domain to null rather than guessing.
+```
+
+With something more compact and positive-framed:
+
+```
+DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain from a URL you found in search results. If no search result contained the company's website, return null. Return the "domainSource" field with the full URL where you found it.
+```
+
+Positive framing ("copy the exact domain") tends to work better than negative framing ("NEVER guess") with LLMs.
+
+## Stage 2 — Leasing Focus You Don't Want
+
+The search sequence step 2 says:
+
+```
+2. Search the management company website for this property listing to confirm and find leasing phone
+```
+
+That's explicitly hunting for leasing info. I'd change it to:
+
+```
+2. Search the management company website for this property listing to confirm management and find a main contact phone number
+```
+
+## Stage 3a (Contact Discovery) — Leasing Creep
+
+Your priority roles list includes:
+
+```
+- Leasing agent or leasing manager for this property or portfolio
+```
+
+If you don't care about leasing contacts, remove that line entirely or replace it with something you do want, like:
+
+```
+- Building engineer or chief engineer for this property
+```
+
+or just drop it to keep the list tighter. Four strong role types is better than five with one you'll ignore.
+
+## Stage 3a — The Bigger Prompt Issue
+
+The prompt is quite Dallas-specific and property-type-agnostic in an odd way. The `city` variable is used but it defaults to Dallas. More importantly, the prompt structure tries to do too much — it's both a search strategy guide AND an output format spec AND a negative filter. I'd tighten it:
+
+**Remove the rigid search sequence.** Gemini with Google Search grounding decides its own search strategy anyway — the numbered steps are more aspirational than controlling. Replace the SEARCH STRATEGY block with a simpler directive:
+
+```
+TASK: Search the web to find people who directly manage, operate, or maintain this specific property on a day-to-day basis. Focus on the property management company staff in the ${city} area, not corporate headquarters executives.
+```
+
+Then keep the PRIORITY ROLES and DO NOT RETURN sections, which are your most valuable steering mechanisms.
+
+## Stage 3b (Contact Enrichment) — Hallucination Risk
+
+This prompt is extremely terse:
+
+```
+Find contact info for ${contact.name}, ${contact.title || 'unknown title'} at ${companyInfo} in ${city}, TX. Return ONLY valid JSON.
+```
+
+This is where you'll get the most hallucinated emails and phones. The model has strong pressure to return something and very little instruction about accuracy. I'd add:
+
+```
+Only return email/phone that appeared in search results. If you cannot find verified contact details, return null for those fields — do not guess or construct emails from name patterns.
+```
+
+## Code-Level Validation Gaps
+
+You have `validatePropertyWebsite` and `validateAndCleanDomain` for Stage 2 output, which is great. But I don't see equivalent validation on Stage 3b's returned emails or phones. An email like `jsmith@hallucinated-domain.com` will sail right through. You might want a lightweight check — even just verifying the domain resolves via DNS — on AI-discovered emails before storing them.
+
+## Summary of Changes
+
+The highest-impact changes in priority order: remove the leasing role from Stage 3a, add `domainSource` evidence field to Stage 2, reframe domain rules as positive instructions, simplify Stage 3a's search strategy block, and add accuracy guardrails to Stage 3b's contact enrichment prompt. The temperature is fine where it is.
+
+Want me to write out the revised prompts as drop-in replacements?
