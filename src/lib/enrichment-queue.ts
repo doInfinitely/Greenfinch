@@ -8,7 +8,7 @@ import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpo
 import { isCircuitBreakerError } from './rate-limiter';
 import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
-import { areCompaniesAffiliated, ensureEmployerOrgEnriched, enrichOrganizationByDomain } from './organization-enrichment';
+import { areCompaniesAffiliated, ensureEmployerOrgEnriched, enrichOrganizationByDomain, resolveOrganization } from './organization-enrichment';
 import { findExistingContactByIdentifiers, flagPotentialDuplicateById, normalizeName as normalizeNameDedup, normalizeDomain as normalizeDomainDedup } from './deduplication';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
@@ -280,67 +280,82 @@ export async function saveEnrichmentResults(
   }
 
   const orgIds: string[] = [];
+  const resolvedOrgIds = new Set<string>();
+
   for (const org of allOrgs) {
     try {
-      const normalizedDomain = org.domain?.trim().toLowerCase() || null;
-
-      let existingOrg = normalizedDomain
-        ? await db.query.organizations.findFirst({
-            where: eq(organizations.domain, normalizedDomain),
-          })
-        : null;
-
-      if (!existingOrg && org.name) {
-        const nameClean = org.name.trim();
-        const rows = await db.select()
-          .from(organizations)
-          .where(ilike(organizations.name, nameClean))
-          .limit(5);
-        if (rows.length === 1) {
-          existingOrg = rows[0];
-          console.log(`[SaveEnrichment] Found existing org by name match: "${existingOrg.name}" (${existingOrg.id})`);
-        } else if (rows.length > 1) {
-          const enriched = rows.find(r => r.domain && r.enrichmentStatus !== 'pending');
-          existingOrg = enriched || rows[0];
-          console.log(`[SaveEnrichment] Found ${rows.length} orgs matching "${nameClean}", using: "${existingOrg.name}" (${existingOrg.id})`);
-        }
-      }
+      const isKeyOrg = org.orgType === 'management' || org.orgType === 'owner';
 
       let orgId: string;
 
-      if (existingOrg) {
-        orgId = existingOrg.id;
-        console.log(`[SaveEnrichment] Found existing org: ${existingOrg.name} (${orgId})`);
+      if (isKeyOrg) {
+        const result = await resolveOrganization({
+          name: org.name,
+          domain: org.domain,
+        });
+        orgId = result.orgId;
+        console.log(`[SaveEnrichment] Resolved ${org.orgType} org "${org.name}" → ${orgId} (${result.matchedBy}, new=${result.isNew}, pdl=${result.pdlEnriched})`);
       } else {
-        const [inserted] = await db.insert(organizations)
-          .values({
-            name: org.name,
-            domain: normalizedDomain,
-            orgType: org.orgType,
-            enrichmentSource: 'ai',
-            enrichmentStatus: 'pending',
-          })
-          .onConflictDoNothing()
-          .returning({ id: organizations.id });
+        const normalizedDomain = org.domain?.trim().toLowerCase() || null;
 
-        if (inserted) {
-          orgId = inserted.id;
-          console.log(`[SaveEnrichment] Created org: ${org.name} (${orgId})`);
-        } else {
-          const found = normalizedDomain
-            ? await db.query.organizations.findFirst({
-                where: eq(organizations.domain, normalizedDomain),
-              })
-            : null;
-          if (!found) {
-            console.warn(`[SaveEnrichment] Could not insert or find org: ${org.name}, skipping`);
-            continue;
+        let existingOrg = normalizedDomain
+          ? await db.query.organizations.findFirst({
+              where: eq(organizations.domain, normalizedDomain),
+            })
+          : null;
+
+        if (!existingOrg && org.name) {
+          const nameClean = org.name.trim();
+          const rows = await db.select()
+            .from(organizations)
+            .where(ilike(organizations.name, nameClean))
+            .limit(5);
+          if (rows.length === 1) {
+            existingOrg = rows[0];
+          } else if (rows.length > 1) {
+            const enriched = rows.find(r => r.domain && r.enrichmentStatus !== 'pending');
+            existingOrg = enriched || rows[0];
           }
-          orgId = found.id;
-          console.log(`[SaveEnrichment] Found existing org after conflict: ${org.name} (${orgId})`);
+        }
+
+        if (existingOrg) {
+          orgId = existingOrg.id;
+          console.log(`[SaveEnrichment] Found existing related org: ${existingOrg.name} (${orgId})`);
+        } else {
+          const [inserted] = await db.insert(organizations)
+            .values({
+              name: org.name,
+              domain: org.domain?.trim().toLowerCase() || undefined,
+              orgType: org.orgType,
+              enrichmentSource: 'ai',
+              enrichmentStatus: 'pending',
+            })
+            .onConflictDoNothing()
+            .returning({ id: organizations.id });
+
+          if (inserted) {
+            orgId = inserted.id;
+            console.log(`[SaveEnrichment] Created related org: ${org.name} (${orgId})`);
+          } else {
+            const normalizedDom = org.domain?.trim().toLowerCase() || null;
+            const found = normalizedDom
+              ? await db.query.organizations.findFirst({
+                  where: eq(organizations.domain, normalizedDom),
+                })
+              : null;
+            if (!found) {
+              console.warn(`[SaveEnrichment] Could not insert or find org: ${org.name}, skipping`);
+              continue;
+            }
+            orgId = found.id;
+          }
         }
       }
 
+      if (resolvedOrgIds.has(orgId)) {
+        console.log(`[SaveEnrichment] Org ${orgId} already processed, adding role only`);
+      }
+      resolvedOrgIds.add(orgId);
       orgIds.push(orgId);
 
       await db.insert(propertyOrganizations)
@@ -352,14 +367,6 @@ export async function saveEnrichmentResults(
         .onConflictDoNothing();
     } catch (err) {
       console.error(`[SaveEnrichment] Error saving org ${org.name}:`, err);
-    }
-  }
-
-  for (const org of allOrgs) {
-    if ((org.orgType === 'management' || org.orgType === 'owner') && org.domain) {
-      enrichOrganizationByDomain(org.domain, { name: org.name }).catch(err => {
-        console.error(`[SaveEnrichment] Error PDL-enriching ${org.orgType} org "${org.name}":`, err instanceof Error ? err.message : err);
-      });
     }
   }
 

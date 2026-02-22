@@ -1,8 +1,8 @@
 import { db } from './db';
 import { organizations, contactOrganizations } from './schema';
-import { eq } from 'drizzle-orm';
+import { eq, ilike } from 'drizzle-orm';
 import { enrichOrganizationCascade, OrganizationEnrichmentResult as CascadeResult } from './cascade-enrichment';
-import { enrichCompanyPDL } from './pdl';
+import { enrichCompanyPDL, type PDLCompanyResult } from './pdl';
 import { normalizeDomain } from './normalization';
 
 export interface OrganizationEnrichmentResult {
@@ -10,6 +10,209 @@ export interface OrganizationEnrichmentResult {
   orgId: string;
   enrichedData: CascadeResult | null;
   error?: string;
+}
+
+export interface ResolveOrgInput {
+  name: string;
+  domain?: string | null;
+  linkedinUrl?: string | null;
+  pdlCompanyId?: string | null;
+}
+
+export interface ResolveOrgResult {
+  orgId: string;
+  isNew: boolean;
+  matchedBy: 'pdl_company_id' | 'domain' | 'name' | 'created';
+  pdlEnriched: boolean;
+}
+
+type OrgRecord = typeof organizations.$inferSelect;
+
+async function findExistingOrgInDb(input: {
+  pdlCompanyId?: string | null;
+  domain?: string | null;
+  name?: string | null;
+}): Promise<{ org: OrgRecord; matchedBy: 'pdl_company_id' | 'domain' | 'name' } | null> {
+  if (input.pdlCompanyId) {
+    const byPdlId = await db.query.organizations.findFirst({
+      where: eq(organizations.pdlCompanyId, input.pdlCompanyId),
+    });
+    if (byPdlId) return { org: byPdlId, matchedBy: 'pdl_company_id' };
+  }
+
+  if (input.domain) {
+    const norm = normalizeDomain(input.domain);
+    const byDomain = await db.query.organizations.findFirst({
+      where: eq(organizations.domain, norm),
+    });
+    if (byDomain) return { org: byDomain, matchedBy: 'domain' };
+  }
+
+  if (input.name) {
+    const rows = await db.select()
+      .from(organizations)
+      .where(ilike(organizations.name, input.name.trim()))
+      .limit(5);
+    if (rows.length === 1) {
+      return { org: rows[0], matchedBy: 'name' };
+    } else if (rows.length > 1) {
+      const enriched = rows.find(r => r.domain && r.pdlEnriched);
+      return { org: enriched || rows[0], matchedBy: 'name' };
+    }
+  }
+
+  return null;
+}
+
+function buildPdlUpdateData(pdlResult: PDLCompanyResult): Record<string, any> {
+  const domain = pdlResult.website
+    ? pdlResult.website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
+    : null;
+
+  const linkedinHandle = pdlResult.linkedinUrl
+    ? (pdlResult.linkedinUrl.includes('linkedin.com/company/')
+      ? pdlResult.linkedinUrl.split('linkedin.com/company/')[1]?.replace(/\/$/, '')
+      : pdlResult.linkedinUrl)
+    : null;
+
+  const update: Record<string, any> = {
+    pdlCompanyId: pdlResult.pdlCompanyId,
+    pdlEnriched: true,
+    pdlEnrichedAt: new Date(),
+    pdlDataVersion: pdlResult.datasetVersion || undefined,
+    pdlRawResponse: pdlResult.raw || undefined,
+    enrichmentSource: 'pdl',
+    enrichmentStatus: 'complete',
+    lastEnrichedAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  if (pdlResult.displayName || pdlResult.name) update.name = pdlResult.displayName || pdlResult.name;
+  if (domain) update.domain = domain;
+  if (pdlResult.description) update.description = pdlResult.description;
+  if (pdlResult.industry) update.industry = pdlResult.industry;
+  if (pdlResult.employeeCount) update.employees = pdlResult.employeeCount;
+  if (pdlResult.employeeRange) update.employeesRange = pdlResult.employeeRange;
+  if (pdlResult.foundedYear) update.foundedYear = pdlResult.foundedYear;
+  if (pdlResult.city) update.city = pdlResult.city;
+  if (pdlResult.state) update.state = pdlResult.state;
+  if (pdlResult.country) update.country = pdlResult.country;
+  if (pdlResult.logoUrl) update.logoUrl = pdlResult.logoUrl;
+  if (linkedinHandle) update.linkedinHandle = linkedinHandle;
+  if (pdlResult.affiliatedProfiles) update.affiliatedPdlIds = pdlResult.affiliatedProfiles;
+
+  return Object.fromEntries(Object.entries(update).filter(([_, v]) => v !== undefined));
+}
+
+export async function resolveOrganization(input: ResolveOrgInput): Promise<ResolveOrgResult> {
+  const { name, domain, linkedinUrl, pdlCompanyId: inputPdlId } = input;
+  const normalizedDomain = domain ? normalizeDomain(domain) : null;
+
+  console.log(`[ResolveOrg] Resolving: "${name}" (domain=${normalizedDomain}, linkedin=${linkedinUrl || 'none'})`);
+
+  let pdlResult: PDLCompanyResult | null = null;
+  let resolvedPdlId = inputPdlId || null;
+
+  try {
+    pdlResult = await enrichCompanyPDL(normalizedDomain || '', {
+      name,
+      linkedinUrl: linkedinUrl || undefined,
+      pdlId: inputPdlId || undefined,
+    });
+
+    if (pdlResult.found && pdlResult.pdlCompanyId) {
+      resolvedPdlId = pdlResult.pdlCompanyId;
+      console.log(`[ResolveOrg] PDL found: "${pdlResult.name}" (ID=${resolvedPdlId})`);
+    } else {
+      console.log(`[ResolveOrg] PDL did not find a match for "${name}"`);
+    }
+  } catch (err) {
+    console.warn(`[ResolveOrg] PDL lookup failed for "${name}":`, err instanceof Error ? err.message : err);
+  }
+
+  const pdlDomain = pdlResult?.found && pdlResult.website
+    ? pdlResult.website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
+    : null;
+
+  const match = await findExistingOrgInDb({
+    pdlCompanyId: resolvedPdlId,
+    domain: normalizedDomain || pdlDomain,
+    name,
+  });
+
+  if (match) {
+    console.log(`[ResolveOrg] Matched existing org "${match.org.name}" (${match.org.id}) by ${match.matchedBy}`);
+
+    if (pdlResult?.found && pdlResult.pdlCompanyId) {
+      const updateData = buildPdlUpdateData(pdlResult);
+      if (!match.org.pdlEnriched || match.org.pdlCompanyId !== pdlResult.pdlCompanyId) {
+        await db.update(organizations)
+          .set(updateData)
+          .where(eq(organizations.id, match.org.id));
+        console.log(`[ResolveOrg] Updated org "${match.org.name}" with PDL data`);
+      }
+    }
+
+    return {
+      orgId: match.org.id,
+      isNew: false,
+      matchedBy: match.matchedBy,
+      pdlEnriched: !!(pdlResult?.found),
+    };
+  }
+
+  const insertData: Record<string, any> = {
+    name,
+    domain: normalizedDomain || pdlDomain || undefined,
+    enrichmentStatus: 'pending',
+  };
+
+  if (pdlResult?.found) {
+    Object.assign(insertData, buildPdlUpdateData(pdlResult));
+  }
+
+  const cleanInsert = Object.fromEntries(
+    Object.entries(insertData).filter(([_, v]) => v !== undefined)
+  );
+
+  const [inserted] = await db.insert(organizations)
+    .values(cleanInsert)
+    .onConflictDoNothing()
+    .returning({ id: organizations.id });
+
+  if (inserted) {
+    console.log(`[ResolveOrg] Created new org: "${name}" (${inserted.id}), PDL=${pdlResult?.found ? 'yes' : 'no'}`);
+
+    if (pdlResult?.found && pdlResult.affiliatedProfiles?.length) {
+      resolveAffiliatedCompanies(inserted.id, pdlResult.affiliatedProfiles)
+        .catch(err => console.error(`[ResolveOrg] Error resolving affiliates:`, err));
+    }
+
+    return {
+      orgId: inserted.id,
+      isNew: true,
+      matchedBy: 'created',
+      pdlEnriched: !!(pdlResult?.found),
+    };
+  }
+
+  const fallback = await findExistingOrgInDb({
+    pdlCompanyId: resolvedPdlId,
+    domain: normalizedDomain || pdlDomain,
+    name,
+  });
+
+  if (fallback) {
+    console.log(`[ResolveOrg] Found org after conflict: "${fallback.org.name}" (${fallback.org.id})`);
+    return {
+      orgId: fallback.org.id,
+      isNew: false,
+      matchedBy: fallback.matchedBy,
+      pdlEnriched: !!(pdlResult?.found),
+    };
+  }
+
+  throw new Error(`[ResolveOrg] Failed to create or find org: "${name}"`);
 }
 
 async function findOrCreateOrgByDomain(domain: string): Promise<{ id: string; isNew: boolean; needsEnrichment: boolean }> {
@@ -207,119 +410,28 @@ export async function ensureEmployerOrgEnriched(opts: {
   }
 
   try {
-    let orgRecord: typeof organizations.$inferSelect | null = null;
+    const orgName = companyName || (companyDomain
+      ? companyDomain.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+      : 'Unknown');
 
-    if (companyPdlId) {
-      orgRecord = await db.query.organizations.findFirst({
-        where: eq(organizations.pdlCompanyId, companyPdlId),
-      });
-    }
+    const result = await resolveOrganization({
+      name: orgName,
+      domain: companyDomain,
+      pdlCompanyId: companyPdlId,
+    });
 
-    if (!orgRecord && companyDomain) {
-      const norm = normalizeDomain(companyDomain);
-      orgRecord = await db.query.organizations.findFirst({
-        where: eq(organizations.domain, norm),
-      });
-    }
-
-    if (!orgRecord && companyName) {
-      orgRecord = await db.query.organizations.findFirst({
-        where: eq(organizations.name, companyName),
-      });
-    }
-
-    if (!orgRecord) {
-      const domain = companyDomain ? normalizeDomain(companyDomain) : null;
-      const derivedName = companyName || (domain
-        ? domain.split('.')[0].replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
-        : 'Unknown');
-
-      const [inserted] = await db.insert(organizations)
-        .values({
-          name: derivedName,
-          domain: domain || undefined,
-          pdlCompanyId: companyPdlId || undefined,
-          enrichmentStatus: 'pending',
-        })
-        .onConflictDoNothing()
-        .returning({ id: organizations.id });
-
-      if (inserted) {
-        orgRecord = await db.query.organizations.findFirst({
-          where: eq(organizations.id, inserted.id),
-        });
-        console.log(`[OrgEnrichment] Created employer org: "${derivedName}" (${domain || 'no domain'}) for contact ${contactId}`);
-      } else if (domain) {
-        orgRecord = await db.query.organizations.findFirst({
-          where: eq(organizations.domain, domain),
-        });
-      }
-    }
-
-    if (!orgRecord) {
-      return { orgId: null };
-    }
+    console.log(`[OrgEnrichment] Employer org resolved: "${orgName}" → ${result.orgId} (${result.matchedBy}, new=${result.isNew}, pdl=${result.pdlEnriched})`);
 
     await db.insert(contactOrganizations)
       .values({
         contactId,
-        orgId: orgRecord.id,
+        orgId: result.orgId,
         title: contactTitle,
         isCurrent: true,
       })
       .onConflictDoNothing();
 
-    const needsPdlEnrichment = !orgRecord.pdlEnriched;
-
-    if (needsPdlEnrichment) {
-      const domain = orgRecord.domain || companyDomain;
-      const pdlId = orgRecord.pdlCompanyId || companyPdlId;
-
-      console.log(`[OrgEnrichment] Enriching employer org "${orgRecord.name}" via PDL company enrich (pdlId=${pdlId}, domain=${domain})`);
-
-      if (domain) {
-        enrichOrganizationByDomain(domain, {
-          name: companyName || orgRecord.name || undefined,
-        }).catch(err => {
-          console.error(`[OrgEnrichment] Error enriching employer org "${orgRecord!.name}":`, err instanceof Error ? err.message : err);
-        });
-      } else if (pdlId) {
-        enrichCompanyPDL('', { pdlId }).then(async (pdlResult) => {
-          if (!pdlResult.found) return;
-          const now = new Date();
-          await db.update(organizations)
-            .set({
-              name: pdlResult.displayName || pdlResult.name || orgRecord!.name,
-              description: pdlResult.description || undefined,
-              domain: pdlResult.website ? pdlResult.website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '') : undefined,
-              industry: pdlResult.industry || undefined,
-              employees: pdlResult.employeeCount || undefined,
-              employeesRange: pdlResult.employeeRange || undefined,
-              foundedYear: pdlResult.foundedYear || undefined,
-              city: pdlResult.city || undefined,
-              state: pdlResult.state || undefined,
-              country: pdlResult.country || undefined,
-              logoUrl: pdlResult.logoUrl || undefined,
-              pdlCompanyId: pdlResult.pdlCompanyId || undefined,
-              affiliatedPdlIds: pdlResult.affiliatedProfiles || undefined,
-              pdlEnriched: true,
-              pdlEnrichedAt: now,
-              pdlDataVersion: pdlResult.datasetVersion || undefined,
-              pdlRawResponse: pdlResult.raw || undefined,
-              enrichmentSource: 'pdl',
-              enrichmentStatus: 'complete',
-              lastEnrichedAt: now,
-              updatedAt: now,
-            })
-            .where(eq(organizations.id, orgRecord!.id));
-          console.log(`[OrgEnrichment] PDL-ID enriched employer org "${pdlResult.name}" for contact ${contactId}`);
-        }).catch(err => {
-          console.error(`[OrgEnrichment] Error enriching employer org by PDL ID:`, err instanceof Error ? err.message : err);
-        });
-      }
-    }
-
-    return { orgId: orgRecord.id };
+    return { orgId: result.orgId };
   } catch (err) {
     console.error(`[OrgEnrichment] Error ensuring employer org enriched for contact ${contactId}:`, err instanceof Error ? err.message : err);
     return { orgId: null };
