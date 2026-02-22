@@ -81,6 +81,7 @@ export default function MapPage() {
   const [bounds, setBounds] = useState<MapBounds | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 32.8639, lon: -96.7784 });
   const [isLoading, setIsLoading] = useState(true);
+  const [isNavigating, setIsNavigating] = useState(false);
   const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
 
   const savedViewport = useMemo(() => {
@@ -180,6 +181,7 @@ export default function MapPage() {
   }, []);
 
   const handlePropertyClick = useCallback((propertyKey: string) => {
+    setIsNavigating(true);
     try {
       sessionStorage.setItem('greenfinch_map_viewport', JSON.stringify({
         center: mapCenter,
@@ -253,6 +255,14 @@ export default function MapPage() {
           <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/20 pointer-events-none">
             <div className="bg-white p-3 rounded-full shadow-lg border border-gray-100">
               <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-green-600"></div>
+            </div>
+          </div>
+        )}
+        {isNavigating && (
+          <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/10 pointer-events-none">
+            <div className="bg-white px-5 py-3 rounded-lg shadow-lg border border-gray-100 flex items-center gap-3">
+              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-green-600"></div>
+              <span className="text-sm font-medium text-gray-700">Loading property...</span>
             </div>
           </div>
         )}

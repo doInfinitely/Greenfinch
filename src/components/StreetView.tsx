@@ -25,15 +25,23 @@ function loadGoogleMapsApi(apiKey: string): Promise<void> {
 
     const existingScript = document.getElementById('google-maps-script');
     if (existingScript) {
-      existingScript.addEventListener('load', () => resolve());
+      if ((existingScript as any)._loaded) {
+        resolve();
+      } else {
+        existingScript.addEventListener('load', () => resolve());
+      }
       return;
     }
 
-    window.initGoogleStreetView = () => resolve();
+    window.initGoogleStreetView = () => {
+      const s = document.getElementById('google-maps-script');
+      if (s) (s as any)._loaded = true;
+      resolve();
+    };
 
     const script = document.createElement('script');
     script.id = 'google-maps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&callback=initGoogleStreetView`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&loading=async&callback=initGoogleStreetView`;
     script.async = true;
     script.defer = true;
     script.onerror = () => reject(new Error('Failed to load Google Maps'));

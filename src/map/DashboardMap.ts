@@ -637,24 +637,32 @@ export class DashboardMap {
     try {
       const response = await fetch('/api/parcels/parcel-index');
       if (!response.ok) return;
-      const data: Record<string, { pk: string; n: string | null; a: string | null; c: string | null; s: string | null }> = await response.json();
+      const data: { p: Record<string, [string | null, string | null, string | null, string | null]>; m: Record<string, string> } = await response.json();
+      
+      const propCache = new Map<string, { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string }>();
+      for (const [pk, info] of Object.entries(data.p)) {
+        propCache.set(pk, {
+          propertyKey: pk,
+          commonName: info[0],
+          address: info[1],
+          category: info[2] || undefined,
+          subcategory: info[3] || undefined,
+        });
+      }
       
       let added = 0;
-      for (const [key, info] of Object.entries(data)) {
-        const normalizedKey = key.replace(/[-\s]/g, '').toUpperCase();
+      for (const [accountNum, parentPk] of Object.entries(data.m)) {
+        const normalizedKey = accountNum.replace(/[-\s]/g, '').toUpperCase();
         if (!this.propertyIndex.has(normalizedKey)) {
-          this.propertyIndex.set(normalizedKey, {
-            propertyKey: info.pk,
-            commonName: info.n || null,
-            address: info.a || null,
-            category: info.c || undefined,
-            subcategory: info.s || undefined,
-          });
-          added++;
+          const propInfo = propCache.get(parentPk);
+          if (propInfo) {
+            this.propertyIndex.set(normalizedKey, propInfo);
+            added++;
+          }
         }
       }
       if (this.debugLogging) {
-        console.log('[BulkLookup] Loaded', Object.keys(data).length, 'entries, added', added, 'new entries. Index now:', this.propertyIndex.size);
+        console.log('[BulkLookup] Loaded', Object.keys(data.m).length, 'mappings to', Object.keys(data.p).length, 'properties, added', added, 'new entries. Index now:', this.propertyIndex.size);
       }
     } catch (err) {
       console.warn('[BulkLookup] Failed to load parcel mappings:', err);

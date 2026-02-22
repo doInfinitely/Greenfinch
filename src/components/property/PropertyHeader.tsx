@@ -31,23 +31,23 @@ function loadGoogleMapsIfNeeded(apiKey: string): Promise<void> {
     }
     const existingScript = document.getElementById('google-maps-script');
     if (existingScript) {
-      const check = setInterval(() => {
-        if (typeof google !== 'undefined' && google.maps) {
-          clearInterval(check);
-          resolve();
-        }
-      }, 100);
-      setTimeout(() => { clearInterval(check); resolve(); }, 8000);
+      if ((existingScript as any)._loaded) {
+        resolve();
+      } else {
+        existingScript.addEventListener('load', () => resolve());
+      }
       return;
     }
     const callbackName = `__gmapsInit_${Date.now()}`;
     (window as any)[callbackName] = () => {
       delete (window as any)[callbackName];
+      const s = document.getElementById('google-maps-script');
+      if (s) (s as any)._loaded = true;
       resolve();
     };
     const script = document.createElement('script');
     script.id = 'google-maps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&callback=${callbackName}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&loading=async&callback=${callbackName}`;
     script.async = true;
     script.defer = true;
     script.onerror = () => reject(new Error('Failed to load Google Maps'));

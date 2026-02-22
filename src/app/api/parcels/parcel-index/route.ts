@@ -23,31 +23,35 @@ export async function GET() {
       propertyMap.set(row.propertyKey, row);
     }
 
-    const index: Record<string, { pk: string; n: string | null; a: string | null; c: string | null; s: string | null }> = {};
+    const props: Record<string, [string | null, string | null, string | null, string | null]> = {};
+    const m: Record<string, string> = {};
+
+    const resolveParent = (row: typeof rows[0]) => {
+      if (row.gisParcelId && row.gisParcelId !== row.propertyKey) {
+        const gisParent = propertyMap.get(row.gisParcelId);
+        if (gisParent) return gisParent;
+      }
+      return row;
+    };
+
+    const ensureProp = (p: typeof rows[0]) => {
+      if (!props[p.propertyKey]) {
+        const displayName = p.commonName
+          ? normalizeCommonName(p.commonName)
+          : p.bizName || null;
+        props[p.propertyKey] = [
+          displayName,
+          p.address || p.regridAddress || null,
+          p.category || null,
+          p.subcategory || null,
+        ];
+      }
+    };
 
     for (const row of rows) {
-      const gisParcelId = row.gisParcelId;
-
-      let parentProperty = row;
-
-      if (gisParcelId && gisParcelId !== row.propertyKey) {
-        const gisParent = propertyMap.get(gisParcelId);
-        if (gisParent) {
-          parentProperty = gisParent;
-        }
-      }
-
-      const displayName = parentProperty.commonName
-        ? normalizeCommonName(parentProperty.commonName)
-        : parentProperty.bizName || null;
-
-      index[row.propertyKey] = {
-        pk: parentProperty.propertyKey,
-        n: displayName,
-        a: parentProperty.address || parentProperty.regridAddress || null,
-        c: parentProperty.category || null,
-        s: parentProperty.subcategory || null,
-      };
+      const parent = resolveParent(row);
+      ensureProp(parent);
+      m[row.propertyKey] = parent.propertyKey;
     }
 
     const mappingRows = await db
@@ -58,27 +62,18 @@ export async function GET() {
       .from(parcelnumbMapping);
 
     for (const mapping of mappingRows) {
-      if (index[mapping.accountNum]) continue;
+      if (m[mapping.accountNum]) continue;
 
       if (mapping.parentPropertyKey) {
         const parent = propertyMap.get(mapping.parentPropertyKey);
         if (parent) {
-          const displayName = parent.commonName
-            ? normalizeCommonName(parent.commonName)
-            : parent.bizName || null;
-
-          index[mapping.accountNum] = {
-            pk: parent.propertyKey,
-            n: displayName,
-            a: parent.address || parent.regridAddress || null,
-            c: parent.category || null,
-            s: parent.subcategory || null,
-          };
+          ensureProp(parent);
+          m[mapping.accountNum] = parent.propertyKey;
         }
       }
     }
 
-    const response = NextResponse.json(index);
+    const response = NextResponse.json({ p: props, m });
     response.headers.set('Cache-Control', 'private, max-age=300');
     return response;
   } catch (error) {
