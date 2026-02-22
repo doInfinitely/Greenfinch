@@ -80,3 +80,4 @@ The project is built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM 
 ## Deferred
 - **PERF-2**: Server-side map clustering (defer until scaling beyond Dallas MVP)
 - **CODE-3**: Dual ID unification (large migration, plan separately)
+- **ENRICH-4**: Deep re-research mode for contacts. When re-researching via profile button: detect generic/role-based emails (hello@, info@, contact@, admin@, office@, support@, sales@, leasing@), add `deepResearch` flag to `enrichContactCascade` that runs ALL email providers (Findymail finder, Hunter, EnrichLayer, Crustdata) regardless of existing email validation, collect all discovered professional emails, pick best non-generic email as primary, and surface alternatives on the contact profile.

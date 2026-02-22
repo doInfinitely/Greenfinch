@@ -553,23 +553,38 @@ export default function PropertyFilters({
       </FilterChip>
 
       <FilterChip id="pipeline" label="Pipeline" count={filters.customerStatuses?.length ?? 0}>
-        <div className="p-2 w-[200px]">
+        <div className="p-2 w-[220px]">
           <div className="flex items-center justify-between mb-1 px-1">
             <span className="text-xs font-medium text-gray-500">Pipeline Status</span>
             {(filters.customerStatuses?.length ?? 0) > 0 && (
               <button onClick={() => handleClearArray('customerStatuses')} className="text-[10px] text-gray-400 hover:text-gray-600" data-testid="desktop-clear-pipeline">Clear</button>
             )}
           </div>
-          {['prospect', 'qualified', 'proposal', 'negotiation', 'won'].map((status) => (
-            <label key={status} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-1 py-1.5 rounded">
-              <Checkbox
-                checked={filters.customerStatuses?.includes(status) ?? false}
-                onChange={() => handleArrayToggle('customerStatuses', status)}
-                data-testid={`checkbox-status-${status}`}
-              />
-              <span className="text-gray-700 capitalize">{status === 'won' ? 'Won (Customer)' : status}</span>
+          <label className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-1 py-1.5 rounded">
+            <Checkbox checked={filters.customerStatuses?.includes('prospect') ?? false} onChange={() => handleArrayToggle('customerStatuses', 'prospect')} data-testid="checkbox-status-prospect" />
+            <span className="text-gray-700">Prospect</span>
+          </label>
+          <div className="text-[10px] text-gray-400 mt-1.5 mb-0.5 px-1 uppercase tracking-wide">Active</div>
+          {['qualified', 'attempted_contact', 'active_opportunity'].map((status) => (
+            <label key={status} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-1 py-1.5 rounded pl-3">
+              <Checkbox checked={filters.customerStatuses?.includes(status) ?? false} onChange={() => handleArrayToggle('customerStatuses', status)} data-testid={`checkbox-status-${status}`} />
+              <span className="text-gray-700">{status === 'qualified' ? 'Qualified' : status === 'attempted_contact' ? 'Attempted Contact' : 'Active Opportunity'}</span>
             </label>
           ))}
+          <label className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-1 py-1.5 rounded mt-1">
+            <Checkbox checked={filters.customerStatuses?.includes('customer') ?? false} onChange={() => handleArrayToggle('customerStatuses', 'customer')} data-testid="checkbox-status-customer" />
+            <span className="text-gray-700">Customer</span>
+          </label>
+          <div className="border-t border-gray-100 mt-1 pt-1">
+            <label className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-1 py-1.5 rounded">
+              <Checkbox checked={filters.customerStatuses?.includes('disqualified') ?? false} onChange={() => handleArrayToggle('customerStatuses', 'disqualified')} data-testid="checkbox-status-disqualified" />
+              <span className="text-gray-700">Disqualified</span>
+            </label>
+            <label className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-1 py-1.5 rounded">
+              <Checkbox checked={filters.customerStatuses?.includes('lost') ?? false} onChange={() => handleArrayToggle('customerStatuses', 'lost')} data-testid="checkbox-status-lost" />
+              <span className="text-gray-700">Lost</span>
+            </label>
+          </div>
         </div>
       </FilterChip>
 
@@ -813,12 +828,29 @@ export default function PropertyFilters({
         <SectionHeader id="pipelineStatus" title="Pipeline Status" count={filters.customerStatuses?.length ?? 0} onClear={() => handleClearArray('customerStatuses')} />
         {openSections.has('pipelineStatus') && (
           <div className="mt-2 space-y-1">
-            {['prospect', 'qualified', 'proposal', 'negotiation', 'won'].map((status) => (
-              <label key={status} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
+            <label className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
+              <Checkbox checked={filters.customerStatuses?.includes('prospect') ?? false} onChange={() => handleArrayToggle('customerStatuses', 'prospect')} data-testid="checkbox-status-mobile-prospect" />
+              <span className="text-gray-700">Prospect</span>
+            </label>
+            <div className="text-[11px] text-gray-400 mt-1 mb-0.5 px-2 uppercase tracking-wide">Active</div>
+            {['qualified', 'attempted_contact', 'active_opportunity'].map((status) => (
+              <label key={status} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg pl-5">
                 <Checkbox checked={filters.customerStatuses?.includes(status) ?? false} onChange={() => handleArrayToggle('customerStatuses', status)} data-testid={`checkbox-status-mobile-${status}`} />
-                <span className="text-gray-700 capitalize">{status === 'won' ? 'Won (Customer)' : status}</span>
+                <span className="text-gray-700">{status === 'qualified' ? 'Qualified' : status === 'attempted_contact' ? 'Attempted Contact' : 'Active Opportunity'}</span>
               </label>
             ))}
+            <label className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
+              <Checkbox checked={filters.customerStatuses?.includes('customer') ?? false} onChange={() => handleArrayToggle('customerStatuses', 'customer')} data-testid="checkbox-status-mobile-customer" />
+              <span className="text-gray-700">Customer</span>
+            </label>
+            <label className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
+              <Checkbox checked={filters.customerStatuses?.includes('disqualified') ?? false} onChange={() => handleArrayToggle('customerStatuses', 'disqualified')} data-testid="checkbox-status-mobile-disqualified" />
+              <span className="text-gray-700">Disqualified</span>
+            </label>
+            <label className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
+              <Checkbox checked={filters.customerStatuses?.includes('lost') ?? false} onChange={() => handleArrayToggle('customerStatuses', 'lost')} data-testid="checkbox-status-mobile-lost" />
+              <span className="text-gray-700">Lost</span>
+            </label>
           </div>
         )}
       </div>

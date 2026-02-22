@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties, propertyContacts, propertyOrganizations, propertyPipeline } from '@/lib/schema';
-import { eq, isNotNull, and, or, sql, inArray, gte, lte, isNull } from 'drizzle-orm';
+import { eq, isNotNull, and, or, sql, inArray, gte, lte, isNull, type SQL } from 'drizzle-orm';
 import { normalizeCommonName } from '@/lib/normalization';
+import { auth } from '@clerk/nextjs/server';
 
 const SQFT_PER_ACRE = 43560;
 
 export async function GET(request: NextRequest) {
   try {
+    const { orgId } = await auth();
     const searchParams = request.nextUrl.searchParams;
     
     // Filter parameters
@@ -64,18 +66,43 @@ export async function GET(request: NextRequest) {
       conditions.push(isNull(properties.lastEnrichedAt));
     }
     
-    // Pipeline status filter (multi-select, simplified for GeoJSON performance)
+    // Pipeline status filter (multi-select with proper subqueries)
     if (customerStatuses.length > 0) {
-      // For GeoJSON we use the isCurrentCustomer flag for basic filtering
-      if (customerStatuses.includes('won') && !customerStatuses.includes('prospect')) {
-        conditions.push(eq(properties.isCurrentCustomer, true));
-      } else if (customerStatuses.includes('prospect') && !customerStatuses.includes('won')) {
-        conditions.push(or(
-          eq(properties.isCurrentCustomer, false),
-          isNull(properties.isCurrentCustomer)
-        )!);
+      const statusConditions: SQL[] = [];
+      
+      if (customerStatuses.includes('prospect')) {
+        statusConditions.push(sql`NOT EXISTS (
+          SELECT 1 FROM ${propertyPipeline} 
+          WHERE ${propertyPipeline.propertyId} = ${properties.id}
+          ${orgId ? sql`AND ${propertyPipeline.clerkOrgId} = ${orgId}` : sql``}
+        )`);
       }
-      // If both or other statuses are included, we don't filter (show all)
+      
+      if (customerStatuses.includes('customer')) {
+        statusConditions.push(sql`(
+          ${properties.isCurrentCustomer} = true
+          OR EXISTS (
+            SELECT 1 FROM ${propertyPipeline}
+            WHERE ${propertyPipeline.propertyId} = ${properties.id}
+            AND ${propertyPipeline.status} = 'won'
+            ${orgId ? sql`AND ${propertyPipeline.clerkOrgId} = ${orgId}` : sql``}
+          )
+        )`);
+      }
+      
+      const pipelineStatuses = customerStatuses.filter(s => s !== 'prospect' && s !== 'customer');
+      if (pipelineStatuses.length > 0) {
+        statusConditions.push(sql`EXISTS (
+          SELECT 1 FROM ${propertyPipeline}
+          WHERE ${propertyPipeline.propertyId} = ${properties.id}
+          AND ${propertyPipeline.status} IN (${sql.join(pipelineStatuses.map(s => sql`${s}`), sql`, `)})
+          ${orgId ? sql`AND ${propertyPipeline.clerkOrgId} = ${orgId}` : sql``}
+        )`);
+      }
+      
+      if (statusConditions.length > 0) {
+        conditions.push(or(...statusConditions)!);
+      }
     }
     
     // Zip codes filter (supports multiple)

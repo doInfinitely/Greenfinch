@@ -108,7 +108,19 @@ export async function GET(request: NextRequest) {
         )`);
       }
       
-      const pipelineStatuses = customerStatuses.filter(s => s !== 'prospect');
+      if (customerStatuses.includes('customer')) {
+        statusConditions.push(sql`(
+          ${properties.isCurrentCustomer} = true
+          OR EXISTS (
+            SELECT 1 FROM ${propertyPipeline}
+            WHERE ${propertyPipeline.propertyId} = ${properties.id}
+            AND ${propertyPipeline.status} = 'won'
+            AND ${propertyPipeline.clerkOrgId} = ${orgId}
+          )
+        )`);
+      }
+      
+      const pipelineStatuses = customerStatuses.filter(s => s !== 'prospect' && s !== 'customer');
       if (pipelineStatuses.length > 0) {
         statusConditions.push(sql`EXISTS (
           SELECT 1 FROM ${propertyPipeline} 
