@@ -121,10 +121,7 @@ function mapQualityGradeToClass(grade: string | null): { propertyClass: string |
 // SDK-level HTTP timeout: must be under the ~300s system TCP socket timeout
 const GEMINI_HTTP_TIMEOUT_MS = 280000; // 280 seconds
 
-// AI-generated source domains to filter out from grounding results
-const AI_SOURCE_DOMAINS = [
-  'vertexaisearch.cloud.google.com',
-  'vertexaisearch.googleapis.com',
+const AI_GENERATED_DOMAINS = [
   'generativelanguage.googleapis.com',
   'ai.google.dev',
   'bard.google.com',
@@ -133,7 +130,7 @@ const AI_SOURCE_DOMAINS = [
 function isAIGeneratedSource(url: string): boolean {
   try {
     const hostname = new URL(url).hostname.toLowerCase();
-    return AI_SOURCE_DOMAINS.some(domain => hostname.includes(domain));
+    return AI_GENERATED_DOMAINS.some(domain => hostname.includes(domain));
   } catch {
     return false;
   }
@@ -182,18 +179,22 @@ function extractGroundedSources(response: any): GroundedSource[] {
     
     console.log(`[GroundedSources] Found ${groundingChunks.length} grounding chunks, first chunk keys: ${Object.keys(groundingChunks[0] || {}).join(', ')}`);
     
-    const sources = groundingChunks
-      .filter((chunk: any) => {
-        const uri = chunk.web?.uri;
-        if (!uri) return false;
-        if (isAIGeneratedSource(uri)) return false;
-        return true;
-      })
-      .map((chunk: any) => ({
-        url: chunk.web.uri,
+    const seen = new Set<string>();
+    const sources: GroundedSource[] = [];
+    for (const chunk of groundingChunks) {
+      const uri = chunk.web?.uri;
+      if (!uri) continue;
+      if (isAIGeneratedSource(uri)) continue;
+      const displayUrl = chunk.web.domain ? `https://${chunk.web.domain}` : uri;
+      const dedupeKey = chunk.web.domain || uri;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      sources.push({
+        url: uri,
         title: chunk.web.title || chunk.web.domain || 'Source',
-      }))
-      .slice(0, 10);
+      });
+      if (sources.length >= 10) break;
+    }
     
     console.log(`[GroundedSources] Extracted ${sources.length} sources from ${groundingChunks.length} chunks`);
     return sources;

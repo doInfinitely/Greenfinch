@@ -8,7 +8,7 @@ import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpo
 import { isCircuitBreakerError } from './rate-limiter';
 import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
-import { areCompaniesAffiliated, ensureEmployerOrgEnriched } from './organization-enrichment';
+import { areCompaniesAffiliated, ensureEmployerOrgEnriched, enrichOrganizationByDomain } from './organization-enrichment';
 import { findExistingContactByIdentifiers, flagPotentialDuplicateById, normalizeName as normalizeNameDedup, normalizeDomain as normalizeDomainDedup } from './deduplication';
 import { getPropertyByKey } from './snowflake';
 import type { AggregatedProperty } from './snowflake';
@@ -339,6 +339,14 @@ export async function saveEnrichmentResults(
     }
   }
 
+  for (const org of allOrgs) {
+    if ((org.orgType === 'management' || org.orgType === 'owner') && org.domain) {
+      enrichOrganizationByDomain(org.domain, { name: org.name }).catch(err => {
+        console.error(`[SaveEnrichment] Error PDL-enriching ${org.orgType} org "${org.name}":`, err instanceof Error ? err.message : err);
+      });
+    }
+  }
+
   const contactIds: string[] = [];
   for (const contact of discoveredContacts) {
     try {
@@ -618,6 +626,28 @@ export async function runCascadeEnrichmentOnSavedRecords(
     }
   }
 
+  const propertyOrgDomains = new Set<string>();
+  const propertyOrgNames = new Set<string>();
+  if (propertyId) {
+    try {
+      const propOrgs = await db.select({ orgId: propertyOrganizations.orgId })
+        .from(propertyOrganizations)
+        .where(eq(propertyOrganizations.propertyId, propertyId));
+      const propOrgIds = propOrgs.map(po => po.orgId).filter((id): id is string => !!id);
+      if (propOrgIds.length > 0) {
+        const orgsData = await db.select({ domain: organizations.domain, name: organizations.name })
+          .from(organizations)
+          .where(inArray(organizations.id, propOrgIds));
+        for (const o of orgsData) {
+          if (o.domain) propertyOrgDomains.add(o.domain.toLowerCase().replace(/^www\./, ''));
+          if (o.name) propertyOrgNames.add(o.name.toLowerCase().replace(/[^a-z0-9]/g, ''));
+        }
+      }
+    } catch (err) {
+      console.warn('[CascadeEnrichment] Failed to load property orgs for employer gating:', err instanceof Error ? err.message : err);
+    }
+  }
+
   for (const contactId of contactIds) {
     try {
       const contact = await db.query.contacts.findFirst({
@@ -880,15 +910,34 @@ export async function runCascadeEnrichmentOnSavedRecords(
       const employerPdlId = result.companyPdlId || null;
 
       if (employerDomain || employerName || employerPdlId) {
-        ensureEmployerOrgEnriched({
-          contactId,
-          companyDomain: employerDomain || null,
-          companyName: employerName || null,
-          companyPdlId: employerPdlId,
-          contactTitle: result.pdlTitle || result.crustdataTitle || result.title || contact.title || null,
-        }).catch(err => {
-          console.error(`[CascadeEnrichment] Error ensuring employer org for ${contact.fullName}:`, err instanceof Error ? err.message : err);
-        });
+        let isPropertyRelevantEmployer = propertyOrgDomains.size === 0 && propertyOrgNames.size === 0;
+        if (!isPropertyRelevantEmployer && employerDomain) {
+          const cleanDomain = employerDomain.toLowerCase().replace(/^www\./, '');
+          isPropertyRelevantEmployer = propertyOrgDomains.has(cleanDomain);
+        }
+        if (!isPropertyRelevantEmployer && employerName) {
+          const cleanName = employerName.toLowerCase().replace(/[^a-z0-9]/g, '');
+          for (const pName of propertyOrgNames) {
+            if (cleanName === pName || cleanName.includes(pName) || pName.includes(cleanName)) {
+              isPropertyRelevantEmployer = true;
+              break;
+            }
+          }
+        }
+
+        if (isPropertyRelevantEmployer) {
+          ensureEmployerOrgEnriched({
+            contactId,
+            companyDomain: employerDomain || null,
+            companyName: employerName || null,
+            companyPdlId: employerPdlId,
+            contactTitle: result.pdlTitle || result.crustdataTitle || result.title || contact.title || null,
+          }).catch(err => {
+            console.error(`[CascadeEnrichment] Error ensuring employer org for ${contact.fullName}:`, err instanceof Error ? err.message : err);
+          });
+        } else {
+          console.log(`[CascadeEnrichment] Skipping employer org enrichment for "${contact.fullName}" — employer "${employerName || employerDomain}" is not a property-relevant org`);
+        }
       }
     } catch (err) {
       console.error(`[CascadeEnrichment] Error enriching contact ${contactId}:`, err);
