@@ -6,36 +6,6 @@ import { rateLimiters } from './rate-limiter';
 import * as fs from 'fs';
 import * as path from 'path';
 let vertexCredentialsReady = false;
-let geminiSdkPatched = false;
-
-function patchGeminiSdkTimeout(): void {
-  if (geminiSdkPatched) return;
-  geminiSdkPatched = true;
-
-  const patchTarget = 'if (httpOptions.timeout && (httpOptions === null || httpOptions === void 0 ? void 0 : httpOptions.timeout) > 0) {';
-  const patchInsert = `if (httpOptions.timeout && (httpOptions === null || httpOptions === void 0 ? void 0 : httpOptions.timeout) > 0) {
-                try { const { Agent: UndiciAgent } = require('undici'); requestInit.dispatcher = new UndiciAgent({ headersTimeout: httpOptions.timeout, bodyTimeout: httpOptions.timeout, connectTimeout: httpOptions.timeout }); } catch(e) {}`;
-
-  const sdkFiles = [
-    'node_modules/@google/genai/dist/node/index.mjs',
-    'node_modules/@google/genai/dist/node/index.cjs',
-  ];
-
-  for (const relPath of sdkFiles) {
-    try {
-      const fullPath = path.resolve(relPath);
-      if (!fs.existsSync(fullPath)) continue;
-      let code = fs.readFileSync(fullPath, 'utf-8');
-      if (code.includes('UndiciAgent')) continue;
-      if (!code.includes(patchTarget)) continue;
-      code = code.replace(patchTarget, patchInsert);
-      fs.writeFileSync(fullPath, code);
-      console.log(`[VertexAI] Patched ${relPath} for timeout > 300s support`);
-    } catch (err) {
-      console.warn(`[VertexAI] Failed to patch ${relPath}:`, err instanceof Error ? err.message : err);
-    }
-  }
-}
 
 function ensureVertexCredentials(): { project: string; location: string } {
   const credsJson = process.env.GOOGLE_CLOUD_CREDENTIALS;
@@ -67,9 +37,55 @@ function ensureVertexCredentials(): { project: string; location: string } {
 }
 
 function getGeminiClient(): GoogleGenAI {
-  patchGeminiSdkTimeout();
   const { project, location } = ensureVertexCredentials();
   return new GoogleGenAI({ vertexai: true, project, location });
+}
+
+interface StreamedGeminiResponse {
+  text: string;
+  candidates?: any[];
+}
+
+async function streamGeminiResponse(
+  client: GoogleGenAI,
+  prompt: string,
+  options: { tools?: any[]; temperature?: number } = {}
+): Promise<StreamedGeminiResponse> {
+  const config: any = {
+    temperature: options.temperature ?? 0.1,
+    httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
+  };
+  if (options.tools) {
+    config.tools = options.tools;
+  }
+
+  const stream = await client.models.generateContentStream({
+    model: GEMINI_MODEL,
+    contents: prompt,
+    config,
+  });
+
+  let fullText = '';
+  let lastCandidate: any = null;
+
+  for await (const chunk of stream) {
+    if (chunk.text) {
+      fullText += chunk.text;
+    }
+    if (chunk.candidates && chunk.candidates.length > 0) {
+      lastCandidate = chunk.candidates[0];
+    }
+  }
+
+  const response: StreamedGeminiResponse = {
+    text: fullText,
+  };
+
+  if (lastCandidate) {
+    response.candidates = [lastCandidate];
+  }
+
+  return response;
 }
 
 interface GroundedSource {
@@ -354,15 +370,7 @@ Return JSON:
     console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${maxRetries}...`);
 
     try {
-      response = await rateLimiters.gemini.execute(() => client.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          temperature: 0.1,
-          tools: [{ googleSearch: {} }],
-          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
-        }
-      }));
+      response = await rateLimiters.gemini.execute(() => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }));
 
       text = response.text?.trim() || '';
       console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
@@ -591,15 +599,7 @@ Return JSON:
 
   try {
     const response = await callGeminiWithTimeout(
-      () => client.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          temperature: 0.1,
-          tools: [{ googleSearch: {} }],
-          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
-        }
-      }),
+      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
       2
     );
 
@@ -758,15 +758,7 @@ Return JSON:
 
   try {
     const response = await callGeminiWithTimeout(
-      () => client.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          temperature: 0.1,
-          tools: [{ googleSearch: {} }],
-          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
-        }
-      }),
+      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
       2
     );
 
@@ -847,15 +839,7 @@ async function enrichContactDetails(
 
   try {
     const response = await callGeminiWithTimeout(
-      () => client.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          temperature: 0.1,
-          tools: [{ googleSearch: {} }],
-          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
-        }
-      }),
+      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
       2
     );
 
@@ -1231,14 +1215,7 @@ ${preCleaned}`;
 
   try {
     const response = await callGeminiWithTimeout(
-      () => client.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          temperature: 0.1,
-          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
-        }
-      }),
+      () => streamGeminiResponse(client, prompt),
       1
     );
     
@@ -1280,15 +1257,7 @@ If you cannot find a replacement, return {"name":null}`;
 
   try {
     const response = await callGeminiWithTimeout(
-      () => client.models.generateContent({
-        model: GEMINI_MODEL,
-        contents: prompt,
-        config: {
-          temperature: 0.1,
-          tools: [{ googleSearch: {} }],
-          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
-        }
-      }),
+      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
       1
     );
 
