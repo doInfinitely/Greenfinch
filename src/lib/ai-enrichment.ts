@@ -34,7 +34,7 @@ function ensureVertexCredentials(): { project: string; location: string } {
     console.log(`[VertexAI] Credentials written to ${credFilePath}, project=${project}`);
   }
 
-  return { project, location: 'us-central1' };
+  return { project, location: 'global' };
 }
 
 function getGeminiClient(): GoogleGenAI {
@@ -323,30 +323,44 @@ Return JSON:
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${maxRetries}...`);
 
-    response = await rateLimiters.gemini.execute(() => client.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: prompt,
-      config: {
-        temperature: 0.1,
-        tools: [{ googleSearch: {} }],
-        httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
+    try {
+      response = await rateLimiters.gemini.execute(() => client.models.generateContent({
+        model: GEMINI_MODEL,
+        contents: prompt,
+        config: {
+          temperature: 0.1,
+          tools: [{ googleSearch: {} }],
+          httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS }
+        }
+      }));
+
+      text = response.text?.trim() || '';
+      console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
+
+      if (text) {
+        break;
       }
-    }));
 
-    text = response.text?.trim() || '';
-    console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
+      console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 1 (attempt ${attempt})`);
+      if (response.candidates) {
+        console.warn('[FocusedEnrichment] Candidates:', JSON.stringify(response.candidates, null, 2).substring(0, 500));
+      }
+    } catch (apiError) {
+      const errMsg = apiError instanceof Error ? apiError.message : String(apiError);
+      const isDeadlineExceeded = errMsg.includes('DEADLINE_EXCEEDED') || errMsg.includes('504') || errMsg.includes('Deadline expired');
+      const isRetryable = isDeadlineExceeded || errMsg.includes('500') || errMsg.includes('503') || errMsg.includes('429');
 
-    if (text) {
-      break;
-    }
+      console.warn(`[FocusedEnrichment] Stage 1 attempt ${attempt} error (retryable=${isRetryable}, deadline=${isDeadlineExceeded}): ${errMsg.substring(0, 200)}`);
 
-    console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 1 (attempt ${attempt})`);
-    if (response.candidates) {
-      console.warn('[FocusedEnrichment] Candidates:', JSON.stringify(response.candidates, null, 2).substring(0, 500));
+      if (!isRetryable || attempt >= maxRetries) {
+        throw apiError;
+      }
     }
 
     if (attempt < maxRetries) {
-      const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
+      const isDeadline = text === '' || (response === undefined);
+      const baseMs = isDeadline ? 5000 : 1000;
+      const backoffMs = Math.min(baseMs * Math.pow(2, attempt - 1), 15000);
       console.log(`[FocusedEnrichment] Retrying Stage 1 in ${backoffMs}ms...`);
       await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
@@ -457,11 +471,21 @@ async function callGeminiWithTimeout<T>(
       return result;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      console.warn(`[FocusedEnrichment] API call attempt ${attempt} failed: ${lastError.message}`);
+      const errMsg = lastError.message;
+      const isDeadlineExceeded = errMsg.includes('DEADLINE_EXCEEDED') || errMsg.includes('504') || errMsg.includes('Deadline expired');
+      const isServerError = errMsg.includes('500') || errMsg.includes('503') || errMsg.includes('INTERNAL');
+      const isRetryable = isDeadlineExceeded || isServerError || errMsg.includes('429');
+
+      console.warn(`[FocusedEnrichment] API call attempt ${attempt} failed (retryable=${isRetryable}, deadline=${isDeadlineExceeded}): ${errMsg.substring(0, 200)}`);
       
+      if (!isRetryable) {
+        throw lastError;
+      }
+
       if (attempt < retries) {
-        const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 5000);
-        console.log(`[FocusedEnrichment] Retrying in ${backoffMs}ms...`);
+        const baseMs = isDeadlineExceeded ? 5000 : 1000;
+        const backoffMs = Math.min(baseMs * Math.pow(2, attempt - 1), 15000);
+        console.log(`[FocusedEnrichment] Retrying in ${backoffMs}ms (${isDeadlineExceeded ? 'deadline exceeded - extended backoff' : 'standard backoff'})...`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
       }
     }

@@ -28,7 +28,7 @@ The project is built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM 
 - **Multi-stage Enrichment Pipelines**:
     - **Contact Enrichment**: A 5-stage cascade for comprehensive contact data.
     - **Organization Enrichment**: 2-stage process for company information.
-    - **Property AI Enrichment**: Utilizes Google Gemini AI for property data and beneficial owner identification with search grounding.
+    - **Property AI Enrichment**: Utilizes Google Gemini AI via Vertex AI for property data and beneficial owner identification with search grounding.
 - **Asynchronous Processing**: Non-blocking enrichment queue system with Redis for background processing, distributed locking, and caching.
 - **Performance Optimizations**: Cursor pagination for APIs, Redis-based rate limiting, client-side debouncing, and optimized PostgreSQL indexing.
 - **User Engagement Features**: In-app notifications, @mentions, follow-up reminders, and unread property indicators.
@@ -71,7 +71,7 @@ The project is built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM 
 - **LeadMagic**: Secondary email validation.
 - **EnrichLayer**: LinkedIn-sourced company/contact data (currently unreachable).
 - **Clerk Auth**: User authentication, organization management, RBAC.
-- **Google Gemini**: AI-based property enrichment (`gemini-3-flash-preview` with search grounding).
+- **Google Gemini via Vertex AI**: AI-based property enrichment (`gemini-3-flash-preview` with search grounding). Uses `GOOGLE_CLOUD_CREDENTIALS` service account JSON for authentication. Credentials written to `/tmp/gcp-service-account.json` at runtime with `GOOGLE_APPLICATION_CREDENTIALS` env var set automatically.
 - **Upstash Redis**: Distributed caching and locking.
 - **Logo.dev**: Company logo and brand data API (describe endpoint for logo, blurhash, brand colors, social links). API route: `/api/brand/[domain]`. Requires `LOGO_DEV_SECRET_KEY` secret.
 
