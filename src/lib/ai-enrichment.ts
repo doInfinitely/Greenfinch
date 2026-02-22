@@ -52,8 +52,9 @@ async function streamGeminiResponse(
   prompt: string,
   options: { tools?: any[]; temperature?: number } = {}
 ): Promise<StreamedGeminiResponse> {
+  const hasSearchGrounding = options.tools?.some((t: any) => t.googleSearch);
   const config: any = {
-    temperature: options.temperature ?? 0.1,
+    temperature: options.temperature ?? (hasSearchGrounding ? 1.0 : 0.1),
     httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
   };
   if (options.tools) {
@@ -588,17 +589,14 @@ ${legalInfo ? `LEGAL: ${legalInfo}` : ''}
 
 SEARCH SEQUENCE:
 1. Search "${classification.propertyName} ${property.city || 'Dallas'}" to find the property website and management company
-2. Search the management company website for this property listing to confirm and find leasing phone
+2. Search the management company website for this property listing to confirm management and find a direct property management phone number
 3. Search "${deedOwner} Texas" on OpenCorporates or TX Secretary of State to find the entity behind the LLC/trust
 4. Search for news about acquisitions or sales of ${classification.propertyName} around ${deedDate} to identify the beneficial owner
 
-CRITICAL DOMAIN RULES:
-- For "site" and "domain": ONLY use URLs/domains you found in actual search results or web pages you visited. NEVER guess or construct a domain from a company name.
-- Use the EXACT domain from the URL where you found the property listing or company info. For example, if you found info at "crestviewcompanies.com/properties/...", use "crestviewcompanies.com" — do NOT invent "crestviewre.com" or similar.
-- If you cannot find the company's actual website in search results, set the domain to null rather than guessing.
+DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain from a URL you found in search results. If no search result contained the company's website, return null. Return the "domainSource" field with the full URL where you found it.
 
 Return JSON:
-{"mgmt":{"name":"Co|null","domain":"co.com|null","c":0.0-1.0},"owner":{"name":"Entity|null","type":"REIT|PE|Family Office|Individual|Corporation|Institutional|Syndicator|null","c":0.0-1.0},"site":"https://property-site.com|null","phone":"+1XXXXXXXXXX|null","summary":"2 sentences max: who owns it, who manages it."}`;
+{"mgmt":{"name":"Co|null","domain":"co.com|null","domainSource":"full URL where domain was found|null","c":0.0-1.0},"owner":{"name":"Entity|null","type":"REIT|PE|Family Office|Individual|Corporation|Institutional|Syndicator|null","c":0.0-1.0},"site":"https://property-site.com|null","siteSource":"full URL where property site was found|null","phone":"+1XXXXXXXXXX|null","summary":"2 sentences max: who owns it, who manages it."}`;
 
   console.log('[FocusedEnrichment] Stage 2: Ownership identification...');
   console.log(`[FocusedEnrichment] Stage 2 input - Property: ${classification.propertyName}, Deed Owner: ${deedOwner}`);
@@ -656,6 +654,20 @@ Return JSON:
 
       const ownerType = parsed.owner?.type ? (OWNER_TYPE_MAP[parsed.owner.type] || null) : null;
 
+      let mgmtDomain = parsed.mgmt?.domain ?? null;
+      const mgmtDomainSource = parsed.mgmt?.domainSource ?? null;
+      if (mgmtDomain && !mgmtDomainSource) {
+        console.warn(`[FocusedEnrichment] Stage 2: Mgmt domain "${mgmtDomain}" has no source citation — likely hallucinated, clearing`);
+        mgmtDomain = null;
+      }
+
+      let propertySite = parsed.site ?? null;
+      const siteSource = parsed.siteSource ?? null;
+      if (propertySite && !siteSource) {
+        console.warn(`[FocusedEnrichment] Stage 2: Property site "${propertySite}" has no source citation — likely hallucinated, clearing`);
+        propertySite = null;
+      }
+
       const ownershipData: OwnershipInfo = {
         beneficialOwner: {
           name: parsed.owner?.name ?? null,
@@ -664,16 +676,19 @@ Return JSON:
         },
         managementCompany: {
           name: parsed.mgmt?.name ?? null,
-          domain: parsed.mgmt?.domain ?? null,
+          domain: mgmtDomain,
           confidence: parsed.mgmt?.c ?? 0,
         },
-        propertyWebsite: parsed.site ?? null,
+        propertyWebsite: propertySite,
         propertyPhone: parsed.phone ?? null,
       };
 
       const validated = crossValidateOwnership(ownershipData);
 
       const mgmtName = validated.managementCompany.name || undefined;
+      const ownerName = validated.beneficialOwner.name || property.bizName || property.ownerName1 || null;
+      const propCity = property.city || 'Dallas';
+
       if (validated.propertyWebsite) {
         const websiteResult = await validatePropertyWebsite(
           validated.propertyWebsite,
@@ -696,6 +711,24 @@ Return JSON:
         }
       }
 
+      if (!validated.propertyWebsite) {
+        console.log(`[FocusedEnrichment] Stage 2: No valid property website — running domain retry...`);
+        const retryResult = await retryFindPropertyWebsite(
+          classification.propertyName,
+          classification.canonicalAddress,
+          mgmtName || null,
+          ownerName,
+          propCity
+        );
+        if (retryResult.url) {
+          validated.propertyWebsite = retryResult.url;
+          if (retryResult.domain && !validated.managementCompany.domain) {
+            validated.managementCompany.domain = retryResult.domain;
+            console.log(`[FocusedEnrichment] Stage 2: Domain retry also provided mgmt domain: ${retryResult.domain}`);
+          }
+        }
+      }
+
       if (validated.managementCompany.domain) {
         const validatedMgmtDomain = await validateAndCleanDomain(
           validated.managementCompany.domain,
@@ -707,6 +740,17 @@ Return JSON:
           validated.managementCompany.domain = null;
         } else {
           validated.managementCompany.domain = validatedMgmtDomain;
+        }
+      }
+
+      if (!validated.managementCompany.domain && validated.managementCompany.name) {
+        console.log(`[FocusedEnrichment] Stage 2: No valid mgmt domain — running company domain retry...`);
+        const retryDomain = await retryFindCompanyDomain(
+          validated.managementCompany.name,
+          propCity
+        );
+        if (retryDomain) {
+          validated.managementCompany.domain = retryDomain;
         }
       }
 
@@ -758,6 +802,126 @@ Return JSON:
   };
 }
 
+async function retryFindPropertyWebsite(
+  propertyName: string,
+  address: string,
+  mgmtCompany: string | null,
+  ownerName: string | null,
+  city: string
+): Promise<{ url: string | null; domain: string | null }> {
+  const client = getGeminiClient();
+  const context = [
+    mgmtCompany ? `Management company: ${mgmtCompany}` : '',
+    ownerName ? `Owner: ${ownerName}` : '',
+  ].filter(Boolean).join('. ');
+
+  const prompt = `Find the official website for this property. Return ONLY valid JSON.
+
+PROPERTY: ${propertyName} at ${address}, ${city}, TX
+${context}
+
+Search for "${propertyName} ${city}" and "${propertyName} apartments" or "${propertyName} office" as a consumer would. Look for the property's own marketing website (e.g. "live${propertyName.toLowerCase().replace(/\s+/g, '')}.com" or similar), a listing on the management company's site, or a dedicated property page. Copy the exact URL from search results.
+
+Return JSON: {"url":"https://full-url-to-property-page|null","domain":"domain-of-the-site|null"}`;
+
+  try {
+    console.log(`[FocusedEnrichment] Domain retry: searching for property website for "${propertyName}"...`);
+    const response = await callGeminiWithTimeout(
+      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
+      1
+    );
+    const text = response.text?.trim() || '';
+    if (!text) return { url: null, domain: null };
+
+    const parsed = parseJsonResponse(text);
+    const url = parsed.url && parsed.url !== 'null' ? parsed.url : null;
+    const domain = parsed.domain && parsed.domain !== 'null' ? parsed.domain : null;
+
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'retry-property-website',
+      entityType: 'property',
+      success: true,
+    });
+
+    if (url) {
+      const websiteResult = await validatePropertyWebsite(url, propertyName, mgmtCompany || undefined);
+      if (websiteResult.validatedUrl) {
+        console.log(`[FocusedEnrichment] Domain retry: found valid property website: ${websiteResult.validatedUrl}`);
+        return { url: websiteResult.validatedUrl, domain: websiteResult.extractedDomain };
+      }
+      console.warn(`[FocusedEnrichment] Domain retry: property website "${url}" failed validation`);
+    }
+    return { url: null, domain: null };
+  } catch (error) {
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'retry-property-website',
+      entityType: 'property',
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    console.warn(`[FocusedEnrichment] Domain retry for property website failed: ${error instanceof Error ? error.message : error}`);
+    return { url: null, domain: null };
+  }
+}
+
+async function retryFindCompanyDomain(
+  companyName: string,
+  city: string
+): Promise<string | null> {
+  const client = getGeminiClient();
+
+  const prompt = `Find the official website for this company. Return ONLY valid JSON.
+
+COMPANY: ${companyName}
+LOCATION: ${city}, TX
+
+Search for the company's official website. Copy the exact domain from the URL you find in search results.
+
+Return JSON: {"domain":"company-domain.com|null","source":"full URL where you found it|null"}`;
+
+  try {
+    console.log(`[FocusedEnrichment] Domain retry: searching for company domain for "${companyName}"...`);
+    const response = await callGeminiWithTimeout(
+      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
+      1
+    );
+    const text = response.text?.trim() || '';
+    if (!text) return null;
+
+    const parsed = parseJsonResponse(text);
+    const domain = parsed.domain && parsed.domain !== 'null' ? parsed.domain : null;
+
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'retry-company-domain',
+      entityType: 'organization',
+      success: true,
+    });
+
+    if (domain) {
+      const validated = await validateAndCleanDomain(domain, companyName, 'retry company domain');
+      if (validated) {
+        console.log(`[FocusedEnrichment] Domain retry: found valid company domain: ${validated}`);
+        return validated;
+      }
+      console.warn(`[FocusedEnrichment] Domain retry: company domain "${domain}" failed validation`);
+    }
+    return null;
+  } catch (error) {
+    trackCostFireAndForget({
+      provider: 'gemini',
+      endpoint: 'retry-company-domain',
+      entityType: 'organization',
+      success: false,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    });
+    console.warn(`[FocusedEnrichment] Domain retry for company domain failed: ${error instanceof Error ? error.message : error}`);
+    return null;
+  }
+}
+
 export interface IdentifiedDecisionMaker {
   name: string;
   title: string | null;
@@ -801,16 +965,12 @@ MGMT CO: ${mgmtInfo}
 OWNER: ${ownerName}
 PROPERTY SITE: ${propertySite}
 
-SEARCH STRATEGY (in priority order):
-1. ${mgmtDomain ? `Search ${mgmtDomain} for staff assigned to this property or the ${city} market` : `Search for the management company staff for this property`}
-2. Search "${classification.propertyName} property manager" and "${classification.propertyName} leasing"
-3. Search LinkedIn for property managers, leasing agents, or regional managers at ${mgmtName || 'the management company'} in ${city}
+TASK: Search the web to find people who directly manage, operate, or maintain this specific property on a day-to-day basis. Focus on the property management company staff in the ${city} area, not corporate headquarters executives.
 
 PRIORITY ROLES (return these first; listed in priority order):
 - On-site property manager or community manager for this specific property
-- Facilities/maintenance director for this specific property
+- Facilities/maintenance director or chief engineer for this specific property
 - Regional/district property manager overseeing this property's area
-- Leasing agent or leasing manager for this property or portfolio
 - Asset manager or owner with direct responsibility for this property
 
 DO NOT RETURN:
@@ -822,7 +982,7 @@ DO NOT RETURN:
 Only return people verifiably connected to THIS property at THIS address or its local market as of 2025-2026.
 
 Return JSON:
-{"contacts":[{"name":"Full Name","title":"Title","company":"Company Name","domain":"company.com","role":"property_manager|facilities_manager|owner|leasing|other","rc":0.0-1.0,"evidence":"1 sentence linking them to this property","type":"individual|general"}],"summary":"2 sentences max."}`;
+{"contacts":[{"name":"Full Name","title":"Title","company":"Company Name","domain":"company.com","role":"property_manager|facilities_manager|owner|other","rc":0.0-1.0,"evidence":"1 sentence linking them to this property","type":"individual|general"}],"summary":"2 sentences max."}`;
 
   console.log('[FocusedEnrichment] Stage 3a: Identifying decision-makers...');
   console.log(`[FocusedEnrichment] Stage 3a input - Property: ${classification.propertyName}, Mgmt: ${mgmtInfo}`);
@@ -925,6 +1085,8 @@ async function enrichContactDetails(
 
   const prompt = `Find contact info for ${contact.name}, ${contact.title || 'unknown title'} at ${companyInfo} in ${city}, TX. Return ONLY valid JSON.
 
+Only return email and phone that appeared in search results. If you cannot find verified contact details, return null for those fields — do not guess or construct emails from name patterns like firstname@company.com.
+
 {"email":"found@email.com|null","phone":"+1XXXXXXXXXX|null","pl":"direct_work|office|personal|null","pc":0.0-1.0,"loc":"City, ST|null"}`;
 
   const maxAttempts = 3;
@@ -965,7 +1127,18 @@ async function enrichContactDetails(
         metadata: { sourcesCount: sources.length, attempt },
       });
 
-      const email = parsed.email && parsed.email !== 'null' ? parsed.email : null;
+      let email = parsed.email && parsed.email !== 'null' ? parsed.email : null;
+
+      if (email) {
+        const emailDomain = email.split('@')[1];
+        if (emailDomain) {
+          const domainResult = await validateAndCleanDomain(emailDomain, undefined, `email domain for ${contact.name}`);
+          if (!domainResult) {
+            console.warn(`[FocusedEnrichment] Stage 3b: Email "${email}" has invalid domain, clearing`);
+            email = null;
+          }
+        }
+      }
 
       return {
         email,
