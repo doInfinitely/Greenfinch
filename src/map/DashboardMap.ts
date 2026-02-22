@@ -305,6 +305,8 @@ export class DashboardMap {
     }
     if (!this.map || !this.styleReady || !e.features?.length) return;
 
+    this.map.getCanvas().style.cursor = 'pointer';
+
     const feature = e.features[0];
     const featureId = feature.id;
 
