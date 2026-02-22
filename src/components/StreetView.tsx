@@ -25,10 +25,27 @@ function loadGoogleMapsApi(apiKey: string): Promise<void> {
 
     const existingScript = document.getElementById('google-maps-script');
     if (existingScript) {
-      if ((existingScript as any)._loaded) {
+      if ((existingScript as any)._loaded || (typeof google !== 'undefined' && google.maps)) {
         resolve();
       } else {
-        existingScript.addEventListener('load', () => resolve());
+        const onLoad = () => resolve();
+        existingScript.addEventListener('load', onLoad);
+        const checkInterval = setInterval(() => {
+          if (typeof google !== 'undefined' && google.maps) {
+            clearInterval(checkInterval);
+            existingScript.removeEventListener('load', onLoad);
+            resolve();
+          }
+        }, 200);
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          existingScript.removeEventListener('load', onLoad);
+          if (typeof google !== 'undefined' && google.maps) {
+            resolve();
+          } else {
+            reject(new Error('Google Maps load timeout'));
+          }
+        }, 15000);
       }
       return;
     }

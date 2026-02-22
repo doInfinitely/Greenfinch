@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import pLimit from 'p-limit';
 import { db } from './db';
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from './schema';
-import { eq, or, and, isNull, inArray } from 'drizzle-orm';
+import { eq, or, and, isNull, inArray, ilike } from 'drizzle-orm';
 import { runFocusedEnrichment, cleanupAISummary, EnrichmentStageError } from './ai-enrichment';
 import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpoint } from './ai-enrichment';
 import { isCircuitBreakerError } from './rate-limiter';
@@ -289,6 +289,22 @@ export async function saveEnrichmentResults(
             where: eq(organizations.domain, normalizedDomain),
           })
         : null;
+
+      if (!existingOrg && org.name) {
+        const nameClean = org.name.trim();
+        const rows = await db.select()
+          .from(organizations)
+          .where(ilike(organizations.name, nameClean))
+          .limit(5);
+        if (rows.length === 1) {
+          existingOrg = rows[0];
+          console.log(`[SaveEnrichment] Found existing org by name match: "${existingOrg.name}" (${existingOrg.id})`);
+        } else if (rows.length > 1) {
+          const enriched = rows.find(r => r.domain && r.enrichmentStatus !== 'pending');
+          existingOrg = enriched || rows[0];
+          console.log(`[SaveEnrichment] Found ${rows.length} orgs matching "${nameClean}", using: "${existingOrg.name}" (${existingOrg.id})`);
+        }
+      }
 
       let orgId: string;
 

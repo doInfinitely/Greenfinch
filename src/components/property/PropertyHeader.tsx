@@ -31,10 +31,27 @@ function loadGoogleMapsIfNeeded(apiKey: string): Promise<void> {
     }
     const existingScript = document.getElementById('google-maps-script');
     if (existingScript) {
-      if ((existingScript as any)._loaded) {
+      if ((existingScript as any)._loaded || (typeof google !== 'undefined' && google.maps)) {
         resolve();
       } else {
-        existingScript.addEventListener('load', () => resolve());
+        const onLoad = () => resolve();
+        existingScript.addEventListener('load', onLoad);
+        const checkInterval = setInterval(() => {
+          if (typeof google !== 'undefined' && google.maps) {
+            clearInterval(checkInterval);
+            existingScript.removeEventListener('load', onLoad);
+            resolve();
+          }
+        }, 200);
+        setTimeout(() => {
+          clearInterval(checkInterval);
+          existingScript.removeEventListener('load', onLoad);
+          if (typeof google !== 'undefined' && google.maps) {
+            resolve();
+          } else {
+            reject(new Error('Google Maps load timeout'));
+          }
+        }, 15000);
       }
       return;
     }
@@ -80,6 +97,14 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
       const sv = new google.maps.StreetViewService();
       const location = new google.maps.LatLng(property.lat!, property.lon!);
 
+      let panoResolved = false;
+      const panoTimeout = setTimeout(() => {
+        if (!panoResolved && mounted) {
+          panoResolved = true;
+          setStatus('unavailable');
+        }
+      }, 10000);
+
       sv.getPanorama(
         {
           location,
@@ -88,7 +113,12 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
           preference: google.maps.StreetViewPreference.NEAREST,
         },
         (data, panoStatus) => {
-          if (!mounted || !containerRef.current) return;
+          if (panoResolved || !mounted || !containerRef.current) {
+            clearTimeout(panoTimeout);
+            return;
+          }
+          panoResolved = true;
+          clearTimeout(panoTimeout);
           if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
             const panoLocation = data.location.latLng;
             const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, location) ?? 0;

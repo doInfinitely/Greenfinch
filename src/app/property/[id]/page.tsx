@@ -395,6 +395,14 @@ export default function PropertyDetailPage() {
   }, [propertyId]);
 
   useEffect(() => {
+    const handler = () => {
+      fetchProperty({ silent: true });
+    };
+    window.addEventListener('enrichment-complete', handler);
+    return () => window.removeEventListener('enrichment-complete', handler);
+  }, [fetchProperty]);
+
+  useEffect(() => {
     if (!propertyId) return;
     
     const fetchPipelineData = async () => {
@@ -453,15 +461,27 @@ export default function PropertyDetailPage() {
         propertyKey: property.propertyKey,
         storeResults: true,
       },
+      pollForCompletion: {
+        checkEndpoint: `/api/properties/${property.propertyKey}`,
+        checkField: 'property.enrichmentStatus',
+        maxAttempts: 60,
+        intervalMs: 5000,
+        originalValue: 'pending',
+        compareMode: 'changed',
+      },
       onSuccess: async () => {
         await fetchProperty();
-        setEnrichmentStatus('enriched');
-        setEnrichmentMessage('Research complete - contact enrichment running in background...');
+        const currentStatus = enrichmentStatus;
+        if (currentStatus === 'enriched' || currentStatus === 'completed') {
+          setEnrichmentMessage('Research complete');
+          return;
+        }
+        setEnrichmentStatus('pending');
+        setEnrichmentMessage('AI research in progress...');
         if (pollTimerRef.current) clearInterval(pollTimerRef.current);
         pollTimerRef.current = null;
 
         let pollCount = 0;
-        let lastContactHash = '';
         const maxDurationMs = 5 * 60 * 1000;
         const startTime = Date.now();
         let unchangedCount = 0;
@@ -483,6 +503,11 @@ export default function PropertyDetailPage() {
             const newData = JSON.stringify(
               (window as any).__gf_contacts_snapshot || ''
             );
+
+            if (enrichmentStatus === 'enriched' || enrichmentStatus === 'completed') {
+              setEnrichmentMessage('Research complete - contact enrichment running in background...');
+            }
+
             if (newData !== prevData && newData !== '""') {
               unchangedCount = 0;
             } else {
