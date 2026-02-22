@@ -597,24 +597,99 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 2: Ownership identification...');
   console.log(`[FocusedEnrichment] Stage 2 input - Property: ${classification.propertyName}, Deed Owner: ${deedOwner}`);
 
-  try {
-    const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
-      2
-    );
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[FocusedEnrichment] Stage 2 attempt ${attempt}/${maxAttempts}...`);
+      const response = await callGeminiWithTimeout(
+        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
+        2
+      );
 
-    const text = response.text?.trim() || '';
-    console.log('[FocusedEnrichment] Stage 2 response length:', text.length, 'chars');
+      const text = response.text?.trim() || '';
+      console.log(`[FocusedEnrichment] Stage 2 attempt ${attempt} response length: ${text.length} chars`);
 
-    if (!text) {
-      console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 2, returning defaults');
+      if (!text) {
+        console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 2 (attempt ${attempt}/${maxAttempts})`);
+        trackCostFireAndForget({
+          provider: 'gemini',
+          endpoint: 'identify-ownership',
+          entityType: 'property',
+          success: false,
+          errorMessage: `Empty response attempt ${attempt}`,
+        });
+        if (attempt < maxAttempts) {
+          const delayMs = attempt * 3000;
+          console.log(`[FocusedEnrichment] Stage 2 retrying in ${delayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+        console.warn('[FocusedEnrichment] Stage 2: all attempts returned empty, returning defaults');
+        return {
+          data: {
+            beneficialOwner: { name: null, type: null, confidence: 0 },
+            managementCompany: { name: null, domain: null, confidence: 0 },
+            propertyWebsite: null,
+            propertyPhone: null,
+          },
+          summary: '',
+          sources: [],
+        };
+      }
+
+      const sources = extractGroundedSources(response);
+      const parsed = parseJsonResponse(text);
+
+      trackCostFireAndForget({
+        provider: 'gemini',
+        endpoint: 'identify-ownership',
+        entityType: 'property',
+        success: true,
+        metadata: { sourcesCount: sources.length, attempt },
+      });
+
+      const ownerType = parsed.owner?.type ? (OWNER_TYPE_MAP[parsed.owner.type] || null) : null;
+
+      const ownershipData: OwnershipInfo = {
+        beneficialOwner: {
+          name: parsed.owner?.name ?? null,
+          type: ownerType,
+          confidence: parsed.owner?.c ?? 0,
+        },
+        managementCompany: {
+          name: parsed.mgmt?.name ?? null,
+          domain: parsed.mgmt?.domain ?? null,
+          confidence: parsed.mgmt?.c ?? 0,
+        },
+        propertyWebsite: parsed.site ?? null,
+        propertyPhone: parsed.phone ?? null,
+      };
+
+      const validated = crossValidateOwnership(ownershipData);
+
+      console.log(`[FocusedEnrichment] Stage 2 complete with ${sources.length} grounded sources`);
+      console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${validated.propertyWebsite || 'none'}, phone: ${validated.propertyPhone || 'none'}, mgmt: ${validated.managementCompany.name || 'none'}`);
+
+      return {
+        data: validated,
+        summary: parsed.summary || '',
+        sources,
+      };
+    } catch (error) {
       trackCostFireAndForget({
         provider: 'gemini',
         endpoint: 'identify-ownership',
         entityType: 'property',
         success: false,
-        errorMessage: 'Empty response from Gemini',
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
+      console.error(`[FocusedEnrichment] Stage 2 attempt ${attempt} failed: ${error instanceof Error ? error.message : error}`);
+      if (attempt < maxAttempts) {
+        const delayMs = attempt * 3000;
+        console.log(`[FocusedEnrichment] Stage 2 retrying after error in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
       return {
         data: {
           beneficialOwner: { name: null, type: null, confidence: 0 },
@@ -626,65 +701,18 @@ Return JSON:
         sources: [],
       };
     }
-
-    const sources = extractGroundedSources(response);
-    const parsed = parseJsonResponse(text);
-
-    trackCostFireAndForget({
-      provider: 'gemini',
-      endpoint: 'identify-ownership',
-      entityType: 'property',
-      success: true,
-      metadata: { sourcesCount: sources.length },
-    });
-
-    const ownerType = parsed.owner?.type ? (OWNER_TYPE_MAP[parsed.owner.type] || null) : null;
-
-    const ownershipData: OwnershipInfo = {
-      beneficialOwner: {
-        name: parsed.owner?.name ?? null,
-        type: ownerType,
-        confidence: parsed.owner?.c ?? 0,
-      },
-      managementCompany: {
-        name: parsed.mgmt?.name ?? null,
-        domain: parsed.mgmt?.domain ?? null,
-        confidence: parsed.mgmt?.c ?? 0,
-      },
-      propertyWebsite: parsed.site ?? null,
-      propertyPhone: parsed.phone ?? null,
-    };
-
-    const validated = crossValidateOwnership(ownershipData);
-
-    console.log(`[FocusedEnrichment] Stage 2 complete with ${sources.length} grounded sources`);
-    console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${validated.propertyWebsite || 'none'}, phone: ${validated.propertyPhone || 'none'}, mgmt: ${validated.managementCompany.name || 'none'}`);
-
-    return {
-      data: validated,
-      summary: parsed.summary || '',
-      sources,
-    };
-  } catch (error) {
-    trackCostFireAndForget({
-      provider: 'gemini',
-      endpoint: 'identify-ownership',
-      entityType: 'property',
-      success: false,
-      errorMessage: error instanceof Error ? error.message : String(error),
-    });
-    console.error(`[FocusedEnrichment] Stage 2 failed after retries: ${error instanceof Error ? error.message : error}`);
-    return {
-      data: {
-        beneficialOwner: { name: null, type: null, confidence: 0 },
-        managementCompany: { name: null, domain: null, confidence: 0 },
-        propertyWebsite: null,
-        propertyPhone: null,
-      },
-      summary: '',
-      sources: [],
-    };
   }
+
+  return {
+    data: {
+      beneficialOwner: { name: null, type: null, confidence: 0 },
+      managementCompany: { name: null, domain: null, confidence: 0 },
+      propertyWebsite: null,
+      propertyPhone: null,
+    },
+    summary: '',
+    sources: [],
+  };
 }
 
 export interface IdentifiedDecisionMaker {
@@ -756,71 +784,90 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 3a: Identifying decision-makers...');
   console.log(`[FocusedEnrichment] Stage 3a input - Property: ${classification.propertyName}, Mgmt: ${mgmtInfo}`);
 
-  try {
-    const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
-      2
-    );
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[FocusedEnrichment] Stage 3a attempt ${attempt}/${maxAttempts}...`);
+      const response = await callGeminiWithTimeout(
+        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
+        2
+      );
 
-    const text = response.text?.trim() || '';
-    console.log('[FocusedEnrichment] Stage 3a response length:', text.length, 'chars');
+      const text = response.text?.trim() || '';
+      console.log(`[FocusedEnrichment] Stage 3a attempt ${attempt} response length: ${text.length} chars`);
 
-    if (!text) {
-      console.warn('[FocusedEnrichment] Empty response from Gemini in Stage 3a');
+      if (!text) {
+        console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 3a (attempt ${attempt}/${maxAttempts})`);
+        trackCostFireAndForget({
+          provider: 'gemini',
+          endpoint: 'identify-decision-makers',
+          entityType: 'property',
+          success: false,
+          errorMessage: `Empty response attempt ${attempt}`,
+        });
+        if (attempt < maxAttempts) {
+          const delayMs = attempt * 3000;
+          console.log(`[FocusedEnrichment] Stage 3a retrying in ${delayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+        console.warn('[FocusedEnrichment] Stage 3a: all attempts returned empty, giving up');
+        return { data: { contacts: [] }, summary: '', sources: [] };
+      }
+
+      const sources = extractGroundedSources(response);
+      const parsed = parseJsonResponse(text);
+
+      const contacts: IdentifiedDecisionMaker[] = (parsed.contacts || []).map((c: any) => ({
+        name: c.name || '',
+        title: c.title ?? null,
+        company: c.company ?? null,
+        companyDomain: c.domain ?? null,
+        role: c.role || 'other',
+        roleConfidence: c.rc ?? 0.5,
+        connectionEvidence: c.evidence || '',
+        contactType: c.type === 'general' ? 'general' : 'individual',
+      }));
+
+      console.log(`[FocusedEnrichment] Stage 3a complete: ${contacts.length} contacts identified, ${sources.length} sources`);
+
+      trackCostFireAndForget({
+        provider: 'gemini',
+        endpoint: 'identify-decision-makers',
+        entityType: 'property',
+        success: true,
+        metadata: { contactsCount: contacts.length, sourcesCount: sources.length, attempt },
+      });
+
+      return {
+        data: { contacts },
+        summary: parsed.summary || '',
+        sources,
+      };
+    } catch (error) {
       trackCostFireAndForget({
         provider: 'gemini',
         endpoint: 'identify-decision-makers',
         entityType: 'property',
         success: false,
-        errorMessage: 'Empty response from Gemini',
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
-      return { data: { contacts: [] }, summary: '', sources: [] };
+      console.error(`[FocusedEnrichment] Stage 3a attempt ${attempt} failed: ${error instanceof Error ? error.message : error}`);
+      if (attempt < maxAttempts) {
+        const delayMs = attempt * 3000;
+        console.log(`[FocusedEnrichment] Stage 3a retrying after error in ${delayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+      return {
+        data: { contacts: [] },
+        summary: '',
+        sources: [],
+      };
     }
-
-    const sources = extractGroundedSources(response);
-    const parsed = parseJsonResponse(text);
-
-    const contacts: IdentifiedDecisionMaker[] = (parsed.contacts || []).map((c: any) => ({
-      name: c.name || '',
-      title: c.title ?? null,
-      company: c.company ?? null,
-      companyDomain: c.domain ?? null,
-      role: c.role || 'other',
-      roleConfidence: c.rc ?? 0.5,
-      connectionEvidence: c.evidence || '',
-      contactType: c.type === 'general' ? 'general' : 'individual',
-    }));
-
-    console.log(`[FocusedEnrichment] Stage 3a complete: ${contacts.length} contacts identified, ${sources.length} sources`);
-
-    trackCostFireAndForget({
-      provider: 'gemini',
-      endpoint: 'identify-decision-makers',
-      entityType: 'property',
-      success: true,
-      metadata: { contactsCount: contacts.length, sourcesCount: sources.length },
-    });
-
-    return {
-      data: { contacts },
-      summary: parsed.summary || '',
-      sources,
-    };
-  } catch (error) {
-    trackCostFireAndForget({
-      provider: 'gemini',
-      endpoint: 'identify-decision-makers',
-      entityType: 'property',
-      success: false,
-      errorMessage: error instanceof Error ? error.message : String(error),
-    });
-    console.error(`[FocusedEnrichment] Stage 3a failed: ${error instanceof Error ? error.message : error}`);
-    return {
-      data: { contacts: [] },
-      summary: '',
-      sources: [],
-    };
   }
+
+  return { data: { contacts: [] }, summary: '', sources: [] };
 }
 
 async function enrichContactDetails(
@@ -837,57 +884,74 @@ async function enrichContactDetails(
 
 {"email":"found@email.com|null","phone":"+1XXXXXXXXXX|null","pl":"direct_work|office|personal|null","pc":0.0-1.0,"loc":"City, ST|null"}`;
 
-  try {
-    const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
-      2
-    );
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[FocusedEnrichment] Stage 3b attempt ${attempt}/${maxAttempts} for ${contact.name}...`);
+      const response = await callGeminiWithTimeout(
+        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
+        2
+      );
 
-    const text = response.text?.trim() || '';
-    if (!text) {
+      const text = response.text?.trim() || '';
+      if (!text) {
+        console.warn(`[FocusedEnrichment] Empty response in Stage 3b for ${contact.name} (attempt ${attempt}/${maxAttempts})`);
+        trackCostFireAndForget({
+          provider: 'gemini',
+          endpoint: 'enrich-contact-details',
+          entityType: 'contact',
+          success: false,
+          errorMessage: `Empty response attempt ${attempt}`,
+        });
+        if (attempt < maxAttempts) {
+          const delayMs = attempt * 2000;
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+        return { email: null, emailSource: null, phone: null, phoneLabel: null, phoneConfidence: null, location: null, enrichmentSources: [] };
+      }
+
+      const sources = extractGroundedSources(response);
+      const parsed = parseJsonResponse(text);
+
+      trackCostFireAndForget({
+        provider: 'gemini',
+        endpoint: 'enrich-contact-details',
+        entityType: 'contact',
+        success: true,
+        metadata: { sourcesCount: sources.length, attempt },
+      });
+
+      const email = parsed.email && parsed.email !== 'null' ? parsed.email : null;
+
+      return {
+        email,
+        emailSource: email ? 'ai_discovered' : null,
+        phone: parsed.phone && parsed.phone !== 'null' ? parsed.phone : null,
+        phoneLabel: parsed.pl && parsed.pl !== 'null' ? parsed.pl : null,
+        phoneConfidence: parsed.pc ?? null,
+        location: parsed.loc && parsed.loc !== 'null' ? parsed.loc : null,
+        enrichmentSources: sources,
+      };
+    } catch (error) {
       trackCostFireAndForget({
         provider: 'gemini',
         endpoint: 'enrich-contact-details',
         entityType: 'contact',
         success: false,
-        errorMessage: 'Empty response',
+        errorMessage: error instanceof Error ? error.message : String(error),
       });
+      console.warn(`[FocusedEnrichment] Stage 3b attempt ${attempt} failed for ${contact.name}: ${error instanceof Error ? error.message : error}`);
+      if (attempt < maxAttempts) {
+        const delayMs = attempt * 2000;
+        await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
       return { email: null, emailSource: null, phone: null, phoneLabel: null, phoneConfidence: null, location: null, enrichmentSources: [] };
     }
-
-    const sources = extractGroundedSources(response);
-    const parsed = parseJsonResponse(text);
-
-    trackCostFireAndForget({
-      provider: 'gemini',
-      endpoint: 'enrich-contact-details',
-      entityType: 'contact',
-      success: true,
-      metadata: { sourcesCount: sources.length },
-    });
-
-    const email = parsed.email && parsed.email !== 'null' ? parsed.email : null;
-
-    return {
-      email,
-      emailSource: email ? 'ai_discovered' : null,
-      phone: parsed.phone && parsed.phone !== 'null' ? parsed.phone : null,
-      phoneLabel: parsed.pl && parsed.pl !== 'null' ? parsed.pl : null,
-      phoneConfidence: parsed.pc ?? null,
-      location: parsed.loc && parsed.loc !== 'null' ? parsed.loc : null,
-      enrichmentSources: sources,
-    };
-  } catch (error) {
-    trackCostFireAndForget({
-      provider: 'gemini',
-      endpoint: 'enrich-contact-details',
-      entityType: 'contact',
-      success: false,
-      errorMessage: error instanceof Error ? error.message : String(error),
-    });
-    console.warn(`[FocusedEnrichment] Stage 3b enrichment failed for ${contact.name}: ${error instanceof Error ? error.message : error}`);
-    return { email: null, emailSource: null, phone: null, phoneLabel: null, phoneConfidence: null, location: null, enrichmentSources: [] };
   }
+
+  return { email: null, emailSource: null, phone: null, phoneLabel: null, phoneConfidence: null, location: null, enrichmentSources: [] };
 }
 
 function normalizeName(name: string): string {
