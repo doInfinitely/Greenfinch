@@ -2,7 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import pLimit from 'p-limit';
 import { db } from './db';
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from './schema';
-import { eq, or, and, isNull, inArray, ilike } from 'drizzle-orm';
+import { eq, or, and, isNull, inArray } from 'drizzle-orm';
 import { runFocusedEnrichment, cleanupAISummary, EnrichmentStageError } from './ai-enrichment';
 import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpoint } from './ai-enrichment';
 import { isCircuitBreakerError } from './rate-limiter';
@@ -298,29 +298,15 @@ export async function saveEnrichmentResults(
       } else {
         const normalizedDomain = org.domain?.trim().toLowerCase() || null;
 
-        let existingOrg = normalizedDomain
+        const existingOrg = normalizedDomain
           ? await db.query.organizations.findFirst({
               where: eq(organizations.domain, normalizedDomain),
             })
           : null;
 
-        if (!existingOrg && org.name) {
-          const nameClean = org.name.trim();
-          const rows = await db.select()
-            .from(organizations)
-            .where(ilike(organizations.name, nameClean))
-            .limit(5);
-          if (rows.length === 1) {
-            existingOrg = rows[0];
-          } else if (rows.length > 1) {
-            const enriched = rows.find(r => r.domain && r.enrichmentStatus !== 'pending');
-            existingOrg = enriched || rows[0];
-          }
-        }
-
         if (existingOrg) {
           orgId = existingOrg.id;
-          console.log(`[SaveEnrichment] Found existing related org: ${existingOrg.name} (${orgId})`);
+          console.log(`[SaveEnrichment] Found existing related org by domain: ${existingOrg.name} (${orgId})`);
         } else {
           const [inserted] = await db.insert(organizations)
             .values({
