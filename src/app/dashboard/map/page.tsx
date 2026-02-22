@@ -86,6 +86,7 @@ export default function MapPage() {
 
   const prevFiltersRef = useRef<string>('');
   const shouldAutoFitRef = useRef(false);
+  const boundsRef = useRef<MapBounds | null>(null);
 
   const hasActiveFilters = useCallback((f: FilterState) => {
     return !!(
@@ -196,9 +197,21 @@ export default function MapPage() {
         setIsLoading(false);
         if (shouldAutoFitRef.current && features.length > 0) {
           shouldAutoFitRef.current = false;
-          setTimeout(() => {
-            mapRef.current?.fitToFeatures(features);
-          }, 100);
+          const vp = boundsRef.current;
+          const anyInViewport = vp && features.some((f: PropertyFeature) => {
+            const geom = f.geometry;
+            if (geom.type !== 'Point') return false;
+            const [lng, lat] = geom.coordinates;
+            return (
+              lat >= vp.south && lat <= vp.north &&
+              lng >= vp.west && lng <= vp.east
+            );
+          });
+          if (!anyInViewport) {
+            setTimeout(() => {
+              mapRef.current?.fitToFeatures(features);
+            }, 100);
+          }
         }
       })
       .catch(() => setIsLoading(false));
@@ -207,6 +220,7 @@ export default function MapPage() {
 
   const handleBoundsChange = useCallback((newBounds: MapBounds, zoom: number) => {
     setBounds(newBounds);
+    boundsRef.current = newBounds;
     const centerLat = (newBounds.north + newBounds.south) / 2;
     const centerLon = (newBounds.east + newBounds.west) / 2;
     setMapCenter({ lat: centerLat, lon: centerLon });
