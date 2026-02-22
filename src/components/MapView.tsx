@@ -112,8 +112,8 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       data: geojson,
       cluster: true,
       clusterMaxZoom: 13,
-      clusterRadius: 200,
-      clusterMinPoints: 3,
+      clusterRadius: 50,
+      clusterMinPoints: 2,
     });
 
     map.current.addLayer({
@@ -122,27 +122,17 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       source: 'properties-cluster',
       filter: ['has', 'point_count'],
       paint: {
-        'circle-color': [
-          'step',
-          ['get', 'point_count'],
-          '#34d399',
-          50,
-          '#2dd4bf',
-          200,
-          '#22d3ee',
-          500,
-          '#60a5fa',
-        ],
+        'circle-color': '#16a34a',
         'circle-radius': [
           'step',
           ['get', 'point_count'],
-          20,
+          18,
+          10,
+          22,
           50,
           26,
           200,
           32,
-          500,
-          38,
         ],
         'circle-stroke-width': 2.5,
         'circle-stroke-color': '#ffffff',
@@ -172,54 +162,23 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       },
     });
 
-    const initialZoom = map.current.getZoom();
-    const initialPointVisibility = initialZoom >= 14 ? 'visible' : 'none';
-    const initialClusterVisibility = initialZoom < 14 ? 'visible' : 'none';
-    
-    map.current.setLayoutProperty('clusters', 'visibility', initialClusterVisibility);
-    map.current.setLayoutProperty('cluster-count', 'visibility', initialClusterVisibility);
-
     map.current.addLayer({
       id: 'unclustered-point',
       type: 'circle',
       source: 'properties-cluster',
       filter: ['!', ['has', 'point_count']],
-      layout: {
-        visibility: initialPointVisibility,
-      },
       paint: {
-        'circle-color': [
-          'case',
-          ['==', ['get', 'enriched'], true],
-          [
-            'match',
-            ['get', 'category'],
-            'Office', '#3b82f6',
-            'Retail', '#f59e0b',
-            'Industrial', '#8b5cf6',
-            'Multifamily', '#10b981',
-            'Medical', '#ef4444',
-            'Hospitality', '#ec4899',
-            'Mixed Use', '#06b6d4',
-            'Land', '#84cc16',
-            'Special Purpose', '#f97316',
-            '#3b82f6',
-          ],
-          '#d1d5db',
-        ],
+        'circle-color': '#16a34a',
         'circle-radius': [
           'interpolate', ['linear'], ['zoom'],
+          8, 4,
+          12, 5,
           14, 6,
           16, 8,
           18, 10,
         ],
         'circle-stroke-width': 2,
-        'circle-stroke-color': [
-          'case',
-          ['==', ['get', 'enriched'], true],
-          '#ffffff',
-          '#22c55e',
-        ],
+        'circle-stroke-color': '#ffffff',
       },
     });
 
@@ -550,19 +509,6 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
     }
     if (map.current.getLayer('parcels-outline')) {
       map.current.setLayoutProperty('parcels-outline', 'visibility', regridVisibility);
-    }
-
-    const pointVisibility = zoom >= 14 ? 'visible' : 'none';
-    const clusterVisibility = zoom < 14 ? 'visible' : 'none';
-    
-    if (map.current.getLayer('unclustered-point')) {
-      map.current.setLayoutProperty('unclustered-point', 'visibility', pointVisibility);
-    }
-    if (map.current.getLayer('clusters')) {
-      map.current.setLayoutProperty('clusters', 'visibility', clusterVisibility);
-    }
-    if (map.current.getLayer('cluster-count')) {
-      map.current.setLayoutProperty('cluster-count', 'visibility', clusterVisibility);
     }
   }, []);
 

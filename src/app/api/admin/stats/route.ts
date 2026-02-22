@@ -28,6 +28,7 @@ export async function GET() {
       .from(properties)
       .where(and(
         eq(properties.isActive, true),
+        eq(properties.isParentProperty, true),
         eq(properties.enrichmentStatus, 'completed')
       ));
 
@@ -36,6 +37,7 @@ export async function GET() {
       .from(properties)
       .where(and(
         eq(properties.isActive, true),
+        eq(properties.isParentProperty, true),
         eq(properties.enrichmentStatus, 'pending')
       ));
 
