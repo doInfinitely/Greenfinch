@@ -98,29 +98,60 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       .catch(() => setMapError('Failed to load map configuration'));
   }, []);
 
+  const computeOverviewCluster = useCallback((geojson: GeoJSON.FeatureCollection): GeoJSON.FeatureCollection => {
+    const features = geojson.features;
+    if (features.length === 0) return { type: 'FeatureCollection', features: [] };
+
+    let sumLng = 0, sumLat = 0;
+    for (const f of features) {
+      const coords = (f.geometry as GeoJSON.Point).coordinates;
+      sumLng += coords[0];
+      sumLat += coords[1];
+    }
+    const centroid: [number, number] = [sumLng / features.length, sumLat / features.length];
+
+    return {
+      type: 'FeatureCollection',
+      features: [{
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: centroid },
+        properties: { point_count: features.length, point_count_abbreviated: String(features.length) },
+      }],
+    };
+  }, []);
+
   const addPropertyLayers = useCallback((geojson: GeoJSON.FeatureCollection) => {
     if (!map.current) return;
+
+    const overviewData = computeOverviewCluster(geojson);
 
     if (map.current.getSource('properties-cluster')) {
       const source = map.current.getSource('properties-cluster') as mapboxgl.GeoJSONSource;
       source.setData(geojson);
+      const overviewSource = map.current.getSource('overview-cluster') as mapboxgl.GeoJSONSource;
+      if (overviewSource) overviewSource.setData(overviewData);
       return;
     }
 
     map.current.addSource('properties-cluster', {
       type: 'geojson',
       data: geojson,
-      cluster: true,
-      clusterMaxZoom: 13,
-      clusterRadius: 400,
-      clusterMinPoints: 1,
     });
+
+    map.current.addSource('overview-cluster', {
+      type: 'geojson',
+      data: overviewData,
+    });
+
+    const initialZoom = map.current.getZoom();
+    const showMarkers = initialZoom >= 14 ? 'visible' : 'none';
+    const showClusters = initialZoom < 14 ? 'visible' : 'none';
 
     map.current.addLayer({
       id: 'clusters',
       type: 'circle',
-      source: 'properties-cluster',
-      filter: ['has', 'point_count'],
+      source: 'overview-cluster',
+      layout: { visibility: showClusters },
       paint: {
         'circle-color': '#16a34a',
         'circle-radius': [
@@ -143,9 +174,9 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
     map.current.addLayer({
       id: 'cluster-count',
       type: 'symbol',
-      source: 'properties-cluster',
-      filter: ['has', 'point_count'],
+      source: 'overview-cluster',
       layout: {
+        visibility: showClusters,
         'text-field': [
           'case',
           ['>=', ['get', 'point_count'], 1000],
@@ -162,18 +193,10 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       },
     });
 
-    const initialZoom = map.current.getZoom();
-    const showMarkers = initialZoom >= 14 ? 'visible' : 'none';
-    const showClusters = initialZoom < 14 ? 'visible' : 'none';
-
-    map.current.setLayoutProperty('clusters', 'visibility', showClusters);
-    map.current.setLayoutProperty('cluster-count', 'visibility', showClusters);
-
     map.current.addLayer({
       id: 'unclustered-point',
       type: 'circle',
       source: 'properties-cluster',
-      filter: ['!', ['has', 'point_count']],
       layout: {
         visibility: showMarkers,
       },
@@ -191,7 +214,7 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
     });
 
     layersAdded.current = true;
-  }, []);
+  }, [computeOverviewCluster]);
 
   const addRegridLayers = useCallback((token: string, routerRef: typeof router) => {
     if (!map.current || !token) return;
@@ -404,46 +427,23 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
     if (!map.current || propertyHandlersAdded.current) return;
     propertyHandlersAdded.current = true;
 
-    map.current.on('click', 'clusters', (e) => {
-      if (!map.current) return;
-      const features = map.current.queryRenderedFeatures(e.point, {
-        layers: ['clusters'],
-      });
-      if (!features.length) return;
-      
-      const clusterId = features[0].properties?.cluster_id;
-      const pointCount = features[0].properties?.point_count || 0;
-      const source = map.current.getSource('properties-cluster') as mapboxgl.GeoJSONSource;
-      
-      if (pointCount <= 10) {
-        source.getClusterLeaves(clusterId, pointCount, 0, (err, leaves) => {
-          if (err || !map.current || !leaves || leaves.length === 0) return;
-          
-          const bounds = new mapboxgl.LngLatBounds();
-          leaves.forEach((leaf: any) => {
-            const coords = leaf.geometry.coordinates;
-            bounds.extend(coords as [number, number]);
-          });
-          
-          map.current.fitBounds(bounds, {
-            padding: { top: 80, bottom: 80, left: 40, right: 40 },
-            maxZoom: 17,
-            duration: 500,
-          });
-        });
-      } else {
-        source.getClusterExpansionZoom(clusterId, (err, zoom) => {
-          if (err || !map.current || zoom == null) return;
-          
-          const coordinates = (features[0].geometry as GeoJSON.Point).coordinates;
-          
-          map.current.easeTo({
-            center: coordinates as [number, number],
-            zoom: Math.min(zoom + 0.5, 17),
-            duration: 500,
-          });
-        });
+    map.current.on('click', 'clusters', () => {
+      if (!map.current || !propertiesGeoJson.current) return;
+
+      const allFeatures = propertiesGeoJson.current.features;
+      if (allFeatures.length === 0) return;
+
+      const bounds = new mapboxgl.LngLatBounds();
+      for (const f of allFeatures) {
+        const coords = (f.geometry as GeoJSON.Point).coordinates;
+        bounds.extend(coords as [number, number]);
       }
+
+      map.current.fitBounds(bounds, {
+        padding: { top: 80, bottom: 80, left: 40, right: 40 },
+        maxZoom: 17,
+        duration: 500,
+      });
     });
 
     map.current.on('click', 'unclustered-point', (e) => {

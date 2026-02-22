@@ -71,11 +71,19 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }
   const panoramaRef = useRef<unknown>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const [error, setError] = useState<string | null>(null);
+  const statusRef = useRef(status);
+  statusRef.current = status;
 
   useEffect(() => {
     if (!containerRef.current || !apiKey) return;
 
     let mounted = true;
+
+    const hardTimeout = setTimeout(() => {
+      if (mounted && statusRef.current === 'loading') {
+        setStatus('unavailable');
+      }
+    }, 12000);
 
     const initStreetView = async () => {
       try {
@@ -86,6 +94,14 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }
         const sv = new google.maps.StreetViewService();
         const propertyLocation = new google.maps.LatLng(lat, lon);
 
+        let panoResolved = false;
+        const panoTimeout = setTimeout(() => {
+          if (!panoResolved && mounted) {
+            panoResolved = true;
+            setStatus('unavailable');
+          }
+        }, 8000);
+
         sv.getPanorama(
           {
             location: propertyLocation,
@@ -94,7 +110,12 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }
             preference: google.maps.StreetViewPreference.NEAREST,
           },
           (data, panoStatus) => {
-            if (!mounted || !containerRef.current) return;
+            if (panoResolved || !mounted || !containerRef.current) {
+              clearTimeout(panoTimeout);
+              return;
+            }
+            panoResolved = true;
+            clearTimeout(panoTimeout);
 
             if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
               const panoLocation = data.location.latLng;
@@ -139,6 +160,7 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }
 
     return () => {
       mounted = false;
+      clearTimeout(hardTimeout);
       if (panoramaRef.current) {
         panoramaRef.current = null;
       }
