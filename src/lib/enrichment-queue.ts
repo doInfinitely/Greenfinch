@@ -284,59 +284,12 @@ export async function saveEnrichmentResults(
 
   for (const org of allOrgs) {
     try {
-      const isKeyOrg = org.orgType === 'management' || org.orgType === 'owner';
-
-      let orgId: string;
-
-      if (isKeyOrg) {
-        const result = await resolveOrganization({
-          name: org.name,
-          domain: org.domain,
-        });
-        orgId = result.orgId;
-        console.log(`[SaveEnrichment] Resolved ${org.orgType} org "${org.name}" → ${orgId} (${result.matchedBy}, new=${result.isNew}, pdl=${result.pdlEnriched})`);
-      } else {
-        const normalizedDomain = org.domain?.trim().toLowerCase() || null;
-
-        const existingOrg = normalizedDomain
-          ? await db.query.organizations.findFirst({
-              where: eq(organizations.domain, normalizedDomain),
-            })
-          : null;
-
-        if (existingOrg) {
-          orgId = existingOrg.id;
-          console.log(`[SaveEnrichment] Found existing related org by domain: ${existingOrg.name} (${orgId})`);
-        } else {
-          const [inserted] = await db.insert(organizations)
-            .values({
-              name: org.name,
-              domain: org.domain?.trim().toLowerCase() || undefined,
-              orgType: org.orgType,
-              enrichmentSource: 'ai',
-              enrichmentStatus: 'pending',
-            })
-            .onConflictDoNothing()
-            .returning({ id: organizations.id });
-
-          if (inserted) {
-            orgId = inserted.id;
-            console.log(`[SaveEnrichment] Created related org: ${org.name} (${orgId})`);
-          } else {
-            const normalizedDom = org.domain?.trim().toLowerCase() || null;
-            const found = normalizedDom
-              ? await db.query.organizations.findFirst({
-                  where: eq(organizations.domain, normalizedDom),
-                })
-              : null;
-            if (!found) {
-              console.warn(`[SaveEnrichment] Could not insert or find org: ${org.name}, skipping`);
-              continue;
-            }
-            orgId = found.id;
-          }
-        }
-      }
+      const result = await resolveOrganization({
+        name: org.name,
+        domain: org.domain,
+      });
+      const orgId = result.orgId;
+      console.log(`[SaveEnrichment] Resolved ${org.orgType || 'related'} org "${org.name}" → ${orgId} (${result.matchedBy}, new=${result.isNew}, pdl=${result.pdlEnriched})`);
 
       if (resolvedOrgIds.has(orgId)) {
         console.log(`[SaveEnrichment] Org ${orgId} already processed, adding role only`);

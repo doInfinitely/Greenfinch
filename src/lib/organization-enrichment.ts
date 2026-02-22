@@ -1,6 +1,6 @@
 import { db } from './db';
 import { organizations, contactOrganizations } from './schema';
-import { eq, ilike } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { enrichOrganizationCascade, OrganizationEnrichmentResult as CascadeResult } from './cascade-enrichment';
 import { enrichCompanyPDL, type PDLCompanyResult } from './pdl';
 import { normalizeDomain } from './normalization';
@@ -31,8 +31,7 @@ type OrgRecord = typeof organizations.$inferSelect;
 async function findExistingOrgInDb(input: {
   pdlCompanyId?: string | null;
   domain?: string | null;
-  name?: string | null;
-}): Promise<{ org: OrgRecord; matchedBy: 'pdl_company_id' | 'domain' | 'name' } | null> {
+}): Promise<{ org: OrgRecord; matchedBy: 'pdl_company_id' | 'domain' } | null> {
   if (input.pdlCompanyId) {
     const byPdlId = await db.query.organizations.findFirst({
       where: eq(organizations.pdlCompanyId, input.pdlCompanyId),
@@ -46,19 +45,6 @@ async function findExistingOrgInDb(input: {
       where: eq(organizations.domain, norm),
     });
     if (byDomain) return { org: byDomain, matchedBy: 'domain' };
-  }
-
-  if (input.name) {
-    const rows = await db.select()
-      .from(organizations)
-      .where(ilike(organizations.name, input.name.trim()))
-      .limit(5);
-    if (rows.length === 1) {
-      return { org: rows[0], matchedBy: 'name' };
-    } else if (rows.length > 1) {
-      const enriched = rows.find(r => r.domain && r.pdlEnriched);
-      return { org: enriched || rows[0], matchedBy: 'name' };
-    }
   }
 
   return null;
@@ -108,7 +94,29 @@ export async function resolveOrganization(input: ResolveOrgInput): Promise<Resol
   const { name, domain, linkedinUrl, pdlCompanyId: inputPdlId } = input;
   const normalizedDomain = domain ? normalizeDomain(domain) : null;
 
-  console.log(`[ResolveOrg] Resolving: "${name}" (domain=${normalizedDomain}, linkedin=${linkedinUrl || 'none'})`);
+  console.log(`[ResolveOrg] Resolving: "${name}" (domain=${normalizedDomain}, pdlId=${inputPdlId || 'none'})`);
+
+  if (inputPdlId) {
+    const byPdlId = await db.query.organizations.findFirst({
+      where: eq(organizations.pdlCompanyId, inputPdlId),
+    });
+    if (byPdlId) {
+      console.log(`[ResolveOrg] Matched by PDL ID: "${byPdlId.name}" (${byPdlId.id})`);
+      return { orgId: byPdlId.id, isNew: false, matchedBy: 'pdl_company_id', pdlEnriched: byPdlId.pdlEnriched ?? false };
+    }
+  }
+
+  if (normalizedDomain) {
+    const byDomain = await db.query.organizations.findFirst({
+      where: eq(organizations.domain, normalizedDomain),
+    });
+    if (byDomain) {
+      console.log(`[ResolveOrg] Matched by domain: "${byDomain.name}" (${byDomain.id})`);
+      return { orgId: byDomain.id, isNew: false, matchedBy: 'domain', pdlEnriched: byDomain.pdlEnriched ?? false };
+    }
+  }
+
+  console.log(`[ResolveOrg] No local match for "${name}" — calling PDL for identity resolution`);
 
   let pdlResult: PDLCompanyResult | null = null;
   let resolvedPdlId = inputPdlId || null;
@@ -134,37 +142,38 @@ export async function resolveOrganization(input: ResolveOrgInput): Promise<Resol
     ? pdlResult.website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '')
     : null;
 
-  const match = await findExistingOrgInDb({
-    pdlCompanyId: resolvedPdlId,
-    domain: normalizedDomain || pdlDomain,
-    name,
-  });
+  if (resolvedPdlId || pdlDomain) {
+    const match = await findExistingOrgInDb({
+      pdlCompanyId: resolvedPdlId,
+      domain: pdlDomain,
+    });
 
-  if (match) {
-    console.log(`[ResolveOrg] Matched existing org "${match.org.name}" (${match.org.id}) by ${match.matchedBy}`);
+    if (match) {
+      console.log(`[ResolveOrg] Matched existing org via PDL data: "${match.org.name}" (${match.org.id}) by ${match.matchedBy}`);
 
-    if (pdlResult?.found && pdlResult.pdlCompanyId) {
-      const updateData = buildPdlUpdateData(pdlResult);
-      if (!match.org.pdlEnriched || match.org.pdlCompanyId !== pdlResult.pdlCompanyId) {
-        await db.update(organizations)
-          .set(updateData)
-          .where(eq(organizations.id, match.org.id));
-        console.log(`[ResolveOrg] Updated org "${match.org.name}" with PDL data`);
+      if (pdlResult?.found && pdlResult.pdlCompanyId) {
+        const updateData = buildPdlUpdateData(pdlResult);
+        if (!match.org.pdlEnriched || match.org.pdlCompanyId !== pdlResult.pdlCompanyId) {
+          await db.update(organizations)
+            .set(updateData)
+            .where(eq(organizations.id, match.org.id));
+          console.log(`[ResolveOrg] Updated org "${match.org.name}" with PDL data`);
+        }
       }
-    }
 
-    return {
-      orgId: match.org.id,
-      isNew: false,
-      matchedBy: match.matchedBy,
-      pdlEnriched: !!(pdlResult?.found),
-    };
+      return {
+        orgId: match.org.id,
+        isNew: false,
+        matchedBy: match.matchedBy,
+        pdlEnriched: !!(pdlResult?.found),
+      };
+    }
   }
 
   const insertData: Record<string, any> = {
     name,
     domain: normalizedDomain || pdlDomain || undefined,
-    enrichmentStatus: 'pending',
+    enrichmentStatus: pdlResult?.found ? 'complete' : 'pending',
   };
 
   if (pdlResult?.found) {
@@ -199,7 +208,6 @@ export async function resolveOrganization(input: ResolveOrgInput): Promise<Resol
   const fallback = await findExistingOrgInDb({
     pdlCompanyId: resolvedPdlId,
     domain: normalizedDomain || pdlDomain,
-    name,
   });
 
   if (fallback) {
