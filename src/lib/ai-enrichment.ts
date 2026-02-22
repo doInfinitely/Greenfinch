@@ -54,7 +54,7 @@ async function streamGeminiResponse(
 ): Promise<StreamedGeminiResponse> {
   const hasSearchGrounding = options.tools?.some((t: any) => t.googleSearch);
   const config: any = {
-    temperature: options.temperature ?? (hasSearchGrounding ? 1.0 : 0.1),
+    temperature: options.temperature ?? (hasSearchGrounding ? 0.3 : 0.1),
     httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
   };
   if (options.tools) {
