@@ -5,8 +5,37 @@ import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { rateLimiters } from './rate-limiter';
 import * as fs from 'fs';
 import * as path from 'path';
-
 let vertexCredentialsReady = false;
+let geminiSdkPatched = false;
+
+function patchGeminiSdkTimeout(): void {
+  if (geminiSdkPatched) return;
+  geminiSdkPatched = true;
+
+  const patchTarget = 'if (httpOptions.timeout && (httpOptions === null || httpOptions === void 0 ? void 0 : httpOptions.timeout) > 0) {';
+  const patchInsert = `if (httpOptions.timeout && (httpOptions === null || httpOptions === void 0 ? void 0 : httpOptions.timeout) > 0) {
+                try { const { Agent: UndiciAgent } = require('undici'); requestInit.dispatcher = new UndiciAgent({ headersTimeout: httpOptions.timeout, bodyTimeout: httpOptions.timeout, connectTimeout: httpOptions.timeout }); } catch(e) {}`;
+
+  const sdkFiles = [
+    'node_modules/@google/genai/dist/node/index.mjs',
+    'node_modules/@google/genai/dist/node/index.cjs',
+  ];
+
+  for (const relPath of sdkFiles) {
+    try {
+      const fullPath = path.resolve(relPath);
+      if (!fs.existsSync(fullPath)) continue;
+      let code = fs.readFileSync(fullPath, 'utf-8');
+      if (code.includes('UndiciAgent')) continue;
+      if (!code.includes(patchTarget)) continue;
+      code = code.replace(patchTarget, patchInsert);
+      fs.writeFileSync(fullPath, code);
+      console.log(`[VertexAI] Patched ${relPath} for timeout > 300s support`);
+    } catch (err) {
+      console.warn(`[VertexAI] Failed to patch ${relPath}:`, err instanceof Error ? err.message : err);
+    }
+  }
+}
 
 function ensureVertexCredentials(): { project: string; location: string } {
   const credsJson = process.env.GOOGLE_CLOUD_CREDENTIALS;
@@ -38,6 +67,7 @@ function ensureVertexCredentials(): { project: string; location: string } {
 }
 
 function getGeminiClient(): GoogleGenAI {
+  patchGeminiSdkTimeout();
   const { project, location } = ensureVertexCredentials();
   return new GoogleGenAI({ vertexai: true, project, location });
 }
@@ -148,8 +178,8 @@ function mapQualityGradeToClass(grade: string | null): { propertyClass: string |
   return mapping[gradeNorm] || { propertyClass: null, confidence: 0 };
 }
 
-// SDK-level HTTP timeout: must be under the ~300s system TCP socket timeout
-const GEMINI_HTTP_TIMEOUT_MS = 280000; // 280 seconds
+// Vertex AI supports up to 600s server-side timeout
+const GEMINI_HTTP_TIMEOUT_MS = 600000; // 600 seconds
 
 const AI_GENERATED_DOMAINS = [
   'generativelanguage.googleapis.com',
