@@ -18,6 +18,7 @@ interface MapCanvasProps {
 export interface MapCanvasHandle {
   flyTo: (lat: number, lon: number, zoom?: number, showMarker?: boolean) => void;
   clearSearchMarker: () => void;
+  fitToFeatures: (features: GeoJSON.Feature[]) => void;
 }
 
 const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
@@ -47,6 +48,9 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
     },
     clearSearchMarker: () => {
       mapRef.current?.clearSearchMarker();
+    },
+    fitToFeatures: (features: GeoJSON.Feature[]) => {
+      mapRef.current?.fitToFeatures(features);
     },
   }));
 

@@ -206,7 +206,7 @@ export class DashboardMap {
           filter: ['has', 'point_count'],
           paint: {
             'circle-color': '#16a34a',
-            'circle-radius': ['step', ['get', 'point_count'], 22, 50, 30, 200, 40],
+            'circle-radius': ['step', ['get', 'point_count'], 24, 50, 32, 200, 42],
             'circle-opacity': 0.92,
             'circle-stroke-width': 2.5,
             'circle-stroke-color': '#ffffff',
@@ -241,7 +241,12 @@ export class DashboardMap {
           filter: ['!', ['has', 'point_count']],
           paint: {
             'circle-color': '#16a34a',
-            'circle-radius': 8,
+            'circle-radius': [
+              'interpolate', ['linear'], ['zoom'],
+              10, 6,
+              13, 8,
+              16, 10,
+            ],
             'circle-stroke-width': 2,
             'circle-stroke-color': '#ffffff',
           },
@@ -690,6 +695,33 @@ export class DashboardMap {
     
     if (this.debugLogging) {
       console.log('[BuildIndex] features:', this.currentData.features.length, 'indexSize:', this.propertyIndex.size);
+    }
+  }
+
+  fitToFeatures(features: GeoJSON.Feature[]) {
+    if (!this.map || features.length === 0) return;
+    
+    let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+    for (const f of features) {
+      const geom = f.geometry;
+      if (geom.type === 'Point') {
+        const [lng, lat] = geom.coordinates;
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+      }
+    }
+    
+    if (!isFinite(minLng)) return;
+    
+    if (minLng === maxLng && minLat === maxLat) {
+      this.map.flyTo({ center: [minLng, minLat], zoom: 16, duration: 1000 });
+    } else {
+      this.map.fitBounds(
+        [[minLng, minLat], [maxLng, maxLat]],
+        { padding: 60, maxZoom: 17, duration: 1000 }
+      );
     }
   }
 

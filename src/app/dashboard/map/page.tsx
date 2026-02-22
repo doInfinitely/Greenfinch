@@ -84,6 +84,27 @@ export default function MapPage() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
 
+  const prevFiltersRef = useRef<string>('');
+  const shouldAutoFitRef = useRef(false);
+
+  const hasActiveFilters = useCallback((f: FilterState) => {
+    return !!(
+      (f.categories && f.categories.length > 0) ||
+      (f.customerStatuses && f.customerStatuses.length > 0) ||
+      (f.enrichmentStatus && f.enrichmentStatus !== 'all') ||
+      (f.zipCodes && f.zipCodes.length > 0) ||
+      (f.subcategories && f.subcategories.length > 0) ||
+      (f.buildingClasses && f.buildingClasses.length > 0) ||
+      f.organizationId ||
+      f.contactId ||
+      (f.minLotAcres !== null && f.minLotAcres !== undefined) ||
+      (f.maxLotAcres !== null && f.maxLotAcres !== undefined) ||
+      (f.minNetSqft !== null && f.minNetSqft !== undefined) ||
+      (f.maxNetSqft !== null && f.maxNetSqft !== undefined) ||
+      (f.viewStatus && f.viewStatus !== 'all')
+    );
+  }, []);
+
   const savedViewport = useMemo(() => {
     try {
       const saved = sessionStorage.getItem('greenfinch_map_viewport');
@@ -144,11 +165,16 @@ export default function MapPage() {
   }, []);
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
+    const newKey = JSON.stringify(newFilters);
+    if (newKey !== prevFiltersRef.current) {
+      shouldAutoFitRef.current = hasActiveFilters(newFilters);
+      prevFiltersRef.current = newKey;
+    }
     setFilters(newFilters);
     const params = serializeFiltersToParams(newFilters);
     const queryString = params.toString();
     router.replace(`${pathname}${queryString ? `?${queryString}` : ''}`, { scroll: false });
-  }, [router, pathname]);
+  }, [router, pathname, hasActiveFilters]);
 
   // Fetch config on mount
   useEffect(() => {
@@ -165,8 +191,15 @@ export default function MapPage() {
     fetch(url)
       .then(r => r.json())
       .then(geoData => {
-        setAllProperties(geoData.features || []);
+        const features = geoData.features || [];
+        setAllProperties(features);
         setIsLoading(false);
+        if (shouldAutoFitRef.current && features.length > 0) {
+          shouldAutoFitRef.current = false;
+          setTimeout(() => {
+            mapRef.current?.fitToFeatures(features);
+          }, 100);
+        }
       })
       .catch(() => setIsLoading(false));
   }, [filters, buildGeojsonUrl]);
