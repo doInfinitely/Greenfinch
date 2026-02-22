@@ -1,0 +1,82 @@
+Let me check the actual docs you're referencing.Let me get the specific API reference for the retrieval config and lat/lng:Now let me check the `toolConfig` / `retrievalConfig` with `lat_lng` specifically for Google Search grounding:Good find — you were right. Here's what I found:
+
+## Two Separate Things
+
+**`GOOGLE_CLOUD_LOCATION`** in your `ensureVertexCredentials()` (where you set `location: 'global'`) is the **Vertex AI API endpoint region** — it determines which Google Cloud datacenter processes your request. `'global'` is fine and recommended for most use cases. It has nothing to do with geo-biasing search results.
+
+**`toolConfig.retrievalConfig.latLng`** is the separate parameter you're thinking of — it **geo-biases the Google Search grounding results** toward a specific location. This is confirmed in the REST API docs. The raw request body looks like:
+
+```json
+{
+  "tools": [{ "googleSearch": {} }],
+  "toolConfig": {
+    "retrievalConfig": {
+      "latLng": {
+        "latitude": 32.7767,
+        "longitude": -96.7970
+      }
+    }
+  }
+}
+```
+
+## How to Add It with the `@google/genai` SDK
+
+In your `streamGeminiResponse`, you'd pass it through the config. The `@google/genai` SDK maps `toolConfig` into the config object:
+
+```typescript
+async function streamGeminiResponse(
+  client: GoogleGenAI,
+  prompt: string,
+  options: { 
+    tools?: any[]; 
+    temperature?: number;
+    latLng?: { latitude: number; longitude: number };
+  } = {}
+): Promise<StreamedGeminiResponse> {
+  const hasSearchGrounding = options.tools?.some((t: any) => t.googleSearch);
+  const config: any = {
+    temperature: options.temperature ?? (hasSearchGrounding ? 0.3 : 0.1),
+    httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
+  };
+  if (options.tools) {
+    config.tools = options.tools;
+  }
+  
+  // Geo-bias search grounding to property location
+  if (options.latLng && hasSearchGrounding) {
+    config.toolConfig = {
+      retrievalConfig: {
+        latLng: options.latLng,
+      },
+    };
+  }
+
+  const stream = await client.models.generateContentStream({
+    model: GEMINI_MODEL,
+    contents: prompt,
+    config,
+  });
+  // ... rest unchanged
+}
+```
+
+Then in your stage functions, pass the property's coordinates:
+
+```typescript
+// In classifyAndVerifyProperty, identifyOwnership, identifyDecisionMakers, etc:
+const latLng = property.latitude && property.longitude
+  ? { latitude: property.latitude, longitude: property.longitude }
+  : undefined;
+
+const response = await rateLimiters.gemini.execute(
+  () => streamGeminiResponse(client, prompt, { 
+    tools: [{ googleSearch: {} }],
+    latLng,
+  })
+);
+```
+
+If your `CommercialProperty` type doesn't have lat/lng yet, you likely have it in DCAD data or can geocode from the address. For Dallas properties specifically, you could also use a fallback default of `{ latitude: 32.7767, longitude: -96.7970 }` (downtown Dallas) which would still be a significant improvement over no geo-bias at all — it would push Google Search to prioritize Texas-based sources over national or irrelevant results.
+
+This should meaningfully reduce the cases where Gemini's search grounding pulls results for the wrong property in a different city with the same name.
