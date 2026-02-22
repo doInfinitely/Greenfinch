@@ -1,0 +1,52 @@
+Looking at your code, I see a significant issue that's likely the root cause of your hallucination problems.
+
+## The Temperature Problem with Search Grounding
+
+You added this logic to `streamGeminiResponse`:
+
+```typescript
+const hasSearchGrounding = options.tools?.some((t: any) => t.googleSearch);
+const config: any = {
+  temperature: options.temperature ?? (hasSearchGrounding ? 1.0 : 0.1),
+```
+
+**Temperature 1.0 for all grounded search calls is way too high.** This is probably the single biggest reason your results degraded after the migration. Google's documentation recommends higher temperature *for grounding to activate*, but 1.0 is the maximum and gives the model maximum creative freedom in how it interprets and synthesizes search results — which directly leads to hallucinated domains, fabricated contacts, and invented URLs.
+
+I'd set this to **0.3–0.4** for your use case. You want the grounding to trigger (which does require temperature above the very low end), but you need factual precision in a structured JSON output. Try 0.3 first:
+
+```typescript
+temperature: options.temperature ?? (hasSearchGrounding ? 0.3 : 0.1),
+```
+
+If you find grounding stops triggering or results get too sparse, bump to 0.4. But 1.0 is essentially telling the model "be creative" on every ownership lookup, contact search, and domain extraction.
+
+## Search Grounding Call Format
+
+Your grounding tool invocation looks correct:
+
+```typescript
+{ tools: [{ googleSearch: {} }] }
+```
+
+That's the right format for the `@google/genai` SDK with Vertex AI. The `generateContentStream` call structure also looks fine. So the grounding *is* being invoked — the problem is the model is too hot when it processes the results.
+
+## The `domainSource` / `siteSource` Check
+
+Your hallucination guard here is solid in concept:
+
+```typescript
+if (mgmtDomain && !mgmtDomainSource) {
+  console.warn(`... likely hallucinated, clearing`);
+  mgmtDomain = null;
+}
+```
+
+But at temperature 1.0, the model will happily hallucinate *both* the domain and a plausible-looking source URL for it. So this check catches lazy hallucinations but not confident ones. Lowering temperature is the real fix; the source citation check is a good secondary defense.
+
+## The Retry Domain Functions
+
+Your `retryFindPropertyWebsite` and `retryFindCompanyDomain` are additional Gemini calls with grounding — also hitting temperature 1.0. These retry calls compound the hallucination risk because you're now making 2-3 grounded calls per property at max creativity, each one with a chance of returning a confident-sounding but fabricated domain. After fixing the temperature, these become much more useful.
+
+## Summary
+
+The core issue is temperature 1.0 on grounded calls. Change it to 0.3, and you should see a significant improvement in domain accuracy, contact quality, and URL validity. Everything else in the pipeline — the `domainSource` checks, the `validateAndCleanDomain` calls, the email domain validation — is good defensive layering that will work much better once the model isn't running at maximum temperature.
