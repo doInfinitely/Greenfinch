@@ -112,8 +112,8 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       data: geojson,
       cluster: true,
       clusterMaxZoom: 13,
-      clusterRadius: 50,
-      clusterMinPoints: 2,
+      clusterRadius: 60,
+      clusterMinPoints: 1,
     });
 
     map.current.addLayer({
@@ -162,17 +162,25 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
       },
     });
 
+    const initialZoom = map.current.getZoom();
+    const showMarkers = initialZoom >= 14 ? 'visible' : 'none';
+    const showClusters = initialZoom < 14 ? 'visible' : 'none';
+
+    map.current.setLayoutProperty('clusters', 'visibility', showClusters);
+    map.current.setLayoutProperty('cluster-count', 'visibility', showClusters);
+
     map.current.addLayer({
       id: 'unclustered-point',
       type: 'circle',
       source: 'properties-cluster',
       filter: ['!', ['has', 'point_count']],
+      layout: {
+        visibility: showMarkers,
+      },
       paint: {
         'circle-color': '#16a34a',
         'circle-radius': [
           'interpolate', ['linear'], ['zoom'],
-          8, 4,
-          12, 5,
           14, 6,
           16, 8,
           18, 10,
@@ -503,12 +511,23 @@ export default function MapView({ flyTo, onFlyComplete, onPropertyClick, propert
   const updateLayerVisibility = useCallback((zoom: number) => {
     if (!map.current) return;
     
-    const regridVisibility = zoom >= 14 ? 'visible' : 'none';
+    const showParcelsAndMarkers = zoom >= 14 ? 'visible' : 'none';
+    const showClusters = zoom < 14 ? 'visible' : 'none';
+
     if (map.current.getLayer('parcels-fill')) {
-      map.current.setLayoutProperty('parcels-fill', 'visibility', regridVisibility);
+      map.current.setLayoutProperty('parcels-fill', 'visibility', showParcelsAndMarkers);
     }
     if (map.current.getLayer('parcels-outline')) {
-      map.current.setLayoutProperty('parcels-outline', 'visibility', regridVisibility);
+      map.current.setLayoutProperty('parcels-outline', 'visibility', showParcelsAndMarkers);
+    }
+    if (map.current.getLayer('unclustered-point')) {
+      map.current.setLayoutProperty('unclustered-point', 'visibility', showParcelsAndMarkers);
+    }
+    if (map.current.getLayer('clusters')) {
+      map.current.setLayoutProperty('clusters', 'visibility', showClusters);
+    }
+    if (map.current.getLayer('cluster-count')) {
+      map.current.setLayoutProperty('cluster-count', 'visibility', showClusters);
     }
   }, []);
 
