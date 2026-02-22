@@ -64,7 +64,7 @@ function loadGoogleMapsIfNeeded(apiKey: string): Promise<void> {
     };
     const script = document.createElement('script');
     script.id = 'google-maps-script';
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&loading=async&callback=${callbackName}`;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=geometry&callback=${callbackName}`;
     script.async = true;
     script.defer = true;
     script.onerror = () => reject(new Error('Failed to load Google Maps'));
