@@ -3,13 +3,43 @@ import type { CommercialProperty, DCADBuilding } from "./snowflake";
 import { ASSET_CATEGORIES, GEMINI_MODEL } from "./constants";
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { rateLimiters } from './rate-limiter';
+import * as fs from 'fs';
+import * as path from 'path';
+
+let vertexCredentialsReady = false;
+
+function ensureVertexCredentials(): { project: string; location: string } {
+  const credsJson = process.env.GOOGLE_CLOUD_CREDENTIALS;
+  if (!credsJson) {
+    throw new Error("GOOGLE_CLOUD_CREDENTIALS is not set");
+  }
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(credsJson);
+  } catch {
+    throw new Error("GOOGLE_CLOUD_CREDENTIALS contains invalid JSON");
+  }
+
+  const project = parsed.project_id;
+  if (!project) {
+    throw new Error("GOOGLE_CLOUD_CREDENTIALS missing project_id");
+  }
+
+  if (!vertexCredentialsReady) {
+    const credFilePath = path.join('/tmp', 'gcp-service-account.json');
+    fs.writeFileSync(credFilePath, credsJson, { mode: 0o600 });
+    process.env.GOOGLE_APPLICATION_CREDENTIALS = credFilePath;
+    vertexCredentialsReady = true;
+    console.log(`[VertexAI] Credentials written to ${credFilePath}, project=${project}`);
+  }
+
+  return { project, location: 'us-central1' };
+}
 
 function getGeminiClient(): GoogleGenAI {
-  const apiKey = process.env.GOOGLE_GENAI_API_KEY;
-  if (!apiKey) {
-    throw new Error("GOOGLE_GENAI_API_KEY is not set");
-  }
-  return new GoogleGenAI({ apiKey });
+  const { project, location } = ensureVertexCredentials();
+  return new GoogleGenAI({ vertexai: true, project, location });
 }
 
 interface GroundedSource {
