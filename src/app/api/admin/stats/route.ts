@@ -29,7 +29,7 @@ export async function GET() {
       .where(and(
         eq(properties.isActive, true),
         eq(properties.isParentProperty, true),
-        eq(properties.enrichmentStatus, 'completed')
+        eq(properties.enrichmentStatus, 'enriched')
       ));
 
     const [pendingPropertiesResult] = await db
