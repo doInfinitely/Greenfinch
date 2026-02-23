@@ -169,9 +169,17 @@ export async function hashGet<T>(hashName: string, field: string): Promise<T | n
   if (!r) return null;
   
   try {
-    const value = await r.hget<string>(hashName, field);
-    if (!value) return null;
-    return JSON.parse(value) as T;
+    const value = await r.hget(hashName, field);
+    if (value === null || value === undefined) return null;
+    if (typeof value === 'object') return value as T;
+    if (typeof value === 'string') {
+      try {
+        return JSON.parse(value) as T;
+      } catch {
+        return value as unknown as T;
+      }
+    }
+    return value as unknown as T;
   } catch (error) {
     console.error('[Redis] Hash get error:', error);
     return null;
@@ -188,9 +196,15 @@ export async function hashGetAll<T>(hashName: string): Promise<Record<string, T>
     
     const result: Record<string, T> = {};
     for (const [key, value] of Object.entries(all)) {
-      try {
-        result[key] = JSON.parse(value) as T;
-      } catch {
+      if (typeof value === 'object' && value !== null) {
+        result[key] = value as unknown as T;
+      } else if (typeof value === 'string') {
+        try {
+          result[key] = JSON.parse(value) as T;
+        } catch {
+          result[key] = value as unknown as T;
+        }
+      } else {
         result[key] = value as unknown as T;
       }
     }
