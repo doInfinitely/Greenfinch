@@ -361,7 +361,7 @@ export async function saveEnrichmentResults(
             fullName: contact.name,
             normalizedName: normalizedNameVal,
             nameConfidence: 0.8,
-            email: contact.email?.toLowerCase() || null,
+            email: contact.email,
             normalizedEmail: normalized,
             emailConfidence: contact.email ? 0.7 : null,
             emailSource: contact.emailSource || null,
@@ -685,7 +685,7 @@ export async function runCascadeEnrichmentOnSavedRecords(
         updateData.linkedinStatus = result.confidenceFlag === 'verified' ? 'verified' : 'enriched';
       }
       if (result.email) {
-        updateData.email = result.email.toLowerCase();
+        updateData.email = result.email;
         updateData.normalizedEmail = result.email.toLowerCase();
         updateData.emailConfidence = result.emailVerified ? 0.95 : 0.70;
         updateData.emailSource = result.emailSource;
@@ -1038,7 +1038,7 @@ async function searchForReplacement(
         .values({
           fullName: result.name,
           normalizedName: normalizedNameVal,
-          email: result.email?.toLowerCase() || null,
+          email: result.email || null,
           normalizedEmail: normalizedEmailVal,
           title: result.title || null,
           employerName: result.company || formerCompany,
@@ -1089,7 +1089,7 @@ async function searchForReplacement(
             enrichmentSource: cascadeResult.enrichmentSource,
           };
           if (cascadeResult.email) {
-            updateData.email = cascadeResult.email.toLowerCase();
+            updateData.email = cascadeResult.email;
             updateData.normalizedEmail = cascadeResult.email.toLowerCase();
             updateData.emailSource = cascadeResult.emailSource;
             updateData.emailValidationStatus = cascadeResult.emailStatus;

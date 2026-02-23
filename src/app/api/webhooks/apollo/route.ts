@@ -260,8 +260,7 @@ export async function POST(request: NextRequest) {
             
             await db.update(contacts)
               .set({
-                email: emailData.email?.toLowerCase() || emailData.email,
-                normalizedEmail: emailData.email?.toLowerCase() || null,
+                email: emailData.email,
                 emailValidationStatus: emailStatus,
                 enrichedAt: new Date(),
               })

@@ -58,11 +58,9 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Retry Consolidation**: `callGeminiWithTimeout` is a single-attempt wrapper (no internal retries). Each stage owns its own retry count (typically 3). Centralized `isRetryableGeminiError()` classifies errors consistently.
 - **Schema Validation**: Lightweight runtime validation (`validateStage1Schema`, `validateStage2Schema`, `validateStage3aSchema`) after `parseJsonResponse` — retries on schema violations in Stage 2 and 3a.
 - **Contact Source Provenance**: Stage 3a prompt requires `src` (source URL) per contact. Contacts without a source URL get `roleConfidence` capped at 0.4.
-- **Stage 3a Parallel Searches**: Stage 3a splits contact identification into 2-3 targeted parallel sub-searches (mgmt_team, property_direct, owner_asset), each with 90s timeout. Uses `Promise.allSettled` for partial failure resilience. Management company contacts cached for 30 minutes by `(mgmtName/mgmtDomain, city)` to avoid redundant Gemini calls across properties.
 - **Stage 3a Domain Validation**: All `companyDomain` values from Stage 3a are validated with `validateAndCleanDomain` before passing to Stage 3b and downstream enrichment.
 - **Cross-Stage Company Validation**: After Stage 3a, contact companies are checked against Stage 2's management company and beneficial owner. Mismatches get `roleConfidence` downgraded.
 - **Proactive Phone Matching**: Stage 3b phones are compared against Stage 2's `propertyPhone`. Matching numbers are immediately labeled as `office` with low confidence.
-- **Email Normalization**: All email addresses are lowercased at every storage point (AI enrichment, cascade enrichment, waterfall lookup, Apollo webhook, manual create/update).
 
 ## External Dependencies
 - **Snowflake**: Regrid parcel data ingestion.
