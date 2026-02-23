@@ -1016,8 +1016,10 @@ DO NOT RETURN:
 
 Only return people verifiably connected to THIS property at THIS address or its local market as of 2025-2026.
 
+IMPORTANT: If after searching you cannot find any verifiable contacts for this property, do NOT keep searching. Immediately return an empty contacts array with a summary explaining why no contacts were found. A fast "none found" response is far better than an exhaustive search that finds nothing.
+
 Return JSON:
-{"contacts":[{"name":"Full Name","title":"Title","company":"Company Name","domain":"company.com","role":"property_manager|facilities_manager|owner|other","rc":0.0-1.0,"evidence":"1 sentence linking them to this property","type":"individual|general"}],"summary":"2 sentences max."}`;
+{"contacts":[{"name":"Full Name","title":"Title","company":"Company Name","domain":"company.com","role":"property_manager|facilities_manager|owner|other","rc":0.0-1.0,"evidence":"1 sentence linking them to this property","type":"individual|general"}],"summary":"2 sentences max. If no contacts found, explain why (e.g. small owner-operated business, no public staff listings, etc.)."}`;
 
   console.log('[FocusedEnrichment] Stage 3a: Identifying decision-makers...');
   console.log(`[FocusedEnrichment] Stage 3a input - Property: ${classification.propertyName}, Mgmt: ${mgmtInfo}`);
@@ -1068,7 +1070,11 @@ Return JSON:
         contactType: c.type === 'general' ? 'general' : 'individual',
       }));
 
-      console.log(`[FocusedEnrichment] Stage 3a complete: ${contacts.length} contacts identified, ${sources.length} sources`);
+      if (contacts.length === 0) {
+        console.log(`[FocusedEnrichment] Stage 3a: No contacts found. Reason: ${parsed.summary || 'no reason given'}`);
+      } else {
+        console.log(`[FocusedEnrichment] Stage 3a complete: ${contacts.length} contacts identified, ${sources.length} sources`);
+      }
 
       trackCostFireAndForget({
         provider: 'gemini',

@@ -221,6 +221,7 @@ export async function saveEnrichmentResults(
         ownership: result.ownership.data,
         physical: result.physical.data,
         contacts: discoveredContacts,
+        noContactsReason: discoveredContacts.length === 0 ? (result.contacts.summary || 'No verifiable contacts found') : undefined,
         timing: result.timing,
         sources: allSources,
         searchSuggestionHtml: result.ownership.searchSuggestionHtml
@@ -317,6 +318,11 @@ export async function saveEnrichmentResults(
   }
 
   const contactIds: string[] = [];
+  if (discoveredContacts.length === 0) {
+    console.log(`[SaveEnrichment] No contacts to save for ${propertyKey}`);
+  } else {
+    console.log(`[SaveEnrichment] Saving ${discoveredContacts.length} contacts for ${propertyKey}: ${discoveredContacts.map((c: any) => c.name).join(', ')}`);
+  }
   for (const contact of discoveredContacts) {
     try {
       const normalized = normalizeEmail(contact.email);
