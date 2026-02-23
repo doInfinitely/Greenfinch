@@ -6,67 +6,11 @@ import Image from 'next/image';
 import LandingNav from '@/components/LandingNav';
 import LandingFooter from '@/components/LandingFooter';
 
-const testimonials = [
-  {
-    quote: "greenfinch.ai has completely transformed how we prospect. We're connecting with decision makers 3x faster than before.",
-    name: "Sarah Jenkins",
-    title: "VP of Sales, Apex Property Management",
-    initial: "S",
-  },
-  {
-    quote: "The portfolio intelligence feature is a game changer. We can finally see the full scope of an owner's holdings.",
-    name: "Michael Chen",
-    title: "Director of Acquisitions, Summit Capital Partners",
-    initial: "M",
-  },
-  {
-    quote: "Finally, a tool that gives us accurate contact info for facility directors. It's paid for itself ten times over.",
-    name: "David Rodriguez",
-    title: "Business Development, GreenLeaf Services",
-    initial: "D",
-  },
-  {
-    quote: "The zoning data is incredibly accurate. We've stopped wasting time on properties that don't fit our criteria.",
-    name: "Emily Thompson",
-    title: "Land Acquisition, TerraForm Construction",
-    initial: "E",
-  },
-  {
-    quote: "I use the map view every day to plan my territory visits. It's intuitive and saves me hours of driving.",
-    name: "James Wilson",
-    title: "Regional Manager, Evergreen Landscapes",
-    initial: "J",
-  },
-  {
-    quote: "Connecting with the right person used to take weeks. Now it takes minutes. Highly recommended.",
-    name: "Robert Chang",
-    title: "Investment Officer, Highland Investments",
-    initial: "R",
-  },
-];
-
-const companyLogos = [
-  { name: "Evergreen Landscapes", initial: "E" },
-  { name: "Summit Capital", initial: "S" },
-  { name: "TerraForm", initial: "T" },
-  { name: "Apex Property", initial: "A" },
-  { name: "GreenLeaf", initial: "G" },
-  { name: "Highland", initial: "H" },
-];
-
 export default function LandingPage() {
   const [isLoaded, setIsLoaded] = useState(false);
-  const [currentTestimonial, setCurrentTestimonial] = useState(0);
 
   useEffect(() => {
     setIsLoaded(true);
-  }, []);
-
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentTestimonial((prev) => (prev + 1) % testimonials.length);
-    }, 5000);
-    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -77,7 +21,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-4">
             <span className="inline-block px-4 py-1 bg-green-100 text-green-700 text-sm font-medium rounded-full">
-              Accepting early access partners
+              Now live in Dallas, TX
             </span>
           </div>
           
@@ -125,70 +69,6 @@ export default function LandingPage() {
                   priority
                 />
               </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-12 px-4 sm:px-6 lg:px-8 bg-white border-y border-gray-100">
-        <div className="max-w-7xl mx-auto">
-          <div className="flex items-center justify-center gap-8 md:gap-16 overflow-hidden">
-            <div className="flex gap-12 animate-scroll">
-              {[...companyLogos, ...companyLogos].map((company, index) => (
-                <div
-                  key={index}
-                  className="flex items-center gap-2 text-gray-400 whitespace-nowrap"
-                >
-                  <div className="w-10 h-10 bg-gray-100 rounded-lg flex items-center justify-center">
-                    <span className="text-gray-500 font-semibold">{company.initial}</span>
-                  </div>
-                  <span className="text-sm font-medium">{company.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-gray-50">
-        <div className="max-w-4xl mx-auto">
-          <div className="relative">
-            <div className="text-center">
-              {testimonials.map((testimonial, index) => (
-                <div
-                  key={index}
-                  className={`transition-opacity duration-500 ${
-                    index === currentTestimonial ? 'block' : 'hidden'
-                  }`}
-                >
-                  <blockquote className="text-2xl font-medium text-gray-900 mb-8">
-                    "{testimonial.quote}"
-                  </blockquote>
-                  <div className="flex items-center justify-center gap-4">
-                    <div className="w-12 h-12 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center text-white font-bold">
-                      {testimonial.initial}
-                    </div>
-                    <div className="text-left">
-                      <div className="font-semibold text-gray-900">{testimonial.name}</div>
-                      <div className="text-sm text-gray-500">{testimonial.title}</div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-            
-            <div className="flex justify-center gap-2 mt-8">
-              {testimonials.map((_, index) => (
-                <button
-                  key={index}
-                  onClick={() => setCurrentTestimonial(index)}
-                  className={`w-2 h-2 rounded-full transition-colors ${
-                    index === currentTestimonial ? 'bg-green-600' : 'bg-gray-300'
-                  }`}
-                  aria-label={`Go to testimonial ${index + 1}`}
-                  data-testid={`button-testimonial-${index}`}
-                />
-              ))}
             </div>
           </div>
         </div>
@@ -387,7 +267,7 @@ export default function LandingPage() {
               <svg className="w-5 h-5 text-green-400" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
-              <span>Cut research time by 70%</span>
+              <span>Cut research time dramatically</span>
             </div>
           </div>
           <Link
@@ -404,20 +284,6 @@ export default function LandingPage() {
       </section>
 
       <LandingFooter />
-
-      <style jsx>{`
-        @keyframes scroll {
-          0% {
-            transform: translateX(0);
-          }
-          100% {
-            transform: translateX(-50%);
-          }
-        }
-        .animate-scroll {
-          animation: scroll 30s linear infinite;
-        }
-      `}</style>
     </div>
   );
 }

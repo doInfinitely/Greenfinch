@@ -4,74 +4,6 @@ import Link from 'next/link';
 import LandingNav from '@/components/LandingNav';
 import LandingFooter from '@/components/LandingFooter';
 
-const pricingPlans = [
-  {
-    name: 'Early Access',
-    price: '',
-    description: 'Join our beta program and shape the future of Greenfinch.',
-    features: [
-      'Unlimited Property Search',
-      'Map-based Interface',
-      'Property Owner Details',
-      'Property Manager Identification',
-    ],
-    cta: 'Join the Waitlist',
-    ctaLink: '/waitlist',
-    highlight: true,
-    available: true,
-  },
-  {
-    name: 'Basic',
-    price: '$49',
-    priceDetail: '/user/mo',
-    description: 'Essential tools for individual sales representatives.',
-    features: [
-      'National Property Search',
-      'Basic Ownership Data',
-      '100 Verified Contact Credits / mo',
-      'List Building Tools',
-    ],
-    cta: 'Coming Soon',
-    ctaLink: '#',
-    highlight: false,
-    available: false,
-  },
-  {
-    name: 'Pro',
-    price: '$99',
-    priceDetail: '/user/mo',
-    description: 'Advanced intelligence for high-performing teams.',
-    features: [
-      'Everything in Basic',
-      'Portfolio Intelligence',
-      'Org Charts & Decision Makers',
-      '300 Verified Contact Credits / mo',
-      'CRM Integration',
-    ],
-    cta: 'Coming Soon',
-    ctaLink: '#',
-    highlight: false,
-    available: false,
-  },
-  {
-    name: 'Enterprise',
-    price: 'Custom',
-    description: 'Complete territory coverage for large sales organizations.',
-    features: [
-      'Everything in Pro',
-      'Unlimited Contact Credits',
-      'API Access',
-      'Territory Planning Tools',
-      'Dedicated Success Manager',
-      'SSO & Advanced Security',
-    ],
-    cta: 'Coming Soon',
-    ctaLink: '#',
-    highlight: false,
-    available: false,
-  },
-];
-
 export default function PricingPage() {
   return (
     <div className="min-h-screen bg-white">
@@ -86,85 +18,70 @@ export default function PricingPage() {
             </span>
           </h1>
           <p className="mt-6 text-xl text-gray-600">
-            Choose the plan that fits your team. We're currently in closed beta with exclusive early access.
+            We're currently in a closed early access program. Pricing details will be announced soon.
           </p>
         </div>
       </section>
 
       <section className="py-16 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
-            {pricingPlans.map((plan, index) => (
-              <div
-                key={index}
-                className={`rounded-2xl p-6 ${
-                  plan.highlight
-                    ? 'bg-gradient-to-br from-green-500 to-emerald-600 text-white ring-4 ring-green-200'
-                    : 'bg-white border border-gray-200 blur-sm opacity-60 pointer-events-none select-none'
-                }`}
-                data-testid={`card-pricing-${plan.name.toLowerCase().replace(' ', '-')}`}
-              >
-                <h3 className={`text-lg font-semibold ${plan.highlight ? 'text-white' : 'text-gray-900'}`}>
-                  {plan.name}
-                </h3>
-                <div className="mt-4 mb-2">
-                  <span className={`text-4xl font-bold ${plan.highlight ? 'text-white' : 'text-gray-900'}`}>
-                    {plan.price}
-                  </span>
-                  {plan.priceDetail && (
-                    <span className={`text-sm ${plan.highlight ? 'text-green-100' : 'text-gray-500'}`}>
-                      {plan.priceDetail}
-                    </span>
-                  )}
-                </div>
-                <p className={`text-sm mb-6 ${plan.highlight ? 'text-green-100' : 'text-gray-500'}`}>
-                  {plan.description}
-                </p>
-                <ul className="space-y-3 mb-8">
-                  {plan.features.map((feature, featureIndex) => (
-                    <li key={featureIndex} className="flex items-start gap-2">
-                      <svg
-                        className={`w-5 h-5 flex-shrink-0 ${plan.highlight ? 'text-green-200' : 'text-green-500'}`}
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                      <span className={`text-sm ${plan.highlight ? 'text-white' : 'text-gray-600'}`}>
-                        {feature}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-                {plan.available ? (
-                  <Link
-                    href={plan.ctaLink}
-                    className={`block w-full py-3 px-4 text-center font-medium rounded-lg transition-all ${
-                      plan.highlight
-                        ? 'bg-white text-green-600 hover:bg-gray-100'
-                        : 'bg-gray-100 text-gray-900 hover:bg-gray-200'
-                    }`}
-                    data-testid={`button-${plan.name.toLowerCase().replace(' ', '-')}`}
+        <div className="max-w-3xl mx-auto">
+          <div
+            className="rounded-2xl p-8 bg-gradient-to-br from-green-500 to-emerald-600 text-white ring-4 ring-green-200"
+            data-testid="card-pricing-early-access"
+          >
+            <div className="text-center">
+              <h3 className="text-2xl font-semibold text-white">Early Access</h3>
+              <p className="mt-3 text-green-100 text-lg">
+                Join our early access program and help shape the future of greenfinch.ai.
+              </p>
+            </div>
+
+            <div className="mt-8 grid sm:grid-cols-2 gap-4">
+              {[
+                'Property Search & Map Interface',
+                'AI-Powered Property Intelligence',
+                'Property Owner Identification',
+                'Property Manager Discovery',
+                'Verified Contact Information',
+                'Pipeline Management',
+                'Team Collaboration',
+                'Priority Feature Requests',
+              ].map((feature, index) => (
+                <div key={index} className="flex items-start gap-2">
+                  <svg
+                    className="w-5 h-5 flex-shrink-0 text-green-200 mt-0.5"
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
                   >
-                    {plan.cta}
-                  </Link>
-                ) : (
-                  <div className="block w-full">
-                    <button
-                      disabled
-                      className="w-full py-3 px-4 text-center font-medium rounded-lg bg-gray-100 text-gray-400 cursor-not-allowed"
-                    >
-                      Subscribe
-                    </button>
-                    <p className="text-center text-sm text-gray-400 mt-2">Coming Soon</p>
-                  </div>
-                )}
-              </div>
-            ))}
+                    <path
+                      fillRule="evenodd"
+                      d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                      clipRule="evenodd"
+                    />
+                  </svg>
+                  <span className="text-white text-sm">{feature}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-8 text-center">
+              <Link
+                href="/waitlist"
+                className="inline-flex items-center justify-center px-8 py-3 text-base font-medium text-green-600 bg-white rounded-lg hover:bg-gray-100 transition-all shadow-lg"
+                data-testid="button-early-access"
+              >
+                Join the Waitlist
+                <svg className="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                </svg>
+              </Link>
+            </div>
+          </div>
+
+          <div className="mt-12 text-center">
+            <p className="text-gray-500 text-sm">
+              Paid plans with additional features and higher limits will be available after the early access period.
+            </p>
           </div>
         </div>
       </section>

@@ -8,27 +8,27 @@ const faqs = [
   {
     question: 'What types of properties does greenfinch.ai cover?',
     answer:
-      'Greenfinch focuses on commercial properties including office buildings, retail spaces, industrial facilities, multi-family residential, and mixed-use developments. We provide comprehensive data on properties across all major commercial real estate categories.',
+      'Greenfinch focuses on commercial properties including office buildings, retail spaces, industrial facilities, multi-family residential, and mixed-use developments. We classify properties using county assessor data and AI-powered enrichment to give you accurate, actionable intelligence.',
   },
   {
     question: 'What geographic areas are available?',
     answer:
-      'We currently cover all 50 US states with the most comprehensive data in major metropolitan areas. Our coverage is expanding continuously, and we prioritize areas based on user demand and data availability.',
+      'We are currently live in Dallas, TX (ZIP 75225 and surrounding areas). We are actively expanding coverage to additional markets based on demand from early access partners. If you have a specific market in mind, let us know when you join the waitlist.',
   },
   {
     question: 'Where does the data come from?',
     answer:
-      'Our data is aggregated from multiple authoritative sources including county assessor records, business registrations, SEC filings, and proprietary research. We continuously verify and update our information to ensure accuracy.',
+      'Our data is aggregated from county assessor and appraisal district records, which we enrich using AI to identify property details, ownership structures, and management companies. Contact information is sourced and verified through multiple third-party providers to ensure accuracy.',
   },
   {
     question: 'How accurate is the contact information?',
     answer:
-      'We verify contact information through multiple channels before adding it to our database. Our verification process includes email validation, phone verification, and cross-referencing with LinkedIn profiles. We maintain an accuracy rate above 85% for verified contacts.',
+      'We verify contact information through a multi-stage enrichment pipeline that cross-references multiple data providers. Emails are validated before being added, and we flag confidence levels so you can prioritize the most reliable contacts first.',
   },
   {
     question: 'Can I export data to my CRM?',
     answer:
-      'CRM integration is coming soon! We are working on integrations with popular CRMs including Salesforce, HubSpot, and Airtable. Early access members will be notified when these features become available.',
+      'CRM integration is on our near-term roadmap. We are planning integrations with popular CRMs including Salesforce and HubSpot. Early access partners will be the first to try these features as they become available.',
   },
   {
     question: "What's the difference between a Property Owner and Property Manager?",
@@ -38,7 +38,12 @@ const faqs = [
   {
     question: 'Is there a mobile app?',
     answer:
-      'Our web application is fully responsive and works great on mobile devices. A dedicated mobile app is on our roadmap for future development. Early access members will be the first to try new features as they become available.',
+      'Our web application is fully responsive and works great on mobile devices. A dedicated mobile app is on our roadmap for future development. Early access partners will be the first to try new features as they become available.',
+  },
+  {
+    question: 'How do I get access?',
+    answer:
+      'We are currently in a closed early access program. Join our waitlist and we will reach out to onboard you as we expand availability. Early access partners help shape the product and get priority access to new features.',
   },
 ];
 
