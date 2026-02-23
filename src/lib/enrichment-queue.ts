@@ -324,12 +324,17 @@ export async function saveEnrichmentResults(
       const normalized = normalizeEmail(contact.email);
       const normalizedNameVal = normalizeName(contact.name);
 
-      const contactLockKey = `contact:create:${normalizedNameVal || ''}:${contact.companyDomain?.toLowerCase() || ''}:${normalized || ''}`;
+      const contactLockIdentifier = normalized
+        ? normalized
+        : normalizedNameVal
+          ? `${normalizedNameVal}::${contact.companyDomain?.toLowerCase() || contact.company?.toLowerCase() || ''}`
+          : `${contact.name?.toLowerCase() || 'unknown'}`;
+      const contactLockKey = `contact:create:${contactLockIdentifier}`;
       let lockAcquired = false;
       const maxLockRetries = 5;
       for (let attempt = 0; attempt < maxLockRetries; attempt++) {
         try {
-          lockAcquired = await acquireLock(contactLockKey, 30000);
+          lockAcquired = await acquireLock(contactLockKey, 30);
           if (lockAcquired) break;
         } catch {}
         await new Promise(r => setTimeout(r, 1000 + Math.random() * 2000));
@@ -341,7 +346,7 @@ export async function saveEnrichmentResults(
           name: contact.name,
           companyDomain: contact.companyDomain,
           employerName: contact.company,
-        });
+        }, { autoMergeNameMatches: true });
 
         let contactId: string;
 

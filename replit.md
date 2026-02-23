@@ -45,7 +45,9 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Automatic Retry Pass**: Retryable failures are automatically reattempted with reduced concurrency.
 - **Adaptive Concurrency**: Monitors error rates and adjusts concurrency dynamically.
 - **BullMQ Job Queue**: Persistent job queue for robust background processing with automatic retries and metadata storage.
-- **Contact Creation Locking**: Distributed Redis lock per contact identity (name+domain+email) during `saveEnrichmentResults` prevents concurrent batch workers from creating duplicate contacts.
+- **Contact Creation Locking**: Distributed Redis lock per contact identity (email or name+domain/employer) during `saveEnrichmentResults` prevents concurrent batch workers from creating duplicate contacts. Lock key uses strongest available identifier for deterministic keying.
+- **Contact Auto-Merge in Enrichment**: `findExistingContactByIdentifiers` accepts `autoMergeNameMatches` option. During enrichment, name+domain and name+employer matches return the existing contact (auto-merge) instead of creating duplicates. Manual/admin flows still flag for review.
+- **Organization Creation Locking**: `resolveOrganization` acquires a Redis lock (keyed on normalized domain or name) before the entire resolution flow, preventing concurrent creation of the same org by parallel workers.
 - **Junction Table Unique Constraints**: `property_contacts(property_id, contact_id)`, `property_organizations(property_id, org_id)`, and `contact_organizations(contact_id, org_id)` have unique indexes to prevent duplicate links.
 - **Batch Enrichment Filter**: `onlyUnenriched` mode only picks properties with NULL, `pending`, or `partial` enrichment status — already-enriched properties are excluded to prevent re-enrichment duplication.
 - **Batch Property Ingestion**: Properties are upserted in batches of 50 using INSERT ... ON CONFLICT DO UPDATE, reducing DB round-trips from ~3N to ~3*(N/50). Fallback to individual inserts on batch failure.

@@ -4,6 +4,7 @@ import { eq } from 'drizzle-orm';
 import { enrichOrganizationCascade, OrganizationEnrichmentResult as CascadeResult } from './cascade-enrichment';
 import { enrichCompanyPDL, type PDLCompanyResult } from './pdl';
 import { normalizeDomain } from './normalization';
+import { acquireLock, releaseLock } from './redis';
 
 export interface OrganizationEnrichmentResult {
   success: boolean;
@@ -97,6 +98,21 @@ function buildPdlUpdateData(pdlResult: PDLCompanyResult): Record<string, any> {
 export async function resolveOrganization(input: ResolveOrgInput): Promise<ResolveOrgResult> {
   const { name, domain, linkedinUrl, pdlCompanyId: inputPdlId, locality, region, streetAddress, postalCode } = input;
   const normalizedDomain = domain ? normalizeDomain(domain) : null;
+
+  const orgLockIdentifier = normalizedDomain || name.toLowerCase().replace(/[^a-z0-9]/g, '');
+  const orgLockKey = `org:resolve:${orgLockIdentifier}`;
+  let orgLockAcquired = false;
+  try {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        orgLockAcquired = await acquireLock(orgLockKey, 60);
+        if (orgLockAcquired) break;
+      } catch {}
+      await new Promise(r => setTimeout(r, 500 + Math.random() * 1500));
+    }
+  } catch {}
+
+  try {
 
   console.log(`[ResolveOrg] Resolving: "${name}" (domain=${normalizedDomain}, pdlId=${inputPdlId || 'none'}, loc=${locality || 'none'},${region || 'none'})`);
 
@@ -229,6 +245,12 @@ export async function resolveOrganization(input: ResolveOrgInput): Promise<Resol
   }
 
   throw new Error(`[ResolveOrg] Failed to create or find org: "${name}"`);
+
+  } finally {
+    if (orgLockAcquired) {
+      try { await releaseLock(orgLockKey); } catch {}
+    }
+  }
 }
 
 async function findOrCreateOrgByDomain(domain: string): Promise<{ id: string; isNew: boolean; needsEnrichment: boolean }> {

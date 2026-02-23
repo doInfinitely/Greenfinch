@@ -481,8 +481,13 @@ interface ContactIdentifiers {
   crustdataPersonId?: number | null;
 }
 
+interface FindContactOptions {
+  autoMergeNameMatches?: boolean;
+}
+
 export async function findExistingContactByIdentifiers(
-  identifiers: ContactIdentifiers
+  identifiers: ContactIdentifiers,
+  options?: FindContactOptions
 ): Promise<(typeof contacts.$inferSelect) | null> {
   const normalizedEmail = identifiers.email?.toLowerCase().trim() || null;
   const linkedinSlug = normalizeLinkedinSlug(identifiers.linkedinUrl);
@@ -536,6 +541,10 @@ export async function findExistingContactByIdentifiers(
     const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, normalizedName));
     for (const c of candidates) {
       if (normalizeDomain(c.companyDomain) === normalizedDomain) {
+        if (options?.autoMergeNameMatches) {
+          console.log(`[Dedup] Name+domain match — auto-merging for enrichment: ${normalizedName}@${normalizedDomain} -> ${c.fullName} (${c.id})`);
+          return c;
+        }
         console.log(`[Dedup] Name+domain match found but NOT auto-merging (flagging): ${normalizedName}@${normalizedDomain} -> ${c.fullName} (${c.id})`);
         await flagPotentialDuplicate(c.id, null, 'name_domain', `${normalizedName}::${normalizedDomain}`, identifiers);
         return null;
@@ -548,6 +557,10 @@ export async function findExistingContactByIdentifiers(
     const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, normalizedName));
     for (const c of candidates) {
       if (c.employerName && c.employerName.toLowerCase().trim() === employerLower) {
+        if (options?.autoMergeNameMatches) {
+          console.log(`[Dedup] Name+employer match — auto-merging for enrichment: ${normalizedName}@${employerLower} -> ${c.fullName} (${c.id})`);
+          return c;
+        }
         console.log(`[Dedup] Name+employer match found but NOT auto-merging (flagging): ${normalizedName}@${employerLower} -> ${c.fullName} (${c.id})`);
         await flagPotentialDuplicate(c.id, null, 'name_employer', `${normalizedName}::${employerLower}`, identifiers);
         return null;
