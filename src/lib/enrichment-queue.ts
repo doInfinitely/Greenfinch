@@ -223,6 +223,10 @@ export async function saveEnrichmentResults(
         contacts: discoveredContacts,
         timing: result.timing,
         sources: allSources,
+        searchSuggestionHtml: result.ownership.searchSuggestionHtml
+          || result.contacts.searchSuggestionHtml
+          || result.classification.searchSuggestionHtml
+          || null,
       },
       updatedAt: new Date(),
     })

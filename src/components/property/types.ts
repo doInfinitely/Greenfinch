@@ -61,6 +61,7 @@ export interface EnrichedPropertyData {
     url: string;
     type: string;
   }> | null;
+  searchSuggestionHtml: string | null;
   lastEnrichedAt: string | null;
 }
 

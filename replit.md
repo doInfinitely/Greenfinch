@@ -52,6 +52,9 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Street View Scoring**: Panorama selection prefers road-facing views.
 - **"New" Filter**: Shows "New" (blue dot = unviewed properties) in the view status filter.
 - **Enrichment Queue Links**: Queue items are clickable and linkable to property/contact/organization pages.
+- **Google Search Suggestions TOS**: Extracts `searchEntryPoint.renderedContent` from Gemini grounding metadata and stores in `enrichmentJson.searchSuggestionHtml`; displayed on property detail page via `dangerouslySetInnerHTML` per Google's requirement to show the widget when displaying grounded results.
+- **Gemini Geo-Biasing**: All search grounding calls pass property lat/lon via `toolConfig.retrievalConfig.latLng` for location-specific results.
+- **Gemini Temperature**: Flat 0.1 for all calls (no conditional logic) to prevent hallucination while activating search grounding.
 
 ## External Dependencies
 - **Snowflake**: Regrid parcel data ingestion.

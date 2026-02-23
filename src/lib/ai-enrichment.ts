@@ -50,15 +50,21 @@ interface StreamedGeminiResponse {
 async function streamGeminiResponse(
   client: GoogleGenAI,
   prompt: string,
-  options: { tools?: any[]; temperature?: number } = {}
+  options: { tools?: any[]; temperature?: number; latLng?: { latitude: number; longitude: number } } = {}
 ): Promise<StreamedGeminiResponse> {
-  const hasSearchGrounding = options.tools?.some((t: any) => t.googleSearch);
   const config: any = {
-    temperature: options.temperature ?? (hasSearchGrounding ? 0.3 : 0.1),
+    temperature: options.temperature ?? 0.1,
     httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
   };
   if (options.tools) {
     config.tools = options.tools;
+  }
+  if (options.latLng) {
+    config.toolConfig = {
+      retrievalConfig: {
+        latLng: options.latLng,
+      },
+    };
   }
 
   const stream = await client.models.generateContentStream({
@@ -99,6 +105,7 @@ interface StageResult<T> {
   data: T;
   summary: string;
   sources: GroundedSource[];
+  searchSuggestionHtml?: string | null;
 }
 
 export interface PropertyPhysicalData {
@@ -211,6 +218,19 @@ function isAIGeneratedSource(url: string): boolean {
     return AI_GENERATED_DOMAINS.some(domain => hostname.includes(domain));
   } catch {
     return false;
+  }
+}
+
+function extractSearchSuggestion(response: any): string | null {
+  try {
+    const candidates = response?.candidates || response?.response?.candidates || response?.data?.candidates;
+    if (!candidates?.[0]) return null;
+    const groundingMetadata = candidates[0].groundingMetadata || candidates[0].grounding_metadata;
+    if (!groundingMetadata) return null;
+    const entryPoint = groundingMetadata.searchEntryPoint || groundingMetadata.search_entry_point;
+    return entryPoint?.renderedContent || null;
+  } catch {
+    return null;
   }
 }
 
@@ -327,6 +347,10 @@ function parseJsonResponse(text: string): any {
   return JSON.parse(jsonMatch[0]);
 }
 
+function propertyLatLng(property: CommercialProperty): { latitude: number; longitude: number } | undefined {
+  return property.lat && property.lon ? { latitude: property.lat, longitude: property.lon } : undefined;
+}
+
 export async function classifyAndVerifyProperty(property: CommercialProperty): Promise<StageResult<PropertyDataAndClassification>> {
   const client = getGeminiClient();
   const primaryOwner = property.bizName || property.ownerName1 || 'Unknown';
@@ -372,7 +396,7 @@ Return JSON:
     console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${maxRetries}...`);
 
     try {
-      response = await rateLimiters.gemini.execute(() => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }));
+      response = await rateLimiters.gemini.execute(() => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng: propertyLatLng(property) }));
 
       text = response.text?.trim() || '';
       console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
@@ -439,6 +463,7 @@ Return JSON:
   }
 
   const sources = extractGroundedSources(response);
+  const searchSuggestionHtml = extractSearchSuggestion(response);
   const parsed = parseJsonResponse(text);
 
   trackCostFireAndForget({
@@ -476,6 +501,7 @@ Return JSON:
     },
     summary: parsed.summary || '',
     sources,
+    searchSuggestionHtml,
   };
 }
 
@@ -606,7 +632,7 @@ Return JSON:
     try {
       console.log(`[FocusedEnrichment] Stage 2 attempt ${attempt}/${maxAttempts}...`);
       const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
+        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng: propertyLatLng(property) }),
         2
       );
 
@@ -642,6 +668,7 @@ Return JSON:
       }
 
       const sources = extractGroundedSources(response);
+      const searchSuggestionHtml = extractSearchSuggestion(response);
       const parsed = parseJsonResponse(text);
 
       trackCostFireAndForget({
@@ -718,7 +745,8 @@ Return JSON:
           classification.canonicalAddress,
           mgmtName || null,
           ownerName,
-          propCity
+          propCity,
+          propertyLatLng(property)
         );
         if (retryResult.url) {
           validated.propertyWebsite = retryResult.url;
@@ -747,7 +775,8 @@ Return JSON:
         console.log(`[FocusedEnrichment] Stage 2: No valid mgmt domain — running company domain retry...`);
         const retryDomain = await retryFindCompanyDomain(
           validated.managementCompany.name,
-          propCity
+          propCity,
+          propertyLatLng(property)
         );
         if (retryDomain) {
           validated.managementCompany.domain = retryDomain;
@@ -761,6 +790,7 @@ Return JSON:
         data: validated,
         summary: parsed.summary || '',
         sources,
+        searchSuggestionHtml,
       };
     } catch (error) {
       trackCostFireAndForget({
@@ -807,7 +837,8 @@ async function retryFindPropertyWebsite(
   address: string,
   mgmtCompany: string | null,
   ownerName: string | null,
-  city: string
+  city: string,
+  latLng?: { latitude: number; longitude: number }
 ): Promise<{ url: string | null; domain: string | null }> {
   const client = getGeminiClient();
   const context = [
@@ -827,7 +858,7 @@ Return JSON: {"url":"https://full-url-to-property-page|null","domain":"domain-of
   try {
     console.log(`[FocusedEnrichment] Domain retry: searching for property website for "${propertyName}"...`);
     const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
+      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng }),
       1
     );
     const text = response.text?.trim() || '';
@@ -868,7 +899,8 @@ Return JSON: {"url":"https://full-url-to-property-page|null","domain":"domain-of
 
 async function retryFindCompanyDomain(
   companyName: string,
-  city: string
+  city: string,
+  latLng?: { latitude: number; longitude: number }
 ): Promise<string | null> {
   const client = getGeminiClient();
 
@@ -884,7 +916,7 @@ Return JSON: {"domain":"company-domain.com|null","source":"full URL where you fo
   try {
     console.log(`[FocusedEnrichment] Domain retry: searching for company domain for "${companyName}"...`);
     const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
+      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng }),
       1
     );
     const text = response.text?.trim() || '';
@@ -992,7 +1024,7 @@ Return JSON:
     try {
       console.log(`[FocusedEnrichment] Stage 3a attempt ${attempt}/${maxAttempts}...`);
       const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
+        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng: propertyLatLng(property) }),
         2
       );
 
@@ -1019,6 +1051,7 @@ Return JSON:
       }
 
       const sources = extractGroundedSources(response);
+      const searchSuggestionHtml = extractSearchSuggestion(response);
       const parsed = parseJsonResponse(text);
 
       const contacts: IdentifiedDecisionMaker[] = (parsed.contacts || []).map((c: any) => ({
@@ -1046,6 +1079,7 @@ Return JSON:
         data: { contacts },
         summary: parsed.summary || '',
         sources,
+        searchSuggestionHtml,
       };
     } catch (error) {
       trackCostFireAndForget({
@@ -1075,7 +1109,8 @@ Return JSON:
 
 async function enrichContactDetails(
   contact: IdentifiedDecisionMaker,
-  city: string
+  city: string,
+  latLng?: { latitude: number; longitude: number }
 ): Promise<ContactEnrichmentResult> {
   const client = getGeminiClient();
 
@@ -1094,7 +1129,7 @@ Only return email and phone that appeared in search results. If you cannot find 
     try {
       console.log(`[FocusedEnrichment] Stage 3b attempt ${attempt}/${maxAttempts} for ${contact.name}...`);
       const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
+        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng }),
         2
       );
 
@@ -1218,8 +1253,9 @@ export async function discoverContacts(
   console.log(`[FocusedEnrichment] Stage 3a took ${contactIdentificationMs}ms, identified ${identifiedContacts.length} contacts`);
 
   const startEnrich = Date.now();
+  const latLng = propertyLatLng(property);
   const settledResults = await Promise.allSettled(
-    identifiedContacts.map(contact => enrichContactDetails(contact, city))
+    identifiedContacts.map(contact => enrichContactDetails(contact, city, latLng))
   );
   const contactEnrichmentMs = Date.now() - startEnrich;
 
@@ -1269,6 +1305,7 @@ export async function discoverContacts(
     data: { contacts },
     summary: identifyResult.summary,
     sources: uniqueSources,
+    searchSuggestionHtml: identifyResult.searchSuggestionHtml,
     contactIdentificationMs,
     contactEnrichmentMs,
   };
@@ -1346,12 +1383,14 @@ export async function runFocusedEnrichment(
         data: stage1Result.data.physical,
         summary: stage1Result.summary,
         sources: stage1Result.sources,
+        searchSuggestionHtml: stage1Result.searchSuggestionHtml,
       };
 
       classification = {
         data: stage1Result.data.classification,
         summary: stage1Result.summary,
         sources: stage1Result.sources,
+        searchSuggestionHtml: stage1Result.searchSuggestionHtml,
       };
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -1404,6 +1443,7 @@ export async function runFocusedEnrichment(
         data: contactsResult.data,
         summary: contactsResult.summary,
         sources: contactsResult.sources,
+        searchSuggestionHtml: contactsResult.searchSuggestionHtml,
       };
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
