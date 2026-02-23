@@ -233,7 +233,7 @@ export default function ListPage() {
 
   const { startEnrichment } = useEnrichment();
 
-  const handleRunAIResearch = useCallback(() => {
+  const handleRunAIResearch = useCallback(async () => {
     const selectedIds = Array.from(selectedProperties);
     const selectedProps = properties.filter(p => p.propertyId && selectedIds.includes(p.propertyId));
     
@@ -246,26 +246,42 @@ export default function ListPage() {
       return;
     }
     
-    for (const prop of selectedProps) {
-      startEnrichment({
-        type: 'property',
-        entityId: prop.propertyKey,
-        entityName: prop.commonName || prop.address,
-        apiEndpoint: '/api/enrich',
-        requestBody: {
-          propertyKey: prop.propertyKey,
-          storeResults: true,
-        },
+    const propertyKeys = selectedProps.map(p => p.propertyKey);
+    
+    try {
+      const res = await fetch('/api/admin/enrich-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          propertyKeys,
+          onlyUnenriched: false,
+        }),
+      });
+      
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        toast({
+          title: 'Could not start enrichment',
+          description: err.error || 'Please try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
+      
+      toast({
+        title: 'AI Research Started',
+        description: `Queued ${selectedProps.length} properties for batch enrichment. Check the enrichment queue for progress.`,
+      });
+    } catch (error) {
+      toast({
+        title: 'Could not start enrichment',
+        description: 'Something went wrong. Please try again.',
+        variant: 'destructive',
       });
     }
     
-    toast({
-      title: 'AI Research Started',
-      description: `Running AI research on ${selectedProps.length} selected properties...`,
-    });
-    
     setSelectedProperties(new Set());
-  }, [selectedProperties, properties, startEnrichment, toast]);
+  }, [selectedProperties, properties, toast]);
 
   const handleAddToList = useCallback(() => {
     setShowAddToListModal(true);
