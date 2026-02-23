@@ -264,13 +264,35 @@ function extractGroundedSources(response: any): GroundedSource[] {
     
     if (!groundingChunks || groundingChunks.length === 0) {
       const metadataKeys = Object.keys(groundingMetadata);
-      console.log(`[GroundedSources] No grounding chunks found. Metadata keys: ${metadataKeys.join(', ')}`);
-      
-      if (groundingMetadata.groundingSupports?.length > 0) {
-        console.log(`[GroundedSources] Has ${groundingMetadata.groundingSupports.length} groundingSupports but no chunks`);
+      const hasSearchQueries = groundingMetadata.webSearchQueries?.length > 0;
+      const hasSearchEntryPoint = !!groundingMetadata.searchEntryPoint;
+      const hasSupports = groundingMetadata.groundingSupports?.length > 0;
+
+      if (hasSearchQueries && !hasSupports) {
+        console.warn(`[GroundedSources] GROUNDING GAP: Gemini searched (${groundingMetadata.webSearchQueries.length} queries) but response is NOT grounded in any source — higher hallucination risk`);
+        console.log(`[GroundedSources] Queries: ${JSON.stringify(groundingMetadata.webSearchQueries)}`);
+      } else {
+        console.log(`[GroundedSources] No grounding chunks. Metadata keys: ${metadataKeys.join(', ')}, hasSearchQueries=${hasSearchQueries}, hasSupports=${hasSupports}`);
       }
-      if (groundingMetadata.webSearchQueries?.length > 0) {
-        console.log(`[GroundedSources] webSearchQueries: ${JSON.stringify(groundingMetadata.webSearchQueries)}`);
+
+      if (hasSupports) {
+        console.log(`[GroundedSources] Has ${groundingMetadata.groundingSupports.length} groundingSupports but no chunks — extracting from supports`);
+        const supportSources: GroundedSource[] = [];
+        const seen = new Set<string>();
+        for (const support of groundingMetadata.groundingSupports) {
+          const indices = support.groundingChunkIndices || [];
+          for (const idx of indices) {
+            const chunk = groundingMetadata.groundingChunks?.[idx];
+            if (chunk?.web?.uri && !seen.has(chunk.web.uri)) {
+              seen.add(chunk.web.uri);
+              supportSources.push({ url: chunk.web.uri, title: chunk.web.title || 'Source' });
+            }
+          }
+        }
+        if (supportSources.length > 0) {
+          console.log(`[GroundedSources] Recovered ${supportSources.length} sources from groundingSupports`);
+          return supportSources;
+        }
       }
       return [];
     }
@@ -1129,7 +1151,11 @@ async function enrichContactDetails(
 
   const prompt = `Find contact info for ${contact.name}, ${contact.title || 'unknown title'} at ${companyInfo} in ${city}, TX. Return ONLY valid JSON.
 
-Only return email and phone that appeared in search results. If you cannot find verified contact details, return null for those fields — do not guess or construct emails from name patterns like firstname@company.com.
+RULES:
+- Only return an email address that you found in an actual web page or search result. Copy it exactly as it appeared.
+- DO NOT construct emails from name patterns. Examples of HALLUCINATED emails you must NOT return: firstname@company.com, flastname@company.com, first.last@company.com. If no email appeared in search results, return null.
+- For phone: return a number you found on the company or property website. Return null if not found.
+- If you cannot find verified contact details after searching, return null — a null is far more valuable than a guess.
 
 {"email":"found@email.com|null","phone":"+1XXXXXXXXXX|null","pl":"direct_work|office|personal|null","pc":0.0-1.0,"loc":"City, ST|null"}`;
 
@@ -1174,6 +1200,18 @@ Only return email and phone that appeared in search results. If you cannot find 
       let email = parsed.email && parsed.email !== 'null' ? parsed.email : null;
 
       if (email) {
+        if (isLikelyConstructedEmail(email, contact.name)) {
+          const hasGrounding = sources.length > 0;
+          if (!hasGrounding) {
+            console.warn(`[FocusedEnrichment] Stage 3b: Email "${email}" matches name-pattern construction for ${contact.name} with no grounding sources — likely hallucinated, clearing`);
+            email = null;
+          } else {
+            console.log(`[FocusedEnrichment] Stage 3b: Email "${email}" matches name-pattern but has ${sources.length} grounding sources — keeping`);
+          }
+        }
+      }
+
+      if (email) {
         const emailDomain = email.split('@')[1];
         if (emailDomain) {
           const domainResult = await validateAndCleanDomain(emailDomain, undefined, `email domain for ${contact.name}`);
@@ -1212,6 +1250,28 @@ Only return email and phone that appeared in search results. If you cannot find 
   }
 
   return { email: null, emailSource: null, phone: null, phoneLabel: null, phoneConfidence: null, location: null, enrichmentSources: [] };
+}
+
+function isLikelyConstructedEmail(email: string, fullName: string): boolean {
+  if (!email || !fullName) return false;
+  const parts = fullName.toLowerCase().replace(/[^a-z\s]/g, '').trim().split(/\s+/);
+  if (parts.length < 2) return false;
+  const firstName = parts[0];
+  const lastName = parts[parts.length - 1];
+  const localPart = email.split('@')[0]?.toLowerCase() || '';
+
+  const constructedPatterns = [
+    `${firstName}.${lastName}`,
+    `${firstName}${lastName}`,
+    `${firstName[0]}${lastName}`,
+    `${firstName}_${lastName}`,
+    `${firstName[0]}.${lastName}`,
+    `${firstName}${lastName[0]}`,
+    `${lastName}.${firstName}`,
+    `${lastName}${firstName[0]}`,
+  ];
+
+  return constructedPatterns.includes(localPart);
 }
 
 function normalizeName(name: string): string {
@@ -1304,6 +1364,26 @@ export async function discoverContacts(
 
   if (contacts.length < rawContacts.length) {
     console.log(`[FocusedEnrichment] Deduplicated ${rawContacts.length} → ${contacts.length} contacts`);
+  }
+
+  const phoneCountMap = new Map<string, string[]>();
+  for (const c of contacts) {
+    if (c.phone) {
+      const normalized = c.phone.replace(/\D/g, '');
+      if (!phoneCountMap.has(normalized)) phoneCountMap.set(normalized, []);
+      phoneCountMap.get(normalized)!.push(c.name);
+    }
+  }
+  for (const [phone, names] of phoneCountMap) {
+    if (names.length > 1) {
+      console.warn(`[FocusedEnrichment] Phone cross-validation: ${names.length} contacts share phone +${phone} (${names.join(', ')}) — likely generic office number, downgrading to office label`);
+      for (const c of contacts) {
+        if (c.phone?.replace(/\D/g, '') === phone) {
+          c.phoneLabel = 'office';
+          c.phoneConfidence = Math.min(c.phoneConfidence ?? 0.5, 0.5);
+        }
+      }
+    }
   }
 
   const uniqueSources = allSources.filter((s, i, arr) =>
