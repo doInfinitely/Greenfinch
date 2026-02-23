@@ -374,6 +374,12 @@ export async function isBullMQBatchRunning(): Promise<boolean> {
   return true;
 }
 
+let cancelledBatchId: string | null = null;
+
+export function isBatchCancelled(batchId: string): boolean {
+  return cancelledBatchId === batchId;
+}
+
 export async function cancelBullMQBatch(): Promise<{ cancelled: boolean; message: string }> {
   if (!isBullMQConfigured()) {
     return { cancelled: false, message: 'BullMQ not configured' };
@@ -388,6 +394,14 @@ export async function cancelBullMQBatch(): Promise<{ cancelled: boolean; message
   if (!batch || batch.status !== 'running') {
     await setActiveBatchId(null);
     return { cancelled: false, message: 'No running batch to cancel' };
+  }
+
+  cancelledBatchId = batchId;
+
+  if (enrichmentWorker) {
+    await enrichmentWorker.close();
+    enrichmentWorker = null;
+    console.log('[BullMQ] Worker closed to stop active jobs');
   }
 
   const queue = getQueue();
@@ -409,17 +423,54 @@ export async function cancelBullMQBatch(): Promise<{ cancelled: boolean; message
     }
   }
 
+  await queue.drain();
+
   batch.status = 'failed';
   batch.completedAt = new Date();
   batch.errors.push({ propertyKey: '', error: 'Manually cancelled by admin' });
   await setBatchMeta(batch);
   await setActiveBatchId(null);
 
-  console.log(`[BullMQ] Batch ${batchId} cancelled. Removed ${removed} pending jobs. Processed ${batch.progress.processed}/${batch.progress.total}.`);
+  cancelledBatchId = null;
+
+  console.log(`[BullMQ] Batch ${batchId} cancelled. Removed ${removed} pending jobs, stopped worker. Processed ${batch.progress.processed}/${batch.progress.total}.`);
 
   return {
     cancelled: true,
-    message: `Batch ${batchId} cancelled. Removed ${removed} pending jobs. Processed ${batch.progress.processed}/${batch.progress.total}.`,
+    message: `Batch ${batchId} cancelled. Removed ${removed} pending jobs, stopped active processing. Processed ${batch.progress.processed}/${batch.progress.total}.`,
+  };
+}
+
+export async function flushBullMQData(): Promise<{ flushed: boolean; message: string }> {
+  if (!isBullMQConfigured()) {
+    return { flushed: false, message: 'BullMQ not configured' };
+  }
+
+  if (enrichmentWorker) {
+    await enrichmentWorker.close();
+    enrichmentWorker = null;
+  }
+
+  const queue = getQueue();
+  await queue.obliterate({ force: true });
+
+  const redis = getMetaRedis();
+  const batchKeys = await redis.keys(`${BATCH_META_PREFIX}*`);
+  if (batchKeys.length > 0) {
+    await redis.del(...batchKeys);
+  }
+  await redis.del('gf:active_batch_id');
+
+  const lockKeys = await redis.keys('gf:lock:*');
+  if (lockKeys.length > 0) {
+    await redis.del(...lockKeys);
+  }
+
+  console.log(`[BullMQ] Flushed all queue data: ${batchKeys.length} batch records, ${lockKeys.length} locks`);
+
+  return {
+    flushed: true,
+    message: `Flushed queue: removed ${batchKeys.length} batch records and ${lockKeys.length} locks. Queue obliterated.`,
   };
 }
 
