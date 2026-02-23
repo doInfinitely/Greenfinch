@@ -418,7 +418,7 @@ export const propertyContacts = pgTable('property_contacts', {
   relationshipVerifiedAt: timestamp('relationship_verified_at'),
   discoveredAt: timestamp('discovered_at').defaultNow(),
 }, (table) => ({
-  propertyContactIdx: uniqueIndex('idx_property_contacts_unique').on(table.propertyId, table.contactId),
+  propertyContactIdx: index('idx_property_contacts').on(table.propertyId, table.contactId),
 }));
 
 // Junction: Property <-> Organization
@@ -428,7 +428,7 @@ export const propertyOrganizations = pgTable('property_organizations', {
   orgId: uuid('org_id').references(() => organizations.id),
   role: text('role'),
 }, (table) => ({
-  propertyOrgIdx: uniqueIndex('idx_property_organizations_unique').on(table.propertyId, table.orgId),
+  propertyOrgIdx: index('idx_property_organizations').on(table.propertyId, table.orgId),
 }));
 
 // Junction: Contact <-> Organization
@@ -441,7 +441,7 @@ export const contactOrganizations = pgTable('contact_organizations', {
   startedAt: timestamp('started_at'),
   endedAt: timestamp('ended_at'),
 }, (table) => ({
-  contactOrgIdx: uniqueIndex('idx_contact_organizations_unique').on(table.contactId, table.orgId),
+  contactOrgIdx: index('idx_contact_organizations').on(table.contactId, table.orgId),
   orgIdx: index('idx_contact_organizations_org').on(table.orgId),
 }));
 

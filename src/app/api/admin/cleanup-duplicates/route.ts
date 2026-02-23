@@ -95,6 +95,31 @@ export async function POST(request: NextRequest) {
 
     console.log(`[CleanupDuplicates] Removed junction dupes: ${pcRemoved} property_contacts, ${poRemoved} property_organizations, ${coRemoved} contact_organizations`);
 
+    const indexResults: string[] = [];
+    try {
+      await db.execute(sql`DROP INDEX IF EXISTS idx_property_contacts`);
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_property_contacts_unique ON property_contacts (property_id, contact_id) WHERE property_id IS NOT NULL AND contact_id IS NOT NULL`);
+      indexResults.push('property_contacts: unique index created');
+    } catch (e) {
+      indexResults.push(`property_contacts: ${e instanceof Error ? e.message : 'failed'}`);
+    }
+    try {
+      await db.execute(sql`DROP INDEX IF EXISTS idx_property_organizations`);
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_property_organizations_unique ON property_organizations (property_id, org_id) WHERE property_id IS NOT NULL AND org_id IS NOT NULL`);
+      indexResults.push('property_organizations: unique index created');
+    } catch (e) {
+      indexResults.push(`property_organizations: ${e instanceof Error ? e.message : 'failed'}`);
+    }
+    try {
+      await db.execute(sql`DROP INDEX IF EXISTS idx_contact_organizations`);
+      await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS idx_contact_organizations_unique ON contact_organizations (contact_id, org_id) WHERE contact_id IS NOT NULL AND org_id IS NOT NULL`);
+      indexResults.push('contact_organizations: unique index created');
+    } catch (e) {
+      indexResults.push(`contact_organizations: ${e instanceof Error ? e.message : 'failed'}`);
+    }
+
+    console.log(`[CleanupDuplicates] Index results: ${indexResults.join(', ')}`);
+
     const dedupResult = await runDeduplication();
 
     return NextResponse.json({
@@ -105,6 +130,7 @@ export async function POST(request: NextRequest) {
           propertyOrganizationsRemoved: poRemoved,
           contactOrganizationsRemoved: coRemoved,
         },
+        uniqueIndexes: indexResults,
         contactDeduplication: {
           organizationsMerged: dedupResult.organizationsMerged,
           contactsMerged: dedupResult.contactsMerged,
