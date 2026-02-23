@@ -53,7 +53,7 @@ async function streamGeminiResponse(
   options: { tools?: any[]; temperature?: number; latLng?: { latitude: number; longitude: number } } = {}
 ): Promise<StreamedGeminiResponse> {
   const config: any = {
-    temperature: options.temperature ?? 0.1,
+    temperature: options.temperature ?? 0.0,
     httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
   };
   if (options.tools) {
@@ -369,6 +369,53 @@ function parseJsonResponse(text: string): any {
   return JSON.parse(jsonMatch[0]);
 }
 
+class SchemaValidationError extends Error {
+  constructor(stage: string, details: string) {
+    super(`[${stage}] Schema validation failed: ${details}`);
+    this.name = 'SchemaValidationError';
+  }
+}
+
+function validateStage1Schema(parsed: any): void {
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new SchemaValidationError('Stage 1', `Expected object, got ${typeof parsed}`);
+  }
+  const name = parsed.name ?? parsed.propertyName;
+  if (typeof name !== 'string' || name.length === 0) {
+    throw new SchemaValidationError('Stage 1', `Missing or empty property name`);
+  }
+  const cat = parsed.cat ?? parsed.category;
+  if (typeof cat !== 'string' || cat.length === 0) {
+    throw new SchemaValidationError('Stage 1', `Missing or empty category`);
+  }
+}
+
+function validateStage2Schema(parsed: any): void {
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new SchemaValidationError('Stage 2', `Expected object, got ${typeof parsed}`);
+  }
+  if (!parsed.mgmt || typeof parsed.mgmt !== 'object') {
+    throw new SchemaValidationError('Stage 2', `Missing or invalid "mgmt" object`);
+  }
+  if (!parsed.owner || typeof parsed.owner !== 'object') {
+    throw new SchemaValidationError('Stage 2', `Missing or invalid "owner" object`);
+  }
+}
+
+function validateStage3aSchema(parsed: any): void {
+  if (typeof parsed !== 'object' || parsed === null) {
+    throw new SchemaValidationError('Stage 3a', `Expected object, got ${typeof parsed}`);
+  }
+  if (!Array.isArray(parsed.contacts)) {
+    throw new SchemaValidationError('Stage 3a', `"contacts" is ${typeof parsed.contacts}, expected array`);
+  }
+  for (const c of parsed.contacts) {
+    if (typeof c !== 'object' || !c.name || typeof c.name !== 'string') {
+      throw new SchemaValidationError('Stage 3a', `Contact missing required "name" field`);
+    }
+  }
+}
+
 function propertyLatLng(property: CommercialProperty): { latitude: number; longitude: number } | undefined {
   return property.lat && property.lon ? { latitude: property.lat, longitude: property.lon } : undefined;
 }
@@ -433,13 +480,11 @@ Return JSON:
       }
     } catch (apiError) {
       const errMsg = apiError instanceof Error ? apiError.message : String(apiError);
-      const isDeadlineExceeded = errMsg.includes('DEADLINE_EXCEEDED') || errMsg.includes('504') || errMsg.includes('Deadline expired');
-      const isStreamDisconnect = errMsg === 'terminated' || errMsg.includes('ECONNRESET') || errMsg.includes('socket hang up') || errMsg.includes('network error');
-      const isRetryable = isDeadlineExceeded || isStreamDisconnect || errMsg.includes('500') || errMsg.includes('503') || errMsg.includes('429');
+      const { retryable, isDeadline, isStreamDisconnect } = isRetryableGeminiError(errMsg);
 
-      console.warn(`[FocusedEnrichment] Stage 1 attempt ${attempt} error (retryable=${isRetryable}, deadline=${isDeadlineExceeded}, streamDisconnect=${isStreamDisconnect}): ${errMsg.substring(0, 200)}`);
+      console.warn(`[FocusedEnrichment] Stage 1 attempt ${attempt} error (retryable=${retryable}, deadline=${isDeadline}, streamDisconnect=${isStreamDisconnect}): ${errMsg.substring(0, 200)}`);
 
-      if (!isRetryable || attempt >= maxRetries) {
+      if (!retryable || attempt >= maxRetries) {
         throw apiError;
       }
     }
@@ -489,6 +534,13 @@ Return JSON:
   const searchSuggestionHtml = extractSearchSuggestion(response);
   const parsed = parseJsonResponse(text);
 
+  try {
+    validateStage1Schema(parsed);
+  } catch (schemaErr) {
+    console.warn(`[FocusedEnrichment] Stage 1 schema validation failed: ${schemaErr instanceof Error ? schemaErr.message : schemaErr}`);
+    console.warn(`[FocusedEnrichment] Stage 1 raw response: ${text.substring(0, 300)}`);
+  }
+
   trackCostFireAndForget({
     provider: 'gemini',
     endpoint: 'classify-property',
@@ -528,61 +580,44 @@ Return JSON:
   };
 }
 
+function isRetryableGeminiError(errMsg: string): { retryable: boolean; isDeadline: boolean; isStreamDisconnect: boolean } {
+  const isDeadline = errMsg.includes('DEADLINE_EXCEEDED') || errMsg.includes('504') || errMsg.includes('Deadline expired');
+  const isStreamDisconnect = errMsg === 'terminated' || errMsg.includes('ECONNRESET') || errMsg.includes('socket hang up') || errMsg.includes('network error');
+  const isServerError = errMsg.includes('500') || errMsg.includes('503') || errMsg.includes('INTERNAL');
+  const retryable = isDeadline || isStreamDisconnect || isServerError || errMsg.includes('429');
+  return { retryable, isDeadline, isStreamDisconnect };
+}
+
+async function callGeminiOnce<T>(
+  fn: () => Promise<T>
+): Promise<T> {
+  const overallStart = Date.now();
+
+  const wrappedFn = async () => {
+    const queueWait = Date.now() - overallStart;
+    if (queueWait > 1000) {
+      console.log(`[FocusedEnrichment] Rate limiter queue wait: ${queueWait}ms`);
+    }
+    const apiStart = Date.now();
+
+    try {
+      const result = await fn();
+      console.log(`[FocusedEnrichment] Gemini API responded in ${Date.now() - apiStart}ms (total with queue: ${Date.now() - overallStart}ms)`);
+      return result;
+    } catch (apiErr) {
+      console.warn(`[FocusedEnrichment] Gemini API error after ${Date.now() - apiStart}ms: ${apiErr instanceof Error ? apiErr.message : apiErr}`);
+      throw apiErr;
+    }
+  };
+
+  return rateLimiters.gemini.execute(wrappedFn);
+}
+
 async function callGeminiWithTimeout<T>(
   fn: () => Promise<T>,
-  retries: number = 2
+  _retries: number = 1
 ): Promise<T> {
-  let lastError: Error | null = null;
-  
-  for (let attempt = 1; attempt <= retries; attempt++) {
-    try {
-      const overallStart = Date.now();
-      console.log(`[FocusedEnrichment] API call attempt ${attempt}/${retries}, httpTimeout=${GEMINI_HTTP_TIMEOUT_MS}ms...`);
-
-      const wrappedFn = async () => {
-        const queueWait = Date.now() - overallStart;
-        if (queueWait > 1000) {
-          console.log(`[FocusedEnrichment] Rate limiter queue wait: ${queueWait}ms`);
-        }
-        const apiStart = Date.now();
-
-        try {
-          const result = await fn();
-          console.log(`[FocusedEnrichment] Gemini API responded in ${Date.now() - apiStart}ms (total with queue: ${Date.now() - overallStart}ms)`);
-          return result;
-        } catch (apiErr) {
-          console.warn(`[FocusedEnrichment] Gemini API error after ${Date.now() - apiStart}ms: ${apiErr instanceof Error ? apiErr.message : apiErr}`);
-          throw apiErr;
-        }
-      };
-
-      const result = await rateLimiters.gemini.execute(wrappedFn);
-      return result;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-      const errMsg = lastError.message;
-      const isDeadlineExceeded = errMsg.includes('DEADLINE_EXCEEDED') || errMsg.includes('504') || errMsg.includes('Deadline expired');
-      const isServerError = errMsg.includes('500') || errMsg.includes('503') || errMsg.includes('INTERNAL');
-      const isStreamDisconnect = errMsg === 'terminated' || errMsg.includes('ECONNRESET') || errMsg.includes('socket hang up') || errMsg.includes('network error');
-      const isRetryable = isDeadlineExceeded || isServerError || isStreamDisconnect || errMsg.includes('429');
-
-      console.warn(`[FocusedEnrichment] API call attempt ${attempt} failed (retryable=${isRetryable}, deadline=${isDeadlineExceeded}, streamDisconnect=${isStreamDisconnect}): ${errMsg.substring(0, 200)}`);
-      
-      if (!isRetryable) {
-        throw lastError;
-      }
-
-      if (attempt < retries) {
-        const baseMs = (isDeadlineExceeded || isStreamDisconnect) ? 5000 : 1000;
-        const backoffMs = Math.min(baseMs * Math.pow(2, attempt - 1), 15000);
-        const reason = isDeadlineExceeded ? 'deadline exceeded' : isStreamDisconnect ? 'stream disconnect' : 'standard';
-        console.log(`[FocusedEnrichment] Retrying in ${backoffMs}ms (${reason} backoff)...`);
-        await new Promise(resolve => setTimeout(resolve, backoffMs));
-      }
-    }
-  }
-  
-  throw lastError || new Error('All retry attempts failed');
+  return callGeminiOnce(fn);
 }
 
 function extractUsefulLegalInfo(property: CommercialProperty): string | null {
@@ -695,6 +730,18 @@ Return JSON:
       const sources = extractGroundedSources(response);
       const searchSuggestionHtml = extractSearchSuggestion(response);
       const parsed = parseJsonResponse(text);
+
+      try {
+        validateStage2Schema(parsed);
+      } catch (schemaErr) {
+        console.warn(`[FocusedEnrichment] Stage 2 schema validation failed (attempt ${attempt}): ${schemaErr instanceof Error ? schemaErr.message : schemaErr}`);
+        if (attempt < maxAttempts) {
+          const delayMs = attempt * 3000;
+          console.log(`[FocusedEnrichment] Stage 2 retrying after schema error in ${delayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+      }
 
       trackCostFireAndForget({
         provider: 'gemini',
@@ -987,6 +1034,7 @@ export interface IdentifiedDecisionMaker {
   role: string;
   roleConfidence: number;
   connectionEvidence: string;
+  sourceUrl: string | null;
   contactType: 'individual' | 'general';
 }
 
@@ -1040,8 +1088,10 @@ Only return people verifiably connected to THIS property at THIS address or its 
 
 IMPORTANT: If after searching you cannot find any verifiable contacts for this property, do NOT keep searching. Immediately return an empty contacts array with a summary explaining why no contacts were found. A fast "none found" response is far better than an exhaustive search that finds nothing.
 
+SOURCE REQUIREMENT: For each contact, provide the "src" field with the URL where you found them (LinkedIn profile, company team page, property listing, etc.). Do NOT return contacts you cannot cite a source for — if you cannot provide a source URL, omit that contact entirely.
+
 Return JSON:
-{"contacts":[{"name":"Full Name","title":"Title","company":"Company Name","domain":"company.com","role":"property_manager|facilities_manager|owner|other","rc":0.0-1.0,"evidence":"1 sentence linking them to this property","type":"individual|general"}],"summary":"2 sentences max. If no contacts found, explain why (e.g. small owner-operated business, no public staff listings, etc.)."}`;
+{"contacts":[{"name":"Full Name","title":"Title","company":"Company Name","domain":"company.com","role":"property_manager|facilities_manager|owner|other","rc":0.0-1.0,"evidence":"1 sentence linking them to this property","src":"https://source-url-where-found","type":"individual|general"}],"summary":"2 sentences max. If no contacts found, explain why (e.g. small owner-operated business, no public staff listings, etc.)."}`;
 
   console.log('[FocusedEnrichment] Stage 3a: Identifying decision-makers...');
   console.log(`[FocusedEnrichment] Stage 3a input - Property: ${classification.propertyName}, Mgmt: ${mgmtInfo}`);
@@ -1081,7 +1131,20 @@ Return JSON:
       const searchSuggestionHtml = extractSearchSuggestion(response);
       const parsed = parseJsonResponse(text);
 
-      const contacts: IdentifiedDecisionMaker[] = (parsed.contacts || []).map((c: any) => ({
+      try {
+        validateStage3aSchema(parsed);
+      } catch (schemaErr) {
+        console.warn(`[FocusedEnrichment] Stage 3a schema validation failed (attempt ${attempt}): ${schemaErr instanceof Error ? schemaErr.message : schemaErr}`);
+        if (attempt < maxAttempts) {
+          const delayMs = attempt * 3000;
+          console.log(`[FocusedEnrichment] Stage 3a retrying after schema error in ${delayMs}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delayMs));
+          continue;
+        }
+        return { data: { contacts: [] }, summary: parsed.summary || '', sources: [] };
+      }
+
+      const rawContactsParsed: IdentifiedDecisionMaker[] = (parsed.contacts || []).map((c: any) => ({
         name: c.name || '',
         title: c.title ?? null,
         company: c.company ?? null,
@@ -1089,8 +1152,30 @@ Return JSON:
         role: c.role || 'other',
         roleConfidence: c.rc ?? 0.5,
         connectionEvidence: c.evidence || '',
+        sourceUrl: c.src && c.src !== 'null' ? c.src : null,
         contactType: c.type === 'general' ? 'general' : 'individual',
       }));
+
+      const contacts: IdentifiedDecisionMaker[] = [];
+      for (const contact of rawContactsParsed) {
+        if (!contact.name) continue;
+
+        if (!contact.sourceUrl) {
+          console.warn(`[FocusedEnrichment] Stage 3a: Contact "${contact.name}" has no source URL — downgrading confidence`);
+          contact.roleConfidence = Math.min(contact.roleConfidence, 0.4);
+        }
+
+        if (contact.companyDomain) {
+          const validatedDomain = await validateAndCleanDomain(contact.companyDomain, contact.company || undefined, `Stage 3a domain for ${contact.name}`);
+          if (!validatedDomain) {
+            console.warn(`[FocusedEnrichment] Stage 3a: Domain "${contact.companyDomain}" for ${contact.name} failed validation — clearing`);
+            contact.companyDomain = null;
+          } else {
+            contact.companyDomain = validatedDomain;
+          }
+        }
+        contacts.push(contact);
+      }
 
       if (contacts.length === 0) {
         console.log(`[FocusedEnrichment] Stage 3a: No contacts found. Reason: ${parsed.summary || 'no reason given'}`);
@@ -1366,6 +1451,39 @@ export async function discoverContacts(
     console.log(`[FocusedEnrichment] Deduplicated ${rawContacts.length} → ${contacts.length} contacts`);
   }
 
+  const knownCompanies = [
+    ownership.managementCompany?.name,
+    ownership.beneficialOwner?.name,
+    property.bizName,
+    property.ownerName1,
+  ].filter(Boolean).map(n => n!.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+  if (knownCompanies.length > 0) {
+    for (const c of contacts) {
+      if (c.company) {
+        const contactCompanyNorm = c.company.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const matchesKnown = knownCompanies.some(known =>
+          contactCompanyNorm.includes(known) || known.includes(contactCompanyNorm)
+        );
+        if (!matchesKnown && contactCompanyNorm.length > 3) {
+          console.warn(`[FocusedEnrichment] Cross-stage validation: ${c.name}'s company "${c.company}" doesn't match known companies [${knownCompanies.join(', ')}] — downgrading roleConfidence`);
+          c.roleConfidence = Math.min(c.roleConfidence, 0.5);
+        }
+      }
+    }
+  }
+
+  const propertyPhone = ownership.propertyPhone?.replace(/\D/g, '') || null;
+  if (propertyPhone) {
+    for (const c of contacts) {
+      if (c.phone && c.phone.replace(/\D/g, '') === propertyPhone) {
+        console.warn(`[FocusedEnrichment] Phone cross-validation: ${c.name}'s phone matches propertyPhone — labeling as office`);
+        c.phoneLabel = 'office';
+        c.phoneConfidence = Math.min(c.phoneConfidence ?? 0.5, 0.4);
+      }
+    }
+  }
+
   const phoneCountMap = new Map<string, string[]>();
   for (const c of contacts) {
     if (c.phone) {
@@ -1624,7 +1742,7 @@ ${preCleaned}`;
 
   try {
     const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt),
+      () => streamGeminiResponse(client, prompt, { temperature: 0.1 }),
       1
     );
     

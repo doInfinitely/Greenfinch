@@ -54,7 +54,13 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Enrichment Queue Links**: Queue items are clickable and linkable to property/contact/organization pages.
 - **Google Search Suggestions TOS**: Extracts `searchEntryPoint.renderedContent` from Gemini grounding metadata and stores in `enrichmentJson.searchSuggestionHtml`; displayed on property detail page via `dangerouslySetInnerHTML` per Google's requirement to show the widget when displaying grounded results.
 - **Gemini Geo-Biasing**: All search grounding calls pass property lat/lon via `toolConfig.retrievalConfig.latLng` for location-specific results.
-- **Gemini Temperature**: Flat 0.1 for all calls (no conditional logic) to prevent hallucination while activating search grounding.
+- **Gemini Temperature**: 0.0 for all grounded search stages (maximum determinism for factual extraction); 0.1 only for `cleanupAISummary` where fluency variation is acceptable.
+- **Retry Consolidation**: `callGeminiWithTimeout` is a single-attempt wrapper (no internal retries). Each stage owns its own retry count (typically 3). Centralized `isRetryableGeminiError()` classifies errors consistently.
+- **Schema Validation**: Lightweight runtime validation (`validateStage1Schema`, `validateStage2Schema`, `validateStage3aSchema`) after `parseJsonResponse` — retries on schema violations in Stage 2 and 3a.
+- **Contact Source Provenance**: Stage 3a prompt requires `src` (source URL) per contact. Contacts without a source URL get `roleConfidence` capped at 0.4.
+- **Stage 3a Domain Validation**: All `companyDomain` values from Stage 3a are validated with `validateAndCleanDomain` before passing to Stage 3b and downstream enrichment.
+- **Cross-Stage Company Validation**: After Stage 3a, contact companies are checked against Stage 2's management company and beneficial owner. Mismatches get `roleConfidence` downgraded.
+- **Proactive Phone Matching**: Stage 3b phones are compared against Stage 2's `propertyPhone`. Matching numbers are immediately labeled as `office` with low confidence.
 
 ## External Dependencies
 - **Snowflake**: Regrid parcel data ingestion.
