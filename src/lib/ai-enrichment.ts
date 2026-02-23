@@ -50,12 +50,15 @@ interface StreamedGeminiResponse {
 async function streamGeminiResponse(
   client: GoogleGenAI,
   prompt: string,
-  options: { tools?: any[]; temperature?: number; latLng?: { latitude: number; longitude: number } } = {}
+  options: { tools?: any[]; temperature?: number; thinkingLevel?: 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH'; latLng?: { latitude: number; longitude: number } } = {}
 ): Promise<StreamedGeminiResponse> {
   const config: any = {
-    temperature: options.temperature ?? 0.0,
+    temperature: options.temperature ?? 1.0,
     httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
   };
+  if (options.thinkingLevel) {
+    config.thinkingConfig = { thinkingLevel: options.thinkingLevel };
+  }
   if (options.tools) {
     config.tools = options.tools;
   }
@@ -203,8 +206,8 @@ function mapQualityGradeToClass(grade: string | null): { propertyClass: string |
   return mapping[gradeNorm] || { propertyClass: null, confidence: 0 };
 }
 
-// Vertex AI can be very slow under load; 600s to avoid losing results
-const GEMINI_HTTP_TIMEOUT_MS = 600000; // 600 seconds
+// HTTP timeout for Gemini API calls
+const GEMINI_HTTP_TIMEOUT_MS = 120000; // 120 seconds
 
 const AI_GENERATED_DOMAINS = [
   'generativelanguage.googleapis.com',
@@ -452,7 +455,7 @@ Return JSON:
     console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${maxRetries}...`);
 
     try {
-      response = await rateLimiters.gemini.execute(() => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng: propertyLatLng(property) }));
+      response = await rateLimiters.gemini.execute(() => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'MINIMAL', latLng: propertyLatLng(property) }));
 
       text = response.text?.trim() || '';
       console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
@@ -599,7 +602,8 @@ function isRetryableGeminiError(errMsg: string): { retryable: boolean; isDeadlin
     || errMsg.includes('400') || errMsg.includes('401') || errMsg.includes('403') || errMsg.includes('404')
     || lower.includes('api key') || lower.includes('invalid api')
     || lower.includes('billing') || lower.includes('safety')
-    || lower.includes('blocked') || lower.includes('harm category');
+    || lower.includes('blocked') || lower.includes('harm category')
+    || lower.includes('thought_signature') || lower.includes('thinking_config');
 
   const retryable = !isNotRetryable && (isDeadline || isNetworkError || isServerError || isRateLimit || isCircuitBreaker);
   return { retryable, isDeadline, isStreamDisconnect: isNetworkError };
@@ -709,7 +713,7 @@ Return JSON:
     try {
       console.log(`[FocusedEnrichment] Stage 2 attempt ${attempt}/${maxAttempts}...`);
       const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng: propertyLatLng(property) }),
+        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'LOW', latLng: propertyLatLng(property) }),
         2
       );
 
@@ -1017,7 +1021,7 @@ Return JSON: {"url":"https://full-url-to-property-page|null","domain":"domain-of
   try {
     console.log(`[FocusedEnrichment] Domain retry: searching for property website for "${propertyName}"...`);
     const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng }),
+      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'MINIMAL', latLng }),
       1
     );
     const text = response.text?.trim() || '';
@@ -1075,7 +1079,7 @@ Return JSON: {"domain":"company-domain.com|null","source":"full URL where you fo
   try {
     console.log(`[FocusedEnrichment] Domain retry: searching for company domain for "${companyName}"...`);
     const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng }),
+      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'MINIMAL', latLng }),
       1
     );
     const text = response.text?.trim() || '';
@@ -1188,7 +1192,7 @@ Return JSON:
     try {
       console.log(`[FocusedEnrichment] Stage 3a attempt ${attempt}/${maxAttempts}...`);
       const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng: propertyLatLng(property) }),
+        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'LOW', latLng: propertyLatLng(property) }),
         2
       );
 
@@ -1334,7 +1338,7 @@ RULES:
     try {
       console.log(`[FocusedEnrichment] Stage 3b attempt ${attempt}/${maxAttempts} for ${contact.name}...`);
       const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng }),
+        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'MINIMAL', latLng }),
         2
       );
 
@@ -1850,7 +1854,7 @@ ${preCleaned}`;
 
   try {
     const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { temperature: 0.1 }),
+      () => streamGeminiResponse(client, prompt, { temperature: 0.1, thinkingLevel: 'MINIMAL' }),
       1
     );
     
@@ -1892,7 +1896,7 @@ If you cannot find a replacement, return {"name":null}`;
 
   try {
     const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }] }),
+      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'MINIMAL' }),
       1
     );
 

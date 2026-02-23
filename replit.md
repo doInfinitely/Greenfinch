@@ -59,7 +59,8 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **"New" Filter**: Shows "New" (blue dot = unviewed properties) in the view status filter.
 - **Enrichment Queue Links**: Queue items are clickable and linkable to property/contact/organization pages.
 - **Gemini Geo-Biasing**: All search grounding calls pass property lat/lon via `toolConfig.retrievalConfig.latLng` for location-specific results.
-- **Gemini Temperature**: 0.0 for all grounded search stages (maximum determinism for factual extraction); 0.1 only for `cleanupAISummary` where fluency variation is acceptable.
+- **Gemini Thinking Mode**: All Gemini calls use thinking mode. `thinkingLevel: 'LOW'` for complex reasoning stages (Stage 2 ownership, Stage 3a contacts); `thinkingLevel: 'MINIMAL'` for all others. Default temperature is 1.0 (required for thinking mode); `cleanupAISummary` uses 0.1.
+- **Gemini HTTP Timeout**: 120 seconds (`GEMINI_HTTP_TIMEOUT_MS = 120000`).
 - **Retry Consolidation**: `callGeminiWithTimeout` is a single-attempt wrapper (no internal retries). Each stage owns its own retry count (typically 3). Centralized `isRetryableGeminiError()` classifies errors consistently.
 - **Schema Validation**: Lightweight runtime validation (`validateStage1Schema`, `validateStage2Schema`, `validateStage3aSchema`) after `parseJsonResponse` — retries on schema violations in Stage 2 and 3a.
 - **Contact Source Provenance**: Stage 3a prompt requires `src` (source URL) per contact. Contacts without a source URL get `roleConfidence` capped at 0.4.

@@ -416,9 +416,6 @@ export default function OrganizationDetailPage() {
   const socialLinks = useMemo(() => {
     if (!organization) return [];
     const links: Array<{ platform: string; url: string }> = [];
-    if (organization.linkedinHandle) {
-      links.push({ platform: 'linkedin', url: `https://www.linkedin.com/company/${organization.linkedinHandle}` });
-    }
     if (organization.twitterHandle) {
       links.push({ platform: 'twitter', url: `https://x.com/${organization.twitterHandle}` });
     }
@@ -585,6 +582,18 @@ export default function OrganizationDetailPage() {
                       >
                         <Globe className="w-3.5 h-3.5" />
                         {organization.domain}
+                      </a>
+                    )}
+                    {organization.linkedinHandle && (
+                      <a
+                        href={`https://www.linkedin.com/company/${organization.linkedinHandle}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[#0A66C2] hover:underline text-sm"
+                        data-testid="link-org-linkedin"
+                      >
+                        <SiLinkedin className="w-3.5 h-3.5" />
+                        LinkedIn
                       </a>
                     )}
                   </div>
