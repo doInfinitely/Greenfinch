@@ -253,13 +253,26 @@ export async function saveEnrichmentResults(
   if (ownership.beneficialOwner?.name && ownership.beneficialOwner.confidence > 0) {
     const ownerName = ownership.beneficialOwner.name.trim().toLowerCase();
     if (!existingNames.has(ownerName)) {
-      console.log(`[SaveEnrichment] Adding org from ownership owner: ${ownership.beneficialOwner.name}`);
+      let ownerDomain: string | null = null;
+      const ownerNameNorm = ownerName.replace(/[^a-z0-9]/g, '');
+      for (const contact of discoveredContacts) {
+        if (contact.companyDomain && contact.company) {
+          const contactCompanyNorm = contact.company.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (contactCompanyNorm.includes(ownerNameNorm) || ownerNameNorm.includes(contactCompanyNorm)) {
+            ownerDomain = contact.companyDomain;
+            console.log(`[SaveEnrichment] Found domain for owner "${ownership.beneficialOwner.name}" from contact ${contact.name}: ${ownerDomain}`);
+            break;
+          }
+        }
+      }
+      console.log(`[SaveEnrichment] Adding org from ownership owner: ${ownership.beneficialOwner.name} (domain: ${ownerDomain || 'none'})`);
       allOrgs.push({
         name: ownership.beneficialOwner.name,
-        domain: null,
+        domain: ownerDomain,
         orgType: ownership.beneficialOwner.type || 'owner',
         roles: ['owner'],
       });
+      if (ownerDomain) existingDomains.add(ownerDomain);
       existingNames.add(ownerName);
     }
   }
