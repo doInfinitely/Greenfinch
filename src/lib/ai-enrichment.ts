@@ -207,7 +207,7 @@ function mapQualityGradeToClass(grade: string | null): { propertyClass: string |
 }
 
 // HTTP timeout for Gemini API calls
-const GEMINI_HTTP_TIMEOUT_MS = 120000; // 120 seconds
+const GEMINI_HTTP_TIMEOUT_MS = 400000; // 400 seconds
 
 const AI_GENERATED_DOMAINS = [
   'generativelanguage.googleapis.com',
