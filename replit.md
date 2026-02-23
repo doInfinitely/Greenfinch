@@ -45,6 +45,7 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Automatic Retry Pass**: Retryable failures are automatically reattempted with reduced concurrency.
 - **Adaptive Concurrency**: Monitors error rates and adjusts concurrency dynamically.
 - **BullMQ Job Queue**: Persistent job queue for robust background processing with automatic retries and metadata storage.
+- **Batch Property Ingestion**: Properties are upserted in batches of 50 using INSERT ... ON CONFLICT DO UPDATE, reducing DB round-trips from ~3N to ~3*(N/50). Fallback to individual inserts on batch failure.
 - **Phone Research Waterfall**: On-demand 4-step phone lookup cascade using multiple providers.
 - **Map Marker Colors**: All property markers and clusters are solid green (#16a34a) with white stroke.
 - **Parcel Resolution**: Uses a pre-computed client-side parcel index for instant hash lookup by `parcelnumb` and GIS parent resolution; no spatial proximity matching.

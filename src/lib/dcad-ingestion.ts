@@ -701,61 +701,54 @@ export function identifyParcelRelationships(properties: AggregatedProperty[]): M
   return relationships;
 }
 
-export async function upsertAggregatedPropertyToPostgres(
+function buildPropertyData(
   prop: AggregatedProperty,
   relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[]; llUuid?: string | null }>
-): Promise<{ created: boolean }> {
+) {
   const propertyKey = prop.accountNum;
   const gisParcelId = prop.gisParcelId;
-  
-  // Determine parent/constituent status using GIS_PARCEL_ID
-  // A property is a "parent" if ACCOUNT_NUM = GIS_PARCEL_ID
   const isParentProperty = prop.accountNum === prop.gisParcelId;
-  
-  // Look up relationship data for this GIS_PARCEL_ID
   const parcelRel = gisParcelId ? relationships?.get(gisParcelId) : undefined;
   const parentPropertyKey = !isParentProperty && parcelRel ? parcelRel.parentAccountNum : null;
   const constituentAccountNums = isParentProperty && parcelRel ? parcelRel.constituentAccountNums : null;
   const constituentCount = isParentProperty && parcelRel ? (parcelRel.constituentAccountNums.length || 0) : 0;
-  
-  const existingProperty = await db
-    .select({ id: properties.id })
-    .from(properties)
-    .where(eq(properties.propertyKey, propertyKey))
-    .limit(1);
 
   const normalizedAddress = normalizeAddress(prop.address);
   const normalizedCity = normalizeCity(prop.city);
   const normalizedOwner = normalizeOwnerName(prop.ownerName1 || prop.bizName || '');
   const normalizedOwner2 = prop.ownerName2 ? normalizeOwnerName(prop.ownerName2) : null;
 
-  const propertyData = {
+  const hvac = extractPrimaryHvacTypes(prop.buildings);
+  const quality = extractPrimaryQualityGrade(prop.buildings);
+  const buildingClassResult = calculateBuildingClass({
+    qualityGrade: quality.qualityGrade,
+    conditionGrade: quality.conditionGrade,
+    yearBuilt: prop.oldestYearBuilt,
+    totalValue: prop.dcadTotalVal,
+    buildingSqft: prop.rentableArea || prop.totalGrossBldgArea,
+  });
+
+  return {
     propertyKey,
     sourceLlUuid: prop.llUuid || prop.parcelId,
     llStackUuid: null,
     dcadGisParcelId: gisParcelId,
     dcadSptdCode: prop.sptdCode,
-    
     regridAddress: normalizedAddress,
     city: normalizedCity,
     state: 'TX',
     zip: prop.zip,
     county: 'DALLAS',
-    
     lat: prop.lat,
     lon: prop.lon,
-    
-    // Use precomputed lot/building with source tracking
     lotSqft: prop.computedLotSqft,
     lotSqftSource: prop.computedLotSqftSource,
     buildingSqft: prop.computedBuildingSqft,
     buildingSqftSource: prop.computedBuildingSqftSource,
     yearBuilt: prop.oldestYearBuilt || prop.regridYearBuilt || null,
     numFloors: prop.regridNumStories || null,
-    
     regridOwner: normalizedOwner,
     regridOwner2: normalizedOwner2,
-    
     dcadAccountNum: prop.accountNum,
     dcadDivisionCd: prop.divisionCd,
     dcadImprovVal: prop.dcadImprovVal,
@@ -763,7 +756,6 @@ export async function upsertAggregatedPropertyToPostgres(
     dcadTotalVal: prop.dcadTotalVal,
     dcadCityJuris: prop.cityJurisDesc,
     dcadIsdJuris: prop.isdJurisDesc,
-    
     dcadBizName: prop.bizName,
     dcadOwnerName1: prop.ownerName1,
     dcadOwnerName2: prop.ownerName2,
@@ -773,13 +765,11 @@ export async function upsertAggregatedPropertyToPostgres(
     dcadOwnerZip: prop.ownerZipcode,
     dcadOwnerPhone: prop.ownerPhone,
     dcadDeedTransferDate: prop.deedTxfrDate,
-    
     dcadZoning: prop.dcadZoning,
     dcadLandFrontDim: prop.frontDim,
     dcadLandDepthDim: prop.depthDim,
     dcadLandArea: prop.landArea,
     dcadLandAreaUom: prop.landAreaUom,
-    
     dcadBuildingCount: prop.buildingCount,
     dcadOldestYearBuilt: prop.oldestYearBuilt,
     dcadNewestYearBuilt: prop.newestYearBuilt,
@@ -788,43 +778,182 @@ export async function upsertAggregatedPropertyToPostgres(
     dcadRentableArea: prop.rentableArea,
     dcadParkingSqft: prop.parkingSqft,
     dcadBuildings: prop.buildings,
-    
-    // HVAC types (extracted from buildings)
-    dcadPrimaryAcType: extractPrimaryHvacTypes(prop.buildings).acType,
-    dcadPrimaryHeatingType: extractPrimaryHvacTypes(prop.buildings).heatingType,
-    
-    // Quality/condition grades (extracted from buildings)
-    dcadQualityGrade: extractPrimaryQualityGrade(prop.buildings).qualityGrade,
-    dcadConditionGrade: extractPrimaryQualityGrade(prop.buildings).conditionGrade,
-    
-    // Building class calculation
-    calculatedBuildingClass: calculateBuildingClass({
-      qualityGrade: extractPrimaryQualityGrade(prop.buildings).qualityGrade,
-      conditionGrade: extractPrimaryQualityGrade(prop.buildings).conditionGrade,
-      yearBuilt: prop.oldestYearBuilt,
-      totalValue: prop.dcadTotalVal,
-      buildingSqft: prop.rentableArea || prop.totalGrossBldgArea,
-    }).buildingClass,
-    buildingClassRationale: calculateBuildingClass({
-      qualityGrade: extractPrimaryQualityGrade(prop.buildings).qualityGrade,
-      conditionGrade: extractPrimaryQualityGrade(prop.buildings).conditionGrade,
-      yearBuilt: prop.oldestYearBuilt,
-      totalValue: prop.dcadTotalVal,
-      buildingSqft: prop.rentableArea || prop.totalGrossBldgArea,
-    }).rationale,
-    
+    dcadPrimaryAcType: hvac.acType,
+    dcadPrimaryHeatingType: hvac.heatingType,
+    dcadQualityGrade: quality.qualityGrade,
+    dcadConditionGrade: quality.conditionGrade,
+    calculatedBuildingClass: buildingClassResult.buildingClass,
+    buildingClassRationale: buildingClassResult.rationale,
     commonName: prop.primaryPropertyName || prop.bizName || null,
-    
-    // Parcel-level relationships
     isParentProperty: isParentProperty,
     parentPropertyKey: parentPropertyKey,
     constituentAccountNums: constituentAccountNums,
     constituentCount: constituentCount,
-    
     enrichmentStatus: 'pending' as const,
     lastRegridUpdate: new Date(),
     updatedAt: new Date(),
   };
+}
+
+const UPSERT_BATCH_SIZE = 50;
+
+export async function batchUpsertPropertiesToPostgres(
+  props: AggregatedProperty[],
+  relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[]; llUuid?: string | null }>
+): Promise<{ created: number; updated: number; errors: number }> {
+  const result = { created: 0, updated: 0, errors: 0 };
+  if (props.length === 0) return result;
+
+  for (let i = 0; i < props.length; i += UPSERT_BATCH_SIZE) {
+    const batch = props.slice(i, i + UPSERT_BATCH_SIZE);
+
+    try {
+      const rows = batch.map(prop => ({
+        ...buildPropertyData(prop, relationships),
+        createdAt: new Date(),
+        isActive: true,
+      }));
+
+      const existingKeys = new Set(
+        (await db
+          .select({ pk: properties.propertyKey })
+          .from(properties)
+          .where(inArray(properties.propertyKey, batch.map(p => p.accountNum)))
+        ).map(r => r.pk)
+      );
+
+      await db
+        .insert(properties)
+        .values(rows)
+        .onConflictDoUpdate({
+          target: properties.propertyKey,
+          set: {
+            sourceLlUuid: sql`EXCLUDED.source_ll_uuid`,
+            llStackUuid: sql`EXCLUDED.ll_stack_uuid`,
+            dcadGisParcelId: sql`EXCLUDED.dcad_gis_parcel_id`,
+            dcadSptdCode: sql`EXCLUDED.dcad_sptd_code`,
+            regridAddress: sql`EXCLUDED.regrid_address`,
+            city: sql`EXCLUDED.city`,
+            state: sql`EXCLUDED.state`,
+            zip: sql`EXCLUDED.zip`,
+            county: sql`EXCLUDED.county`,
+            lat: sql`EXCLUDED.lat`,
+            lon: sql`EXCLUDED.lon`,
+            lotSqft: sql`EXCLUDED.lot_sqft`,
+            lotSqftSource: sql`EXCLUDED.lot_sqft_source`,
+            buildingSqft: sql`EXCLUDED.building_sqft`,
+            buildingSqftSource: sql`EXCLUDED.building_sqft_source`,
+            yearBuilt: sql`EXCLUDED.year_built`,
+            numFloors: sql`EXCLUDED.num_floors`,
+            regridOwner: sql`EXCLUDED.regrid_owner`,
+            regridOwner2: sql`EXCLUDED.regrid_owner2`,
+            dcadAccountNum: sql`EXCLUDED.dcad_account_num`,
+            dcadDivisionCd: sql`EXCLUDED.dcad_division_cd`,
+            dcadImprovVal: sql`EXCLUDED.dcad_improv_val`,
+            dcadLandVal: sql`EXCLUDED.dcad_land_val`,
+            dcadTotalVal: sql`EXCLUDED.dcad_total_val`,
+            dcadCityJuris: sql`EXCLUDED.dcad_city_juris`,
+            dcadIsdJuris: sql`EXCLUDED.dcad_isd_juris`,
+            dcadBizName: sql`EXCLUDED.dcad_biz_name`,
+            dcadOwnerName1: sql`EXCLUDED.dcad_owner_name1`,
+            dcadOwnerName2: sql`EXCLUDED.dcad_owner_name2`,
+            dcadOwnerAddress: sql`EXCLUDED.dcad_owner_address`,
+            dcadOwnerCity: sql`EXCLUDED.dcad_owner_city`,
+            dcadOwnerState: sql`EXCLUDED.dcad_owner_state`,
+            dcadOwnerZip: sql`EXCLUDED.dcad_owner_zip`,
+            dcadOwnerPhone: sql`EXCLUDED.dcad_owner_phone`,
+            dcadDeedTransferDate: sql`EXCLUDED.dcad_deed_transfer_date`,
+            dcadZoning: sql`EXCLUDED.dcad_zoning`,
+            dcadLandFrontDim: sql`EXCLUDED.dcad_land_front_dim`,
+            dcadLandDepthDim: sql`EXCLUDED.dcad_land_depth_dim`,
+            dcadLandArea: sql`EXCLUDED.dcad_land_area`,
+            dcadLandAreaUom: sql`EXCLUDED.dcad_land_area_uom`,
+            dcadBuildingCount: sql`EXCLUDED.dcad_building_count`,
+            dcadOldestYearBuilt: sql`EXCLUDED.dcad_oldest_year_built`,
+            dcadNewestYearBuilt: sql`EXCLUDED.dcad_newest_year_built`,
+            dcadTotalGrossBldgArea: sql`EXCLUDED.dcad_total_gross_bldg_area`,
+            dcadTotalUnits: sql`EXCLUDED.dcad_total_units`,
+            dcadRentableArea: sql`EXCLUDED.dcad_rentable_area`,
+            dcadParkingSqft: sql`EXCLUDED.dcad_parking_sqft`,
+            dcadBuildings: sql`EXCLUDED.dcad_buildings`,
+            dcadPrimaryAcType: sql`EXCLUDED.dcad_primary_ac_type`,
+            dcadPrimaryHeatingType: sql`EXCLUDED.dcad_primary_heating_type`,
+            dcadQualityGrade: sql`EXCLUDED.dcad_quality_grade`,
+            dcadConditionGrade: sql`EXCLUDED.dcad_condition_grade`,
+            calculatedBuildingClass: sql`EXCLUDED.calculated_building_class`,
+            buildingClassRationale: sql`EXCLUDED.building_class_rationale`,
+            commonName: sql`EXCLUDED.common_name`,
+            isParentProperty: sql`EXCLUDED.is_parent_property`,
+            parentPropertyKey: sql`EXCLUDED.parent_property_key`,
+            constituentAccountNums: sql`EXCLUDED.constituent_account_nums`,
+            constituentCount: sql`EXCLUDED.constituent_count`,
+            lastRegridUpdate: sql`EXCLUDED.last_regrid_update`,
+            updatedAt: sql`EXCLUDED.updated_at`,
+          },
+        });
+
+      const newCount = batch.filter(p => !existingKeys.has(p.accountNum)).length;
+      result.created += newCount;
+      result.updated += batch.length - newCount;
+
+      const parcelMappings = batch
+        .filter(prop => prop.llUuid)
+        .map(prop => {
+          const isParent = prop.accountNum === prop.gisParcelId;
+          const gisParcelId = prop.gisParcelId;
+          const parcelRel = gisParcelId ? relationships?.get(gisParcelId) : undefined;
+          const parentPK = !isParent && parcelRel ? parcelRel.parentAccountNum : null;
+          const targetPropertyKey = isParent ? prop.accountNum : (parentPK || prop.accountNum);
+          return {
+            llUuid: prop.llUuid!,
+            propertyKey: targetPropertyKey,
+          };
+        });
+
+      if (parcelMappings.length > 0) {
+        await db
+          .insert(parcelToProperty)
+          .values(parcelMappings)
+          .onConflictDoUpdate({
+            target: parcelToProperty.llUuid,
+            set: { propertyKey: sql`EXCLUDED.property_key` },
+          });
+      }
+    } catch (error) {
+      console.error(`[Ingestion] Batch upsert error (batch starting at ${i}), falling back to individual inserts:`, error instanceof Error ? error.message : error);
+      for (const prop of batch) {
+        try {
+          await upsertAggregatedPropertyToPostgres(prop, relationships);
+          result.created++;
+        } catch (innerError) {
+          result.errors++;
+          console.error(`[Ingestion] Error saving property ${prop.parcelId}:`, innerError instanceof Error ? innerError.message : innerError);
+        }
+      }
+    }
+
+    if ((i + UPSERT_BATCH_SIZE) % 200 === 0 || i + UPSERT_BATCH_SIZE >= props.length) {
+      console.log(`[Ingestion] Batch progress: ${Math.min(i + UPSERT_BATCH_SIZE, props.length)}/${props.length}`);
+    }
+  }
+
+  return result;
+}
+
+export async function upsertAggregatedPropertyToPostgres(
+  prop: AggregatedProperty,
+  relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[]; llUuid?: string | null }>
+): Promise<{ created: boolean }> {
+  const propertyData = buildPropertyData(prop, relationships);
+  const propertyKey = propertyData.propertyKey;
+  const isParentProperty = propertyData.isParentProperty;
+  const parentPropertyKey = propertyData.parentPropertyKey;
+
+  const existingProperty = await db
+    .select({ id: properties.id })
+    .from(properties)
+    .where(eq(properties.propertyKey, propertyKey))
+    .limit(1);
 
   if (existingProperty.length > 0) {
     await db
@@ -839,10 +968,6 @@ export async function upsertAggregatedPropertyToPostgres(
     });
   }
 
-  // Insert parcel_to_property mapping for all properties, always pointing to parent
-  // This ensures tile lookups resolve to the parent property with correct bizName
-  // For parent properties: ll_uuid -> self (parent)
-  // For constituents: ll_uuid -> parent property key (so clicking any parcel resolves to parent)
   if (prop.llUuid) {
     const targetPropertyKey = isParentProperty ? propertyKey : (parentPropertyKey || propertyKey);
     await db
@@ -924,26 +1049,10 @@ export async function runIngestion(
     }
   }
   
-  for (let i = 0; i < aggregatedProperties.length; i++) {
-    const prop = aggregatedProperties[i];
-    
-    try {
-      const result = await upsertAggregatedPropertyToPostgres(prop, relationships);
-      
-      if (result.created) {
-        stats.propertiesSaved++;
-      } else {
-        stats.propertiesUpdated++;
-      }
-      
-      if ((i + 1) % 50 === 0) {
-        console.log(`[Ingestion] Progress: ${i + 1}/${aggregatedProperties.length}`);
-      }
-    } catch (error) {
-      stats.errors++;
-      console.error(`[Ingestion] Error saving property ${prop.parcelId}:`, error instanceof Error ? error.message : error);
-    }
-  }
+  const batchResult = await batchUpsertPropertiesToPostgres(aggregatedProperties, relationships);
+  stats.propertiesSaved += batchResult.created;
+  stats.propertiesUpdated += batchResult.updated;
+  stats.errors += batchResult.errors;
   
   const parentResult = await ingestParentAccounts();
   stats.propertiesSaved += parentResult.ingested;
@@ -1202,15 +1311,9 @@ async function ingestParentAccounts(): Promise<{ ingested: number; errors: numbe
       
       const aggregated = aggregatePropertiesByParcel(parentProperties);
       
-      for (const prop of aggregated) {
-        try {
-          await upsertAggregatedPropertyToPostgres(prop);
-          result.ingested++;
-        } catch (error) {
-          result.errors++;
-          console.error(`[Ingestion] Error saving parent property ${prop.parcelId}:`, error instanceof Error ? error.message : error);
-        }
-      }
+      const batchUpsertResult = await batchUpsertPropertiesToPostgres(aggregated);
+      result.ingested += batchUpsertResult.created;
+      result.errors += batchUpsertResult.errors;
     } catch (error) {
       result.errors += batch.length;
       console.error(`[Ingestion] Error fetching parent accounts batch:`, error instanceof Error ? error.message : error);
@@ -1320,26 +1423,10 @@ export async function runAllZipsIngestion(
     }
   }
   
-  for (let i = 0; i < aggregatedProperties.length; i++) {
-    const prop = aggregatedProperties[i];
-    
-    try {
-      const result = await upsertAggregatedPropertyToPostgres(prop, relationships);
-      
-      if (result.created) {
-        stats.propertiesSaved++;
-      } else {
-        stats.propertiesUpdated++;
-      }
-      
-      if ((i + 1) % 100 === 0) {
-        console.log(`[Ingestion] Progress: ${i + 1}/${aggregatedProperties.length}`);
-      }
-    } catch (error) {
-      stats.errors++;
-      console.error(`[Ingestion] Error saving property ${prop.parcelId}:`, error instanceof Error ? error.message : error);
-    }
-  }
+  const batchResult = await batchUpsertPropertiesToPostgres(aggregatedProperties, relationships);
+  stats.propertiesSaved += batchResult.created;
+  stats.propertiesUpdated += batchResult.updated;
+  stats.errors += batchResult.errors;
   
   const parentResult = await ingestParentAccounts();
   stats.propertiesSaved += parentResult.ingested;
