@@ -135,8 +135,8 @@ export async function POST(request: NextRequest) {
       .values({
         fullName: contactName,
         normalizedName,
-        email,
-        normalizedEmail,
+        email: normalizedEmail || null,
+        normalizedEmail: normalizedEmail || null,
         emailValidationStatus,
         emailValidationDetails,
         linkedinUrl,

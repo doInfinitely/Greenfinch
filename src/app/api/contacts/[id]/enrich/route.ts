@@ -125,7 +125,7 @@ export async function POST(
     }
 
     if (result.email) {
-      updateData.email = result.email;
+      updateData.email = result.email.toLowerCase();
       updateData.normalizedEmail = result.email.toLowerCase();
       updateData.emailConfidence = result.emailVerified ? 0.95 : 0.70;
       updateData.emailSource = result.emailSource;

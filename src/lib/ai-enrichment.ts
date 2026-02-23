@@ -1048,6 +1048,153 @@ interface ContactEnrichmentResult {
   enrichmentSources: GroundedSource[];
 }
 
+const STAGE3A_PER_SEARCH_TIMEOUT_MS = 90_000;
+
+const mgmtContactCache = new Map<string, {
+  contacts: IdentifiedDecisionMaker[];
+  sources: GroundedSource[];
+  timestamp: number;
+}>();
+const MGMT_CACHE_TTL_MS = 30 * 60 * 1000;
+
+function mgmtCacheKey(mgmtName: string | null, mgmtDomain: string | null, city: string): string | null {
+  const identifier = mgmtDomain?.toLowerCase() || mgmtName?.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!identifier) return null;
+  return `${identifier}:${city.toLowerCase()}`;
+}
+
+function getCachedMgmtContacts(mgmtName: string | null, mgmtDomain: string | null, city: string): { contacts: IdentifiedDecisionMaker[]; sources: GroundedSource[] } | null {
+  const key = mgmtCacheKey(mgmtName, mgmtDomain, city);
+  if (!key) return null;
+  const cached = mgmtContactCache.get(key);
+  if (cached && Date.now() - cached.timestamp < MGMT_CACHE_TTL_MS) {
+    console.log(`[Stage 3a] Cache hit for ${key}: ${cached.contacts.length} contacts`);
+    return { contacts: cached.contacts, sources: cached.sources };
+  }
+  return null;
+}
+
+function setCachedMgmtContacts(mgmtName: string | null, mgmtDomain: string | null, city: string, contacts: IdentifiedDecisionMaker[], sources: GroundedSource[]): void {
+  const key = mgmtCacheKey(mgmtName, mgmtDomain, city);
+  if (!key) return;
+  mgmtContactCache.set(key, { contacts, sources, timestamp: Date.now() });
+}
+
+async function withStageTimeout<T>(fn: () => Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return Promise.race([
+    fn(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ]);
+}
+
+function buildSingleContactPrompt(params: {
+  searchInstruction: string;
+  propertyContext: string;
+  companyContext: string;
+  targetRole: string;
+  city: string;
+}): string {
+  return `Find ONE person: the ${params.targetRole} for a commercial property. Return ONLY valid JSON.
+
+PROPERTY: ${params.propertyContext}
+${params.companyContext}
+
+SEARCH: ${params.searchInstruction}
+
+RULES:
+- Return exactly ONE person you found with a verifiable connection to this property or company in ${params.city}.
+- If you cannot find anyone after searching, IMMEDIATELY return {"name":null,"summary":"reason"}.
+- Do NOT return C-suite executives (CEO, CFO, COO, CTO, CMO) unless they are the direct property owner.
+- Do NOT return corporate HR, marketing, or IT staff.
+- "domain" must be copied from an actual URL in search results. If none found, return null.
+- "src" must be the URL where you found this person (LinkedIn, company page, etc.).
+
+Return JSON:
+{"name":"Full Name|null","title":"Title|null","company":"Company","domain":"company.com|null","src":"https://where-you-found-them|null","role":"property_manager|facilities_manager|regional_manager|asset_manager|owner|other","rc":0.0-1.0,"evidence":"1 sentence: how they connect to this property","type":"individual|general","summary":"1 sentence if no one found."}`;
+}
+
+function deduplicateIdentifiedContacts(contacts: IdentifiedDecisionMaker[]): IdentifiedDecisionMaker[] {
+  const seen = new Map<string, number>();
+  const result: IdentifiedDecisionMaker[] = [];
+
+  for (const contact of contacts) {
+    const nameKey = contact.name.toLowerCase().replace(/[^a-z]/g, '');
+    if (!nameKey) continue;
+    const companyKey = contact.company ? contact.company.toLowerCase().replace(/[^a-z0-9]/g, '') : '';
+    const key = companyKey ? `${nameKey}@${companyKey}` : nameKey;
+
+    const existingIdx = seen.get(key);
+    if (existingIdx !== undefined) {
+      const existing = result[existingIdx];
+      if (!existing.title && contact.title) existing.title = contact.title;
+      if (!existing.company && contact.company) existing.company = contact.company;
+      if (!existing.companyDomain && contact.companyDomain) existing.companyDomain = contact.companyDomain;
+      if (!existing.sourceUrl && contact.sourceUrl) existing.sourceUrl = contact.sourceUrl;
+      if (!existing.connectionEvidence && contact.connectionEvidence) existing.connectionEvidence = contact.connectionEvidence;
+      if (contact.roleConfidence > existing.roleConfidence) {
+        existing.role = contact.role;
+        existing.roleConfidence = contact.roleConfidence;
+      }
+      console.log(`[Stage 3a] Deduplicated: "${contact.name}" merged into "${existing.name}"`);
+    } else {
+      seen.set(key, result.length);
+      result.push({ ...contact });
+    }
+  }
+
+  return result;
+}
+
+function parseSingleContactResponse(text: string, searchId: string): { contact: IdentifiedDecisionMaker | null; summary: string } {
+  try {
+    const parsed = parseJsonResponse(text);
+
+    if (parsed.name && typeof parsed.name === 'string' && parsed.name !== 'null') {
+      return {
+        contact: {
+          name: parsed.name,
+          title: parsed.title ?? null,
+          company: parsed.company ?? null,
+          companyDomain: parsed.domain ?? null,
+          role: parsed.role || 'other',
+          roleConfidence: parsed.rc ?? 0.5,
+          connectionEvidence: parsed.evidence || '',
+          sourceUrl: parsed.src && parsed.src !== 'null' ? parsed.src : null,
+          contactType: parsed.type === 'general' ? 'general' : 'individual',
+        },
+        summary: parsed.summary || '',
+      };
+    }
+
+    if (parsed.contacts && Array.isArray(parsed.contacts) && parsed.contacts.length > 0) {
+      const c = parsed.contacts[0];
+      if (c.name && typeof c.name === 'string' && c.name !== 'null') {
+        return {
+          contact: {
+            name: c.name,
+            title: c.title ?? null,
+            company: c.company ?? null,
+            companyDomain: c.domain ?? null,
+            role: c.role || 'other',
+            roleConfidence: c.rc ?? 0.5,
+            connectionEvidence: c.evidence || '',
+            sourceUrl: c.src && c.src !== 'null' ? c.src : null,
+            contactType: c.type === 'general' ? 'general' : 'individual',
+          },
+          summary: parsed.summary || '',
+        };
+      }
+    }
+
+    return { contact: null, summary: parsed.summary || 'No contact found' };
+  } catch (parseErr) {
+    console.warn(`[Stage 3a] "${searchId}" parse failed: ${parseErr}`);
+    return { contact: null, summary: '' };
+  }
+}
+
 async function identifyDecisionMakers(
   property: CommercialProperty,
   classification: PropertyClassification,
@@ -1057,170 +1204,199 @@ async function identifyDecisionMakers(
 
   const mgmtName = ownership.managementCompany?.name || null;
   const mgmtDomain = ownership.managementCompany?.domain || null;
-  const mgmtInfo = mgmtName ? `${mgmtName} (${mgmtDomain || 'no website'})` : 'Unknown';
   const ownerName = ownership.beneficialOwner?.name || property.bizName || property.ownerName1 || 'Unknown';
-  const propertySite = ownership.propertyWebsite || 'none';
   const city = property.city || 'Dallas';
+  const propName = classification.propertyName;
+  const propAddr = classification.canonicalAddress;
+  const latLng = propertyLatLng(property);
 
-  const prompt = `Find 3 people directly involved in managing THIS specific property. Return ONLY valid JSON.
+  console.log('[Stage 3a] Identifying decision-makers via parallel targeted searches...');
+  console.log(`[Stage 3a] Property: ${propName}, Mgmt: ${mgmtName || 'Unknown'}, Owner: ${ownerName}`);
 
-PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
-TYPE: ${classification.category} - ${classification.subcategory}
-MGMT CO: ${mgmtInfo}
-OWNER: ${ownerName}
-PROPERTY SITE: ${propertySite}
+  const cachedMgmt = getCachedMgmtContacts(mgmtName, mgmtDomain, city);
 
-TASK: Search the web to find people who directly manage, operate, or maintain this specific property on a day-to-day basis. Focus on the property management company staff in the ${city} area, not corporate headquarters executives.
+  const searches: Array<{
+    id: string;
+    prompt: string;
+    priority: number;
+  }> = [];
 
-PRIORITY ROLES (return these first; listed in priority order):
-- On-site property manager or community manager for this specific property
-- Facilities/maintenance director or chief engineer for this specific property
-- Regional/district property manager overseeing this property's area
-- Asset manager or owner with direct responsibility for this property
+  if (mgmtName && !cachedMgmt) {
+    searches.push({
+      id: 'mgmt_team',
+      priority: 1,
+      prompt: buildSingleContactPrompt({
+        searchInstruction: mgmtDomain
+          ? `Search "${mgmtDomain}" OR "${mgmtName} team ${city}" to find property managers or regional managers in the ${city} area. Look for team/staff pages on ${mgmtDomain}.`
+          : `Search "${mgmtName} team ${city}" OR "${mgmtName} property manager ${city}" to find property managers or regional managers in the ${city} area.`,
+        propertyContext: `${propName} at ${propAddr}`,
+        companyContext: mgmtDomain ? `Managed by ${mgmtName} (${mgmtDomain})` : `Managed by ${mgmtName}`,
+        targetRole: 'property manager, community manager, or regional manager',
+        city,
+      }),
+    });
+  }
 
-DO NOT RETURN:
-- C-suite executives (CEO, CFO, COO, CTO, CMO) unless they are the direct property owner and higher-priority contacts were not identified
-- Corporate HR, marketing, or IT staff
-- People at corporate headquarters with no direct tie to this property or market
-- National-level VPs unless they specifically oversee the ${city} region
+  searches.push({
+    id: 'property_direct',
+    priority: 2,
+    prompt: buildSingleContactPrompt({
+      searchInstruction: `Search "${propName} ${city} property manager" OR "${propName} manager" to find the on-site manager or facilities contact for this specific property.`,
+      propertyContext: `${propName} at ${propAddr}`,
+      companyContext: mgmtName ? `Managed by ${mgmtName}` : `Owned by ${ownerName}`,
+      targetRole: 'on-site property manager, facilities director, or building engineer',
+      city,
+    }),
+  });
 
-Only return people verifiably connected to THIS property at THIS address or its local market as of 2025-2026.
+  if (ownerName && ownerName !== 'Unknown') {
+    searches.push({
+      id: 'owner_asset',
+      priority: 3,
+      prompt: buildSingleContactPrompt({
+        searchInstruction: `Search "${ownerName} ${city}" OR "${ownerName} asset manager" to find the asset manager or principal responsible for properties in ${city}.`,
+        propertyContext: `${propName} at ${propAddr}`,
+        companyContext: `Owned by ${ownerName}`,
+        targetRole: 'asset manager, portfolio manager, or owner/principal',
+        city,
+      }),
+    });
+  }
 
-IMPORTANT: If after searching you cannot find any verifiable contacts for this property, do NOT keep searching. Immediately return an empty contacts array with a summary explaining why no contacts were found. A fast "none found" response is far better than an exhaustive search that finds nothing.
+  console.log(`[Stage 3a] Launching ${searches.length} parallel targeted searches${cachedMgmt ? ' (+ cached mgmt contacts)' : ''}...`);
+  const startMs = Date.now();
 
-SOURCE REQUIREMENT: For each contact, provide the "src" field with the URL where you found them (LinkedIn profile, company team page, property listing, etc.). Do NOT return contacts you cannot cite a source for — if you cannot provide a source URL, omit that contact entirely.
-
-Return JSON:
-{"contacts":[{"name":"Full Name","title":"Title","company":"Company Name","domain":"company.com","role":"property_manager|facilities_manager|owner|other","rc":0.0-1.0,"evidence":"1 sentence linking them to this property","src":"https://source-url-where-found","type":"individual|general"}],"summary":"2 sentences max. If no contacts found, explain why (e.g. small owner-operated business, no public staff listings, etc.)."}`;
-
-  console.log('[FocusedEnrichment] Stage 3a: Identifying decision-makers...');
-  console.log(`[FocusedEnrichment] Stage 3a input - Property: ${classification.propertyName}, Mgmt: ${mgmtInfo}`);
-
-  const maxAttempts = 3;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    try {
-      console.log(`[FocusedEnrichment] Stage 3a attempt ${attempt}/${maxAttempts}...`);
-      const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], latLng: propertyLatLng(property) }),
-        2
+  const results = await Promise.allSettled(
+    searches.map(async (search) => {
+      return withStageTimeout(
+        async () => {
+          const response = await callGeminiWithTimeout(
+            () => streamGeminiResponse(client, search.prompt, {
+              tools: [{ googleSearch: {} }],
+              latLng,
+            }),
+            1
+          );
+          return { search, response };
+        },
+        STAGE3A_PER_SEARCH_TIMEOUT_MS,
+        `Stage 3a/${search.id}`
       );
+    })
+  );
 
-      const text = response.text?.trim() || '';
-      console.log(`[FocusedEnrichment] Stage 3a attempt ${attempt} response length: ${text.length} chars`);
+  const elapsedMs = Date.now() - startMs;
+  console.log(`[Stage 3a] All ${searches.length} parallel searches completed in ${elapsedMs}ms`);
 
-      if (!text) {
-        console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 3a (attempt ${attempt}/${maxAttempts})`);
-        trackCostFireAndForget({
-          provider: 'gemini',
-          endpoint: 'identify-decision-makers',
-          entityType: 'property',
-          success: false,
-          errorMessage: `Empty response attempt ${attempt}`,
-        });
-        if (attempt < maxAttempts) {
-          const delayMs = attempt * 3000;
-          console.log(`[FocusedEnrichment] Stage 3a retrying in ${delayMs}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-          continue;
-        }
-        console.warn('[FocusedEnrichment] Stage 3a: all attempts returned empty, giving up');
-        return { data: { contacts: [] }, summary: '', sources: [] };
-      }
+  const allContacts: IdentifiedDecisionMaker[] = [];
+  const allSources: GroundedSource[] = [];
+  let combinedSummary = '';
+  let searchSuggestionHtml: string | null = null;
 
-      const sources = extractGroundedSources(response);
-      const searchSuggestionHtml = extractSearchSuggestion(response);
-      const parsed = parseJsonResponse(text);
+  if (cachedMgmt) {
+    allContacts.push(...cachedMgmt.contacts);
+    allSources.push(...cachedMgmt.sources);
+    console.log(`[Stage 3a] Added ${cachedMgmt.contacts.length} cached mgmt contacts`);
+  }
 
-      try {
-        validateStage3aSchema(parsed);
-      } catch (schemaErr) {
-        console.warn(`[FocusedEnrichment] Stage 3a schema validation failed (attempt ${attempt}): ${schemaErr instanceof Error ? schemaErr.message : schemaErr}`);
-        if (attempt < maxAttempts) {
-          const delayMs = attempt * 3000;
-          console.log(`[FocusedEnrichment] Stage 3a retrying after schema error in ${delayMs}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delayMs));
-          continue;
-        }
-        return { data: { contacts: [] }, summary: parsed.summary || '', sources: [] };
-      }
+  const mgmtSearchContacts: IdentifiedDecisionMaker[] = [];
+  const mgmtSearchSources: GroundedSource[] = [];
 
-      const rawContactsParsed: IdentifiedDecisionMaker[] = (parsed.contacts || []).map((c: any) => ({
-        name: c.name || '',
-        title: c.title ?? null,
-        company: c.company ?? null,
-        companyDomain: c.domain ?? null,
-        role: c.role || 'other',
-        roleConfidence: c.rc ?? 0.5,
-        connectionEvidence: c.evidence || '',
-        sourceUrl: c.src && c.src !== 'null' ? c.src : null,
-        contactType: c.type === 'general' ? 'general' : 'individual',
-      }));
-
-      const contacts: IdentifiedDecisionMaker[] = [];
-      for (const contact of rawContactsParsed) {
-        if (!contact.name) continue;
-
-        if (!contact.sourceUrl) {
-          console.warn(`[FocusedEnrichment] Stage 3a: Contact "${contact.name}" has no source URL — downgrading confidence`);
-          contact.roleConfidence = Math.min(contact.roleConfidence, 0.4);
-        }
-
-        if (contact.companyDomain) {
-          const validatedDomain = await validateAndCleanDomain(contact.companyDomain, contact.company || undefined, `Stage 3a domain for ${contact.name}`);
-          if (!validatedDomain) {
-            console.warn(`[FocusedEnrichment] Stage 3a: Domain "${contact.companyDomain}" for ${contact.name} failed validation — clearing`);
-            contact.companyDomain = null;
-          } else {
-            contact.companyDomain = validatedDomain;
-          }
-        }
-        contacts.push(contact);
-      }
-
-      if (contacts.length === 0) {
-        console.log(`[FocusedEnrichment] Stage 3a: No contacts found. Reason: ${parsed.summary || 'no reason given'}`);
-      } else {
-        console.log(`[FocusedEnrichment] Stage 3a complete: ${contacts.length} contacts identified, ${sources.length} sources`);
-      }
-
-      trackCostFireAndForget({
-        provider: 'gemini',
-        endpoint: 'identify-decision-makers',
-        entityType: 'property',
-        success: true,
-        metadata: { contactsCount: contacts.length, sourcesCount: sources.length, attempt },
-      });
-
-      return {
-        data: { contacts },
-        summary: parsed.summary || '',
-        sources,
-        searchSuggestionHtml,
-      };
-    } catch (error) {
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      console.warn(`[Stage 3a] Sub-search failed: ${result.reason instanceof Error ? result.reason.message : result.reason}`);
       trackCostFireAndForget({
         provider: 'gemini',
         endpoint: 'identify-decision-makers',
         entityType: 'property',
         success: false,
-        errorMessage: error instanceof Error ? error.message : String(error),
+        errorMessage: result.reason instanceof Error ? result.reason.message : String(result.reason),
       });
-      console.error(`[FocusedEnrichment] Stage 3a attempt ${attempt} failed: ${error instanceof Error ? error.message : error}`);
-      if (attempt < maxAttempts) {
-        const delayMs = attempt * 3000;
-        console.log(`[FocusedEnrichment] Stage 3a retrying after error in ${delayMs}ms...`);
-        await new Promise(resolve => setTimeout(resolve, delayMs));
-        continue;
+      continue;
+    }
+
+    const { search, response } = result.value;
+    const text = response.text?.trim() || '';
+    if (!text) {
+      console.warn(`[Stage 3a] Sub-search "${search.id}" returned empty`);
+      continue;
+    }
+
+    const sources = extractGroundedSources(response);
+    if (!searchSuggestionHtml) {
+      searchSuggestionHtml = extractSearchSuggestion(response);
+    }
+    allSources.push(...sources);
+
+    const { contact, summary } = parseSingleContactResponse(text, search.id);
+
+    if (contact) {
+      if (!contact.sourceUrl) {
+        console.warn(`[Stage 3a] "${search.id}" contact "${contact.name}" has no source URL — downgrading confidence`);
+        contact.roleConfidence = Math.min(contact.roleConfidence, 0.4);
       }
-      return {
-        data: { contacts: [] },
-        summary: '',
-        sources: [],
-      };
+
+      if (contact.companyDomain) {
+        const validatedDomain = await validateAndCleanDomain(contact.companyDomain, contact.company || undefined, `Stage 3a/${search.id} domain for ${contact.name}`);
+        if (!validatedDomain) {
+          console.warn(`[Stage 3a] "${search.id}" domain "${contact.companyDomain}" for ${contact.name} failed validation — clearing`);
+          contact.companyDomain = null;
+        } else {
+          contact.companyDomain = validatedDomain;
+        }
+      }
+
+      allContacts.push(contact);
+      console.log(`[Stage 3a] "${search.id}" found: ${contact.name} (${contact.title || 'no title'})`);
+
+      if (search.id === 'mgmt_team') {
+        mgmtSearchContacts.push(contact);
+        mgmtSearchSources.push(...sources);
+      }
+    } else {
+      console.log(`[Stage 3a] "${search.id}" found no contact: ${summary}`);
+    }
+
+    if (summary) {
+      combinedSummary += (combinedSummary ? ' ' : '') + summary;
     }
   }
 
-  return { data: { contacts: [] }, summary: '', sources: [] };
+  if (mgmtName && !cachedMgmt && mgmtSearchContacts.length > 0) {
+    setCachedMgmtContacts(mgmtName, mgmtDomain, city, mgmtSearchContacts, mgmtSearchSources);
+  }
+
+  const dedupedContacts = deduplicateIdentifiedContacts(allContacts);
+
+  trackCostFireAndForget({
+    provider: 'gemini',
+    endpoint: 'identify-decision-makers',
+    entityType: 'property',
+    success: true,
+    metadata: {
+      searchCount: searches.length,
+      contactsFound: dedupedContacts.length,
+      cachedMgmt: !!cachedMgmt,
+      elapsedMs,
+    },
+  });
+
+  if (dedupedContacts.length === 0) {
+    console.log(`[Stage 3a] No contacts found across ${searches.length} searches. Summary: ${combinedSummary || 'none'}`);
+  } else {
+    console.log(`[Stage 3a] Complete: ${dedupedContacts.length} contacts from ${searches.length} searches in ${elapsedMs}ms`);
+  }
+
+  const uniqueSources = allSources
+    .filter((s, i, arr) => arr.findIndex(x => x.url === s.url) === i)
+    .slice(0, 10);
+
+  return {
+    data: { contacts: dedupedContacts },
+    summary: combinedSummary,
+    sources: uniqueSources,
+    searchSuggestionHtml,
+  };
 }
 
 async function enrichContactDetails(
@@ -1282,7 +1458,7 @@ RULES:
         metadata: { sourcesCount: sources.length, attempt },
       });
 
-      let email = parsed.email && parsed.email !== 'null' ? parsed.email : null;
+      let email = parsed.email && parsed.email !== 'null' ? parsed.email.toLowerCase().trim() : null;
 
       if (email) {
         if (isLikelyConstructedEmail(email, contact.name)) {

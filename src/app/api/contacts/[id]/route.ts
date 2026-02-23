@@ -243,7 +243,7 @@ export async function PATCH(
       updateData.title = title || null;
     }
     if (email !== undefined) {
-      updateData.email = email || null;
+      updateData.email = email ? email.toLowerCase().trim() : null;
       updateData.normalizedEmail = email ? email.toLowerCase().trim() : null;
       updateData.emailValidationStatus = email ? 'manual' : null;
     }

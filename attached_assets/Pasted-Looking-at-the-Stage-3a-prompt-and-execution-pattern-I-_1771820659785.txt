@@ -1,0 +1,334 @@
+Looking at the Stage 3a prompt and execution pattern, I can see several reasons it's the most timeout-prone stage and some concrete fixes.
+
+## Why Stage 3a Times Out
+
+The prompt asks Gemini to do a **broad, open-ended people search** with no structural scaffolding. Compared to Stages 1 and 2 (which search for a specific property or a specific entity name), Stage 3a says "find 3 people who manage this property" — which often sends Gemini on an exhaustive multi-query search spiral, especially when the property is small or owner-operated and there's genuinely nothing to find.
+
+The "DO NOT RETURN" negative constraints also backfire — Gemini spends tokens reasoning about what *not* to do, and the "IMPORTANT: if you cannot find any verifiable contacts" bailout instruction comes too late in the prompt (after Gemini has already committed to searching).
+
+---
+
+## Recommendations
+
+### 1. **Split the Single Broad Search into Targeted Narrower Queries**
+
+Instead of one prompt that says "find 3 people," issue 2-3 parallel, highly specific prompts that each target one role. This has several advantages: each call is faster (narrower search scope), they run concurrently, and a timeout on one doesn't lose the others.
+
+```typescript
+async function identifyDecisionMakers(
+  property: CommercialProperty,
+  classification: PropertyClassification,
+  ownership: OwnershipInfo
+): Promise<StageResult<{ contacts: IdentifiedDecisionMaker[] }>> {
+  const client = getGeminiClient();
+  const mgmtName = ownership.managementCompany?.name || null;
+  const mgmtDomain = ownership.managementCompany?.domain || null;
+  const ownerName = ownership.beneficialOwner?.name || property.bizName || property.ownerName1 || 'Unknown';
+  const city = property.city || 'Dallas';
+  const propName = classification.propertyName;
+  const propAddr = classification.canonicalAddress;
+  const latLng = propertyLatLng(property);
+
+  // Build targeted search strategies based on what we know
+  const searches: Array<{
+    id: string;
+    prompt: string;
+    priority: number;
+  }> = [];
+
+  // Strategy A: Search the management company's team page directly
+  if (mgmtName && mgmtDomain) {
+    searches.push({
+      id: 'mgmt_team',
+      priority: 1,
+      prompt: buildSingleContactPrompt({
+        searchInstruction: `Search "${mgmtDomain}" OR "${mgmtName} team ${city}" to find property managers or regional managers in the ${city} area. Look for team/staff pages on ${mgmtDomain}.`,
+        propertyContext: `${propName} at ${propAddr}`,
+        companyContext: `${mgmtName} (${mgmtDomain})`,
+        targetRole: 'property manager, community manager, or regional manager',
+        city,
+      }),
+    });
+  }
+
+  // Strategy B: Search for the property name + manager on LinkedIn/directories
+  searches.push({
+    id: 'property_direct',
+    priority: 2,
+    prompt: buildSingleContactPrompt({
+      searchInstruction: `Search "${propName} ${city} property manager" OR "${propName} manager" to find the on-site manager or facilities contact for this specific property.`,
+      propertyContext: `${propName} at ${propAddr}`,
+      companyContext: mgmtName ? `Managed by ${mgmtName}` : `Owned by ${ownerName}`,
+      targetRole: 'on-site property manager, facilities director, or building engineer',
+      city,
+    }),
+  });
+
+  // Strategy C: Search the owner entity for asset managers
+  if (ownerName && ownerName !== 'Unknown') {
+    searches.push({
+      id: 'owner_asset',
+      priority: 3,
+      prompt: buildSingleContactPrompt({
+        searchInstruction: `Search "${ownerName} ${city}" OR "${ownerName} asset manager" to find the asset manager or principal responsible for properties in ${city}.`,
+        propertyContext: `${propName} at ${propAddr}`,
+        companyContext: `Owned by ${ownerName}`,
+        targetRole: 'asset manager, portfolio manager, or owner/principal',
+        city,
+      }),
+    });
+  }
+
+  // Run all searches in parallel with individual timeouts
+  console.log(`[Stage 3a] Launching ${searches.length} parallel targeted searches...`);
+  const startMs = Date.now();
+
+  const results = await Promise.allSettled(
+    searches.map(async (search) => {
+      const response = await callGeminiWithTimeout(
+        () => streamGeminiResponse(client, search.prompt, {
+          tools: [{ googleSearch: {} }],
+          latLng,
+        }),
+        2 // retries per sub-search
+      );
+      return { search, response };
+    })
+  );
+
+  console.log(`[Stage 3a] All parallel searches completed in ${Date.now() - startMs}ms`);
+
+  // Collect contacts from all successful searches
+  const allContacts: IdentifiedDecisionMaker[] = [];
+  const allSources: GroundedSource[] = [];
+  let combinedSummary = '';
+
+  for (const result of results) {
+    if (result.status === 'rejected') {
+      console.warn(`[Stage 3a] Sub-search failed: ${result.reason}`);
+      continue;
+    }
+
+    const { search, response } = result.value;
+    const text = response.text?.trim() || '';
+    if (!text) {
+      console.warn(`[Stage 3a] Sub-search "${search.id}" returned empty`);
+      continue;
+    }
+
+    try {
+      const sources = extractGroundedSources(response);
+      const parsed = parseJsonResponse(text);
+      allSources.push(...sources);
+
+      if (parsed.name) {
+        // Single-contact response
+        allContacts.push({
+          name: parsed.name,
+          title: parsed.title ?? null,
+          company: parsed.company ?? null,
+          companyDomain: parsed.domain ?? null,
+          role: parsed.role || 'other',
+          roleConfidence: parsed.rc ?? 0.5,
+          connectionEvidence: parsed.evidence || '',
+          contactType: parsed.type === 'general' ? 'general' : 'individual',
+        });
+        console.log(`[Stage 3a] "${search.id}" found: ${parsed.name} (${parsed.title})`);
+      }
+
+      if (parsed.summary) {
+        combinedSummary += (combinedSummary ? ' ' : '') + parsed.summary;
+      }
+    } catch (parseErr) {
+      console.warn(`[Stage 3a] "${search.id}" parse failed: ${parseErr}`);
+    }
+  }
+
+  // Deduplicate by name across sub-searches
+  const dedupedContacts = deduplicateIdentifiedContacts(allContacts);
+
+  trackCostFireAndForget({
+    provider: 'gemini',
+    endpoint: 'identify-decision-makers',
+    entityType: 'property',
+    success: true,
+    metadata: {
+      searchCount: searches.length,
+      contactsFound: dedupedContacts.length,
+      sourcesCount: allSources.length,
+    },
+  });
+
+  const uniqueSources = allSources
+    .filter((s, i, arr) => arr.findIndex(x => x.url === s.url) === i)
+    .slice(0, 10);
+
+  return {
+    data: { contacts: dedupedContacts },
+    summary: combinedSummary,
+    sources: uniqueSources,
+  };
+}
+```
+
+The per-search prompt builder keeps each call focused:
+
+```typescript
+function buildSingleContactPrompt(params: {
+  searchInstruction: string;
+  propertyContext: string;
+  companyContext: string;
+  targetRole: string;
+  city: string;
+}): string {
+  return `Find ONE person: the ${params.targetRole} for a commercial property. Return ONLY valid JSON.
+
+PROPERTY: ${params.propertyContext}
+${params.companyContext}
+
+SEARCH: ${params.searchInstruction}
+
+RULES:
+- Return exactly ONE person you found with a verifiable connection to this property or company in ${params.city}.
+- If you cannot find anyone after searching, IMMEDIATELY return {"name":null,"summary":"reason"}.
+- Do NOT return C-suite executives at corporate HQ unless they are the direct property owner.
+- "domain" must be copied from an actual URL in search results. If none found, return null.
+- "sourceUrl" must be the URL where you found this person (LinkedIn, company page, etc.).
+
+Return JSON:
+{"name":"Full Name|null","title":"Title|null","company":"Company","domain":"company.com|null","sourceUrl":"https://where-you-found-them|null","role":"property_manager|facilities_manager|regional_manager|asset_manager|owner|other","rc":0.0-1.0,"evidence":"1 sentence: how they connect to this property","type":"individual|general","summary":"1 sentence if no one found."}`;
+}
+```
+
+### 2. **Add a Per-Search Timeout That's Tighter Than the HTTP Timeout**
+
+The 360s HTTP timeout is way too generous for a single contact search. Wrap each sub-search in a race:
+
+```typescript
+async function withStageTimeout<T>(
+  fn: () => Promise<T>,
+  timeoutMs: number,
+  label: string
+): Promise<T> {
+  return Promise.race([
+    fn(),
+    new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} timed out after ${timeoutMs}ms`)), timeoutMs)
+    ),
+  ]);
+}
+
+// Usage in the parallel searches:
+const results = await Promise.allSettled(
+  searches.map(async (search) => {
+    return withStageTimeout(
+      async () => {
+        const response = await callGeminiWithTimeout(
+          () => streamGeminiResponse(client, search.prompt, {
+            tools: [{ googleSearch: {} }],
+            latLng,
+          }),
+          1  // only 1 retry per sub-search since we have parallel redundancy
+        );
+        return { search, response };
+      },
+      90_000,  // 90s per sub-search — fail fast, keep the others
+      `Stage 3a/${search.id}`
+    );
+  })
+);
+```
+
+This means if the mgmt team search hangs, you still get results from the property direct search and owner search.
+
+### 3. **Feed Stage 2 Outputs as Structured Context, Not Just Text**
+
+The current Stage 3a prompt reconstructs context from ownership data as prose. Instead, give Gemini a tighter factual scaffold so it spends less time "discovering" what you already know:
+
+```typescript
+// Instead of:
+// MGMT CO: Lincoln Property Company (lincolnprop.com)
+
+// Give it actionable search targets:
+// SEARCH TARGET: lincolnprop.com/team OR lincolnprop.com/about
+// SEARCH TARGET: site:linkedin.com "Lincoln Property Company" "Dallas" property manager
+```
+
+This cuts Gemini's search planning time significantly — it knows *where* to look rather than figuring that out from scratch.
+
+### 4. **Implement a "Good Enough" Early Exit**
+
+Right now, each sub-search runs to completion. Add logic to cancel remaining searches once you have 3 quality contacts:
+
+```typescript
+// Use an AbortController pattern
+const controller = new AbortController();
+let foundCount = 0;
+
+const results = await Promise.allSettled(
+  searches.map(async (search) => {
+    if (controller.signal.aborted) {
+      return { search, response: null, skipped: true };
+    }
+    
+    const result = await withStageTimeout(/* ... */);
+    
+    // If this found a contact, increment
+    const text = result.response?.text?.trim();
+    if (text) {
+      const parsed = parseJsonResponse(text);
+      if (parsed.name) {
+        foundCount++;
+        if (foundCount >= 3) {
+          controller.abort(); // signal remaining searches to skip
+        }
+      }
+    }
+    
+    return result;
+  })
+);
+```
+
+### 5. **Cache and Reuse Management Company Contacts Across Properties**
+
+If you're enriching multiple properties managed by the same company (common with large firms like Lincoln, CBRE, Cushman), the regional manager is likely the same person. Add a short-lived cache keyed on `(mgmtCompanyDomain, city)`:
+
+```typescript
+const mgmtContactCache = new Map<string, {
+  contacts: IdentifiedDecisionMaker[];
+  timestamp: number;
+}>();
+
+const CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+function getCachedMgmtContacts(
+  mgmtDomain: string | null, 
+  city: string
+): IdentifiedDecisionMaker[] | null {
+  if (!mgmtDomain) return null;
+  const key = `${mgmtDomain.toLowerCase()}:${city.toLowerCase()}`;
+  const cached = mgmtContactCache.get(key);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL_MS) {
+    console.log(`[Stage 3a] Cache hit for ${key}: ${cached.contacts.length} contacts`);
+    return cached.contacts;
+  }
+  return null;
+}
+```
+
+This eliminates redundant Gemini calls entirely for the most common case and means the "mgmt_team" sub-search only runs once per management company per city per batch.
+
+---
+
+## Net Effect
+
+| Current | Proposed |
+|---|---|
+| 1 broad prompt, serial retries up to 6 calls | 2-3 narrow prompts, parallel, 1 retry each |
+| 360s timeout per attempt | 90s timeout per sub-search |
+| Single point of failure | Partial results on partial failure |
+| Searches from scratch every time | Cache for repeated mgmt companies |
+| ~60-120s typical, 360s+ on timeout | ~30-60s typical, 90s worst case per sub-search |
+
+The key insight is that three fast, focused searches with partial failure tolerance will consistently outperform one slow, broad search that's all-or-nothing.

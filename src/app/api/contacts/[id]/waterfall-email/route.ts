@@ -96,7 +96,8 @@ export async function POST(
 
     await db.update(contacts)
       .set({
-        email: foundEmail,
+        email: foundEmail.toLowerCase(),
+        normalizedEmail: foundEmail.toLowerCase(),
         emailSource,
         emailStatus,
         enrichmentSource: emailSource === 'findymail_finder' ? 'findymail' : 'hunter',
@@ -104,10 +105,11 @@ export async function POST(
       })
       .where(eq(contacts.id, id));
 
-    console.log(`[WaterfallEmail] Saved email ${foundEmail} (${emailSource}, status: ${emailStatus}) for ${contact.fullName}`);
+    const normalizedFoundEmail = foundEmail.toLowerCase();
+    console.log(`[WaterfallEmail] Saved email ${normalizedFoundEmail} (${emailSource}, status: ${emailStatus}) for ${contact.fullName}`);
 
     return apiSuccess({
-      email: foundEmail,
+      email: normalizedFoundEmail,
       emailSource,
       emailStatus,
       message: `Email found via ${emailSource}`,
