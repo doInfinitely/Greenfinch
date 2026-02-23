@@ -22,7 +22,7 @@ greenfinch.ai is an AI-native commercial real estate prospecting CRM designed to
 Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL (Neon-backed), and runs on Node.js 20. Redis (Upstash) is used for distributed caching and locking.
 
 ### Core Design Principles
-- **Modular Project Structure**: Code is organized by feature and concern.
+- **Modular Project Structure**: Code is organized by feature and concern. AI enrichment lives in `src/lib/ai/` with separate files for types, client, errors, parsers, helpers, and per-stage logic (`stages/classify.ts`, `stages/ownership.ts`, `stages/contacts.ts`, `stages/misc.ts`), orchestrated by `pipeline.ts` and re-exported via `index.ts`.
 - **Data-Driven UI**: Interactive maps (Mapbox GL), dashboards, and detailed views.
 - **Robust Authentication**: Clerk Auth with Role-Based Access Control (RBAC).
 - **Multi-stage Enrichment Pipelines**:

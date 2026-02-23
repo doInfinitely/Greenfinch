@@ -3,8 +3,8 @@ import pLimit from 'p-limit';
 import { db } from './db';
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from './schema';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
-import { runFocusedEnrichment, cleanupAISummary, EnrichmentStageError } from './ai-enrichment';
-import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpoint } from './ai-enrichment';
+import { runFocusedEnrichment, cleanupAISummary, EnrichmentStageError } from './ai';
+import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpoint } from './ai';
 import { isCircuitBreakerError } from './rate-limiter';
 import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
@@ -1046,7 +1046,7 @@ async function searchForReplacement(
   console.log(`[ReplacementSearch] Searching for replacement ${roleDesc} at ${company} for property ${propertyId}`);
   
   try {
-    const { searchForReplacementContact } = await import('./ai-enrichment');
+    const { searchForReplacementContact } = await import('./ai');
     const result = await searchForReplacementContact(roleDesc, company, propertyAddress);
 
     if (!result?.name) {

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getPropertyByKey } from '@/lib/snowflake';
-import { runFocusedEnrichment } from '@/lib/ai-enrichment';
+import { runFocusedEnrichment } from '@/lib/ai';
 import { isBatchRunning, checkRateLimitForIndividual, updateLastRequestTime, saveEnrichmentResults, runCascadeEnrichmentOnSavedRecords } from '@/lib/enrichment-queue';
 import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
