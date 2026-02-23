@@ -1,0 +1,124 @@
+I'll analyze this enrichment pipeline systematically, focusing on grounding quality, hallucination prevention, and consistency.
+
+---
+
+## Audit Findings & Recommendations
+
+### 1. **Grounding Validation is Incomplete**
+
+The biggest risk: you check whether sources *exist* but don't verify that the AI's extracted data actually *came from* those sources.
+
+**Problem:** `extractGroundedSources` logs a warning when Gemini searched but returned no grounding chunks ("GROUNDING GAP"), but the pipeline still uses the response text. The `parseJsonResponse` output is trusted as long as *any* text came back.
+
+**Recommendation:** Add a grounding confidence gate. Gemini's `groundingMetadata` includes a `supportChunkIndices` mapping that tells you which claims are backed by which chunks. You should:
+
+- Extract `groundingSupports` and check what percentage of the response is actually grounded
+- Flag or reject responses where grounding support coverage is below a threshold (e.g., <50% of claims supported)
+- Expose a `groundingScore` on each stage result so downstream consumers know how trustworthy it is
+
+```typescript
+interface GroundingQuality {
+  totalSupports: number;
+  groundedChunksUsed: number;
+  searchQueriesIssued: number;
+  hasGroundingGap: boolean; // searched but no chunks
+}
+```
+
+### 2. **Domain/URL Validation is Strong but Has a Gap in Stage 3b**
+
+You do solid domain validation in Stage 2 (ownership) with `validateAndCleanDomain` and `validatePropertyWebsite`, plus the hallucination-clearing logic for missing `domainSource`/`siteSource`. But in Stage 3b (contact enrichment), `companyDomain` from identified contacts is never validated before being passed through:
+
+```typescript
+// Stage 3a — contact.companyDomain is taken at face value
+companyDomain: c.domain ?? null,
+```
+
+This domain flows into downstream enrichment (PDL, Hunter, etc.) and can poison the whole waterfall if hallucinated.
+
+**Recommendation:** Run `validateAndCleanDomain` on every `companyDomain` returned from Stage 3a before passing it to 3b or any external enrichment provider.
+
+### 3. **The `isLikelyConstructedEmail` Check is Good but Too Narrow**
+
+You catch 8 common patterns (`first.last`, `flast`, etc.), but miss variations like `firstl@`, `first-last@`, `last.first.middle@`, and international patterns. More importantly, the check only runs in Stage 3b — if a future code path gets emails from another source, it's unprotected.
+
+**Recommendation:** Extract this into a shared utility and expand the pattern set. Also consider a probabilistic approach: if the email local part can be deterministically derived from the contact's name + any common pattern, flag it as "possibly constructed" and require grounding sources to keep it.
+
+### 4. **Prompt Design Inconsistencies Across Stages**
+
+Stage 2 asks Gemini to report `domainSource` and `siteSource` (provenance tracking), which is excellent. But Stage 1 and Stage 3a don't ask for any source provenance on the data they return. This means:
+
+- Stage 1: `propertyName`, `category`, `class` have no citation trail
+- Stage 3a: `contact.name`, `contact.title`, `contact.company` have no citation trail — `evidence` is a free-text field Gemini can fabricate
+
+**Recommendation:** Add source provenance fields consistently across all stages. At minimum, Stage 3a should require a `sourceUrl` per contact (the LinkedIn profile, company page, or listing where the person was found). Reject contacts with no source URL unless they come from the property's own website.
+
+### 5. **Temperature Setting May Be Too Aggressive**
+
+You're using `temperature: 0.1` as default. For factual extraction with grounding, `0.0` would be more deterministic. The 0.1 gives Gemini just enough wiggle room to "creatively" fill gaps — exactly the behavior you don't want for factual data.
+
+**Recommendation:** Use `temperature: 0.0` for all grounded search stages. Reserve 0.1+ only for `cleanupAISummary` where some fluency variation is acceptable.
+
+### 6. **Retry Logic is Duplicated and Inconsistent**
+
+Three different retry patterns exist:
+
+- `classifyAndVerifyProperty`: inline 3-retry loop with manual backoff
+- `callGeminiWithTimeout`: generic 2-retry wrapper with rate limiter
+- Each stage function: its own 3-attempt loop wrapping `callGeminiWithTimeout` (which itself retries)
+
+This means Stage 2 can retry up to **6 times** (3 outer × 2 inner), and Stage 3b up to **6 times per contact**. That's expensive and can cause cascading timeouts.
+
+**Recommendation:** Consolidate into one retry strategy. I'd remove the inner retry from `callGeminiWithTimeout` (set retries=1) and let each stage own its retry count. This also makes cost tracking accurate — right now you may be undercounting API calls.
+
+### 7. **No Response Schema Validation**
+
+`parseJsonResponse` extracts JSON and trusts whatever structure comes back. If Gemini returns `{"contacts": "none"}` instead of `{"contacts": []}`, or omits a field, the destructuring silently produces nulls/undefineds that propagate.
+
+**Recommendation:** Add lightweight runtime validation (Zod or a manual check) after `parseJsonResponse` for each stage's expected schema. Reject and retry on schema violations rather than passing garbage through.
+
+```typescript
+// Example: Stage 3a validation
+const parsed = parseJsonResponse(text);
+if (!Array.isArray(parsed.contacts)) {
+  console.warn(`[Stage 3a] Invalid response structure — contacts is ${typeof parsed.contacts}`);
+  continue; // trigger retry
+}
+```
+
+### 8. **The `cleanupAISummary` Stage is an Unnecessary Gemini Call**
+
+You're spending an API call (with grounding disabled) just to clean up prose. The `stripInternalMessages` regex fallback already does most of the work. The AI cleanup adds latency, cost, and another hallucination vector (Gemini could "improve" the summary by adding fabricated details).
+
+**Recommendation:** Drop the AI cleanup call entirely. Improve `stripInternalMessages` to handle citation brackets and sentence joining, or do a simple template-based assembly from structured data instead of cleaning free-text summaries.
+
+### 9. **Cross-Stage Data Isn't Cross-Validated Enough**
+
+Stage 2 finds a management company. Stage 3a independently searches for contacts. If Stage 3a returns contacts at a *different* company than Stage 2 identified, that's a red flag — but nothing checks for it.
+
+**Recommendation:** After Stage 3a, validate that returned contacts' companies match (or are related to) the Stage 2 management company or beneficial owner. Flag mismatches and downgrade `roleConfidence`.
+
+### 10. **Phone Cross-Validation is Reactive, Not Proactive**
+
+You detect shared phone numbers *after* enrichment and downgrade to "office." But you don't check whether a returned phone number matches the `propertyPhone` from Stage 2, which would be a strong signal that it's a generic number, not a direct line.
+
+**Recommendation:** Compare all Stage 3b phone numbers against `ownership.propertyPhone`. If they match, immediately label as `office` with low confidence.
+
+---
+
+### Priority Order
+
+If I had to rank these by impact on data quality:
+
+1. **#1 (grounding confidence gate)** — highest-impact single change
+2. **#7 (schema validation)** — prevents silent garbage propagation
+3. **#2 (Stage 3a domain validation)** — prevents waterfall poisoning
+4. **#4 (source provenance on contacts)** — most common hallucination vector
+5. **#5 (temperature 0.0)** — free improvement, one-line change
+6. **#6 (retry consolidation)** — cost and predictability
+7. **#9 (cross-stage validation)** — catches inconsistencies
+8. **#8 (drop AI summary cleanup)** — cost reduction, removes hallucination vector
+9. **#3 (expand email pattern check)** — incremental improvement
+10. **#10 (proactive phone matching)** — nice-to-have
+
+Want me to draft implementation code for any of these?
