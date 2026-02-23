@@ -203,8 +203,8 @@ function mapQualityGradeToClass(grade: string | null): { propertyClass: string |
   return mapping[gradeNorm] || { propertyClass: null, confidence: 0 };
 }
 
-// Vertex AI supports up to 600s server-side timeout
-const GEMINI_HTTP_TIMEOUT_MS = 600000; // 600 seconds
+// Vertex AI supports up to 600s server-side timeout; use 360s to allow faster retries on stream disconnects
+const GEMINI_HTTP_TIMEOUT_MS = 360000; // 360 seconds
 
 const AI_GENERATED_DOMAINS = [
   'generativelanguage.googleapis.com',
@@ -412,9 +412,10 @@ Return JSON:
     } catch (apiError) {
       const errMsg = apiError instanceof Error ? apiError.message : String(apiError);
       const isDeadlineExceeded = errMsg.includes('DEADLINE_EXCEEDED') || errMsg.includes('504') || errMsg.includes('Deadline expired');
-      const isRetryable = isDeadlineExceeded || errMsg.includes('500') || errMsg.includes('503') || errMsg.includes('429');
+      const isStreamDisconnect = errMsg === 'terminated' || errMsg.includes('ECONNRESET') || errMsg.includes('socket hang up') || errMsg.includes('network error');
+      const isRetryable = isDeadlineExceeded || isStreamDisconnect || errMsg.includes('500') || errMsg.includes('503') || errMsg.includes('429');
 
-      console.warn(`[FocusedEnrichment] Stage 1 attempt ${attempt} error (retryable=${isRetryable}, deadline=${isDeadlineExceeded}): ${errMsg.substring(0, 200)}`);
+      console.warn(`[FocusedEnrichment] Stage 1 attempt ${attempt} error (retryable=${isRetryable}, deadline=${isDeadlineExceeded}, streamDisconnect=${isStreamDisconnect}): ${errMsg.substring(0, 200)}`);
 
       if (!isRetryable || attempt >= maxRetries) {
         throw apiError;
@@ -540,18 +541,20 @@ async function callGeminiWithTimeout<T>(
       const errMsg = lastError.message;
       const isDeadlineExceeded = errMsg.includes('DEADLINE_EXCEEDED') || errMsg.includes('504') || errMsg.includes('Deadline expired');
       const isServerError = errMsg.includes('500') || errMsg.includes('503') || errMsg.includes('INTERNAL');
-      const isRetryable = isDeadlineExceeded || isServerError || errMsg.includes('429');
+      const isStreamDisconnect = errMsg === 'terminated' || errMsg.includes('ECONNRESET') || errMsg.includes('socket hang up') || errMsg.includes('network error');
+      const isRetryable = isDeadlineExceeded || isServerError || isStreamDisconnect || errMsg.includes('429');
 
-      console.warn(`[FocusedEnrichment] API call attempt ${attempt} failed (retryable=${isRetryable}, deadline=${isDeadlineExceeded}): ${errMsg.substring(0, 200)}`);
+      console.warn(`[FocusedEnrichment] API call attempt ${attempt} failed (retryable=${isRetryable}, deadline=${isDeadlineExceeded}, streamDisconnect=${isStreamDisconnect}): ${errMsg.substring(0, 200)}`);
       
       if (!isRetryable) {
         throw lastError;
       }
 
       if (attempt < retries) {
-        const baseMs = isDeadlineExceeded ? 5000 : 1000;
+        const baseMs = (isDeadlineExceeded || isStreamDisconnect) ? 5000 : 1000;
         const backoffMs = Math.min(baseMs * Math.pow(2, attempt - 1), 15000);
-        console.log(`[FocusedEnrichment] Retrying in ${backoffMs}ms (${isDeadlineExceeded ? 'deadline exceeded - extended backoff' : 'standard backoff'})...`);
+        const reason = isDeadlineExceeded ? 'deadline exceeded' : isStreamDisconnect ? 'stream disconnect' : 'standard';
+        console.log(`[FocusedEnrichment] Retrying in ${backoffMs}ms (${reason} backoff)...`);
         await new Promise(resolve => setTimeout(resolve, backoffMs));
       }
     }
