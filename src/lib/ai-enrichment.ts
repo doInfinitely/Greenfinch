@@ -664,7 +664,7 @@ SEARCH SEQUENCE:
 3. Search "${deedOwner} Texas" on OpenCorporates or TX Secretary of State to find the entity behind the LLC/trust
 4. Search for news about acquisitions or sales of ${classification.propertyName} around ${deedDate} to identify the beneficial owner
 
-DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain from a URL you found in search results. If no search result contained the company's website, return null. Return the "domainSource" field with the full URL where you found it.
+DOMAIN ACCURACY: For "domain" and "site" fields, only return domains that appear in your search results. Copy the exact domain from a URL you found. Do NOT guess or construct domains from company names. If you did not see the company's website in any search result, return null for the domain. Always include "domainSource" with the full URL where you found the domain.
 
 Return JSON:
 {"mgmt":{"name":"Co|null","domain":"co.com|null","domainSource":"full URL where domain was found|null","c":0.0-1.0},"owner":{"name":"Entity|null","type":"REIT|PE|Family Office|Individual|Corporation|Institutional|Syndicator|null","c":0.0-1.0},"site":"https://property-site.com|null","siteSource":"full URL where property site was found|null","phone":"+1XXXXXXXXXX|null","summary":"2 sentences max: who owns it, who manages it."}`;
@@ -813,29 +813,47 @@ Return JSON:
         }
       }
 
-      if (validated.managementCompany.domain) {
-        const validatedMgmtDomain = await validateAndCleanDomain(
-          validated.managementCompany.domain,
-          mgmtName,
-          'mgmt company domain'
-        );
-        if (!validatedMgmtDomain) {
-          console.warn(`[FocusedEnrichment] Stage 2: Mgmt domain "${validated.managementCompany.domain}" failed validation, clearing`);
-          validated.managementCompany.domain = null;
-        } else {
-          validated.managementCompany.domain = validatedMgmtDomain;
-        }
-      }
+      if (validated.managementCompany.name) {
+        const aiDomain = validated.managementCompany.domain;
+        let pdlResolvedDomain: string | null = null;
 
-      if (!validated.managementCompany.domain && validated.managementCompany.name) {
-        console.log(`[FocusedEnrichment] Stage 2: No valid mgmt domain — running company domain retry...`);
-        const retryDomain = await retryFindCompanyDomain(
-          validated.managementCompany.name,
-          propCity,
-          propertyLatLng(property)
-        );
-        if (retryDomain) {
-          validated.managementCompany.domain = retryDomain;
+        try {
+          const { enrichCompanyPDL } = await import('./pdl');
+          console.log(`[FocusedEnrichment] Stage 2: PDL lookup for "${validated.managementCompany.name}" (AI domain: ${aiDomain || 'none'})`);
+          const pdlResult = await enrichCompanyPDL(aiDomain || '', {
+            name: validated.managementCompany.name,
+            locality: propCity || undefined,
+            region: 'TX',
+          });
+
+          if (pdlResult.found && pdlResult.website) {
+            const pdlDomain = pdlResult.website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
+            console.log(`[FocusedEnrichment] Stage 2: PDL confirmed "${validated.managementCompany.name}" → ${pdlDomain}`);
+            pdlResolvedDomain = pdlDomain;
+          } else {
+            console.log(`[FocusedEnrichment] Stage 2: PDL did not find "${validated.managementCompany.name}"`);
+          }
+        } catch (pdlErr) {
+          console.warn(`[FocusedEnrichment] Stage 2: PDL lookup failed for "${validated.managementCompany.name}":`, pdlErr instanceof Error ? pdlErr.message : pdlErr);
+        }
+
+        if (pdlResolvedDomain) {
+          validated.managementCompany.domain = pdlResolvedDomain;
+        } else if (aiDomain) {
+          console.log(`[FocusedEnrichment] Stage 2: No PDL match, keeping AI domain "${aiDomain}"`);
+          validated.managementCompany.domain = aiDomain;
+        }
+
+        if (!validated.managementCompany.domain) {
+          console.log(`[FocusedEnrichment] Stage 2: No mgmt domain — running company domain retry...`);
+          const retryDomain = await retryFindCompanyDomain(
+            validated.managementCompany.name,
+            propCity,
+            propertyLatLng(property)
+          );
+          if (retryDomain) {
+            validated.managementCompany.domain = retryDomain;
+          }
         }
       }
 
@@ -988,12 +1006,9 @@ Return JSON: {"domain":"company-domain.com|null","source":"full URL where you fo
     });
 
     if (domain) {
-      const validated = await validateAndCleanDomain(domain, companyName, 'retry company domain');
-      if (validated) {
-        console.log(`[FocusedEnrichment] Domain retry: found valid company domain: ${validated}`);
-        return validated;
-      }
-      console.warn(`[FocusedEnrichment] Domain retry: company domain "${domain}" failed validation`);
+      const cleaned = domain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
+      console.log(`[FocusedEnrichment] Domain retry: found company domain: ${cleaned}`);
+      return cleaned;
     }
     return null;
   } catch (error) {
@@ -1148,13 +1163,8 @@ Return JSON:
         }
 
         if (contact.companyDomain) {
-          const validatedDomain = await validateAndCleanDomain(contact.companyDomain, contact.company || undefined, `Stage 3a domain for ${contact.name}`);
-          if (!validatedDomain) {
-            console.warn(`[FocusedEnrichment] Stage 3a: Domain "${contact.companyDomain}" for ${contact.name} failed validation — clearing`);
-            contact.companyDomain = null;
-          } else {
-            contact.companyDomain = validatedDomain;
-          }
+          const cleaned = contact.companyDomain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
+          contact.companyDomain = cleaned;
         }
         contacts.push(contact);
       }
