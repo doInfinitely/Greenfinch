@@ -664,7 +664,7 @@ SEARCH SEQUENCE:
 3. Search "${deedOwner} Texas" on OpenCorporates or TX Secretary of State to find the entity behind the LLC/trust
 4. Search for news about acquisitions or sales of ${classification.propertyName} around ${deedDate} to identify the beneficial owner
 
-DOMAIN ACCURACY: For "domain" and "site" fields, only return domains that appear in your search results. Copy the exact domain from a URL you found. Do NOT guess or construct domains from company names. If you did not see the company's website in any search result, return null for the domain. Always include "domainSource" with the full URL where you found the domain.
+DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain from a URL you found in search results. If no search result contained the company's website, return null. Return the "domainSource" field with the full URL where you found it.
 
 Return JSON:
 {"mgmt":{"name":"Co|null","domain":"co.com|null","domainSource":"full URL where domain was found|null","c":0.0-1.0},"owner":{"name":"Entity|null","type":"REIT|PE|Family Office|Individual|Corporation|Institutional|Syndicator|null","c":0.0-1.0},"site":"https://property-site.com|null","siteSource":"full URL where property site was found|null","phone":"+1XXXXXXXXXX|null","summary":"2 sentences max: who owns it, who manages it."}`;
