@@ -202,8 +202,8 @@ function mapQualityGradeToClass(grade: string | null): { propertyClass: string |
   return mapping[gradeNorm] || { propertyClass: null, confidence: 0 };
 }
 
-// Vertex AI p95 latency ~374s; use 400s to avoid losing results on slow responses
-const GEMINI_HTTP_TIMEOUT_MS = 400000; // 400 seconds
+// Vertex AI can be very slow under load; 600s to avoid losing results
+const GEMINI_HTTP_TIMEOUT_MS = 600000; // 600 seconds
 
 const AI_GENERATED_DOMAINS = [
   'generativelanguage.googleapis.com',

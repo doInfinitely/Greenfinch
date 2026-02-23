@@ -561,7 +561,25 @@ export async function runCascadeEnrichmentOnSavedRecords(
       const org = await db.query.organizations.findFirst({
         where: eq(organizations.id, orgId),
       });
-      if (!org || !org.domain || org.enrichmentStatus === 'enriched') continue;
+      if (!org || org.enrichmentStatus === 'enriched') continue;
+
+      if (!org.domain && org.name) {
+        console.log(`[CascadeEnrichment] Org has no domain, attempting PDL name lookup: ${org.name}`);
+        try {
+          const { enrichOrganizationById } = await import('./organization-enrichment');
+          const nameResult = await enrichOrganizationById(org.id);
+          if (nameResult?.success) {
+            console.log(`[CascadeEnrichment] Enriched domain-less org: ${org.name}`);
+          } else {
+            console.log(`[CascadeEnrichment] Could not enrich ${org.name}: ${nameResult?.error || 'unknown'}`);
+          }
+        } catch (err) {
+          console.error(`[CascadeEnrichment] Error in name-based org enrichment for ${org.name}:`, err);
+        }
+        continue;
+      }
+
+      if (!org.domain) continue;
 
       console.log(`[CascadeEnrichment] Enriching org: ${org.name} (${org.domain})`);
       const result = await enrichOrganizationCascade(org.domain, {
