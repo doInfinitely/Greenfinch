@@ -135,9 +135,8 @@ export async function GET(request: NextRequest) {
       }
     }
     
-    // Zip codes filter (supports multiple)
     if (zipCodes.length > 0) {
-      conditions.push(inArray(properties.zip, zipCodes));
+      conditions.push(sql`LEFT(${properties.zip}, 5) IN (${sql.join(zipCodes.map(z => sql`${z}`), sql`, `)})`);
     }
 
     // Building class filter - handle "Unknown" for NULL property_class values

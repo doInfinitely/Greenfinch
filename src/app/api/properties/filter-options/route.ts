@@ -45,12 +45,11 @@ export async function GET() {
       .map(r => r.dcad_primary_heating_type)
       .filter(Boolean);
 
-    // Get distinct zip codes
     const zipCodesResult = await db.execute(
-      sql`SELECT DISTINCT zip FROM ${properties} WHERE zip IS NOT NULL AND zip != '' AND is_active = true ORDER BY zip`
+      sql`SELECT DISTINCT LEFT(zip, 5) AS zip5 FROM ${properties} WHERE zip IS NOT NULL AND zip != '' AND is_active = true ORDER BY zip5`
     );
-    const zipCodes = (zipCodesResult.rows as { zip: string }[])
-      .map(r => r.zip)
+    const zipCodes = (zipCodesResult.rows as { zip5: string }[])
+      .map(r => r.zip5)
       .filter(Boolean);
 
     return NextResponse.json({
