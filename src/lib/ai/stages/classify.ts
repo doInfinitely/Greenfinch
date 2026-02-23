@@ -63,7 +63,20 @@ CATEGORIES: ${formatCompactCategories()}
 TASK: Search the web to find current information about this property. Look for anchor tenants, year built, renovations, and property details.
 
 Return JSON:
-{"name":"...","addr":"...","cat":"...","sub":"...","c":0.0,"class":"B","cc":0.0,"acres":0,"ac":0.0,"sqft":0,"sc":0.0,"summary":"2 sentences max."}`;
+{
+  "name": "...",
+  "addr": "...",
+  "cat": "...",
+  "sub": "...",
+  "c": 0.0,
+  "class": "B",
+  "cc": 0.0,
+  "acres": 0,
+  "ac": 0.0,
+  "sqft": 0,
+  "sc": 0.0,
+  "summary": "2 sentences max."
+}`;
 
   console.log('[FocusedEnrichment] Stage 1: Classification and physical verification...');
 

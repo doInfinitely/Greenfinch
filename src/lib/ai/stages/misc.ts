@@ -98,9 +98,14 @@ export async function searchForReplacementContact(
   const addressContext = propertyAddress ? ` at ${propertyAddress}` : '';
   const prompt = `Search the web to find the current ${roleDesc}${addressContext} for ${company}. The previous person in this role has left. I need the name and title of their replacement. Return ONLY valid JSON.
 
-{"name":"Full Name|null","title":"Job Title|null","email":"email@domain.com|null","company":"${company}"}
+{
+  "name": "Full Name | null",
+  "title": "Job Title | null",
+  "email": "email@domain.com | null",
+  "company": "${company}"
+}
 
-If you cannot find a replacement, return {"name":null}`;
+If you cannot find a replacement, return {"name": null}`;
 
   try {
     const response = await callGeminiWithTimeout(

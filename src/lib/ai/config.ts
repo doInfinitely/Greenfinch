@@ -34,9 +34,9 @@ export const THINKING_LEVELS = {
   /** Stage 1 — property classification (straightforward lookup). */
   STAGE_1_CLASSIFY: 'MINIMAL' as const,
   /** Stage 2 — ownership & management (multi-step entity resolution). */
-  STAGE_2_OWNERSHIP: 'LOW' as const,
+  STAGE_2_OWNERSHIP: 'MEDIUM' as const,
   /** Stage 3a — decision-maker identification (research-heavy). */
-  STAGE_3A_CONTACTS: 'LOW' as const,
+  STAGE_3A_CONTACTS: 'HIGH' as const,
   /** Stage 3b — per-contact email/phone lookup (simple search). */
   STAGE_3B_ENRICH: 'MINIMAL' as const,
   /** Summary cleanup — light editing, no reasoning needed. */
@@ -102,7 +102,7 @@ export const CONFIDENCE = {
 // ---------------------------------------------------------------------------
 
 /** Maximum grounding sources to keep per Gemini response. */
-export const MAX_GROUNDED_SOURCES = 10;
+export const MAX_GROUNDED_SOURCES = 5;
 
 /** Domains that indicate the "source" is AI-generated, not a real web page. */
 export const AI_GENERATED_DOMAINS = [

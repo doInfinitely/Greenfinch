@@ -61,7 +61,25 @@ SEARCH SEQUENCE:
 DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain from a URL you found in search results. If no search result contained the company's website, return null. Return the "domainSource" field with the full URL where you found it.
 
 Return JSON:
-{"mgmt":{"name":"Co|null","domain":"co.com|null","domainSource":"full URL where domain was found|null","c":0.0-1.0},"owner":{"name":"Entity|null","type":"REIT|PE|Family Office|Individual|Corporation|Institutional|Syndicator|null","domain":"owner-co.com|null","domainSource":"full URL where domain was found|null","c":0.0-1.0},"site":"https://property-site.com|null","siteSource":"full URL where property site was found|null","phone":"+1XXXXXXXXXX|null","summary":"2 sentences max: who owns it, who manages it."}`;
+{
+  "mgmt": {
+    "name": "Co | null",
+    "domain": "co.com | null",
+    "domainSource": "full URL where domain was found | null",
+    "c": 0.0
+  },
+  "owner": {
+    "name": "Entity | null",
+    "type": "REIT | PE | Family Office | Individual | Corporation | Institutional | Syndicator | null",
+    "domain": "owner-co.com | null",
+    "domainSource": "full URL where domain was found | null",
+    "c": 0.0
+  },
+  "site": "https://property-site.com | null",
+  "siteSource": "full URL where property site was found | null",
+  "phone": "+1XXXXXXXXXX | null",
+  "summary": "2 sentences max: who owns it, who manages it."
+}`;
 
   console.log('[FocusedEnrichment] Stage 2: Ownership identification...');
   console.log(`[FocusedEnrichment] Stage 2 input - Property: ${classification.propertyName}, Deed Owner: ${deedOwner}`);
@@ -410,7 +428,11 @@ ${context}
 
 Search for "${propertyName} ${city}" and "${propertyName} apartments" or "${propertyName} office" as a consumer would. Look for the property's own marketing website (e.g. "live${propertyName.toLowerCase().replace(/\s+/g, '')}.com" or similar), a listing on the management company's site, or a dedicated property page. Copy the exact URL from search results.
 
-Return JSON: {"url":"https://full-url-to-property-page|null","domain":"domain-of-the-site|null"}`;
+Return JSON:
+{
+  "url": "https://full-url-to-property-page | null",
+  "domain": "domain-of-the-site | null"
+}`;
 
   try {
     console.log(`[FocusedEnrichment] Domain retry: searching for property website for "${propertyName}"...`);
@@ -478,7 +500,11 @@ LOCATION: ${city}, TX
 
 Search for the company's official website. Copy the exact domain from the URL you find in search results.
 
-Return JSON: {"domain":"company-domain.com|null","source":"full URL where you found it|null"}`;
+Return JSON:
+{
+  "domain": "company-domain.com | null",
+  "source": "full URL where you found it | null"
+}`;
 
   try {
     console.log(`[FocusedEnrichment] Domain retry: searching for company domain for "${companyName}"...`);
