@@ -133,6 +133,7 @@ export interface OwnershipInfo {
   beneficialOwner: {
     name: string | null;
     type: "REIT" | "Private Equity" | "Family Office" | "Individual" | "Corporation" | "Institutional" | "Syndicator" | null;
+    domain: string | null;
     confidence: number;
   };
   managementCompany: {
@@ -667,7 +668,7 @@ SEARCH SEQUENCE:
 DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain from a URL you found in search results. If no search result contained the company's website, return null. Return the "domainSource" field with the full URL where you found it.
 
 Return JSON:
-{"mgmt":{"name":"Co|null","domain":"co.com|null","domainSource":"full URL where domain was found|null","c":0.0-1.0},"owner":{"name":"Entity|null","type":"REIT|PE|Family Office|Individual|Corporation|Institutional|Syndicator|null","c":0.0-1.0},"site":"https://property-site.com|null","siteSource":"full URL where property site was found|null","phone":"+1XXXXXXXXXX|null","summary":"2 sentences max: who owns it, who manages it."}`;
+{"mgmt":{"name":"Co|null","domain":"co.com|null","domainSource":"full URL where domain was found|null","c":0.0-1.0},"owner":{"name":"Entity|null","type":"REIT|PE|Family Office|Individual|Corporation|Institutional|Syndicator|null","domain":"owner-co.com|null","domainSource":"full URL where domain was found|null","c":0.0-1.0},"site":"https://property-site.com|null","siteSource":"full URL where property site was found|null","phone":"+1XXXXXXXXXX|null","summary":"2 sentences max: who owns it, who manages it."}`;
 
   console.log('[FocusedEnrichment] Stage 2: Ownership identification...');
   console.log(`[FocusedEnrichment] Stage 2 input - Property: ${classification.propertyName}, Deed Owner: ${deedOwner}`);
@@ -702,7 +703,7 @@ Return JSON:
         console.warn('[FocusedEnrichment] Stage 2: all attempts returned empty, returning defaults');
         return {
           data: {
-            beneficialOwner: { name: null, type: null, confidence: 0 },
+            beneficialOwner: { name: null, type: null, domain: null, confidence: 0 },
             managementCompany: { name: null, domain: null, confidence: 0 },
             propertyWebsite: null,
             propertyPhone: null,
@@ -751,10 +752,15 @@ Return JSON:
         propertySite = null;
       }
 
+      const ownerDomain = parsed.owner?.domain && parsed.owner.domain !== 'null'
+        ? parsed.owner.domain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase()
+        : null;
+
       const ownershipData: OwnershipInfo = {
         beneficialOwner: {
           name: parsed.owner?.name ?? null,
           type: ownerType,
+          domain: ownerDomain,
           confidence: parsed.owner?.c ?? 0,
         },
         managementCompany: {
@@ -866,8 +872,48 @@ Return JSON:
         }
       }
 
+      if (validated.beneficialOwner.name) {
+        const aiOwnerDomain = validated.beneficialOwner.domain;
+        let pdlOwnerDomain: string | null = null;
+
+        try {
+          const { enrichCompanyPDL } = await import('./pdl');
+          console.log(`[FocusedEnrichment] Stage 2: PDL lookup for owner "${validated.beneficialOwner.name}" (AI domain: ${aiOwnerDomain || 'none'})`);
+          const pdlResult = await enrichCompanyPDL(aiOwnerDomain || '', {
+            name: validated.beneficialOwner.name,
+            locality: propCity || undefined,
+            region: 'TX',
+          });
+
+          if (pdlResult.found && pdlResult.website) {
+            pdlOwnerDomain = pdlResult.website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
+            console.log(`[FocusedEnrichment] Stage 2: PDL confirmed owner "${validated.beneficialOwner.name}" → ${pdlOwnerDomain}`);
+          } else {
+            console.log(`[FocusedEnrichment] Stage 2: PDL did not find owner "${validated.beneficialOwner.name}"`);
+          }
+        } catch (pdlErr) {
+          console.warn(`[FocusedEnrichment] Stage 2: PDL lookup failed for owner "${validated.beneficialOwner.name}":`, pdlErr instanceof Error ? pdlErr.message : pdlErr);
+        }
+
+        if (pdlOwnerDomain) {
+          validated.beneficialOwner.domain = pdlOwnerDomain;
+        } else if (aiOwnerDomain) {
+          const validatedOwnerDomain = await validateAndCleanDomain(
+            aiOwnerDomain,
+            validated.beneficialOwner.name || undefined,
+            'owner company domain'
+          );
+          if (validatedOwnerDomain) {
+            validated.beneficialOwner.domain = validatedOwnerDomain;
+          } else {
+            console.warn(`[FocusedEnrichment] Stage 2: Owner domain "${aiOwnerDomain}" failed validation and no PDL match — will try email domain fallback after Stage 3b`);
+            validated.beneficialOwner.domain = null;
+          }
+        }
+      }
+
       console.log(`[FocusedEnrichment] Stage 2 complete with ${sources.length} grounded sources`);
-      console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${validated.propertyWebsite || 'none'}, phone: ${validated.propertyPhone || 'none'}, mgmt: ${validated.managementCompany.name || 'none'} (${validated.managementCompany.domain || 'no domain'})`);
+      console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${validated.propertyWebsite || 'none'}, phone: ${validated.propertyPhone || 'none'}, mgmt: ${validated.managementCompany.name || 'none'} (${validated.managementCompany.domain || 'no domain'}), owner: ${validated.beneficialOwner.name || 'none'} (${validated.beneficialOwner.domain || 'no domain'})`);
 
       return {
         data: validated,
@@ -891,7 +937,7 @@ Return JSON:
       }
       return {
         data: {
-          beneficialOwner: { name: null, type: null, confidence: 0 },
+          beneficialOwner: { name: null, type: null, domain: null, confidence: 0 },
           managementCompany: { name: null, domain: null, confidence: 0 },
           propertyWebsite: null,
           propertyPhone: null,
@@ -904,7 +950,7 @@ Return JSON:
 
   return {
     data: {
-      beneficialOwner: { name: null, type: null, confidence: 0 },
+      beneficialOwner: { name: null, type: null, domain: null, confidence: 0 },
       managementCompany: { name: null, domain: null, confidence: 0 },
       propertyWebsite: null,
       propertyPhone: null,
