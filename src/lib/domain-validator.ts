@@ -16,6 +16,19 @@ const PARKING_DOMAINS = new Set([
   'undeveloped.com',
   'brandbucket.com',
   'squadhelp.com',
+  'namecheap.com',
+  'register.com',
+  'domainagents.com',
+  'buydomains.com',
+  'parked.com',
+  'fastdomain.com',
+  'bluehost.com',
+  'hostgator.com',
+  'ionos.com',
+  'uni-register.com',
+  'web.com',
+  'domainlore.com',
+  'epik.com',
 ]);
 
 const PARKING_INDICATORS = [
@@ -116,7 +129,6 @@ export async function validateDomain(
         }
       }
 
-      console.log(`[DomainValidator] ${inputDomain} redirected to ${finalDomain} — checking if legitimate redirect`);
     }
 
     const contentType = response.headers.get('content-type') || '';
@@ -169,36 +181,7 @@ export async function validateDomain(
     }
 
     if (!domainsMatch(inputDomain, finalDomain)) {
-      if (expectedCompanyName) {
-        const normalizedCompany = expectedCompanyName.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const normalizedFinalDomain = finalDomain.replace(/\.[^.]+$/, '').replace(/[^a-z0-9]/g, '');
-        const companyWords = expectedCompanyName.toLowerCase()
-          .replace(/[,.]| llc| inc| ltd| corp| company| group| properties| real estate| management| partners| capital| investments/gi, '')
-          .trim()
-          .split(/\s+/)
-          .filter(w => w.length > 2);
-        const anyWordInBody = companyWords.some(w => lowerBody.includes(w));
-        const anyWordInDomain = companyWords.some(w => normalizedFinalDomain.includes(w));
-
-        if (normalizedFinalDomain.includes(normalizedCompany) ||
-            normalizedCompany.includes(normalizedFinalDomain) ||
-            anyWordInDomain ||
-            anyWordInBody) {
-          return {
-            isValid: true,
-            reason: `Redirects to ${finalDomain} which matches company "${expectedCompanyName}"`,
-            finalUrl,
-            finalDomain,
-          };
-        }
-      }
-
-      return {
-        isValid: false,
-        reason: `Redirects to unrelated domain: ${finalDomain}`,
-        finalUrl,
-        finalDomain,
-      };
+      console.log(`[DomainValidator] ${inputDomain} redirected to ${finalDomain} — not a parking domain, accepting redirect`);
     }
 
     if (expectedCompanyName) {
@@ -211,12 +194,7 @@ export async function validateDomain(
 
       const matchingWords = companyWords.filter(w => lowerBody.includes(w));
       if (matchingWords.length === 0 && companyWords.length > 0) {
-        return {
-          isValid: false,
-          reason: `Page content does not reference company "${expectedCompanyName}"`,
-          finalUrl,
-          finalDomain,
-        };
+        console.log(`[DomainValidator] ${inputDomain} content does not reference "${expectedCompanyName}" — accepting anyway (not a parking domain)`);
       }
     }
 
