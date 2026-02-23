@@ -275,7 +275,7 @@ export async function startBullMQBatch(options: StartBullMQBatchOptions): Promis
         or(
           isNull(properties.enrichmentStatus),
           eq(properties.enrichmentStatus, 'pending'),
-          eq(properties.enrichmentStatus, 'enriched')
+          eq(properties.enrichmentStatus, 'partial')
         )
       ),
       columns: { propertyKey: true },

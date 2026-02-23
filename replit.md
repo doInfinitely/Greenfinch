@@ -45,6 +45,9 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Automatic Retry Pass**: Retryable failures are automatically reattempted with reduced concurrency.
 - **Adaptive Concurrency**: Monitors error rates and adjusts concurrency dynamically.
 - **BullMQ Job Queue**: Persistent job queue for robust background processing with automatic retries and metadata storage.
+- **Contact Creation Locking**: Distributed Redis lock per contact identity (name+domain+email) during `saveEnrichmentResults` prevents concurrent batch workers from creating duplicate contacts.
+- **Junction Table Unique Constraints**: `property_contacts(property_id, contact_id)`, `property_organizations(property_id, org_id)`, and `contact_organizations(contact_id, org_id)` have unique indexes to prevent duplicate links.
+- **Batch Enrichment Filter**: `onlyUnenriched` mode only picks properties with NULL, `pending`, or `partial` enrichment status — already-enriched properties are excluded to prevent re-enrichment duplication.
 - **Batch Property Ingestion**: Properties are upserted in batches of 50 using INSERT ... ON CONFLICT DO UPDATE, reducing DB round-trips from ~3N to ~3*(N/50). Fallback to individual inserts on batch failure.
 - **Phone Research Waterfall**: On-demand 4-step phone lookup cascade using multiple providers.
 - **Map Marker Colors**: All property markers and clusters are solid green (#16a34a) with white stroke.

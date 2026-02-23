@@ -324,120 +324,137 @@ export async function saveEnrichmentResults(
       const normalized = normalizeEmail(contact.email);
       const normalizedNameVal = normalizeName(contact.name);
 
-      let existingContact = await findExistingContactByIdentifiers({
-        email: contact.email,
-        name: contact.name,
-        companyDomain: contact.companyDomain,
-        employerName: contact.company,
-      });
+      const contactLockKey = `contact:create:${normalizedNameVal || ''}:${contact.companyDomain?.toLowerCase() || ''}:${normalized || ''}`;
+      let lockAcquired = false;
+      const maxLockRetries = 5;
+      for (let attempt = 0; attempt < maxLockRetries; attempt++) {
+        try {
+          lockAcquired = await acquireLock(contactLockKey, 30000);
+          if (lockAcquired) break;
+        } catch {}
+        await new Promise(r => setTimeout(r, 1000 + Math.random() * 2000));
+      }
 
-      let contactId: string;
+      try {
+        let existingContact = await findExistingContactByIdentifiers({
+          email: contact.email,
+          name: contact.name,
+          companyDomain: contact.companyDomain,
+          employerName: contact.company,
+        });
 
-      if (existingContact) {
-        contactId = existingContact.id;
-        await db.update(contacts)
-          .set({
-            title: contact.title || existingContact.title,
-            companyDomain: contact.companyDomain || existingContact.companyDomain,
-            employerName: contact.company || existingContact.employerName,
-            phone: contact.phone || existingContact.phone,
-            phoneLabel: contact.phoneLabel || existingContact.phoneLabel,
-            aiPhone: contact.phone || existingContact.aiPhone,
-            aiPhoneLabel: contact.phoneLabel || existingContact.aiPhoneLabel,
-            aiPhoneConfidence: contact.phoneConfidence || existingContact.aiPhoneConfidence,
-            contactType: contact.contactType || existingContact.contactType,
-            location: contact.location || existingContact.location,
-            updatedAt: new Date(),
-          })
-          .where(eq(contacts.id, existingContact.id));
-        console.log(`[SaveEnrichment] Updated existing contact: ${contact.name} (${contactId})`);
-      } else {
-        const [inserted] = await db.insert(contacts)
-          .values({
-            fullName: contact.name,
-            normalizedName: normalizedNameVal,
-            nameConfidence: 0.8,
-            email: contact.email,
-            normalizedEmail: normalized,
-            emailConfidence: contact.email ? 0.7 : null,
-            emailSource: contact.emailSource || null,
-            emailValidationStatus: contact.email ? 'pending' : null,
-            phone: contact.phone,
-            phoneLabel: contact.phoneLabel,
-            phoneConfidence: contact.phoneConfidence,
-            aiPhone: contact.phone,
-            aiPhoneLabel: contact.phoneLabel,
-            aiPhoneConfidence: contact.phoneConfidence,
-            title: contact.title,
-            titleConfidence: contact.title ? 0.7 : null,
-            companyDomain: contact.companyDomain,
-            employerName: contact.company,
-            contactType: contact.contactType,
-            location: contact.location,
-            source: 'ai',
-            enrichmentSource: 'ai',
-            contactRationale: `AI-discovered: ${contact.role} (rank #${contact.priorityRank})`,
-          })
-          .onConflictDoNothing()
-          .returning({ id: contacts.id });
+        let contactId: string;
 
-        if (inserted) {
-          contactId = inserted.id;
+        if (existingContact) {
+          contactId = existingContact.id;
+          await db.update(contacts)
+            .set({
+              title: contact.title || existingContact.title,
+              companyDomain: contact.companyDomain || existingContact.companyDomain,
+              employerName: contact.company || existingContact.employerName,
+              phone: contact.phone || existingContact.phone,
+              phoneLabel: contact.phoneLabel || existingContact.phoneLabel,
+              aiPhone: contact.phone || existingContact.aiPhone,
+              aiPhoneLabel: contact.phoneLabel || existingContact.aiPhoneLabel,
+              aiPhoneConfidence: contact.phoneConfidence || existingContact.aiPhoneConfidence,
+              contactType: contact.contactType || existingContact.contactType,
+              location: contact.location || existingContact.location,
+              updatedAt: new Date(),
+            })
+            .where(eq(contacts.id, existingContact.id));
+          console.log(`[SaveEnrichment] Updated existing contact: ${contact.name} (${contactId})`);
         } else {
-          const found = normalized
-            ? await db.query.contacts.findFirst({
-                where: eq(contacts.normalizedEmail, normalized),
-              })
-            : null;
-          if (!found) {
-            console.warn(`[SaveEnrichment] Could not insert or find contact: ${contact.name}, skipping`);
-            continue;
-          }
-          contactId = found.id;
-        }
-        console.log(`[SaveEnrichment] Created contact: ${contact.name} (${contactId})`);
+          const [inserted] = await db.insert(contacts)
+            .values({
+              fullName: contact.name,
+              normalizedName: normalizedNameVal,
+              nameConfidence: 0.8,
+              email: contact.email,
+              normalizedEmail: normalized,
+              emailConfidence: contact.email ? 0.7 : null,
+              emailSource: contact.emailSource || null,
+              emailValidationStatus: contact.email ? 'pending' : null,
+              phone: contact.phone,
+              phoneLabel: contact.phoneLabel,
+              phoneConfidence: contact.phoneConfidence,
+              aiPhone: contact.phone,
+              aiPhoneLabel: contact.phoneLabel,
+              aiPhoneConfidence: contact.phoneConfidence,
+              title: contact.title,
+              titleConfidence: contact.title ? 0.7 : null,
+              companyDomain: contact.companyDomain,
+              employerName: contact.company,
+              contactType: contact.contactType,
+              location: contact.location,
+              source: 'ai',
+              enrichmentSource: 'ai',
+              contactRationale: `AI-discovered: ${contact.role} (rank #${contact.priorityRank})`,
+            })
+            .onConflictDoNothing()
+            .returning({ id: contacts.id });
 
-        const nnDedup = normalizeNameDedup(contact.name);
-        const ndDedup = normalizeDomainDedup(contact.companyDomain);
-        if (nnDedup) {
-          const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, nnDedup));
-          for (const c of candidates) {
-            if (c.id === contactId) continue;
-            if (ndDedup && normalizeDomainDedup(c.companyDomain) === ndDedup) {
-              await flagPotentialDuplicateById(c.id, contactId, 'name_domain', `${nnDedup}::${ndDedup}`);
-            } else if (contact.company && c.employerName && c.employerName.toLowerCase().trim() === contact.company.toLowerCase().trim()) {
-              await flagPotentialDuplicateById(c.id, contactId, 'name_employer', `${nnDedup}::${contact.company.toLowerCase().trim()}`);
+          if (inserted) {
+            contactId = inserted.id;
+          } else {
+            const found = normalized
+              ? await db.query.contacts.findFirst({
+                  where: eq(contacts.normalizedEmail, normalized),
+                })
+              : null;
+            if (!found) {
+              console.warn(`[SaveEnrichment] Could not insert or find contact: ${contact.name}, skipping`);
+              continue;
+            }
+            contactId = found.id;
+          }
+          console.log(`[SaveEnrichment] Created contact: ${contact.name} (${contactId})`);
+
+          const nnDedup = normalizeNameDedup(contact.name);
+          const ndDedup = normalizeDomainDedup(contact.companyDomain);
+          if (nnDedup) {
+            const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, nnDedup));
+            for (const c of candidates) {
+              if (c.id === contactId) continue;
+              if (ndDedup && normalizeDomainDedup(c.companyDomain) === ndDedup) {
+                await flagPotentialDuplicateById(c.id, contactId, 'name_domain', `${nnDedup}::${ndDedup}`);
+              } else if (contact.company && c.employerName && c.employerName.toLowerCase().trim() === contact.company.toLowerCase().trim()) {
+                await flagPotentialDuplicateById(c.id, contactId, 'name_employer', `${nnDedup}::${contact.company.toLowerCase().trim()}`);
+              }
             }
           }
         }
-      }
 
-      contactIds.push(contactId);
+        contactIds.push(contactId);
 
-      await db.insert(propertyContacts)
-        .values({
-          propertyId,
-          contactId,
-          role: contact.role,
-          confidenceScore: contact.roleConfidence,
-          discoveredAt: new Date(),
-        })
-        .onConflictDoNothing();
+        await db.insert(propertyContacts)
+          .values({
+            propertyId,
+            contactId,
+            role: contact.role,
+            confidenceScore: contact.roleConfidence,
+            discoveredAt: new Date(),
+          })
+          .onConflictDoNothing();
 
-      if (contact.companyDomain) {
-        const matchingOrg = await db.query.organizations.findFirst({
-          where: eq(organizations.domain, contact.companyDomain.trim().toLowerCase()),
-        });
+        if (contact.companyDomain) {
+          const matchingOrg = await db.query.organizations.findFirst({
+            where: eq(organizations.domain, contact.companyDomain.trim().toLowerCase()),
+          });
 
-        if (matchingOrg) {
-          await db.insert(contactOrganizations)
-            .values({
-              contactId,
-              orgId: matchingOrg.id,
-              title: contact.title,
-              isCurrent: true,
-            })
-            .onConflictDoNothing();
+          if (matchingOrg) {
+            await db.insert(contactOrganizations)
+              .values({
+                contactId,
+                orgId: matchingOrg.id,
+                title: contact.title,
+                isCurrent: true,
+              })
+              .onConflictDoNothing();
+          }
+        }
+      } finally {
+        if (lockAcquired) {
+          try { await releaseLock(contactLockKey); } catch {}
         }
       }
     } catch (err) {
@@ -1675,7 +1692,7 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
           or(
             isNull(properties.enrichmentStatus),
             eq(properties.enrichmentStatus, 'pending'),
-            eq(properties.enrichmentStatus, 'enriched')
+            eq(properties.enrichmentStatus, 'partial')
           )
         ),
         columns: { propertyKey: true },
