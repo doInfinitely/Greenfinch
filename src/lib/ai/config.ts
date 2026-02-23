@@ -42,7 +42,7 @@ export const THINKING_LEVELS = {
   /** Summary cleanup — light editing, no reasoning needed. */
   SUMMARY_CLEANUP: 'MINIMAL' as const,
   /** Replacement contact search — simple web lookup. */
-  REPLACEMENT_SEARCH: 'MINIMAL' as const,
+  REPLACEMENT_SEARCH: 'MEDIUM' as const,
   /** Domain retry calls — quick single-purpose searches. */
   DOMAIN_RETRY: 'MINIMAL' as const,
 };
@@ -156,7 +156,9 @@ export const QUALITY_GRADE_MAP: Record<string, { propertyClass: string; confiden
 // OwnershipInfo.beneficialOwner.type values.
 // ---------------------------------------------------------------------------
 
-export const OWNER_TYPE_MAP: Record<string, string> = {
+export type OwnerTypeValue = "REIT" | "Private Equity" | "Family Office" | "Individual" | "Corporation" | "Institutional" | "Syndicator";
+
+export const OWNER_TYPE_MAP: Record<string, OwnerTypeValue> = {
   REIT:             'REIT',
   PE:               'Private Equity',
   'Private Equity': 'Private Equity',

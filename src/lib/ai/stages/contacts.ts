@@ -60,31 +60,27 @@ async function identifyDecisionMakers(
   const ownerName = ownership.beneficialOwner?.name || property.bizName || property.ownerName1 || 'Unknown';
   const propertySite = ownership.propertyWebsite || 'none';
   const city = property.city || 'Dallas';
+  const state = (property as any).state || 'TX';
 
   // -- Build the prompt -------------------------------------------------------
   const prompt = `Find 3 people directly involved in managing THIS specific property. Return ONLY valid JSON.
 
 PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
 TYPE: ${classification.category} - ${classification.subcategory}
+LOCATION: ${city}, ${state}
 MGMT CO: ${mgmtInfo}
 OWNER: ${ownerName}
 PROPERTY SITE: ${propertySite}
 
-TASK: Search the web to find people who directly manage, operate, or maintain this specific property on a day-to-day basis. Focus on the property management company staff in the ${city} area, not corporate headquarters executives.
+TASK: Search the web to find people who directly manage, operate, or maintain this specific property on a day-to-day basis. Focus on the property management company staff in the ${city}, ${state} area, not corporate headquarters executives.
 
 PRIORITY ROLES (return these first; listed in priority order):
 - On-site property manager or community manager for this specific property
 - Facilities/maintenance director or chief engineer for this specific property
-- Regional/district property manager overseeing this property's area
+- Regional/district property manager overseeing this property's area in ${state}
 - Asset manager or owner with direct responsibility for this property
 
-DO NOT RETURN:
-- C-suite executives (CEO, CFO, COO, CTO, CMO) unless they are the direct property owner and higher-priority contacts were not identified
-- Corporate HR, marketing, or IT staff
-- People at corporate headquarters with no direct tie to this property or market
-- National-level VPs unless they specifically oversee the ${city} region
-
-Only return people CURRENTLY verifiably connected to THIS property at THIS address.
+ONLY return people CURRENTLY verifiably connected to THIS property at THIS address.
 
 SOURCE REQUIREMENT: For each contact, provide the "src" field with the URL where you found them (LinkedIn profile, company team page, property listing, etc.). Only return contacts you can cite a source for.
 
@@ -261,6 +257,7 @@ Return JSON:
 async function enrichContactDetails(
   contact: IdentifiedDecisionMaker,
   city: string,
+  state: string,
   latLng?: { latitude: number; longitude: number }
 ): Promise<ContactEnrichmentResult> {
   const client = getGeminiClient();
@@ -270,7 +267,7 @@ async function enrichContactDetails(
     : 'unknown company';
 
   // -- Build the prompt -------------------------------------------------------
-  const prompt = `Find contact info for ${contact.name}, ${contact.title || 'unknown title'} at ${companyInfo} in ${city}, TX. Return ONLY valid JSON.
+  const prompt = `Find contact info for ${contact.name}, ${contact.title || 'unknown title'} at ${companyInfo} in ${city}, ${state}. Return ONLY valid JSON.
 
 RULES:
 - Only return an email address that you found in an actual web page or search result. Copy it exactly as it appeared.
@@ -412,6 +409,7 @@ export async function discoverContacts(
   ownership: OwnershipInfo
 ): Promise<StageResult<{ contacts: DiscoveredContact[] }> & { contactIdentificationMs: number; contactEnrichmentMs: number }> {
   const city = property.city || 'Dallas';
+  const state = (property as any).state || 'TX';
 
   // -- Stage 3a: identify decision-makers ------------------------------------
   const startIdentify = Date.now();
@@ -425,7 +423,7 @@ export async function discoverContacts(
   const startEnrich = Date.now();
   const latLng = propertyLatLng(property);
   const settledResults = await Promise.allSettled(
-    identifiedContacts.map(contact => enrichContactDetails(contact, city, latLng))
+    identifiedContacts.map(contact => enrichContactDetails(contact, city, state, latLng))
   );
   const contactEnrichmentMs = Date.now() - startEnrich;
 
