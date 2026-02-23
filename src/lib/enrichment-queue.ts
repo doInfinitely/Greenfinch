@@ -224,10 +224,6 @@ export async function saveEnrichmentResults(
         noContactsReason: discoveredContacts.length === 0 ? (result.contacts.summary || 'No verifiable contacts found') : undefined,
         timing: result.timing,
         sources: allSources,
-        searchSuggestionHtml: result.ownership.searchSuggestionHtml
-          || result.contacts.searchSuggestionHtml
-          || result.classification.searchSuggestionHtml
-          || null,
       },
       updatedAt: new Date(),
     })

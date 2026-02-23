@@ -264,7 +264,6 @@ export default function PropertyDetailPage() {
             propertyManagerWebsite: prop.propertyManagerWebsite || null,
             aiRationale: prop.aiRationale || null,
             enrichmentSources: prop.enrichmentSources || null,
-            searchSuggestionHtml: prop.searchSuggestionHtml || null,
             lastEnrichedAt: prop.lastEnrichedAt || null,
           });
           const dbStatus = prop.enrichmentStatus || 'pending';

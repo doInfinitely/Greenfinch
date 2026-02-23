@@ -97,13 +97,6 @@ export default function PropertyAbout({ enrichedProperty, enrichmentStatus }: Pr
           </div>
         )}
 
-        {enrichedProperty.searchSuggestionHtml && (
-          <div
-            className="mt-2"
-            data-testid="search-suggestion-widget"
-            dangerouslySetInnerHTML={{ __html: enrichedProperty.searchSuggestionHtml }}
-          />
-        )}
       </div>
     </div>
   );

@@ -117,7 +117,6 @@ export async function GET(
         propertyManagerWebsite: dbProperty.propertyManagerWebsite,
         aiRationale: dbProperty.aiRationale,
         enrichmentSources: dbProperty.enrichmentSources,
-        searchSuggestionHtml: (dbProperty.enrichmentJson as any)?.searchSuggestionHtml || null,
         enrichmentStatus: dbProperty.enrichmentStatus,
         lastEnrichedAt: dbProperty.lastEnrichedAt,
         rawParcels: dbProperty.rawParcelsJson,

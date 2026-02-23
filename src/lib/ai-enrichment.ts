@@ -105,7 +105,6 @@ interface StageResult<T> {
   data: T;
   summary: string;
   sources: GroundedSource[];
-  searchSuggestionHtml?: string | null;
 }
 
 export interface PropertyPhysicalData {
@@ -203,8 +202,8 @@ function mapQualityGradeToClass(grade: string | null): { propertyClass: string |
   return mapping[gradeNorm] || { propertyClass: null, confidence: 0 };
 }
 
-// Vertex AI supports up to 600s server-side timeout; use 360s to allow faster retries on stream disconnects
-const GEMINI_HTTP_TIMEOUT_MS = 360000; // 360 seconds
+// Vertex AI p95 latency ~374s; use 400s to avoid losing results on slow responses
+const GEMINI_HTTP_TIMEOUT_MS = 400000; // 400 seconds
 
 const AI_GENERATED_DOMAINS = [
   'generativelanguage.googleapis.com',
@@ -218,19 +217,6 @@ function isAIGeneratedSource(url: string): boolean {
     return AI_GENERATED_DOMAINS.some(domain => hostname.includes(domain));
   } catch {
     return false;
-  }
-}
-
-function extractSearchSuggestion(response: any): string | null {
-  try {
-    const candidates = response?.candidates || response?.response?.candidates || response?.data?.candidates;
-    if (!candidates?.[0]) return null;
-    const groundingMetadata = candidates[0].groundingMetadata || candidates[0].grounding_metadata;
-    if (!groundingMetadata) return null;
-    const entryPoint = groundingMetadata.searchEntryPoint || groundingMetadata.search_entry_point;
-    return entryPoint?.renderedContent || null;
-  } catch {
-    return null;
   }
 }
 
@@ -531,7 +517,6 @@ Return JSON:
   }
 
   const sources = extractGroundedSources(response);
-  const searchSuggestionHtml = extractSearchSuggestion(response);
   const parsed = parseJsonResponse(text);
 
   try {
@@ -576,7 +561,6 @@ Return JSON:
     },
     summary: parsed.summary || '',
     sources,
-    searchSuggestionHtml,
   };
 }
 
@@ -728,7 +712,6 @@ Return JSON:
       }
 
       const sources = extractGroundedSources(response);
-      const searchSuggestionHtml = extractSearchSuggestion(response);
       const parsed = parseJsonResponse(text);
 
       try {
@@ -862,7 +845,6 @@ Return JSON:
         data: validated,
         summary: parsed.summary || '',
         sources,
-        searchSuggestionHtml,
       };
     } catch (error) {
       trackCostFireAndForget({
@@ -1128,7 +1110,6 @@ Return JSON:
       }
 
       const sources = extractGroundedSources(response);
-      const searchSuggestionHtml = extractSearchSuggestion(response);
       const parsed = parseJsonResponse(text);
 
       try {
@@ -1195,7 +1176,6 @@ Return JSON:
         data: { contacts },
         summary: parsed.summary || '',
         sources,
-        searchSuggestionHtml,
       };
     } catch (error) {
       trackCostFireAndForget({
@@ -1512,7 +1492,6 @@ export async function discoverContacts(
     data: { contacts },
     summary: identifyResult.summary,
     sources: uniqueSources,
-    searchSuggestionHtml: identifyResult.searchSuggestionHtml,
     contactIdentificationMs,
     contactEnrichmentMs,
   };
@@ -1590,14 +1569,12 @@ export async function runFocusedEnrichment(
         data: stage1Result.data.physical,
         summary: stage1Result.summary,
         sources: stage1Result.sources,
-        searchSuggestionHtml: stage1Result.searchSuggestionHtml,
       };
 
       classification = {
         data: stage1Result.data.classification,
         summary: stage1Result.summary,
         sources: stage1Result.sources,
-        searchSuggestionHtml: stage1Result.searchSuggestionHtml,
       };
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
@@ -1650,7 +1627,6 @@ export async function runFocusedEnrichment(
         data: contactsResult.data,
         summary: contactsResult.summary,
         sources: contactsResult.sources,
-        searchSuggestionHtml: contactsResult.searchSuggestionHtml,
       };
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
