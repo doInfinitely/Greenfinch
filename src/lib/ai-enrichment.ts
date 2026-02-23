@@ -567,7 +567,7 @@ Return JSON:
 
 function isRetryableGeminiError(errMsg: string): { retryable: boolean; isDeadline: boolean; isStreamDisconnect: boolean } {
   const isDeadline = errMsg.includes('DEADLINE_EXCEEDED') || errMsg.includes('504') || errMsg.includes('Deadline expired');
-  const isStreamDisconnect = errMsg === 'terminated' || errMsg.includes('ECONNRESET') || errMsg.includes('socket hang up') || errMsg.includes('network error');
+  const isStreamDisconnect = errMsg === 'terminated' || errMsg.includes('ECONNRESET') || errMsg.includes('socket hang up') || errMsg.includes('network error') || errMsg.includes('fetch failed');
   const isServerError = errMsg.includes('500') || errMsg.includes('503') || errMsg.includes('INTERNAL');
   const isCircuitBreaker = errMsg.includes('Circuit breaker is open');
   const retryable = isDeadline || isStreamDisconnect || isServerError || errMsg.includes('429') || isCircuitBreaker;
