@@ -44,7 +44,7 @@ export async function identifyOwnership(
   const sqft = property.totalGrossBldgArea?.toLocaleString() || 'unknown';
 
   // -- Build the prompt -------------------------------------------------------
-  const prompt = `Find the ownership and management of this commercial property. Return ONLY valid JSON.
+  const prompt = `Find the beneficial owner, property management company, and direct website for this commercial property. Return ONLY valid JSON.
 
 PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
 TYPE: ${classification.category} - ${classification.subcategory}, ${sqft} sqft
@@ -52,30 +52,35 @@ DCAD DEED OWNER: ${deedOwner} (transferred ${deedDate})
 ${secondaryOwner ? `DCAD SECONDARY: ${secondaryOwner}` : ''}
 ${legalInfo ? `LEGAL: ${legalInfo}` : ''}
 
+KEY DISTINCTION: The deed owner and the property manager (PM) are often DIFFERENT companies. The deed owner is the entity on the title (often an LLC, trust, or holding company). The PM is the company hired to handle day-to-day operations, leasing, maintenance, and tenant relations. Examples of third-party PMs: Willowbridge, CBRE, JLL, Cushman & Wakefield, Greystar, Capstone Real Estate Services, etc. If the owner self-manages (no third-party PM), return the owner as both "mgmt" and "owner".
+
 SEARCH SEQUENCE:
 1. Search "${classification.propertyName} ${property.city || 'Dallas'}" to find the property website and management company
-2. Search the management company website for this property listing to confirm management and find a direct property management phone number
-3. Search "${deedOwner} Texas" on OpenCorporates or TX Secretary of State to find the entity behind the LLC/trust
-4. Search for news about acquisitions or sales of ${classification.propertyName} around ${deedDate} to identify the beneficial owner
+2. On the property website, look for "managed by", "a ___ community", or PM company branding in the footer — this identifies the PM. If the property site is hosted on a PM's domain (e.g. propertyname.greystar.com), that is the PM.
+3. Search "${classification.propertyName} ${property.city || 'Dallas'} property management" to cross-check or discover the PM if step 2 didn't find one
+4. Search the management company's portfolio or property listings to CONFIRM this property appears
+5. Search the management company website for this property listing to find a direct property management phone number
+6. Search "${deedOwner} Texas" on OpenCorporates or TX Secretary of State to find the entity behind the LLC/trust
+7. Search for news about acquisitions or sales of ${classification.propertyName} around ${deedDate} to identify the beneficial owner
 
-DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain from a URL you found in search results. If no search result contained the company's website, return null. Return the "domainSource" field with the full URL where you found it.
+PROPERTY WEBSITE PRIORITY: First look for the property's own external marketing website. If none exists, fall back to a CRE listing page (apartments.com, loopnet.com, costar.com, crexi.com) that has a dedicated page for this property.
+
+DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain from a URL you found in search results. If no search result contained the company's website, return null.
 
 Return JSON:
 {
   "mgmt": {
-    "name": "Co | null",
-    "domain": "co.com | null",
-    "domainSource": "full URL where domain was found | null",
+    "name": "Property management company name | null",
+    "domain": "pm-company.com | null",
     "c": 0.0
   },
   "owner": {
-    "name": "Entity | null",
+    "name": "Beneficial owner entity | null",
     "type": "REIT | PE | Family Office | Individual | Corporation | Institutional | Syndicator | null",
     "domain": "owner-co.com | null",
-    "domainSource": "full URL where domain was found | null",
     "c": 0.0
   },
-  "site": "https://property-site.com | null",
+  "site": "https://property-website-or-listing.com | null",
   "siteSource": "full URL where property site was found | null",
   "phone": "+1XXXXXXXXXX | null",
   "summary": "2 sentences max: who owns it, who manages it."
@@ -158,15 +163,14 @@ Return JSON:
       // -- Map owner type to canonical enum -----------------------------------
       const ownerType = parsed.owner?.type ? (OWNER_TYPE_MAP[parsed.owner.type] || null) : null;
 
-      // -- Validate domain provenance -----------------------------------------
-      // Domains without a source citation are likely hallucinated — clear them
+      // -- Extract domains and property site ------------------------------------
+      // Mgmt/owner domains are validated downstream via PDL + DNS, so we don't
+      // require a domainSource citation from Gemini (they usually come from
+      // search results, not a specific citable page).
       let mgmtDomain = parsed.mgmt?.domain ?? null;
-      const mgmtDomainSource = parsed.mgmt?.domainSource ?? null;
-      if (mgmtDomain && !mgmtDomainSource) {
-        console.warn(`[FocusedEnrichment] Stage 2: Mgmt domain "${mgmtDomain}" has no source citation — likely hallucinated, clearing`);
-        mgmtDomain = null;
-      }
 
+      // Property site still requires a source citation — it's a specific URL
+      // that we can verify, so an uncited one is likely hallucinated.
       let propertySite = parsed.site ?? null;
       const siteSource = parsed.siteSource ?? null;
       if (propertySite && !siteSource) {
