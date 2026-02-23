@@ -84,6 +84,15 @@ export class CircuitBreaker {
     this.failureTimestamps = [];
   }
 
+  reset(): void {
+    this.state = CircuitBreakerState.CLOSED;
+    this.failureTimestamps = [];
+    this.openedAt = 0;
+    this.consecutiveHalfOpenFailures = 0;
+    this.currentResetTimeout = this.resetTimeoutMs;
+    console.log(`[CircuitBreaker] ${this.serviceName} manually reset to CLOSED`);
+  }
+
   recordFailure(error: any): void {
     if (!isCircuitBreakerQualifyingError(error)) return;
 
@@ -229,6 +238,12 @@ export class ServiceRateLimiter {
   get circuitBreakerState(): string {
     if (!this.circuitBreaker) return 'none';
     return this.circuitBreaker.currentState;
+  }
+
+  resetCircuitBreaker(): void {
+    if (this.circuitBreaker) {
+      this.circuitBreaker.reset();
+    }
   }
 }
 

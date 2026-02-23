@@ -6,6 +6,7 @@ import { db } from './db';
 import { properties } from './schema';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
 import { CONCURRENCY } from './constants';
+import { rateLimiters } from './rate-limiter';
 
 const QUEUE_NAME = 'gf-enrichment';
 const BATCH_META_PREFIX = 'gf:batch:';
@@ -253,6 +254,8 @@ export async function startBullMQBatch(options: StartBullMQBatchOptions): Promis
       throw new Error(`Batch ${existingBatchId} is already running. Wait for it to complete or cancel it.`);
     }
   }
+
+  rateLimiters.gemini.resetCircuitBreaker();
 
   const batchId = uuidv4();
   const batchLimit = Math.min(options.limit || ENRICHMENT_MAX_BATCH_SIZE, ENRICHMENT_MAX_BATCH_SIZE);
