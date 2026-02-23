@@ -840,8 +840,17 @@ Return JSON:
         if (pdlResolvedDomain) {
           validated.managementCompany.domain = pdlResolvedDomain;
         } else if (aiDomain) {
-          console.log(`[FocusedEnrichment] Stage 2: No PDL match, keeping AI domain "${aiDomain}"`);
-          validated.managementCompany.domain = aiDomain;
+          const validatedMgmtDomain = await validateAndCleanDomain(
+            aiDomain,
+            mgmtName,
+            'mgmt company domain'
+          );
+          if (validatedMgmtDomain) {
+            validated.managementCompany.domain = validatedMgmtDomain;
+          } else {
+            console.warn(`[FocusedEnrichment] Stage 2: Mgmt domain "${aiDomain}" failed validation and no PDL match — will try email domain fallback after Stage 3b`);
+            validated.managementCompany.domain = null;
+          }
         }
 
         if (!validated.managementCompany.domain) {
@@ -1006,9 +1015,12 @@ Return JSON: {"domain":"company-domain.com|null","source":"full URL where you fo
     });
 
     if (domain) {
-      const cleaned = domain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
-      console.log(`[FocusedEnrichment] Domain retry: found company domain: ${cleaned}`);
-      return cleaned;
+      const validated = await validateAndCleanDomain(domain, companyName, 'retry company domain');
+      if (validated) {
+        console.log(`[FocusedEnrichment] Domain retry: found valid company domain: ${validated}`);
+        return validated;
+      }
+      console.warn(`[FocusedEnrichment] Domain retry: company domain "${domain}" failed validation`);
     }
     return null;
   } catch (error) {
@@ -1163,8 +1175,13 @@ Return JSON:
         }
 
         if (contact.companyDomain) {
-          const cleaned = contact.companyDomain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
-          contact.companyDomain = cleaned;
+          const validatedDomain = await validateAndCleanDomain(contact.companyDomain, contact.company || undefined, `Stage 3a domain for ${contact.name}`);
+          if (!validatedDomain) {
+            console.warn(`[FocusedEnrichment] Stage 3a: Domain "${contact.companyDomain}" for ${contact.name} failed validation — will try email domain fallback after Stage 3b`);
+            contact.companyDomain = null;
+          } else {
+            contact.companyDomain = validatedDomain;
+          }
         }
         contacts.push(contact);
       }
@@ -1434,6 +1451,33 @@ export async function discoverContacts(
       contactType: dm.contactType,
     };
   });
+
+  for (const c of rawContacts) {
+    if (!c.companyDomain && c.email && c.company) {
+      const emailDomain = c.email.split('@')[1]?.toLowerCase();
+      if (emailDomain && !['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'icloud.com', 'live.com', 'msn.com', 'protonmail.com', 'mail.com', 'ymail.com'].includes(emailDomain)) {
+        console.log(`[FocusedEnrichment] Email domain fallback: "${c.name}" (${c.company}) → ${emailDomain} from validated email`);
+        c.companyDomain = emailDomain;
+      }
+    }
+  }
+
+  if (!ownership.managementCompany?.domain && ownership.managementCompany?.name) {
+    const mgmtNameNorm = ownership.managementCompany.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    for (const c of rawContacts) {
+      if (c.email && c.company) {
+        const contactCompanyNorm = c.company.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (contactCompanyNorm.includes(mgmtNameNorm) || mgmtNameNorm.includes(contactCompanyNorm)) {
+          const emailDomain = c.email.split('@')[1]?.toLowerCase();
+          if (emailDomain && !['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'icloud.com', 'live.com', 'msn.com', 'protonmail.com', 'mail.com', 'ymail.com'].includes(emailDomain)) {
+            console.log(`[FocusedEnrichment] Email domain fallback for mgmt company "${ownership.managementCompany.name}" → ${emailDomain} from ${c.name}'s email`);
+            ownership.managementCompany.domain = emailDomain;
+            break;
+          }
+        }
+      }
+    }
+  }
 
   const contacts = deduplicateContacts(rawContacts);
   contacts.forEach((c, i) => { c.priorityRank = i + 1; });
