@@ -1,8 +1,24 @@
 // ============================================================================
 // AI Enrichment — Stage 3a/3b: Contact Discovery & Enrichment
-// Stage 3a identifies decision-makers via web search.
-// Stage 3b enriches each contact with email/phone details.
-// discoverContacts orchestrates both sub-stages and post-processes results.
+//
+// Two sub-stages that run sequentially:
+//
+//   Stage 3a (identifyDecisionMakers):
+//     Searches the web for people directly involved in managing the property.
+//     Validates each contact's source URL and company domain.
+//     Returns up to ~3 IdentifiedDecisionMaker records.
+//
+//   Stage 3b (enrichContactDetails):
+//     For each person from 3a, searches for their email and phone.
+//     Filters out hallucinated emails (name-pattern construction without
+//     grounding sources) and validates email domains via DNS.
+//     Runs all contacts in parallel via Promise.allSettled.
+//
+//   discoverContacts orchestrates both sub-stages and then:
+//     - Falls back to email domains for missing company domains
+//     - Deduplicates contacts by name
+//     - Cross-validates companies against Stage 2 ownership data
+//     - Flags shared/office phone numbers
 // ============================================================================
 
 import type { CommercialProperty } from "../../snowflake";
@@ -15,7 +31,22 @@ import { extractGroundedSources, parseJsonResponse, validateStage3aSchema } from
 import { propertyLatLng, isLikelyConstructedEmail, deduplicateContacts } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validateAndCleanDomain } from '../../domain-validator';
+import {
+  THINKING_LEVELS, RETRIES, BACKOFF, CONFIDENCE,
+  FREE_EMAIL_DOMAINS, GOOGLE_SEARCH_TOOL,
+} from '../config';
 
+// =============================================================================
+// Stage 3a — Decision-Maker Identification
+// =============================================================================
+
+/**
+ * Search the web for people who directly manage this property.
+ *
+ * Prioritizes on-site property managers, facilities directors, and regional
+ * managers over C-suite executives.  Each contact must have a source URL
+ * citation — contacts without sources get their confidence capped.
+ */
 async function identifyDecisionMakers(
   property: CommercialProperty,
   classification: PropertyClassification,
@@ -30,6 +61,7 @@ async function identifyDecisionMakers(
   const propertySite = ownership.propertyWebsite || 'none';
   const city = property.city || 'Dallas';
 
+  // -- Build the prompt -------------------------------------------------------
   const prompt = `Find 3 people directly involved in managing THIS specific property. Return ONLY valid JSON.
 
 PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
@@ -64,20 +96,27 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 3a: Identifying decision-makers...');
   console.log(`[FocusedEnrichment] Stage 3a input - Property: ${classification.propertyName}, Mgmt: ${mgmtInfo}`);
 
-  const maxAttempts = 3;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  // -- Retry loop -------------------------------------------------------------
+  for (let attempt = 1; attempt <= RETRIES.STAGE_3A; attempt++) {
     try {
-      console.log(`[FocusedEnrichment] Stage 3a attempt ${attempt}/${maxAttempts}...`);
+      console.log(`[FocusedEnrichment] Stage 3a attempt ${attempt}/${RETRIES.STAGE_3A}...`);
+
+      // LOW thinking level — this stage requires multi-step research reasoning
       const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'LOW', latLng: propertyLatLng(property) }),
+        () => streamGeminiResponse(client, prompt, {
+          tools: GOOGLE_SEARCH_TOOL,
+          thinkingLevel: THINKING_LEVELS.STAGE_3A_CONTACTS,
+          latLng: propertyLatLng(property),
+        }),
         2
       );
 
       const text = response.text?.trim() || '';
       console.log(`[FocusedEnrichment] Stage 3a attempt ${attempt} response length: ${text.length} chars`);
 
+      // Handle empty response
       if (!text) {
-        console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 3a (attempt ${attempt}/${maxAttempts})`);
+        console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 3a (attempt ${attempt}/${RETRIES.STAGE_3A})`);
         trackCostFireAndForget({
           provider: 'gemini',
           endpoint: 'identify-decision-makers',
@@ -85,8 +124,8 @@ Return JSON:
           success: false,
           errorMessage: `Empty response attempt ${attempt}`,
         });
-        if (attempt < maxAttempts) {
-          const delayMs = attempt * 3000;
+        if (attempt < RETRIES.STAGE_3A) {
+          const delayMs = attempt * BACKOFF.STAGE_3A_PER_ATTEMPT_MS;
           console.log(`[FocusedEnrichment] Stage 3a retrying in ${delayMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, delayMs));
           continue;
@@ -95,6 +134,7 @@ Return JSON:
         return { data: { contacts: [] }, summary: '', sources: [] };
       }
 
+      // -- Parse and validate -------------------------------------------------
       const sources = extractGroundedSources(response);
       const parsed = parseJsonResponse(text);
 
@@ -102,8 +142,8 @@ Return JSON:
         validateStage3aSchema(parsed);
       } catch (schemaErr) {
         console.warn(`[FocusedEnrichment] Stage 3a schema validation failed (attempt ${attempt}): ${schemaErr instanceof Error ? schemaErr.message : schemaErr}`);
-        if (attempt < maxAttempts) {
-          const delayMs = attempt * 3000;
+        if (attempt < RETRIES.STAGE_3A) {
+          const delayMs = attempt * BACKOFF.STAGE_3A_PER_ATTEMPT_MS;
           console.log(`[FocusedEnrichment] Stage 3a retrying after schema error in ${delayMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, delayMs));
           continue;
@@ -111,6 +151,7 @@ Return JSON:
         return { data: { contacts: [] }, summary: parsed.summary || '', sources: [] };
       }
 
+      // -- Map raw JSON to typed records --------------------------------------
       const rawContactsParsed: IdentifiedDecisionMaker[] = (parsed.contacts || []).map((c: any) => ({
         name: c.name || '',
         title: c.title ?? null,
@@ -123,15 +164,18 @@ Return JSON:
         contactType: c.type === 'general' ? 'general' : 'individual',
       }));
 
+      // -- Validate each contact's source and domain --------------------------
       const contacts: IdentifiedDecisionMaker[] = [];
       for (const contact of rawContactsParsed) {
         if (!contact.name) continue;
 
+        // Cap confidence when no source URL is provided
         if (!contact.sourceUrl) {
           console.warn(`[FocusedEnrichment] Stage 3a: Contact "${contact.name}" has no source URL — downgrading confidence`);
-          contact.roleConfidence = Math.min(contact.roleConfidence, 0.4);
+          contact.roleConfidence = Math.min(contact.roleConfidence, CONFIDENCE.NO_SOURCE_URL_CAP);
         }
 
+        // Validate company domain via DNS
         if (contact.companyDomain) {
           const validatedDomain = await validateAndCleanDomain(contact.companyDomain, contact.company || undefined, `Stage 3a domain for ${contact.name}`);
           if (!validatedDomain) {
@@ -172,8 +216,8 @@ Return JSON:
         errorMessage: error instanceof Error ? error.message : String(error),
       });
       console.error(`[FocusedEnrichment] Stage 3a attempt ${attempt} failed: ${error instanceof Error ? error.message : error}`);
-      if (attempt < maxAttempts) {
-        const delayMs = attempt * 3000;
+      if (attempt < RETRIES.STAGE_3A) {
+        const delayMs = attempt * BACKOFF.STAGE_3A_PER_ATTEMPT_MS;
         console.log(`[FocusedEnrichment] Stage 3a retrying after error in ${delayMs}ms...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
         continue;
@@ -189,6 +233,18 @@ Return JSON:
   return { data: { contacts: [] }, summary: '', sources: [] };
 }
 
+// =============================================================================
+// Stage 3b — Per-Contact Email/Phone Enrichment
+// =============================================================================
+
+/**
+ * Search the web for a single contact's email and phone number.
+ *
+ * Anti-hallucination measures:
+ *   - Emails that match common name-pattern constructions (e.g. jsmith@co.com)
+ *     are rejected unless the response has grounding sources
+ *   - Email domains are validated via DNS before returning
+ */
 async function enrichContactDetails(
   contact: IdentifiedDecisionMaker,
   city: string,
@@ -200,6 +256,7 @@ async function enrichContactDetails(
     ? `${contact.company}${contact.companyDomain ? ` (${contact.companyDomain})` : ''}`
     : 'unknown company';
 
+  // -- Build the prompt -------------------------------------------------------
   const prompt = `Find contact info for ${contact.name}, ${contact.title || 'unknown title'} at ${companyInfo} in ${city}, TX. Return ONLY valid JSON.
 
 RULES:
@@ -210,18 +267,24 @@ RULES:
 
 {"email":"found@email.com|null","phone":"+1XXXXXXXXXX|null","pl":"direct_work|office|personal|null","pc":0.0-1.0,"loc":"City, ST|null"}`;
 
-  const maxAttempts = 3;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  // -- Retry loop -------------------------------------------------------------
+  for (let attempt = 1; attempt <= RETRIES.STAGE_3B; attempt++) {
     try {
-      console.log(`[FocusedEnrichment] Stage 3b attempt ${attempt}/${maxAttempts} for ${contact.name}...`);
+      console.log(`[FocusedEnrichment] Stage 3b attempt ${attempt}/${RETRIES.STAGE_3B} for ${contact.name}...`);
+
+      // MINIMAL thinking — this is a simple lookup, not multi-step reasoning
       const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'MINIMAL', latLng }),
+        () => streamGeminiResponse(client, prompt, {
+          tools: GOOGLE_SEARCH_TOOL,
+          thinkingLevel: THINKING_LEVELS.STAGE_3B_ENRICH,
+          latLng,
+        }),
         2
       );
 
       const text = response.text?.trim() || '';
       if (!text) {
-        console.warn(`[FocusedEnrichment] Empty response in Stage 3b for ${contact.name} (attempt ${attempt}/${maxAttempts})`);
+        console.warn(`[FocusedEnrichment] Empty response in Stage 3b for ${contact.name} (attempt ${attempt}/${RETRIES.STAGE_3B})`);
         trackCostFireAndForget({
           provider: 'gemini',
           endpoint: 'enrich-contact-details',
@@ -229,8 +292,8 @@ RULES:
           success: false,
           errorMessage: `Empty response attempt ${attempt}`,
         });
-        if (attempt < maxAttempts) {
-          const delayMs = attempt * 2000;
+        if (attempt < RETRIES.STAGE_3B) {
+          const delayMs = attempt * BACKOFF.STAGE_3B_PER_ATTEMPT_MS;
           await new Promise(resolve => setTimeout(resolve, delayMs));
           continue;
         }
@@ -250,6 +313,7 @@ RULES:
 
       let email = parsed.email && parsed.email !== 'null' ? parsed.email : null;
 
+      // -- Anti-hallucination: reject name-pattern emails without grounding ----
       if (email) {
         if (isLikelyConstructedEmail(email, contact.name)) {
           const hasGrounding = sources.length > 0;
@@ -262,6 +326,7 @@ RULES:
         }
       }
 
+      // -- Validate email domain via DNS --------------------------------------
       if (email) {
         const emailDomain = email.split('@')[1];
         if (emailDomain) {
@@ -291,8 +356,8 @@ RULES:
         errorMessage: error instanceof Error ? error.message : String(error),
       });
       console.warn(`[FocusedEnrichment] Stage 3b attempt ${attempt} failed for ${contact.name}: ${error instanceof Error ? error.message : error}`);
-      if (attempt < maxAttempts) {
-        const delayMs = attempt * 2000;
+      if (attempt < RETRIES.STAGE_3B) {
+        const delayMs = attempt * BACKOFF.STAGE_3B_PER_ATTEMPT_MS;
         await new Promise(resolve => setTimeout(resolve, delayMs));
         continue;
       }
@@ -303,6 +368,25 @@ RULES:
   return { email: null, emailSource: null, phone: null, phoneLabel: null, phoneConfidence: null, location: null, enrichmentSources: [] };
 }
 
+// =============================================================================
+// Stage 3 Orchestrator
+// =============================================================================
+
+/**
+ * Run the full Stage 3 pipeline: identify contacts (3a) then enrich each
+ * one in parallel (3b), then apply post-processing rules.
+ *
+ * Post-processing includes:
+ *   - Email domain fallback: if a contact has an email but no company domain,
+ *     use the email domain (excluding free providers like gmail.com)
+ *   - Management company domain fallback: if Stage 2 left mgmt domain empty,
+ *     try to fill it from a matching contact's email domain
+ *   - Contact deduplication by normalized name
+ *   - Cross-stage company validation: downgrade confidence when a contact's
+ *     company doesn't match any known company from Stage 2
+ *   - Phone cross-validation: flag phones that match the property's main
+ *     number or are shared across multiple contacts as "office"
+ */
 export async function discoverContacts(
   property: CommercialProperty,
   classification: PropertyClassification,
@@ -310,6 +394,7 @@ export async function discoverContacts(
 ): Promise<StageResult<{ contacts: DiscoveredContact[] }> & { contactIdentificationMs: number; contactEnrichmentMs: number }> {
   const city = property.city || 'Dallas';
 
+  // -- Stage 3a: identify decision-makers ------------------------------------
   const startIdentify = Date.now();
   const identifyResult = await identifyDecisionMakers(property, classification, ownership);
   const contactIdentificationMs = Date.now() - startIdentify;
@@ -317,6 +402,7 @@ export async function discoverContacts(
   const identifiedContacts = identifyResult.data.contacts;
   console.log(`[FocusedEnrichment] Stage 3a took ${contactIdentificationMs}ms, identified ${identifiedContacts.length} contacts`);
 
+  // -- Stage 3b: enrich each contact in parallel -----------------------------
   const startEnrich = Date.now();
   const latLng = propertyLatLng(property);
   const settledResults = await Promise.allSettled(
@@ -332,6 +418,7 @@ export async function discoverContacts(
 
   console.log(`[FocusedEnrichment] Stage 3b took ${contactEnrichmentMs}ms for ${identifiedContacts.length} contacts`);
 
+  // -- Merge 3a + 3b results into DiscoveredContact records ------------------
   const allSources = [...identifyResult.sources];
   const rawContacts: DiscoveredContact[] = identifiedContacts.map((dm, idx) => {
     const enrichment = enrichmentResults[idx];
@@ -355,16 +442,18 @@ export async function discoverContacts(
     };
   });
 
+  // -- Post-processing: email domain fallback for missing company domains -----
   for (const c of rawContacts) {
     if (!c.companyDomain && c.email && c.company) {
       const emailDomain = c.email.split('@')[1]?.toLowerCase();
-      if (emailDomain && !['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'icloud.com', 'live.com', 'msn.com', 'protonmail.com', 'mail.com', 'ymail.com'].includes(emailDomain)) {
+      if (emailDomain && !FREE_EMAIL_DOMAINS.includes(emailDomain)) {
         console.log(`[FocusedEnrichment] Email domain fallback: "${c.name}" (${c.company}) → ${emailDomain} from validated email`);
         c.companyDomain = emailDomain;
       }
     }
   }
 
+  // -- Post-processing: fill missing mgmt company domain from contact emails --
   if (!ownership.managementCompany?.domain && ownership.managementCompany?.name) {
     const mgmtNameNorm = ownership.managementCompany.name.toLowerCase().replace(/[^a-z0-9]/g, '');
     for (const c of rawContacts) {
@@ -372,7 +461,7 @@ export async function discoverContacts(
         const contactCompanyNorm = c.company.toLowerCase().replace(/[^a-z0-9]/g, '');
         if (contactCompanyNorm.includes(mgmtNameNorm) || mgmtNameNorm.includes(contactCompanyNorm)) {
           const emailDomain = c.email.split('@')[1]?.toLowerCase();
-          if (emailDomain && !['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'icloud.com', 'live.com', 'msn.com', 'protonmail.com', 'mail.com', 'ymail.com'].includes(emailDomain)) {
+          if (emailDomain && !FREE_EMAIL_DOMAINS.includes(emailDomain)) {
             console.log(`[FocusedEnrichment] Email domain fallback for mgmt company "${ownership.managementCompany.name}" → ${emailDomain} from ${c.name}'s email`);
             ownership.managementCompany.domain = emailDomain;
             break;
@@ -382,6 +471,7 @@ export async function discoverContacts(
     }
   }
 
+  // -- Post-processing: deduplicate contacts by normalized name ---------------
   const contacts = deduplicateContacts(rawContacts);
   contacts.forEach((c, i) => { c.priorityRank = i + 1; });
 
@@ -389,6 +479,9 @@ export async function discoverContacts(
     console.log(`[FocusedEnrichment] Deduplicated ${rawContacts.length} → ${contacts.length} contacts`);
   }
 
+  // -- Post-processing: cross-stage company validation ------------------------
+  // Downgrade roleConfidence when a contact's company doesn't match any
+  // known company from Stage 2 (owner, mgmt, deed holder)
   const knownCompanies = [
     ownership.managementCompany?.name,
     ownership.beneficialOwner?.name,
@@ -405,23 +498,26 @@ export async function discoverContacts(
         );
         if (!matchesKnown && contactCompanyNorm.length > 3) {
           console.warn(`[FocusedEnrichment] Cross-stage validation: ${c.name}'s company "${c.company}" doesn't match known companies [${knownCompanies.join(', ')}] — downgrading roleConfidence`);
-          c.roleConfidence = Math.min(c.roleConfidence, 0.5);
+          c.roleConfidence = Math.min(c.roleConfidence, CONFIDENCE.COMPANY_MISMATCH_CAP);
         }
       }
     }
   }
 
+  // -- Post-processing: phone cross-validation --------------------------------
+  // Flag phones that match the property's main number as "office" with low confidence
   const propertyPhone = ownership.propertyPhone?.replace(/\D/g, '') || null;
   if (propertyPhone) {
     for (const c of contacts) {
       if (c.phone && c.phone.replace(/\D/g, '') === propertyPhone) {
         console.warn(`[FocusedEnrichment] Phone cross-validation: ${c.name}'s phone matches propertyPhone — labeling as office`);
         c.phoneLabel = 'office';
-        c.phoneConfidence = Math.min(c.phoneConfidence ?? 0.5, 0.4);
+        c.phoneConfidence = Math.min(c.phoneConfidence ?? 0.5, CONFIDENCE.OFFICE_PHONE_CAP);
       }
     }
   }
 
+  // Flag phones shared by multiple contacts — likely a generic office number
   const phoneCountMap = new Map<string, string[]>();
   for (const c of contacts) {
     if (c.phone) {
@@ -436,12 +532,13 @@ export async function discoverContacts(
       for (const c of contacts) {
         if (c.phone?.replace(/\D/g, '') === phone) {
           c.phoneLabel = 'office';
-          c.phoneConfidence = Math.min(c.phoneConfidence ?? 0.5, 0.5);
+          c.phoneConfidence = Math.min(c.phoneConfidence ?? 0.5, CONFIDENCE.SHARED_PHONE_CAP);
         }
       }
     }
   }
 
+  // -- Deduplicate sources across both sub-stages -----------------------------
   const uniqueSources = allSources.filter((s, i, arr) =>
     arr.findIndex(x => x.url === s.url) === i
   ).slice(0, 10);

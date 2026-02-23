@@ -1,6 +1,13 @@
 // ============================================================================
 // AI Enrichment — Stage 1: Property Classification & Physical Verification
-// Searches the web to verify property details and classify by category/subcategory.
+//
+// Sends a single Gemini search-grounded call to:
+//   1. Verify the property's name, address, and physical stats against web data
+//   2. Assign a category/subcategory from the ASSET_CATEGORIES taxonomy
+//   3. Estimate a CRE property class (A/B/C/D), using DCAD quality grade
+//      as a fallback when AI doesn't return one
+//
+// Retry policy: up to RETRIES.STAGE_1 attempts with exponential back-off.
 // ============================================================================
 
 import type { CommercialProperty } from "../../snowflake";
@@ -11,7 +18,16 @@ import { extractGroundedSources, parseJsonResponse, validateStage1Schema } from 
 import { formatBuildingsSummary, formatCompactCategories, mapQualityGradeToClass, propertyLatLng } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { rateLimiters } from '../../rate-limiter';
+import {
+  THINKING_LEVELS, RETRIES, BACKOFF, GOOGLE_SEARCH_TOOL,
+} from '../config';
 
+/**
+ * Run Stage 1 of the AI enrichment pipeline.
+ *
+ * Given a raw property record from Snowflake/DCAD, this searches the web
+ * to verify details and returns structured classification + physical data.
+ */
 export async function classifyAndVerifyProperty(property: CommercialProperty): Promise<StageResult<PropertyDataAndClassification>> {
   const client = getGeminiClient();
   const primaryOwner = property.bizName || property.ownerName1 || 'Unknown';
@@ -33,6 +49,8 @@ export async function classifyAndVerifyProperty(property: CommercialProperty): P
   const classLine = classEstimate.propertyClass
     ? `\nDCAD CLASS ESTIMATE: ${classEstimate.propertyClass} (from quality grade "${dcadQualityGrade}"). Override only if research shows renovations or condition changes.`
     : '';
+
+  // -- Build the prompt -------------------------------------------------------
   const prompt = `Search the web to verify and classify this commercial property. Return ONLY valid JSON.
 
 ADDRESS: ${property.address}, ${property.city}, TX ${property.zip}
@@ -49,15 +67,21 @@ Return JSON:
 
   console.log('[FocusedEnrichment] Stage 1: Classification and physical verification...');
 
+  // -- Retry loop -------------------------------------------------------------
   let response: any;
   let text = '';
-  const maxRetries = 3;
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${maxRetries}...`);
+  for (let attempt = 1; attempt <= RETRIES.STAGE_1; attempt++) {
+    console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${RETRIES.STAGE_1}...`);
 
     try {
-      response = await rateLimiters.gemini.execute(() => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'MINIMAL', latLng: propertyLatLng(property) }));
+      response = await rateLimiters.gemini.execute(() =>
+        streamGeminiResponse(client, prompt, {
+          tools: GOOGLE_SEARCH_TOOL,
+          thinkingLevel: THINKING_LEVELS.STAGE_1_CLASSIFY,
+          latLng: propertyLatLng(property),
+        })
+      );
 
       text = response.text?.trim() || '';
       console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
@@ -76,20 +100,22 @@ Return JSON:
 
       console.warn(`[FocusedEnrichment] Stage 1 attempt ${attempt} error (retryable=${retryable}, deadline=${isDeadline}, streamDisconnect=${isStreamDisconnect}): ${errMsg.substring(0, 200)}`);
 
-      if (!retryable || attempt >= maxRetries) {
+      if (!retryable || attempt >= RETRIES.STAGE_1) {
         throw apiError;
       }
     }
 
-    if (attempt < maxRetries) {
+    // Exponential back-off: longer waits for timeouts, shorter for other errors
+    if (attempt < RETRIES.STAGE_1) {
       const isDeadline = text === '' || (response === undefined);
-      const baseMs = isDeadline ? 5000 : 1000;
-      const backoffMs = Math.min(baseMs * Math.pow(2, attempt - 1), 15000);
+      const baseMs = isDeadline ? BACKOFF.STAGE_1_DEADLINE_BASE_MS : BACKOFF.STAGE_1_DEFAULT_BASE_MS;
+      const backoffMs = Math.min(baseMs * Math.pow(2, attempt - 1), BACKOFF.STAGE_1_MAX_MS);
       console.log(`[FocusedEnrichment] Retrying Stage 1 in ${backoffMs}ms...`);
       await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
   }
 
+  // -- Handle total failure ---------------------------------------------------
   if (!text) {
     console.error('[FocusedEnrichment] Stage 1 failed after all retries - returning empty result');
     trackCostFireAndForget({
@@ -122,6 +148,7 @@ Return JSON:
     };
   }
 
+  // -- Parse response and extract sources ------------------------------------
   const sources = extractGroundedSources(response);
   const parsed = parseJsonResponse(text);
 
@@ -142,6 +169,7 @@ Return JSON:
 
   console.log(`[FocusedEnrichment] Stage 1 complete with ${sources.length} grounded sources`);
 
+  // -- Merge AI class with DCAD fallback -------------------------------------
   const aiClass = parsed.class ?? parsed.property_class ?? null;
   const aiClassConfidence = parsed.cc ?? parsed.property_class_confidence ?? null;
   const finalClass = aiClass || classEstimate.propertyClass;

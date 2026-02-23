@@ -1,7 +1,17 @@
 // ============================================================================
 // AI Enrichment — Stage 2: Ownership & Management Identification
-// Discovers beneficial owners, management companies, property websites,
-// and validates/resolves domains via PDL and DNS checks.
+//
+// Uses Gemini search grounding to discover:
+//   - The beneficial owner behind the DCAD deed entity (LLC → parent company)
+//   - The property management company and its domain
+//   - The property's marketing website and main phone number
+//
+// After the initial Gemini call, domains go through a validation cascade:
+//   1. PDL Company Enrich (authoritative domain lookup)
+//   2. DNS validation (if PDL has no match)
+//   3. Gemini retry search (if still no domain)
+//
+// Retry policy: up to RETRIES.STAGE_2 attempts with linear back-off.
 // ============================================================================
 
 import type { CommercialProperty } from "../../snowflake";
@@ -11,7 +21,17 @@ import { extractGroundedSources, parseJsonResponse, validateStage2Schema } from 
 import { propertyLatLng, extractUsefulLegalInfo, crossValidateOwnership, OWNER_TYPE_MAP } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validatePropertyWebsite, validateAndCleanDomain } from '../../domain-validator';
+import {
+  THINKING_LEVELS, RETRIES, BACKOFF, GOOGLE_SEARCH_TOOL,
+} from '../config';
 
+/**
+ * Run Stage 2 of the AI enrichment pipeline.
+ *
+ * Takes the classification from Stage 1 and the raw property record, then
+ * searches the web to identify who owns and manages the property.  Returns
+ * validated ownership data with confirmed domains.
+ */
 export async function identifyOwnership(
   property: CommercialProperty,
   classification: PropertyClassification
@@ -23,6 +43,7 @@ export async function identifyOwnership(
   const legalInfo = extractUsefulLegalInfo(property);
   const sqft = property.totalGrossBldgArea?.toLocaleString() || 'unknown';
 
+  // -- Build the prompt -------------------------------------------------------
   const prompt = `Find the ownership and management of this commercial property. Return ONLY valid JSON.
 
 PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
@@ -45,20 +66,27 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 2: Ownership identification...');
   console.log(`[FocusedEnrichment] Stage 2 input - Property: ${classification.propertyName}, Deed Owner: ${deedOwner}`);
 
-  const maxAttempts = 3;
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+  // -- Retry loop -------------------------------------------------------------
+  for (let attempt = 1; attempt <= RETRIES.STAGE_2; attempt++) {
     try {
-      console.log(`[FocusedEnrichment] Stage 2 attempt ${attempt}/${maxAttempts}...`);
+      console.log(`[FocusedEnrichment] Stage 2 attempt ${attempt}/${RETRIES.STAGE_2}...`);
+
+      // Call Gemini with search grounding and LOW thinking for multi-step reasoning
       const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'LOW', latLng: propertyLatLng(property) }),
+        () => streamGeminiResponse(client, prompt, {
+          tools: GOOGLE_SEARCH_TOOL,
+          thinkingLevel: THINKING_LEVELS.STAGE_2_OWNERSHIP,
+          latLng: propertyLatLng(property),
+        }),
         2
       );
 
       const text = response.text?.trim() || '';
       console.log(`[FocusedEnrichment] Stage 2 attempt ${attempt} response length: ${text.length} chars`);
 
+      // Handle empty response — retry if attempts remain
       if (!text) {
-        console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 2 (attempt ${attempt}/${maxAttempts})`);
+        console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 2 (attempt ${attempt}/${RETRIES.STAGE_2})`);
         trackCostFireAndForget({
           provider: 'gemini',
           endpoint: 'identify-ownership',
@@ -66,8 +94,8 @@ Return JSON:
           success: false,
           errorMessage: `Empty response attempt ${attempt}`,
         });
-        if (attempt < maxAttempts) {
-          const delayMs = attempt * 3000;
+        if (attempt < RETRIES.STAGE_2) {
+          const delayMs = attempt * BACKOFF.STAGE_2_PER_ATTEMPT_MS;
           console.log(`[FocusedEnrichment] Stage 2 retrying in ${delayMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, delayMs));
           continue;
@@ -85,6 +113,7 @@ Return JSON:
         };
       }
 
+      // -- Parse and validate JSON --------------------------------------------
       const sources = extractGroundedSources(response);
       const parsed = parseJsonResponse(text);
 
@@ -92,8 +121,8 @@ Return JSON:
         validateStage2Schema(parsed);
       } catch (schemaErr) {
         console.warn(`[FocusedEnrichment] Stage 2 schema validation failed (attempt ${attempt}): ${schemaErr instanceof Error ? schemaErr.message : schemaErr}`);
-        if (attempt < maxAttempts) {
-          const delayMs = attempt * 3000;
+        if (attempt < RETRIES.STAGE_2) {
+          const delayMs = attempt * BACKOFF.STAGE_2_PER_ATTEMPT_MS;
           console.log(`[FocusedEnrichment] Stage 2 retrying after schema error in ${delayMs}ms...`);
           await new Promise(resolve => setTimeout(resolve, delayMs));
           continue;
@@ -108,8 +137,11 @@ Return JSON:
         metadata: { sourcesCount: sources.length, attempt },
       });
 
+      // -- Map owner type to canonical enum -----------------------------------
       const ownerType = parsed.owner?.type ? (OWNER_TYPE_MAP[parsed.owner.type] || null) : null;
 
+      // -- Validate domain provenance -----------------------------------------
+      // Domains without a source citation are likely hallucinated — clear them
       let mgmtDomain = parsed.mgmt?.domain ?? null;
       const mgmtDomainSource = parsed.mgmt?.domainSource ?? null;
       if (mgmtDomain && !mgmtDomainSource) {
@@ -124,10 +156,12 @@ Return JSON:
         propertySite = null;
       }
 
+      // Clean raw owner domain (strip protocol, www, trailing slash)
       const ownerDomain = parsed.owner?.domain && parsed.owner.domain !== 'null'
         ? parsed.owner.domain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase()
         : null;
 
+      // -- Assemble initial ownership data ------------------------------------
       const ownershipData: OwnershipInfo = {
         beneficialOwner: {
           name: parsed.owner?.name ?? null,
@@ -144,12 +178,15 @@ Return JSON:
         propertyPhone: parsed.phone ?? null,
       };
 
+      // Cross-check management domain vs property website domain
       const validated = crossValidateOwnership(ownershipData);
 
       const mgmtName = validated.managementCompany.name || undefined;
       const ownerName = validated.beneficialOwner.name || property.bizName || property.ownerName1 || null;
       const propCity = property.city || 'Dallas';
 
+      // -- Property website validation ----------------------------------------
+      // Verify the URL resolves, isn't a parking page, and matches the property
       if (validated.propertyWebsite) {
         const websiteResult = await validatePropertyWebsite(
           validated.propertyWebsite,
@@ -172,6 +209,7 @@ Return JSON:
         }
       }
 
+      // If no valid property website, run a focused retry search
       if (!validated.propertyWebsite) {
         console.log(`[FocusedEnrichment] Stage 2: No valid property website — running domain retry...`);
         const retryResult = await retryFindPropertyWebsite(
@@ -191,10 +229,13 @@ Return JSON:
         }
       }
 
+      // -- Management company domain validation cascade -----------------------
+      // Priority: PDL → DNS validation → Gemini retry search
       if (validated.managementCompany.name) {
         const aiDomain = validated.managementCompany.domain;
         let pdlResolvedDomain: string | null = null;
 
+        // Step 1: Try PDL Company Enrich for authoritative domain lookup
         try {
           const { enrichCompanyPDL } = await import('../../pdl');
           console.log(`[FocusedEnrichment] Stage 2: PDL lookup for "${validated.managementCompany.name}" (AI domain: ${aiDomain || 'none'})`);
@@ -218,6 +259,7 @@ Return JSON:
         if (pdlResolvedDomain) {
           validated.managementCompany.domain = pdlResolvedDomain;
         } else if (aiDomain) {
+          // Step 2: Validate the AI-provided domain with DNS checks
           const validatedMgmtDomain = await validateAndCleanDomain(
             aiDomain,
             mgmtName,
@@ -231,6 +273,7 @@ Return JSON:
           }
         }
 
+        // Step 3: If still no domain, run a Gemini retry search
         if (!validated.managementCompany.domain) {
           console.log(`[FocusedEnrichment] Stage 2: No mgmt domain — running company domain retry...`);
           const retryDomain = await retryFindCompanyDomain(
@@ -244,6 +287,7 @@ Return JSON:
         }
       }
 
+      // -- Beneficial owner domain validation (same cascade) ------------------
       if (validated.beneficialOwner.name) {
         const aiOwnerDomain = validated.beneficialOwner.domain;
         let pdlOwnerDomain: string | null = null;
@@ -301,8 +345,8 @@ Return JSON:
         errorMessage: error instanceof Error ? error.message : String(error),
       });
       console.error(`[FocusedEnrichment] Stage 2 attempt ${attempt} failed: ${error instanceof Error ? error.message : error}`);
-      if (attempt < maxAttempts) {
-        const delayMs = attempt * 3000;
+      if (attempt < RETRIES.STAGE_2) {
+        const delayMs = attempt * BACKOFF.STAGE_2_PER_ATTEMPT_MS;
         console.log(`[FocusedEnrichment] Stage 2 retrying after error in ${delayMs}ms...`);
         await new Promise(resolve => setTimeout(resolve, delayMs));
         continue;
@@ -332,6 +376,19 @@ Return JSON:
   };
 }
 
+// =============================================================================
+// Domain Retry Helpers
+//
+// When the initial Stage 2 response doesn't produce a valid property website
+// or company domain, these functions run a focused follow-up Gemini search.
+// =============================================================================
+
+/**
+ * Retry search specifically for a property's marketing website.
+ *
+ * Tries consumer-style search queries (e.g. "The Crescent Dallas apartments")
+ * and validates the result against DNS + content checks.
+ */
 async function retryFindPropertyWebsite(
   propertyName: string,
   address: string,
@@ -358,7 +415,11 @@ Return JSON: {"url":"https://full-url-to-property-page|null","domain":"domain-of
   try {
     console.log(`[FocusedEnrichment] Domain retry: searching for property website for "${propertyName}"...`);
     const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'MINIMAL', latLng }),
+      () => streamGeminiResponse(client, prompt, {
+        tools: GOOGLE_SEARCH_TOOL,
+        thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
+        latLng,
+      }),
       1
     );
     const text = response.text?.trim() || '';
@@ -397,6 +458,12 @@ Return JSON: {"url":"https://full-url-to-property-page|null","domain":"domain-of
   }
 }
 
+/**
+ * Retry search specifically for a company's official domain.
+ *
+ * Used when neither PDL nor the initial Gemini response produced a valid
+ * domain for the management company.
+ */
 export async function retryFindCompanyDomain(
   companyName: string,
   city: string,
@@ -416,7 +483,11 @@ Return JSON: {"domain":"company-domain.com|null","source":"full URL where you fo
   try {
     console.log(`[FocusedEnrichment] Domain retry: searching for company domain for "${companyName}"...`);
     const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'MINIMAL', latLng }),
+      () => streamGeminiResponse(client, prompt, {
+        tools: GOOGLE_SEARCH_TOOL,
+        thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
+        latLng,
+      }),
       1
     );
     const text = response.text?.trim() || '';

@@ -1,13 +1,23 @@
 // ============================================================================
 // AI Enrichment — Utility Helpers
-// Formatting helpers, property data extractors, name normalization, email
-// pattern detection, and contact deduplication.
+//
+// Pure functions that format data for prompts, normalize names, detect
+// hallucinated emails, deduplicate contacts, and cross-validate ownership.
+// None of these call external APIs — they operate entirely on in-memory data.
 // ============================================================================
 
 import type { CommercialProperty, DCADBuilding } from "../snowflake";
 import type { DiscoveredContact, OwnershipInfo } from './types';
 import { ASSET_CATEGORIES } from "../constants";
+import { QUALITY_GRADE_MAP, OWNER_TYPE_MAP } from './config';
 
+// Re-export so existing imports from helpers still work
+export { OWNER_TYPE_MAP } from './config';
+
+/**
+ * Summarize building records from DCAD into a compact string for the prompt.
+ * Single building → one-line summary; multiple → numbered list.
+ */
 export function formatBuildingsSummary(buildings: DCADBuilding[] | null, totalSqft: number | null): string {
   if (!buildings || buildings.length === 0) return '';
   if (buildings.length === 1) {
@@ -28,31 +38,33 @@ export function formatBuildingsSummary(buildings: DCADBuilding[] | null, totalSq
   }).join('\n');
 }
 
+/** Flatten ASSET_CATEGORIES into a single-line string for the Stage 1 prompt. */
 export function formatCompactCategories(): string {
   return Object.entries(ASSET_CATEGORIES)
     .map(([cat, subs]) => `${cat} (${subs.join(', ')})`)
     .join(' | ');
 }
 
+/**
+ * Convert a DCAD quality grade (e.g. "Excellent") into a CRE property class
+ * (e.g. "A") using the static mapping in config.  Returns null if unrecognized.
+ */
 export function mapQualityGradeToClass(grade: string | null): { propertyClass: string | null; confidence: number } {
   if (!grade) return { propertyClass: null, confidence: 0 };
   const gradeNorm = grade.trim().toLowerCase();
-  const mapping: Record<string, { propertyClass: string; confidence: number }> = {
-    'excellent': { propertyClass: 'A', confidence: 0.8 },
-    'superior': { propertyClass: 'A+', confidence: 0.8 },
-    'good': { propertyClass: 'B', confidence: 0.7 },
-    'average': { propertyClass: 'C', confidence: 0.6 },
-    'fair': { propertyClass: 'C', confidence: 0.6 },
-    'poor': { propertyClass: 'D', confidence: 0.7 },
-    'unsound': { propertyClass: 'D', confidence: 0.7 },
-  };
-  return mapping[gradeNorm] || { propertyClass: null, confidence: 0 };
+  return QUALITY_GRADE_MAP[gradeNorm] || { propertyClass: null, confidence: 0 };
 }
 
+/** Extract lat/lon from a property record, if available. */
 export function propertyLatLng(property: CommercialProperty): { latitude: number; longitude: number } | undefined {
   return property.lat && property.lon ? { latitude: property.lat, longitude: property.lon } : undefined;
 }
 
+/**
+ * Pull useful legal description text from DCAD records.
+ * Only returns text containing recognizable property names (plaza, center, etc.)
+ * — generic lot/block descriptions are ignored.
+ */
 export function extractUsefulLegalInfo(property: CommercialProperty): string | null {
   const legal = [property.legal1, property.legal2, property.legal3, property.legal4]
     .filter(Boolean).join(' ');
@@ -61,6 +73,10 @@ export function extractUsefulLegalInfo(property: CommercialProperty): string | n
   return usefulPatterns.test(legal) ? legal : null;
 }
 
+/**
+ * Remove internal debug messages, error traces, and citation numbers
+ * from a raw enrichment summary before showing it to users.
+ */
 export function stripInternalMessages(text: string): string {
   return text
     .replace(/\[[\d,\s]+\]/g, '')
@@ -77,10 +93,19 @@ export function stripInternalMessages(text: string): string {
     .trim();
 }
 
+/** Normalize a name to lowercase alpha-only for deduplication. */
 export function normalizeName(name: string): string {
   return name.toLowerCase().replace(/[^a-z]/g, '');
 }
 
+/**
+ * Detect whether an email looks like it was constructed from a person's name
+ * (e.g. "jsmith@co.com" for "John Smith") rather than found on a real page.
+ *
+ * When Gemini hallucinates emails it almost always follows one of these
+ * patterns.  If the email matches AND there are no grounding sources, it's
+ * very likely fake.
+ */
 export function isLikelyConstructedEmail(email: string, fullName: string): boolean {
   if (!email || !fullName) return false;
   const parts = fullName.toLowerCase().replace(/[^a-z\s]/g, '').trim().split(/\s+/);
@@ -103,6 +128,11 @@ export function isLikelyConstructedEmail(email: string, fullName: string): boole
   return constructedPatterns.includes(localPart);
 }
 
+/**
+ * Merge duplicate contacts (by normalized name) into a single record.
+ * When two records share a name, the one with more data wins for each field;
+ * the higher roleConfidence is kept.
+ */
 export function deduplicateContacts(contacts: DiscoveredContact[]): DiscoveredContact[] {
   const seen = new Map<string, number>();
   const result: DiscoveredContact[] = [];
@@ -132,17 +162,12 @@ export function deduplicateContacts(contacts: DiscoveredContact[]): DiscoveredCo
   return result;
 }
 
-export const OWNER_TYPE_MAP: Record<string, OwnershipInfo['beneficialOwner']['type']> = {
-  'REIT': 'REIT',
-  'PE': 'Private Equity',
-  'Private Equity': 'Private Equity',
-  'Family Office': 'Family Office',
-  'Individual': 'Individual',
-  'Corporation': 'Corporation',
-  'Institutional': 'Institutional',
-  'Syndicator': 'Syndicator',
-};
-
+/**
+ * Cross-validate ownership data after Stage 2 parsing.
+ * Currently checks whether the management company domain and the property
+ * website domain are consistent — logs a warning if they disagree and
+ * the management company confidence is low.
+ */
 export function crossValidateOwnership(ownership: OwnershipInfo): OwnershipInfo {
   if (ownership.managementCompany.domain && ownership.propertyWebsite) {
     try {

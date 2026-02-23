@@ -1,13 +1,28 @@
 // ============================================================================
 // AI Enrichment — Utility AI Functions
-// cleanupAISummary: Polishes raw enrichment summaries into readable prose.
-// searchForReplacementContact: Finds replacements for departed contacts.
+//
+// Two standalone Gemini calls that don't fit into the main 3-stage pipeline:
+//
+//   cleanupAISummary          – Polishes raw enrichment summaries into
+//                               readable prose (lower temperature for
+//                               deterministic output).
+//   searchForReplacementContact – Searches the web for a replacement when
+//                               a contact's job_change_detected flag fires.
 // ============================================================================
 
 import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout } from '../client';
 import { stripInternalMessages } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
+import {
+  CLEANUP_TEMPERATURE, THINKING_LEVELS, GOOGLE_SEARCH_TOOL,
+} from '../config';
 
+/**
+ * Rewrite a raw enrichment summary into a polished, user-facing paragraph.
+ *
+ * Uses a lower temperature (CLEANUP_TEMPERATURE = 0.1) for consistent,
+ * deterministic output.  Falls back to regex-based cleanup if Gemini fails.
+ */
 export async function cleanupAISummary(rawSummary: string): Promise<string> {
   if (!rawSummary || rawSummary.trim().length === 0) {
     return '';
@@ -37,7 +52,10 @@ ${preCleaned}`;
 
   try {
     const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { temperature: 0.1, thinkingLevel: 'MINIMAL' }),
+      () => streamGeminiResponse(client, prompt, {
+        temperature: CLEANUP_TEMPERATURE,
+        thinkingLevel: THINKING_LEVELS.SUMMARY_CLEANUP,
+      }),
       1
     );
     
@@ -63,6 +81,13 @@ ${preCleaned}`;
   }
 }
 
+/**
+ * Search the web for a replacement person when a contact has left their role.
+ *
+ * Called by the job-change detection system when PDL data shows someone is
+ * no longer at their employer.  Returns the new person's name/title/email
+ * or null if no replacement is found.
+ */
 export async function searchForReplacementContact(
   roleDesc: string,
   company: string,
@@ -79,7 +104,10 @@ If you cannot find a replacement, return {"name":null}`;
 
   try {
     const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, { tools: [{ googleSearch: {} }], thinkingLevel: 'MINIMAL' }),
+      () => streamGeminiResponse(client, prompt, {
+        tools: GOOGLE_SEARCH_TOOL,
+        thinkingLevel: THINKING_LEVELS.REPLACEMENT_SEARCH,
+      }),
       1
     );
 

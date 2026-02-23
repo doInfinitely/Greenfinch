@@ -1,7 +1,14 @@
 // ============================================================================
 // AI Enrichment — Pipeline Orchestrator
-// Runs the full enrichment pipeline (Stage 1 → 2 → 3) with checkpoint-based
-// resumption so partial results survive failures.
+//
+// Runs the full enrichment pipeline in sequence:
+//   Stage 1 (classify)  → Stage 2 (ownership) → Stage 3 (contacts)
+//
+// Supports checkpoint-based resumption: if a previous run failed partway
+// through, pass the checkpoint and completed stages will be skipped.
+// Each stage failure is wrapped in an EnrichmentStageError that carries
+// the checkpoint, allowing the enrichment queue to persist partial results
+// and retry from the point of failure.
 // ============================================================================
 
 import type { CommercialProperty } from "../snowflake";
@@ -15,6 +22,14 @@ import { classifyAndVerifyProperty } from './stages/classify';
 import { identifyOwnership } from './stages/ownership';
 import { discoverContacts } from './stages/contacts';
 
+/**
+ * Run the complete AI enrichment pipeline for a single property.
+ *
+ * @param property    – Raw property record from Snowflake/DCAD
+ * @param checkpoint  – Optional checkpoint from a previous failed run;
+ *                      completed stages will be skipped
+ * @returns Full enrichment result plus a new checkpoint for downstream use
+ */
 export async function runFocusedEnrichment(
   property: CommercialProperty,
   checkpoint?: EnrichmentStageCheckpoint | null
@@ -28,6 +43,7 @@ export async function runFocusedEnrichment(
   let contactIdentificationMs = 0;
   let contactEnrichmentMs = 0;
 
+  // ---- Stage 1: Classification & Physical Verification ----------------------
   if (checkpoint?.classification && checkpoint?.physical) {
     classification = checkpoint.classification;
     physical = checkpoint.physical;
@@ -62,6 +78,7 @@ export async function runFocusedEnrichment(
     }
   }
 
+  // ---- Stage 2: Ownership & Management Identification -----------------------
   if (checkpoint?.ownership) {
     ownership = checkpoint.ownership;
     console.log('[FocusedEnrichment] Resuming from checkpoint - skipping Stage 2 (ownership)');
@@ -84,6 +101,7 @@ export async function runFocusedEnrichment(
     }
   }
 
+  // ---- Stage 3: Contact Discovery & Enrichment ------------------------------
   if (checkpoint?.contacts) {
     contacts = checkpoint.contacts;
     console.log('[FocusedEnrichment] Resuming from checkpoint - skipping Stage 3 (contacts)');
@@ -117,6 +135,7 @@ export async function runFocusedEnrichment(
     }
   }
 
+  // ---- All stages complete --------------------------------------------------
   const totalMs = Date.now() - startTotal;
   timing.totalMs = totalMs;
 

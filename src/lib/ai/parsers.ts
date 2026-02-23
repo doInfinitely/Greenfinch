@@ -1,18 +1,22 @@
 // ============================================================================
 // AI Enrichment — Response Parsing & Source Extraction
-// JSON parsing, schema validation for each stage, grounding source extraction,
-// AI-generated URL filtering, and source trust scoring.
+//
+// Handles three concerns:
+//   1. JSON extraction — pull valid JSON from Gemini's free-text responses
+//   2. Schema validation — lightweight checks that each stage's JSON has
+//      the required fields before downstream code processes it
+//   3. Grounding sources — extract the web URLs Gemini used as evidence,
+//      filter out AI-generated links, and score sources by trust tier
 // ============================================================================
 
 import type { GroundedSource, ScoredSource, OwnershipInfo } from './types';
 import { SchemaValidationError } from './errors';
+import { AI_GENERATED_DOMAINS, MEDIUM_TRUST_DOMAINS, MAX_GROUNDED_SOURCES } from './config';
 
-const AI_GENERATED_DOMAINS = [
-  'generativelanguage.googleapis.com',
-  'ai.google.dev',
-  'bard.google.com',
-];
-
+/**
+ * Check whether a URL points to an AI platform rather than a real web page.
+ * These show up in grounding metadata but aren't useful as evidence.
+ */
 export function isAIGeneratedSource(url: string): boolean {
   try {
     const hostname = new URL(url).hostname.toLowerCase();
@@ -22,6 +26,15 @@ export function isAIGeneratedSource(url: string): boolean {
   }
 }
 
+/**
+ * Pull grounded web sources from a Gemini streaming response.
+ *
+ * Gemini attaches grounding metadata to the last candidate when search
+ * grounding is enabled.  This function navigates several possible response
+ * shapes (groundingChunks, groundingSupports) to extract real URLs.
+ *
+ * Returns up to MAX_GROUNDED_SOURCES unique, non-AI-generated URLs.
+ */
 export function extractGroundedSources(response: any): GroundedSource[] {
   try {
     const candidates = response?.candidates || response?.response?.candidates || response?.data?.candidates;
@@ -50,6 +63,8 @@ export function extractGroundedSources(response: any): GroundedSource[] {
     
     const groundingChunks = groundingMetadata.groundingChunks || groundingMetadata.grounding_chunks || [];
     
+    // When Gemini searched but produced no grounding chunks, the response
+    // has higher hallucination risk — log a warning for observability.
     if (!groundingChunks || groundingChunks.length === 0) {
       const metadataKeys = Object.keys(groundingMetadata);
       const hasSearchQueries = groundingMetadata.webSearchQueries?.length > 0;
@@ -63,6 +78,7 @@ export function extractGroundedSources(response: any): GroundedSource[] {
         console.log(`[GroundedSources] No grounding chunks. Metadata keys: ${metadataKeys.join(', ')}, hasSearchQueries=${hasSearchQueries}, hasSupports=${hasSupports}`);
       }
 
+      // Fallback: try to recover URLs from groundingSupports → chunkIndices
       if (hasSupports) {
         console.log(`[GroundedSources] Has ${groundingMetadata.groundingSupports.length} groundingSupports but no chunks — extracting from supports`);
         const supportSources: GroundedSource[] = [];
@@ -87,6 +103,7 @@ export function extractGroundedSources(response: any): GroundedSource[] {
     
     console.log(`[GroundedSources] Found ${groundingChunks.length} grounding chunks, first chunk keys: ${Object.keys(groundingChunks[0] || {}).join(', ')}`);
     
+    // Deduplicate by domain, skip AI-generated links, cap at MAX_GROUNDED_SOURCES
     const seen = new Set<string>();
     const sources: GroundedSource[] = [];
     for (const chunk of groundingChunks) {
@@ -101,7 +118,7 @@ export function extractGroundedSources(response: any): GroundedSource[] {
         url: uri,
         title: chunk.web.title || chunk.web.domain || 'Source',
       });
-      if (sources.length >= 10) break;
+      if (sources.length >= MAX_GROUNDED_SOURCES) break;
     }
     
     console.log(`[GroundedSources] Extracted ${sources.length} sources from ${groundingChunks.length} chunks`);
@@ -112,6 +129,14 @@ export function extractGroundedSources(response: any): GroundedSource[] {
   }
 }
 
+/**
+ * Assign a trust tier to a single source based on its domain.
+ *
+ * Tiers:
+ *   high   — matches a known property/company domain, or is LinkedIn
+ *   medium — recognized CRE industry or news outlet
+ *   low    — everything else
+ */
 function scoreSource(source: GroundedSource, knownDomains: string[]): ScoredSource {
   let hostname: string;
   try {
@@ -123,14 +148,16 @@ function scoreSource(source: GroundedSource, knownDomains: string[]): ScoredSour
   if (knownDomains.some(d => hostname.includes(d)) || hostname.includes('linkedin.com')) {
     return { ...source, trustTier: 'high' };
   }
-  const mediumDomains = ['loopnet.com', 'costar.com', 'commercialcafe.com', 'crexi.com',
-    'bizjournals.com', 'dallasnews.com', 'dmagazine.com', 'prnewswire.com', 'globenewswire.com'];
-  if (mediumDomains.some(d => hostname.includes(d))) {
+  if (MEDIUM_TRUST_DOMAINS.some(d => hostname.includes(d))) {
     return { ...source, trustTier: 'medium' };
   }
   return { ...source, trustTier: 'low' };
 }
 
+/**
+ * Score all grounding sources relative to the ownership context.
+ * Known domains (management company, property website) get high trust.
+ */
 export function scoreSources(sources: GroundedSource[], ownership: OwnershipInfo): ScoredSource[] {
   const knownDomains: string[] = [];
   if (ownership.managementCompany?.domain) {
@@ -144,6 +171,10 @@ export function scoreSources(sources: GroundedSource[], ownership: OwnershipInfo
   return sources.map(s => scoreSource(s, knownDomains));
 }
 
+/**
+ * Extract the first JSON object or array from Gemini's free-text response.
+ * Strips markdown fences and leading prose before parsing.
+ */
 export function parseJsonResponse(text: string): any {
   let cleanedText = text.trim();
   const jsonMatch = cleanedText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
@@ -153,6 +184,7 @@ export function parseJsonResponse(text: string): any {
   return JSON.parse(jsonMatch[0]);
 }
 
+/** Ensure Stage 1 JSON has at least a property name and category. */
 export function validateStage1Schema(parsed: any): void {
   if (typeof parsed !== 'object' || parsed === null) {
     throw new SchemaValidationError('Stage 1', `Expected object, got ${typeof parsed}`);
@@ -167,6 +199,7 @@ export function validateStage1Schema(parsed: any): void {
   }
 }
 
+/** Ensure Stage 2 JSON has both "mgmt" and "owner" objects. */
 export function validateStage2Schema(parsed: any): void {
   if (typeof parsed !== 'object' || parsed === null) {
     throw new SchemaValidationError('Stage 2', `Expected object, got ${typeof parsed}`);
@@ -179,6 +212,7 @@ export function validateStage2Schema(parsed: any): void {
   }
 }
 
+/** Ensure Stage 3a JSON has a "contacts" array with named entries. */
 export function validateStage3aSchema(parsed: any): void {
   if (typeof parsed !== 'object' || parsed === null) {
     throw new SchemaValidationError('Stage 3a', `Expected object, got ${typeof parsed}`);

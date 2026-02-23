@@ -1,11 +1,22 @@
 // ============================================================================
 // AI Enrichment — Error Classification
-// Determines whether Gemini API errors are retryable or permanent, plus the
-// custom EnrichmentStageError used for checkpoint-based resumption.
+//
+// Determines whether a Gemini API error is retryable (network blip, rate
+// limit, server error) or permanent (bad request, auth failure, safety
+// block).  Also defines custom error classes used for checkpoint-based
+// resumption in the pipeline.
 // ============================================================================
 
 import type { EnrichmentStage, EnrichmentStageCheckpoint } from './types';
 
+/**
+ * Classify a Gemini error message to decide whether the caller should retry.
+ *
+ * Returns three flags:
+ *   retryable          – true if the error is likely transient
+ *   isDeadline         – true if it's a timeout / deadline-exceeded error
+ *   isStreamDisconnect – true if the connection was lost mid-stream
+ */
 export function isRetryableGeminiError(errMsg: string): { retryable: boolean; isDeadline: boolean; isStreamDisconnect: boolean } {
   const lower = errMsg.toLowerCase();
 
@@ -47,6 +58,10 @@ export function isRetryableGeminiError(errMsg: string): { retryable: boolean; is
   return { retryable, isDeadline, isStreamDisconnect: isNetworkError };
 }
 
+/**
+ * Thrown when a stage's JSON output doesn't match the expected shape.
+ * Treated as retryable — a different Gemini response may produce valid JSON.
+ */
 export class SchemaValidationError extends Error {
   constructor(stage: string, details: string) {
     super(`[${stage}] Schema validation failed: ${details}`);
@@ -54,6 +69,10 @@ export class SchemaValidationError extends Error {
   }
 }
 
+/**
+ * Thrown when a pipeline stage fails.  Carries the checkpoint so the
+ * pipeline can resume from the last successful stage on retry.
+ */
 export class EnrichmentStageError extends Error {
   checkpoint: EnrichmentStageCheckpoint;
   stage: EnrichmentStage;

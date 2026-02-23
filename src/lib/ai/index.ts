@@ -1,7 +1,11 @@
 // ============================================================================
 // AI Enrichment — Barrel Export
-// Re-exports all public types, functions, and classes so consumers can import
-// from '@/lib/ai' (or '../ai') with a single path.
+//
+// Re-exports all public types, functions, and classes so consumers can
+// import from '@/lib/ai' (or '../ai') with a single path.
+//
+// Usage:
+//   import { runFocusedEnrichment, type FocusedEnrichmentResult } from '@/lib/ai';
 // ============================================================================
 
 export type {
