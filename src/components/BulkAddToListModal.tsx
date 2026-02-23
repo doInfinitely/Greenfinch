@@ -67,44 +67,41 @@ export default function BulkAddToListModal({
     setError(null);
     setSuccessMessage(null);
     
-    let successCount = 0;
-    let alreadyExistsCount = 0;
-    let errorCount = 0;
-    
-    for (const itemId of itemIds) {
-      try {
-        const response = await fetch(`/api/lists/${listId}/items`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ itemId }),
-        });
-
-        if (response.status === 409) {
-          alreadyExistsCount++;
-        } else if (response.ok) {
-          successCount++;
-        } else {
-          errorCount++;
-        }
-      } catch (err) {
-        errorCount++;
-      }
-    }
-
-    setIsAdding(null);
-    
-    if (successCount > 0) {
-      const listName = lists.find(l => l.id === listId)?.listName || 'list';
-      toast({
-        title: 'Added to List',
-        description: `${successCount} ${itemType === 'properties' ? 'properties' : 'contacts'} added to "${listName}"${alreadyExistsCount > 0 ? ` (${alreadyExistsCount} already in list)` : ''}`,
+    try {
+      const response = await fetch(`/api/lists/${listId}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemIds }),
       });
-      fetchLists();
-      onClose();
-    } else if (alreadyExistsCount === itemIds.length) {
-      setError('All items are already in this list');
-    } else {
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        setError(errorData.error || 'Failed to add items to list');
+        setIsAdding(null);
+        return;
+      }
+
+      const data = await response.json();
+      const successCount = data.added || 0;
+      const alreadyExistsCount = data.alreadyExists || 0;
+
+      if (successCount > 0) {
+        const listName = lists.find(l => l.id === listId)?.listName || 'list';
+        toast({
+          title: 'Added to List',
+          description: `${successCount} ${itemType === 'properties' ? 'properties' : 'contacts'} added to "${listName}"${alreadyExistsCount > 0 ? ` (${alreadyExistsCount} already in list)` : ''}`,
+        });
+        fetchLists();
+        onClose();
+      } else if (alreadyExistsCount === itemIds.length) {
+        setError('All items are already in this list');
+      } else {
+        setError('Failed to add items to list');
+      }
+    } catch (err) {
       setError('Failed to add items to list');
+    } finally {
+      setIsAdding(null);
     }
   };
 

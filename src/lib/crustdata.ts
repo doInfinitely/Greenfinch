@@ -97,8 +97,6 @@ export async function enrichPersonCrustdata(params: {
             queryParams.append('business_email', params.email);
           }
 
-          console.log('[Crustdata] Person enrich request:', Object.fromEntries(queryParams));
-
           const response = await fetch(
             `${CRUSTDATA_API_BASE}/screener/person/enrich?${queryParams}`,
             {
@@ -110,9 +108,7 @@ export async function enrichPersonCrustdata(params: {
             }
           );
 
-          console.log('[Crustdata] Person enrich response status:', response.status);
           const responseText = await response.text();
-          console.log('[Crustdata] Person enrich response body:', responseText.slice(0, 1000));
 
           if (response.status === 404) {
             return { found: false };
@@ -292,8 +288,6 @@ export async function enrichCompanyCrustdata(domain: string): Promise<CrustdataC
             company_domain: domain,
           });
 
-          console.log('[Crustdata] Company enrich request:', domain);
-
           const response = await fetch(
             `${CRUSTDATA_API_BASE}/screener/company?${queryParams}`,
             {
@@ -305,9 +299,7 @@ export async function enrichCompanyCrustdata(domain: string): Promise<CrustdataC
             }
           );
 
-          console.log('[Crustdata] Company enrich response status:', response.status);
           const responseText = await response.text();
-          console.log('[Crustdata] Company enrich response body:', responseText.slice(0, 1000));
 
           if (response.status === 404) {
             return { found: false };

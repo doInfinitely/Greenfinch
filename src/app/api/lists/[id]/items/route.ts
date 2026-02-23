@@ -184,10 +184,27 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { itemId } = body;
+    const { itemId, itemIds } = body;
 
-    if (!itemId || !UUID_REGEX.test(itemId)) {
-      return NextResponse.json({ error: 'Valid itemId is required' }, { status: 400 });
+    // Determine if this is a bulk request or single item request
+    const isBulk = itemIds !== undefined;
+    const idsToAdd = isBulk ? itemIds : (itemId ? [itemId] : []);
+
+    if (!idsToAdd || !Array.isArray(idsToAdd) || idsToAdd.length === 0) {
+      return NextResponse.json(
+        { error: 'Valid itemId or itemIds array is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate all IDs have correct format
+    for (const id of idsToAdd) {
+      if (!id || !UUID_REGEX.test(id)) {
+        return NextResponse.json(
+          { error: 'Invalid item ID format' },
+          { status: 400 }
+        );
+      }
     }
 
     const [existingList] = await db
@@ -199,47 +216,93 @@ export async function POST(
       return NextResponse.json({ error: 'List not found' }, { status: 404 });
     }
 
-    // Validate that the item exists and matches the list type
-    if (existingList.listType === 'properties') {
-      const [propertyExists] = await db
-        .select({ id: properties.id })
-        .from(properties)
-        .where(eq(properties.id, itemId))
-        .limit(1);
-      
-      if (!propertyExists) {
-        return NextResponse.json({ error: 'Property not found. Cannot add contacts to a properties list.' }, { status: 400 });
-      }
-    } else if (existingList.listType === 'contacts') {
-      const [contactExists] = await db
-        .select({ id: contacts.id })
-        .from(contacts)
-        .where(eq(contacts.id, itemId))
-        .limit(1);
-      
-      if (!contactExists) {
-        return NextResponse.json({ error: 'Contact not found. Cannot add properties to a contacts list.' }, { status: 400 });
+    // For bulk requests, skip individual type validation and let the database constraints handle it
+    // For single requests, validate for better error messages
+    if (!isBulk) {
+      if (existingList.listType === 'properties') {
+        const [propertyExists] = await db
+          .select({ id: properties.id })
+          .from(properties)
+          .where(eq(properties.id, itemId))
+          .limit(1);
+        
+        if (!propertyExists) {
+          return NextResponse.json(
+            { error: 'Property not found. Cannot add contacts to a properties list.' },
+            { status: 400 }
+          );
+        }
+      } else if (existingList.listType === 'contacts') {
+        const [contactExists] = await db
+          .select({ id: contacts.id })
+          .from(contacts)
+          .where(eq(contacts.id, itemId))
+          .limit(1);
+        
+        if (!contactExists) {
+          return NextResponse.json(
+            { error: 'Contact not found. Cannot add properties to a contacts list.' },
+            { status: 400 }
+          );
+        }
       }
     }
 
-    const [existingItem] = await db
-      .select({ id: listItems.id })
+    // Get items already in the list with a single query
+    const existingItems = await db
+      .select({ itemId: listItems.itemId })
       .from(listItems)
-      .where(and(eq(listItems.listId, listId), eq(listItems.itemId, itemId)));
+      .where(
+        and(
+          eq(listItems.listId, listId),
+          inArray(listItems.itemId, idsToAdd)
+        )
+      );
 
-    if (existingItem) {
+    const existingItemIds = new Set(existingItems.map(item => item.itemId));
+    const newItemIds = idsToAdd.filter(id => !existingItemIds.has(id));
+    const alreadyExistsCount = existingItemIds.size;
+
+    // If bulk request and all items already exist, return early
+    if (isBulk && newItemIds.length === 0) {
+      return NextResponse.json(
+        { added: 0, alreadyExists: alreadyExistsCount },
+        { status: 200 }
+      );
+    }
+
+    // If single item request and it already exists, return error for backward compatibility
+    if (!isBulk && alreadyExistsCount > 0) {
       return NextResponse.json({ error: 'Item already in list' }, { status: 409 });
     }
 
-    const [newItem] = await db
-      .insert(listItems)
-      .values({
-        listId,
-        itemId,
-      })
-      .returning();
+    // Bulk insert all new items
+    if (newItemIds.length > 0) {
+      await db
+        .insert(listItems)
+        .values(
+          newItemIds.map(id => ({
+            listId,
+            itemId: id,
+          }))
+        );
+    }
 
-    return NextResponse.json({ item: newItem }, { status: 201 });
+    if (isBulk) {
+      return NextResponse.json(
+        { added: newItemIds.length, alreadyExists: alreadyExistsCount },
+        { status: 201 }
+      );
+    } else {
+      // For single item requests, return the created item for backward compatibility
+      const [newItem] = await db
+        .select()
+        .from(listItems)
+        .where(and(eq(listItems.listId, listId), eq(listItems.itemId, itemId)))
+        .limit(1);
+
+      return NextResponse.json({ item: newItem }, { status: 201 });
+    }
   } catch (error) {
     console.error('List items API POST error:', error);
     return NextResponse.json({ error: 'Failed to add item to list' }, { status: 500 });

@@ -174,11 +174,23 @@ export default function AdminPage() {
   }, [fetchStats, fetchEnrichmentStatus, fetchIngestionSettings]);
 
   useEffect(() => {
-    if (enrichmentStatus?.isRunning) {
-      const interval = setInterval(fetchEnrichmentStatus, 2000);
-      return () => clearInterval(interval);
-    }
+    // Always poll for enrichment status: 2s when running, 10s when idle
+    const pollInterval = enrichmentStatus?.isRunning ? 2000 : 10000;
+    const interval = setInterval(fetchEnrichmentStatus, pollInterval);
+    return () => clearInterval(interval);
   }, [enrichmentStatus?.isRunning, fetchEnrichmentStatus]);
+
+  useEffect(() => {
+    // Listen for visibility changes and refetch immediately when tab gets focus
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchEnrichmentStatus();
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [fetchEnrichmentStatus]);
 
   const handleIngest = async () => {
     setIsIngesting(true);

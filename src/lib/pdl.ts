@@ -209,8 +209,6 @@ export async function enrichPersonPDL(
               size: 5,
             };
             
-            console.log('[PDL] Search API query:', JSON.stringify(esQuery, null, 2));
-            
             const response = await fetch(`${PDL_API_BASE}/person/search`, {
               method: 'POST',
               headers: {
@@ -220,9 +218,7 @@ export async function enrichPersonPDL(
               body: JSON.stringify(esQuery),
             });
 
-            console.log('[PDL] Search response status:', response.status);
             const responseText = await response.text();
-            console.log('[PDL] Search response body:', responseText.slice(0, 1000));
 
             if (response.status === 404) {
               return { found: false };
@@ -297,8 +293,6 @@ export async function enrichPersonPDL(
           params.append('pretty', 'true');
           params.append('titlecase', 'true');
 
-          console.log('[PDL] Enrich API params:', Object.fromEntries(params));
-
           const response = await fetch(`${PDL_API_BASE}/person/enrich?${params}`, {
             method: 'GET',
             headers: {
@@ -306,9 +300,7 @@ export async function enrichPersonPDL(
             },
           });
 
-          console.log('[PDL] Enrich response status:', response.status);
           const responseText = await response.text();
-          console.log('[PDL] Enrich response body:', responseText.slice(0, 1000));
 
           if (response.status === 404) {
             console.log('[PDL] Enrich: No match found');
@@ -469,14 +461,10 @@ export async function enrichCompanyPDL(
   }
 
   async function attemptEnrich(params: URLSearchParams, attemptLabel: string): Promise<{ found: boolean; data?: any }> {
-    console.log(`[PDL] Company enrich ${attemptLabel}:`, Object.fromEntries(params));
-
     const response = await fetch(`${PDL_API_BASE}/company/enrich?${params}`, {
       method: 'GET',
       headers: { 'X-Api-Key': apiKey! },
     });
-
-    console.log(`[PDL] Company enrich ${attemptLabel} status:`, response.status);
 
     if (response.status === 404) {
       return { found: false };

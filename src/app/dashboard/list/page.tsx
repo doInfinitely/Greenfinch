@@ -81,6 +81,7 @@ export default function ListPage() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [selectedProperties, setSelectedProperties] = useState<Set<string>>(new Set());
   const [showAddToListModal, setShowAddToListModal] = useState(false);
+  const [isEnriching, setIsEnriching] = useState(false);
   const { getEnrichmentStatus } = useEnrichmentQueue();
   const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
 
@@ -234,6 +235,8 @@ export default function ListPage() {
   const { startEnrichment } = useEnrichment();
 
   const handleRunAIResearch = useCallback(async () => {
+    if (isEnriching) return;
+    
     const selectedIds = Array.from(selectedProperties);
     const selectedProps = properties.filter(p => p.propertyId && selectedIds.includes(p.propertyId));
     
@@ -246,6 +249,7 @@ export default function ListPage() {
       return;
     }
     
+    setIsEnriching(true);
     const propertyKeys = selectedProps.map(p => p.propertyKey);
     
     try {
@@ -272,16 +276,17 @@ export default function ListPage() {
         title: 'AI Research Started',
         description: `Queued ${selectedProps.length} properties for batch enrichment. Check the enrichment queue for progress.`,
       });
+      setSelectedProperties(new Set());
     } catch (error) {
       toast({
         title: 'Could not start enrichment',
         description: 'Something went wrong. Please try again.',
         variant: 'destructive',
       });
+    } finally {
+      setIsEnriching(false);
     }
-    
-    setSelectedProperties(new Set());
-  }, [selectedProperties, properties, toast]);
+  }, [selectedProperties, properties, toast, isEnriching]);
 
   const handleAddToList = useCallback(() => {
     setShowAddToListModal(true);
@@ -471,6 +476,18 @@ export default function ListPage() {
             </div>
             
             <div className="md:hidden divide-y divide-gray-200">
+              <div className="flex items-center gap-3 px-4 py-2 bg-gray-50 border-b border-gray-200">
+                <Checkbox
+                  checked={allSelected}
+                  indeterminate={someSelected && !allSelected}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                  data-testid="checkbox-mobile-select-all"
+                  aria-label="Select all properties on this page"
+                />
+                <span className="text-sm text-gray-600">
+                  {allSelected ? 'Deselect all' : 'Select all'} ({displayProperties.length})
+                </span>
+              </div>
               {displayProperties.map((p: Property) => (
                 <div
                   key={p.propertyKey}
@@ -617,10 +634,15 @@ export default function ListPage() {
           variant="outline"
           size="sm"
           onClick={handleRunAIResearch}
+          disabled={isEnriching}
           data-testid="button-bulk-ai-research"
         >
-          <Sparkles className="h-4 w-4" />
-          Run AI Research
+          {isEnriching ? (
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current" />
+          ) : (
+            <Sparkles className="h-4 w-4" />
+          )}
+          {isEnriching ? 'Starting...' : 'Run AI Research'}
         </Button>
         <Button
           variant="outline"

@@ -16,6 +16,8 @@ const COST_PER_CREDIT: Record<EnrichmentProvider, number> = {
   enrichlayer: 0.02,
 };
 
+let lastCostTrackerError = 0;
+
 interface TrackCostParams {
   provider: EnrichmentProvider;
   endpoint: string;
@@ -51,7 +53,10 @@ export async function trackEnrichmentCost(params: TrackCostParams): Promise<void
       metadata: params.metadata ?? null,
     });
   } catch (error) {
-    console.error('[CostTracker] Failed to log enrichment cost:', error);
+    if (Date.now() - lastCostTrackerError > 60000) {
+      console.error('[CostTracker] Failed to log enrichment cost:', error);
+      lastCostTrackerError = Date.now();
+    }
   }
 }
 
