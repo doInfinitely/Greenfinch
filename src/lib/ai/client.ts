@@ -124,6 +124,7 @@ export interface GeminiCallRecord {
   totalTokens: number;
   costUsd: number;
   searchGroundingUsed: boolean;
+  searchGroundingQueryCount: number;
   searchGroundingCostUsd: number;
   timestamp: number;
   error?: boolean;
@@ -150,6 +151,7 @@ function logCall(stageName: string, usage: GeminiTokenUsage, error = false): voi
     totalTokens: usage.totalTokens,
     costUsd: computeGeminiCostUsd(usage),
     searchGroundingUsed: usage.searchGroundingUsed,
+    searchGroundingQueryCount: usage.searchGroundingQueryCount,
     searchGroundingCostUsd: usage.searchGroundingCostUsd,
     timestamp: Date.now(),
     error,
@@ -164,21 +166,28 @@ function isGemini3Model(model: string): boolean {
   return model.includes('gemini-3') || model.includes('gemini-3.');
 }
 
-function detectSearchGrounding(candidate: any): boolean {
-  if (!candidate?.groundingMetadata) return false;
+interface SearchGroundingInfo {
+  used: boolean;
+  queryCount: number;
+}
+
+function detectSearchGrounding(candidate: any): SearchGroundingInfo {
+  if (!candidate?.groundingMetadata) return { used: false, queryCount: 0 };
   const gm = candidate.groundingMetadata;
-  return !!(
+  const queryCount = Array.isArray(gm.webSearchQueries) ? gm.webSearchQueries.length : 0;
+  const used = !!(
     gm.searchEntryPoint ||
     (gm.groundingChunks && gm.groundingChunks.length > 0) ||
     (gm.groundingSupports && gm.groundingSupports.length > 0) ||
-    (gm.webSearchQueries && gm.webSearchQueries.length > 0)
+    queryCount > 0
   );
+  return { used, queryCount: used ? Math.max(queryCount, 1) : 0 };
 }
 
-function computeSearchGroundingCost(model: string, searchUsed: boolean): number {
-  if (!searchUsed) return 0;
+function computeSearchGroundingCost(model: string, grounding: SearchGroundingInfo): number {
+  if (!grounding.used) return 0;
   if (isGemini3Model(model)) {
-    return GEMINI_PRICING.SEARCH_GROUNDING_PER_SEARCH_GEMINI3;
+    return grounding.queryCount * GEMINI_PRICING.SEARCH_GROUNDING_PER_QUERY_GEMINI3;
   }
   return GEMINI_PRICING.SEARCH_GROUNDING_PER_PROMPT_OTHER;
 }
@@ -187,15 +196,15 @@ function computeSearchGroundingCost(model: string, searchUsed: boolean): number 
 // Token extraction
 // ---------------------------------------------------------------------------
 
-function extractTokenUsage(meta: any, model: string, searchGroundingUsed: boolean): GeminiTokenUsage {
+function extractTokenUsage(meta: any, model: string, grounding: SearchGroundingInfo): GeminiTokenUsage {
   const basePromptTokens = meta.promptTokenCount ?? 0;
   const toolUseTokens = meta.toolUsePromptTokenCount ?? 0;
   const promptTokens = basePromptTokens + toolUseTokens;
   const responseTokens = meta.responseTokenCount ?? meta.candidatesTokenCount ?? 0;
   const thinkingTokens = meta.thoughtsTokenCount ?? 0;
   const totalTokens = meta.totalTokenCount ?? 0;
-  const searchGroundingCostUsd = computeSearchGroundingCost(model, searchGroundingUsed);
-  return { promptTokens, responseTokens, thinkingTokens, totalTokens, searchGroundingUsed, searchGroundingCostUsd };
+  const searchGroundingCostUsd = computeSearchGroundingCost(model, grounding);
+  return { promptTokens, responseTokens, thinkingTokens, totalTokens, searchGroundingUsed: grounding.used, searchGroundingQueryCount: grounding.queryCount, searchGroundingCostUsd };
 }
 
 // ---------------------------------------------------------------------------
@@ -268,8 +277,8 @@ export async function streamGeminiResponse(
     const errMsg = streamError instanceof Error ? streamError.message : String(streamError);
 
     if (lastUsageMetadata) {
-      const searchUsed = detectSearchGrounding(lastCandidate);
-      const partialUsage = extractTokenUsage(lastUsageMetadata, model, searchUsed);
+      const partialGrounding = detectSearchGrounding(lastCandidate);
+      const partialUsage = extractTokenUsage(lastUsageMetadata, model, partialGrounding);
       const partialCost = computeGeminiCostUsd(partialUsage);
       console.error(`[Gemini:${tag}] STREAM ERROR with partial usage — raw metadata: ${JSON.stringify(lastUsageMetadata)}`);
       console.error(`[Gemini:${tag}] Partial tokens: prompt=${partialUsage.promptTokens} response=${partialUsage.responseTokens} thinking=${partialUsage.thinkingTokens} total=${partialUsage.totalTokens} | cost=$${partialCost.toFixed(6)}`);
@@ -286,7 +295,7 @@ export async function streamGeminiResponse(
           computedCostUsd: partialCost,
           groundingMetadata: lastCandidate?.groundingMetadata ?? null,
           candidateCount: lastCandidate ? 1 : 0,
-          searchGroundingUsed: searchUsed,
+          searchGroundingUsed: partialGrounding.used,
         },
       });
     } else {
@@ -314,16 +323,16 @@ export async function streamGeminiResponse(
   let parsedUsage: GeminiTokenUsage | null = null;
   let costUsd = 0;
 
-  const searchGroundingUsed = detectSearchGrounding(lastCandidate);
+  const grounding = detectSearchGrounding(lastCandidate);
 
   if (lastUsageMetadata) {
     console.log(`[Gemini:${tag}] RAW usageMetadata: ${JSON.stringify(lastUsageMetadata)}`);
 
-    parsedUsage = extractTokenUsage(lastUsageMetadata, model, searchGroundingUsed);
+    parsedUsage = extractTokenUsage(lastUsageMetadata, model, grounding);
     response.tokenUsage = parsedUsage;
     costUsd = computeGeminiCostUsd(parsedUsage);
 
-    const groundingNote = searchGroundingUsed ? ` | grounding=$${parsedUsage.searchGroundingCostUsd.toFixed(4)}` : '';
+    const groundingNote = grounding.used ? ` | grounding=${grounding.queryCount} queries=$${parsedUsage.searchGroundingCostUsd.toFixed(4)}` : '';
     console.log(`[Gemini:${tag}] Tokens: prompt=${parsedUsage.promptTokens} response=${parsedUsage.responseTokens} thinking=${parsedUsage.thinkingTokens} total=${parsedUsage.totalTokens} | computedCost=$${costUsd.toFixed(6)}${groundingNote}`);
     logCall(tag, parsedUsage);
 
@@ -345,7 +354,7 @@ export async function streamGeminiResponse(
       computedCostUsd: costUsd,
       groundingMetadata: lastCandidate?.groundingMetadata ?? null,
       candidateCount: lastCandidate ? 1 : 0,
-      searchGroundingUsed,
+      searchGroundingUsed: grounding.used,
     },
   });
 

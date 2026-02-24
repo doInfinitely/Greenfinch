@@ -13,6 +13,7 @@ export interface GeminiTokenUsage {
   thinkingTokens: number;
   totalTokens: number;
   searchGroundingUsed: boolean;
+  searchGroundingQueryCount: number;
   searchGroundingCostUsd: number;
 }
 

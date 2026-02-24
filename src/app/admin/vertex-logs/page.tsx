@@ -11,6 +11,7 @@ interface TokenUsage {
   thinkingTokens: number;
   totalTokens: number;
   searchGroundingUsed?: boolean;
+  searchGroundingQueryCount?: number;
   searchGroundingCostUsd?: number;
 }
 
@@ -429,6 +430,7 @@ export default function VertexLogsPage() {
   const totalCost = filteredEntries.reduce((sum, e) => sum + e.response.computedCostUsd, 0);
   const totalTokens = filteredEntries.reduce((sum, e) => sum + (e.response.parsedTokenUsage?.totalTokens ?? 0), 0);
   const searchGroundingCount = filteredEntries.filter(e => e.response.searchGroundingUsed).length;
+  const searchGroundingQueries = filteredEntries.reduce((sum, e) => sum + (e.response.parsedTokenUsage?.searchGroundingQueryCount ?? 0), 0);
   const searchGroundingCost = filteredEntries.reduce((sum, e) => sum + (e.response.parsedTokenUsage?.searchGroundingCostUsd ?? 0), 0);
   const errorCount = filteredEntries.filter(e => e.error).length;
 
@@ -482,7 +484,7 @@ export default function VertexLogsPage() {
           <div className={`text-2xl font-bold ${searchGroundingCount > 0 ? 'text-yellow-700' : 'text-gray-400'}`}>
             {searchGroundingCount} / {filteredEntries.length}
           </div>
-          <div className="text-xs text-gray-500">${searchGroundingCost.toFixed(4)} grounding cost</div>
+          <div className="text-xs text-gray-500">{searchGroundingQueries} queries · ${searchGroundingCost.toFixed(4)}</div>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4" data-testid="stat-total-cost">
           <div className="text-xs text-gray-500 font-medium">Computed Cost</div>

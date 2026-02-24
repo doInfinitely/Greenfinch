@@ -182,6 +182,7 @@ function logCostSummary(property: CommercialProperty): void {
   const totalCalls = callLog.length;
   const errorCalls = callLog.filter(c => c.error).length;
   const searchCalls = callLog.filter(c => c.searchGroundingUsed).length;
+  const totalQueries = callLog.reduce((acc, c) => acc + c.searchGroundingQueryCount, 0);
   const totals = callLog.reduce((acc, c) => ({
     prompt: acc.prompt + c.promptTokens,
     response: acc.response + c.responseTokens,
@@ -193,11 +194,11 @@ function logCostSummary(property: CommercialProperty): void {
 
   const propId = property.parcelId || property.accountNum;
   console.log(`\n========== GEMINI COST SUMMARY for ${propId} ==========`);
-  console.log(`Calls: ${totalCalls} total (${errorCalls} errors, ${searchCalls} with search grounding)`);
+  console.log(`Calls: ${totalCalls} total (${errorCalls} errors, ${searchCalls} with search grounding, ${totalQueries} total queries)`);
   for (const c of callLog) {
-    const gNote = c.searchGroundingUsed ? ' [search]' : '';
+    const gNote = c.searchGroundingUsed ? ` [${c.searchGroundingQueryCount}q=$${c.searchGroundingCostUsd.toFixed(4)}]` : '';
     console.log(`  ${c.error ? 'ERR' : 'OK '} ${c.stageName.padEnd(35)} prompt=${String(c.promptTokens).padStart(7)} resp=${String(c.responseTokens).padStart(7)} think=${String(c.thinkingTokens).padStart(7)} total=${String(c.totalTokens).padStart(7)} cost=$${c.costUsd.toFixed(6)}${gNote}`);
   }
-  console.log(`TOTALS:${' '.repeat(36)} prompt=${String(totals.prompt).padStart(7)} resp=${String(totals.response).padStart(7)} think=${String(totals.thinking).padStart(7)} total=${String(totals.total).padStart(7)} cost=$${totals.cost.toFixed(6)} (grounding=$${totals.groundingCost.toFixed(4)})`);
+  console.log(`TOTALS:${' '.repeat(36)} prompt=${String(totals.prompt).padStart(7)} resp=${String(totals.response).padStart(7)} think=${String(totals.thinking).padStart(7)} total=${String(totals.total).padStart(7)} cost=$${totals.cost.toFixed(6)} (grounding=${totalQueries}q=$${totals.groundingCost.toFixed(4)})`);
   console.log(`==========================================================\n`);
 }
