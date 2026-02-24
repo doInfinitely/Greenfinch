@@ -2,26 +2,14 @@ import { db } from '@/lib/db';
 import { enrichmentCostEvents } from '@/lib/schema';
 import type { EnrichmentProvider } from '@/lib/schema';
 import type { GeminiTokenUsage } from '@/lib/ai/types';
-import { computeGeminiCostUsd } from '@/lib/ai/config';
+import {
+  computeGeminiCostUsd,
+  PDL_PRICING,
+  PROVIDER_PRICING,
+  DEFAULT_COST_PER_CREDIT,
+} from '@/lib/pricing-config';
 
-const COST_PER_CREDIT: Record<EnrichmentProvider, number> = {
-  pdl: 0.035,
-  apollo: 0.01,
-  hunter: 0.01,
-  findymail: 0.05,
-  crustdata: 0.05,
-  zerobounce: 0.008,
-  gemini: 0.005,
-  mapbox: 0.005,
-  serp: 0.01,
-  leadmagic: 0.03,
-  enrichlayer: 0.02,
-};
-
-export const PDL_COST = {
-  COMPANY_ENRICH_SUCCESS: 0.035,
-  PERSON_ENRICH_SUCCESS: 0.07,
-} as const;
+export { PDL_PRICING as PDL_COST } from '@/lib/pricing-config';
 
 let lastCostTrackerError = 0;
 
@@ -50,7 +38,8 @@ export async function trackEnrichmentCost(params: TrackCostParams): Promise<void
   } else if (params.provider === 'gemini' && params.tokenUsage) {
     estimatedCostUsd = computeGeminiCostUsd(params.tokenUsage);
   } else {
-    const costPerCredit = COST_PER_CREDIT[params.provider] ?? 0.01;
+    const providerKey = params.provider as keyof typeof PROVIDER_PRICING;
+    const costPerCredit = PROVIDER_PRICING[providerKey] ?? DEFAULT_COST_PER_CREDIT;
     estimatedCostUsd = credits * costPerCredit;
   }
 

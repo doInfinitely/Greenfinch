@@ -129,13 +129,15 @@ export async function streamGeminiResponse(
   }
 
   if (lastUsageMetadata) {
-    const promptTokens = lastUsageMetadata.promptTokenCount ?? 0;
+    const basePromptTokens = lastUsageMetadata.promptTokenCount ?? 0;
+    const toolUseTokens = lastUsageMetadata.toolUsePromptTokenCount ?? 0;
+    const promptTokens = basePromptTokens + toolUseTokens;
     const responseTokens = lastUsageMetadata.responseTokenCount ?? lastUsageMetadata.candidatesTokenCount ?? 0;
     const thinkingTokens = lastUsageMetadata.thoughtsTokenCount ?? 0;
     const totalTokens = lastUsageMetadata.totalTokenCount ?? 0;
 
     if (promptTokens === 0 && responseTokens === 0 && totalTokens === 0) {
-      console.warn('[Gemini] usageMetadata present but all token counts are 0. Raw metadata:', JSON.stringify(lastUsageMetadata));
+      console.warn('[Gemini] usageMetadata present but all token counts are 0. Raw keys:', Object.keys(lastUsageMetadata).join(', '));
     }
 
     response.tokenUsage = {

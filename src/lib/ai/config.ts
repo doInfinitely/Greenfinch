@@ -20,26 +20,10 @@ export const DEFAULT_TEMPERATURE = 1.0;
 export const CLEANUP_TEMPERATURE = 0.2;
 
 // ---------------------------------------------------------------------------
-// Gemini Flash 3 Preview Pricing (USD per token)
-//
-// Source: https://ai.google.dev/gemini-api/docs/pricing (Feb 2026)
-//   Input:  $0.50 / 1M tokens
-//   Output: $3.00 / 1M tokens  (thinking tokens count as output)
+// Gemini Pricing — re-exported from centralized pricing-config.ts
 // ---------------------------------------------------------------------------
 
-export const GEMINI_PRICING = {
-  INPUT_PER_TOKEN:  0.50 / 1_000_000,   // $0.0000005
-  OUTPUT_PER_TOKEN: 3.00 / 1_000_000,   // $0.000003
-} as const;
-
-import type { GeminiTokenUsage } from './types';
-
-export function computeGeminiCostUsd(usage: GeminiTokenUsage | undefined): number {
-  if (!usage) return 0;
-  const inputCost  = usage.promptTokens * GEMINI_PRICING.INPUT_PER_TOKEN;
-  const outputCost = (usage.responseTokens + usage.thinkingTokens) * GEMINI_PRICING.OUTPUT_PER_TOKEN;
-  return inputCost + outputCost;
-}
+export { GEMINI_PRICING, computeGeminiCostUsd } from '@/lib/pricing-config';
 
 // ---------------------------------------------------------------------------
 // Thinking Levels
