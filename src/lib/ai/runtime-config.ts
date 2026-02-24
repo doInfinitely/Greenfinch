@@ -34,7 +34,6 @@ export const STAGE_LABELS: Record<StageKey, string> = {
 
 export const AVAILABLE_MODELS = [
   'gemini-3-flash-preview',
-  'gemini-2.5-flash-preview-05-20',
   'gemini-2.5-pro-preview-05-06',
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
@@ -76,9 +75,15 @@ function loadConfig(): RuntimeConfig {
       const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
       const parsed = JSON.parse(raw) as Partial<RuntimeConfig>;
       const config = structuredClone(FACTORY_DEFAULTS);
+      const validModels: readonly string[] = AVAILABLE_MODELS;
       for (const key of Object.keys(FACTORY_DEFAULTS) as StageKey[]) {
         if (parsed[key]) {
-          config[key] = { ...FACTORY_DEFAULTS[key], ...parsed[key] };
+          const merged = { ...FACTORY_DEFAULTS[key], ...parsed[key] };
+          if (!validModels.includes(merged.model)) {
+            console.warn(`[AIConfig] Stage ${key} has unavailable model "${merged.model}", falling back to default "${FACTORY_DEFAULTS[key].model}"`);
+            merged.model = FACTORY_DEFAULTS[key].model;
+          }
+          config[key] = merged;
         }
       }
       _cached = config;
