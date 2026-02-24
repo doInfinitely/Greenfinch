@@ -19,6 +19,14 @@ import {
   dataIssues,
   listItems,
   potentialDuplicates as potentialDuplicatesTable,
+  propertyFlags,
+  propertyPipeline,
+  propertyNotes,
+  propertyActivity,
+  propertyActions,
+  propertyViews,
+  adminAuditLog,
+  properties,
 } from './schema';
 import { eq, sql, and, or, isNotNull } from 'drizzle-orm';
 
@@ -634,4 +642,75 @@ async function flagPotentialDuplicate(
   } catch (err) {
     console.error(`[Dedup] Error flagging potential duplicate: ${err}`);
   }
+}
+
+/**
+ * Merge two properties — re-links all junction table rows from mergeId to keepId,
+ * then soft-deletes the merged-away property by setting enrichmentStatus = 'merged'.
+ */
+export async function mergeProperties(keepId: string, mergeId: string): Promise<void> {
+  console.log(`[Dedup] Merging property ${mergeId} into ${keepId}`);
+
+  const moveRows = async (table: any) => {
+    const rows = await db.select().from(table).where(eq(table.propertyId, mergeId));
+    for (const row of rows) {
+      try {
+        await db.update(table).set({ propertyId: keepId }).where(eq(table.id, (row as any).id));
+      } catch {
+        await db.delete(table).where(eq(table.id, (row as any).id));
+      }
+    }
+  };
+
+  const movePropertyContacts = async () => {
+    const keepLinks = await db.select({ contactId: propertyContacts.contactId }).from(propertyContacts).where(eq(propertyContacts.propertyId, keepId));
+    const keepContactIds = new Set(keepLinks.map(l => l.contactId));
+    const mergeLinks = await db.select().from(propertyContacts).where(eq(propertyContacts.propertyId, mergeId));
+    for (const link of mergeLinks) {
+      if (keepContactIds.has(link.contactId)) {
+        await db.delete(propertyContacts).where(eq(propertyContacts.id, link.id));
+      } else {
+        await db.update(propertyContacts).set({ propertyId: keepId }).where(eq(propertyContacts.id, link.id));
+        keepContactIds.add(link.contactId);
+      }
+    }
+  };
+
+  const movePropertyOrganizations = async () => {
+    const keepLinks = await db.select({ orgId: propertyOrganizations.orgId }).from(propertyOrganizations).where(eq(propertyOrganizations.propertyId, keepId));
+    const keepOrgIds = new Set(keepLinks.map(l => l.orgId));
+    const mergeLinks = await db.select().from(propertyOrganizations).where(eq(propertyOrganizations.propertyId, mergeId));
+    for (const link of mergeLinks) {
+      if (keepOrgIds.has(link.orgId)) {
+        await db.delete(propertyOrganizations).where(eq(propertyOrganizations.id, link.id));
+      } else {
+        await db.update(propertyOrganizations).set({ propertyId: keepId }).where(eq(propertyOrganizations.id, link.id));
+        keepOrgIds.add(link.orgId);
+      }
+    }
+  };
+
+  await movePropertyContacts();
+  await movePropertyOrganizations();
+  await moveRows(propertyFlags);
+  await moveRows(propertyPipeline);
+  await moveRows(propertyNotes);
+  await moveRows(propertyActivity);
+  await moveRows(propertyActions);
+  await moveRows(propertyViews);
+
+  await db.update(properties)
+    .set({ enrichmentStatus: 'merged', aiSummary: `Merged into property ${keepId}` })
+    .where(eq(properties.id, mergeId));
+
+  try {
+    await db.insert(adminAuditLog).values({
+      action: 'merge_property',
+      targetId: mergeId,
+      details: { keepId, mergeId } as any,
+    });
+  } catch {
+  }
+
+  console.log(`[Dedup] Property merge complete: ${mergeId} → ${keepId}`);
 }

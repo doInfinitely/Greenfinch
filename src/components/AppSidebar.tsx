@@ -24,6 +24,8 @@ import {
   Database,
   Braces,
   SlidersHorizontal,
+  Link2,
+  Merge,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EnrichmentQueuePopover from '@/components/EnrichmentQueuePopover';
@@ -85,6 +87,9 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         { href: '/admin/database', label: 'Database', icon: <Database className="w-4 h-4" /> },
         { href: '/admin/ai-config', label: 'AI Config', icon: <SlidersHorizontal className="w-4 h-4" /> },
         { href: '/admin/vertex-logs', label: 'Vertex AI Debug', icon: <Braces className="w-4 h-4" /> },
+        { href: '/admin/linkedin-overrides', label: 'LinkedIn Overrides', icon: <Link2 className="w-4 h-4" /> },
+        { href: '/admin/merge-contacts', label: 'Merge Contacts', icon: <Merge className="w-4 h-4" /> },
+        { href: '/admin/merge-properties', label: 'Merge Properties', icon: <Merge className="w-4 h-4" /> },
       ],
     },
     {

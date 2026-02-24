@@ -857,6 +857,11 @@ export async function runCascadeEnrichmentOnSavedRecords(
       }
       updateData.providerId = result.providerId;
 
+      if (result.linkedinRejectedUrl) {
+        updateData.linkedinRejectedUrl = result.linkedinRejectedUrl;
+        updateData.linkedinRejectedSource = result.linkedinRejectedSource;
+      }
+
       const cleanUpdate = Object.fromEntries(
         Object.entries(updateData).filter(([_, v]) => v !== undefined)
       );

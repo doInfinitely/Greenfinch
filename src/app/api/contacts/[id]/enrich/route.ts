@@ -124,6 +124,11 @@ export async function POST(
       updateData.linkedinStatus = result.confidenceFlag === 'verified' ? 'verified' : 'enriched';
     }
 
+    if (result.linkedinRejectedUrl) {
+      updateData.linkedinRejectedUrl = result.linkedinRejectedUrl;
+      updateData.linkedinRejectedSource = result.linkedinRejectedSource;
+    }
+
     if (result.email) {
       updateData.email = result.email;
       updateData.normalizedEmail = result.email.toLowerCase();

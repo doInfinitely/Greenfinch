@@ -50,6 +50,10 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Batch Enrichment Access**: All authenticated users can run batch enrichment (capped for non-admins).
 - **Batch Property Ingestion**: Properties are upserted in batches for efficiency.
 - **Phone Research Waterfall**: 4-step phone lookup cascade using multiple providers.
+- **LinkedIn Slug Validation**: LinkedIn URLs from all providers (Findymail, PDL, Crustdata) are validated against the contact's name. Slugs that don't match are stored in `linkedin_rejected_url` / `linkedin_rejected_source` for admin review instead of being saved. Hashed PDL IDs (ACw...) are skipped. Uses Carlton Northern nickname dataset (~1300 entries, bidirectional, public domain) for nickname-aware matching (e.g. katie↔katherine, bob↔robert). Spelling variants (erik/eric) are intentionally NOT treated as equivalent.
+- **Admin LinkedIn Overrides**: `/admin/linkedin-overrides` — review, approve, custom-set, or dismiss rejected LinkedIn URLs per contact.
+- **Admin Contact Merge**: `/admin/merge-contacts` — search and manually merge any two contacts with swap-direction support.
+- **Admin Property Merge**: `/admin/merge-properties` — search and manually merge any two properties; re-links all junction table rows, soft-deletes the merged-away property (`enrichmentStatus = 'merged'`).
 - **Map Marker Colors**: All property markers and clusters are solid green (#16a34a) with white stroke.
 - **Parcel Resolution**: Uses a pre-computed client-side parcel index for instant hash lookup.
 - **Map Viewport Persistence**: Map center/zoom saved to sessionStorage.

@@ -1,22 +1,23 @@
 /**
  * Cascade Enrichment Service
  * 
- * Contact Pipeline (5 stages):
- *   Stage 1: Input Validation
- *   Stage 2: Email & LinkedIn Discovery (Findymail Verify → Findymail Finder → Hunter Finder → Findymail Reverse Email)
- *   Stage 3: PDL Person Enrichment
- *   Stage 3.5: SERP LinkedIn Discovery (Google search fallback when no LinkedIn found)
- *   Stage 4: Crustdata Verification (conditional — when PDL domain != input domain)
+ * Contact Pipeline:
+ *   [Contact] Input Validation
+ *   [Contact] Email Discovery → Verify Email (Findymail) → Find Email (Findymail) → Find Email (Hunter) → LinkedIn via Reverse Email
+ *   [Contact] Person Match (PDL)
+ *   [Contact] LinkedIn Discovery (SERP) — fallback when no LinkedIn found
+ *   [Contact] Verify (Crustdata) — conditional when PDL domain ≠ input domain
  * 
- * Organization Pipeline (2 stages):
- *   Stage 1: PDL Company Enrichment
- *   Stage 2: Crustdata Company Enrichment (verification/supplementation)
+ * Organization Pipeline:
+ *   [OrgEnrich] Company Match (PDL)
+ *   [OrgEnrich] Company Verify (Crustdata) — fallback when PDL has no match
  * 
  * Key behaviors:
  * - Store raw API responses (pdl_raw_response, crustdata_raw_response) for auditability
  * - Confidence flags: "verified" | "pdl_matched" | "unverified" | "email_only"
  * - Domain alias/fuzzy comparison for Crustdata trigger condition
  * - Skip contacts with only a first name (no last name)
+ * - LinkedIn slug validation: rejects URLs where the slug doesn't match the contact's name
  */
 
 import { enrichCompanyPDL, enrichPersonPDL } from './pdl';
@@ -25,6 +26,7 @@ import { verifyEmail as verifyEmailFindymail, findEmailByName, findLinkedInByEma
 import { findEmail as findEmailHunter } from './hunter';
 import { searchLinkedInProfile } from './serp-linkedin';
 import { normalizeDomain } from './normalization';
+import { validateLinkedInSlug } from './linkedin-validation';
 
 export type ConfidenceFlag = 'verified' | 'pdl_matched' | 'unverified' | 'email_only' | 'insufficient_input' | 'no_match';
 export type EmailSource = 'input_verified' | 'input_invalid' | 'findymail_finder' | 'hunter_finder' | null;
@@ -146,6 +148,9 @@ export interface ContactEnrichmentResult {
   
   employerLeftDetected: boolean;
   employerLeftReason: string | null;
+
+  linkedinRejectedUrl: string | null;
+  linkedinRejectedSource: string | null;
 }
 
 const DOMAIN_ALIASES: Record<string, string[]> = {
@@ -225,7 +230,7 @@ export async function enrichOrganizationCascade(
   options: { name?: string; linkedinUrl?: string } = {}
 ): Promise<OrganizationEnrichmentResult> {
   const normalizedDomain = normalizeDomain(domain);
-  console.log(`[CascadeEnrichment] Starting org enrichment (PDL → Crustdata fallback) for domain: ${normalizedDomain}`);
+  console.log(`[OrgEnrich] Starting enrichment (PDL → Crustdata fallback) for domain: ${normalizedDomain}`);
   
   const emptyResult: OrganizationEnrichmentResult = {
     found: false,
@@ -261,20 +266,20 @@ export async function enrichOrganizationCascade(
   let pdlResult: any = null;
   
   try {
-    console.log('[CascadeEnrichment] Stage 1: PDL Company Enrichment...');
+    console.log('[OrgEnrich] Company Match (PDL)...');
     const pdl = await enrichCompanyPDL(normalizedDomain, {
       name: options.name,
       linkedinUrl: options.linkedinUrl,
     });
     
     if (pdl.found) {
-      console.log(`[CascadeEnrichment] PDL found company: ${pdl.name}`);
+      console.log(`[OrgEnrich] PDL found company: ${pdl.name}`);
       pdlResult = pdl;
     } else {
-      console.log('[CascadeEnrichment] PDL: no match found');
+      console.log('[OrgEnrich] PDL: no match found');
     }
   } catch (error) {
-    console.warn('[CascadeEnrichment] PDL company enrichment failed:', error instanceof Error ? error.message : error);
+    console.warn('[OrgEnrich] PDL enrichment failed:', error instanceof Error ? error.message : error);
   }
   
   if (pdlResult) {
@@ -315,27 +320,27 @@ export async function enrichOrganizationCascade(
       crustdataRaw: null,
     };
     
-    console.log(`[CascadeEnrichment] Org enrichment complete for ${normalizedDomain}: ${result.name} (pdl)`);
+    console.log(`[OrgEnrich] Complete for ${normalizedDomain}: ${result.name} (pdl)`);
     return result;
   }
   
   let crustdataResult: any = null;
   try {
-    console.log('[CascadeEnrichment] Stage 2 (fallback): Crustdata Company Enrichment...');
+    console.log('[OrgEnrich] Company Verify (Crustdata)...');
     const crustdata = await enrichCompanyCrustdata(normalizedDomain);
     
     if (crustdata.found) {
-      console.log(`[CascadeEnrichment] Crustdata found company: ${crustdata.companyName}`);
+      console.log(`[OrgEnrich] Crustdata found company: ${crustdata.companyName}`);
       crustdataResult = crustdata;
     } else {
-      console.log('[CascadeEnrichment] Crustdata: no match found');
+      console.log('[OrgEnrich] Crustdata: no match found');
     }
   } catch (error) {
-    console.warn('[CascadeEnrichment] Crustdata company enrichment failed:', error instanceof Error ? error.message : error);
+    console.warn('[OrgEnrich] Crustdata enrichment failed:', error instanceof Error ? error.message : error);
   }
   
   if (!crustdataResult) {
-    console.log(`[CascadeEnrichment] No provider found match for domain: ${normalizedDomain}`);
+    console.log(`[OrgEnrich] No provider found match for domain: ${normalizedDomain}`);
     return emptyResult;
   }
   
@@ -376,7 +381,7 @@ export async function enrichOrganizationCascade(
     crustdataRaw: crustdataResult.raw || null,
   };
   
-  console.log(`[CascadeEnrichment] Org enrichment complete for ${normalizedDomain}: ${result.name} (crustdata fallback)`);
+  console.log(`[OrgEnrich] Complete for ${normalizedDomain}: ${result.name} (crustdata fallback)`);
   return result;
 }
 
@@ -394,17 +399,17 @@ export async function enrichContactCascade(
   const { fullName, email, companyDomain, companyName, title, location, linkedinUrl: existingLinkedin } = input;
   const { firstName, lastName } = parseFullName(fullName);
   
-  console.log(`[CascadeEnrichment] Starting 5-stage contact enrichment for: ${fullName} (${email || 'no email'})`);
+  console.log(`[Contact] Starting enrichment for: ${fullName} (${email || 'no email'})`);
   
   // ═══════════════════════════════════════════════════════════════
   // STAGE 1: Input Validation
   // ═══════════════════════════════════════════════════════════════
   if (!lastName || lastName.trim() === '') {
-    console.log(`[CascadeEnrichment] Single-name contact "${fullName}" — attempting best-effort enrichment`);
+    console.log(`[Contact] Single-name contact "${fullName}" — attempting best-effort enrichment`);
 
     if (companyDomain) {
       try {
-        console.log(`[CascadeEnrichment] Trying PDL company search for "${firstName}" at ${companyDomain}`);
+        console.log(`[Contact] Trying PDL company search for "${firstName}" at ${companyDomain}`);
         const { enrichPersonPDL } = await import('./pdl');
         const pdlResult = await enrichPersonPDL(firstName, '', companyDomain, {
           companyName: companyName || undefined,
@@ -414,7 +419,7 @@ export async function enrichContactCascade(
 
         if (pdlResult.found) {
           const resolvedLastName = pdlResult.lastName || '';
-          console.log(`[CascadeEnrichment] PDL resolved single-name "${fullName}" → ${pdlResult.firstName} ${resolvedLastName}`);
+          console.log(`[Contact] PDL resolved single-name "${fullName}" → ${pdlResult.firstName} ${resolvedLastName}`);
 
           const result = buildEmptyResult(
             `${pdlResult.firstName || firstName} ${resolvedLastName}`.trim(),
@@ -450,31 +455,33 @@ export async function enrichContactCascade(
           return result;
         }
       } catch (err) {
-        console.warn(`[CascadeEnrichment] PDL lookup failed for single-name "${fullName}":`, err instanceof Error ? err.message : err);
+        console.warn(`[Contact] PDL lookup failed for single-name "${fullName}":`, err instanceof Error ? err.message : err);
       }
     }
 
-    console.log(`[CascadeEnrichment] Could not resolve single-name "${fullName}" — insufficient input`);
+    console.log(`[Contact] Could not resolve single-name "${fullName}" — insufficient input`);
     return buildEmptyResult(fullName, firstName, lastName, 'insufficient_input');
   }
   
   // ═══════════════════════════════════════════════════════════════
-  // STAGE 2: Email & LinkedIn Discovery Waterfall
+  // EMAIL DISCOVERY: Verify → Find → LinkedIn via Reverse Email
   // ═══════════════════════════════════════════════════════════════
-  console.log('[CascadeEnrichment] Stage 2: Email & LinkedIn Discovery...');
+  console.log('[Contact] Email Discovery...');
   
   let verifiedEmail: string | null = null;
   let emailSource: EmailSource = null;
   let emailVerified = false;
   let emailStatus: 'valid' | 'invalid' | 'catch-all' | 'unknown' | null = null;
   let foundLinkedin: string | null = existingLinkedin || null;
+  let rejectedLinkedinUrl: string | null = null;
+  let rejectedLinkedinSource: string | null = null;
   let findymailVerified: boolean | null = null;
   let findymailVerifyStatus: string | null = null;
   
   // Step 2.1 — Validate Existing Email (Findymail Verify)
   if (email) {
     try {
-      console.log(`[CascadeEnrichment] Step 2.1: Validating existing email with Findymail: ${email}`);
+      console.log(`[Contact] Step: Verify Email (Findymail): ${email}`);
       const verifyResult = await verifyEmailFindymail(email);
       findymailVerified = verifyResult.status === 'valid';
       findymailVerifyStatus = verifyResult.rawStatus || verifyResult.status;
@@ -484,14 +491,14 @@ export async function enrichContactCascade(
         emailSource = 'input_verified';
         emailVerified = true;
         emailStatus = 'valid';
-        console.log(`[CascadeEnrichment] Email verified: ${email}`);
+        console.log(`[Contact] Email verified: ${email}`);
       } else {
         emailSource = 'input_invalid';
         emailStatus = verifyResult.status;
-        console.log(`[CascadeEnrichment] Email ${verifyResult.status}: ${email}, continuing discovery...`);
+        console.log(`[Contact] Email ${verifyResult.status}: ${email}, continuing discovery...`);
       }
     } catch (error) {
-      console.warn('[CascadeEnrichment] Findymail verify failed:', error);
+      console.warn('[Contact] Findymail verify failed:', error);
       emailSource = 'input_invalid';
       emailStatus = 'unknown';
     }
@@ -500,7 +507,7 @@ export async function enrichContactCascade(
   // Step 2.2 — Find Email via Findymail (if no valid email yet)
   if (!emailVerified && companyDomain) {
     try {
-      console.log(`[CascadeEnrichment] Step 2.2: Finding email via Findymail for ${firstName} ${lastName} @ ${companyDomain}`);
+      console.log(`[Contact] Step: Find Email (Findymail) for ${firstName} ${lastName} @ ${companyDomain}`);
       const findResult = await findEmailByName(firstName, lastName, companyDomain);
       
       if (findResult.found && findResult.email) {
@@ -508,28 +515,33 @@ export async function enrichContactCascade(
         emailSource = 'findymail_finder';
         emailVerified = true;
         emailStatus = 'valid';
-        console.log(`[CascadeEnrichment] Findymail found email: ${findResult.email}`);
+        console.log(`[Contact] Findymail found email: ${findResult.email}`);
         
         if (findResult.linkedinUrl && !foundLinkedin) {
-          foundLinkedin = findResult.linkedinUrl;
-          console.log(`[CascadeEnrichment] Findymail also found LinkedIn: ${foundLinkedin}`);
+          const slugCheck = validateLinkedInSlug(findResult.linkedinUrl, firstName, lastName);
+          if (slugCheck.valid) {
+            foundLinkedin = findResult.linkedinUrl;
+            console.log(`[Contact] Findymail also found LinkedIn: ${foundLinkedin}`);
+          } else {
+            console.warn(`[Contact] LinkedIn slug mismatch — expected "${firstName} ${lastName}", got "${slugCheck.slug}" from findymail — discarding`);
+          }
         }
       } else {
-        console.log('[CascadeEnrichment] Findymail finder: no email found');
+        console.log('[Contact] Findymail finder: no email found');
       }
     } catch (error) {
-      console.warn('[CascadeEnrichment] Findymail finder failed:', error);
+      console.warn('[Contact] Findymail finder failed:', error);
     }
   }
   
   // Step 2.3 — Find Email via Hunter.io (if still no valid email)
   if (!emailVerified && companyDomain) {
     try {
-      console.log(`[CascadeEnrichment] Step 2.3: Finding email via Hunter for ${firstName} ${lastName} @ ${companyDomain}`);
+      console.log(`[Contact] Step: Find Email (Hunter) for ${firstName} ${lastName} @ ${companyDomain}`);
       const hunterResult = await findEmailHunter(firstName, lastName, companyDomain);
       
       if (hunterResult.email && hunterResult.confidence >= 0.7) {
-        console.log(`[CascadeEnrichment] Hunter found email: ${hunterResult.email} (confidence: ${hunterResult.confidence})`);
+        console.log(`[Contact] Hunter found email: ${hunterResult.email} (confidence: ${hunterResult.confidence})`);
         
         try {
           const reVerify = await verifyEmailFindymail(hunterResult.email);
@@ -555,10 +567,10 @@ export async function enrichContactCascade(
           emailStatus = 'unknown';
         }
       } else {
-        console.log('[CascadeEnrichment] Hunter finder: no email found');
+        console.log('[Contact] Hunter finder: no email found');
       }
     } catch (error) {
-      console.warn('[CascadeEnrichment] Hunter finder failed:', error);
+      console.warn('[Contact] Hunter finder failed:', error);
     }
   }
   
@@ -566,26 +578,33 @@ export async function enrichContactCascade(
   const emailForReverseLookup = verifiedEmail || email;
   if (emailForReverseLookup && !foundLinkedin) {
     try {
-      console.log(`[CascadeEnrichment] Step 2.4: Reverse email lookup for LinkedIn via Findymail: ${emailForReverseLookup}`);
+      console.log(`[Contact] Step: LinkedIn via Reverse Email (Findymail): ${emailForReverseLookup}`);
       const reverseResult = await findLinkedInByEmail(emailForReverseLookup);
       
       if (reverseResult.found && reverseResult.linkedinUrl) {
-        foundLinkedin = reverseResult.linkedinUrl;
-        console.log(`[CascadeEnrichment] Found LinkedIn via reverse email: ${foundLinkedin}`);
+        const slugCheck = validateLinkedInSlug(reverseResult.linkedinUrl, firstName, lastName);
+        if (slugCheck.valid) {
+          foundLinkedin = reverseResult.linkedinUrl;
+          console.log(`[Contact] Found LinkedIn via reverse email: ${foundLinkedin}`);
+        } else {
+          rejectedLinkedinUrl = reverseResult.linkedinUrl;
+          rejectedLinkedinSource = 'findymail';
+          console.warn(`[Contact] LinkedIn slug mismatch — expected "${firstName} ${lastName}", got "${slugCheck.slug}" from findymail reverse email — discarding`);
+        }
       } else {
-        console.log('[CascadeEnrichment] Reverse email: no LinkedIn found');
+        console.log('[Contact] Reverse email: no LinkedIn found');
       }
     } catch (error) {
-      console.warn('[CascadeEnrichment] Findymail reverse email failed:', error);
+      console.warn('[Contact] Findymail reverse email failed:', error);
     }
   }
   
-  console.log(`[CascadeEnrichment] Stage 2 complete — email: ${verifiedEmail || 'none'} (${emailSource}), linkedin: ${foundLinkedin || 'none'}`);
+  console.log(`[Contact] Email Discovery complete — email: ${verifiedEmail || 'none'} (${emailSource}), linkedin: ${foundLinkedin || 'none'}`);
   
   // ═══════════════════════════════════════════════════════════════
-  // STAGE 3: PDL Person Enrichment
+  // PERSON MATCH: PDL
   // ═══════════════════════════════════════════════════════════════
-  console.log('[CascadeEnrichment] Stage 3: PDL Person Enrichment...');
+  console.log('[Contact] Person Match (PDL)...');
   
   let pdlData: any = null;
   
@@ -598,25 +617,32 @@ export async function enrichContactCascade(
     });
     
     if (pdlResult.found) {
-      console.log(`[CascadeEnrichment] PDL found: ${pdlResult.fullName} at ${pdlResult.companyName} (${pdlResult.companyDomain})`);
+      console.log(`[Contact] PDL found: ${pdlResult.fullName} at ${pdlResult.companyName} (${pdlResult.companyDomain})`);
       pdlData = pdlResult;
       
       if (!foundLinkedin && pdlResult.linkedinUrl) {
-        foundLinkedin = pdlResult.linkedinUrl;
-        console.log(`[CascadeEnrichment] PDL provided LinkedIn: ${foundLinkedin}`);
+        const slugCheck = validateLinkedInSlug(pdlResult.linkedinUrl, firstName, lastName);
+        if (slugCheck.valid) {
+          foundLinkedin = pdlResult.linkedinUrl;
+          console.log(`[Contact] PDL provided LinkedIn: ${foundLinkedin}`);
+        } else {
+          rejectedLinkedinUrl = pdlResult.linkedinUrl;
+          rejectedLinkedinSource = 'pdl';
+          console.warn(`[Contact] LinkedIn slug mismatch — expected "${firstName} ${lastName}", got "${slugCheck.slug}" from pdl — discarding`);
+        }
       }
     } else {
-      console.log('[CascadeEnrichment] PDL: no match found');
+      console.log('[Contact] PDL: no match found');
     }
   } catch (error) {
-    console.warn('[CascadeEnrichment] PDL enrichment failed:', error instanceof Error ? error.message : error);
+    console.warn('[Contact] PDL enrichment failed:', error instanceof Error ? error.message : error);
   }
   
   // ═══════════════════════════════════════════════════════════════
-  // STAGE 3.5: SERP LinkedIn Discovery (fallback when no LinkedIn found)
+  // LINKEDIN DISCOVERY: SERP (fallback when no LinkedIn found)
   // ═══════════════════════════════════════════════════════════════
   if (!foundLinkedin) {
-    console.log('[CascadeEnrichment] Stage 3.5: SERP LinkedIn Discovery (no LinkedIn from Findymail/Hunter/PDL)...');
+    console.log('[Contact] LinkedIn Discovery (SERP) — no LinkedIn from Findymail/Hunter/PDL...');
     
     try {
       const serpResult = await searchLinkedInProfile(
@@ -628,21 +654,21 @@ export async function enrichContactCascade(
       
       if (serpResult.found && serpResult.linkedinUrl) {
         foundLinkedin = serpResult.linkedinUrl;
-        console.log(`[CascadeEnrichment] SERP found LinkedIn: ${foundLinkedin} (confidence: ${serpResult.confidence})`);
+        console.log(`[Contact] SERP found LinkedIn: ${foundLinkedin} (confidence: ${serpResult.confidence})`);
       } else {
-        console.log('[CascadeEnrichment] SERP LinkedIn: no match found');
+        console.log('[Contact] SERP LinkedIn: no match found');
       }
     } catch (error) {
-      console.warn('[CascadeEnrichment] SERP LinkedIn search failed:', error instanceof Error ? error.message : error);
+      console.warn('[Contact] SERP LinkedIn search failed:', error instanceof Error ? error.message : error);
     }
   } else {
-    console.log(`[CascadeEnrichment] Stage 3.5: Skipped — LinkedIn already found: ${foundLinkedin}`);
+    console.log(`[Contact] LinkedIn Discovery (SERP): Skipped — LinkedIn already found: ${foundLinkedin}`);
   }
   
-  console.log(`[CascadeEnrichment] Pre-Crustdata state — linkedin: ${foundLinkedin || 'none'}, email: ${verifiedEmail || 'none'}`);
+  console.log(`[Contact] Pre-Crustdata state — linkedin: ${foundLinkedin || 'none'}, email: ${verifiedEmail || 'none'}`);
   
   // ═══════════════════════════════════════════════════════════════
-  // STAGE 4: Crustdata Verification (Conditional)
+  // VERIFY: Crustdata (Conditional)
   // ═══════════════════════════════════════════════════════════════
   let crustdataData: any = null;
   let confidenceFlag: ConfidenceFlag = 'no_match';
@@ -662,7 +688,7 @@ export async function enrichContactCascade(
     const reason = pdlCompanyEmpty 
       ? 'PDL returned no current employer — checking Crustdata for employment history'
       : 'domain mismatch or PDL incomplete';
-    console.log(`[CascadeEnrichment] Stage 4: Crustdata Verification (${reason})...`);
+    console.log(`[Contact] Verify (Crustdata) — ${reason}...`);
     
     try {
       const crustdataResult = await enrichPersonCrustdata({
@@ -671,7 +697,7 @@ export async function enrichContactCascade(
       });
       
       if (crustdataResult.found) {
-        console.log(`[CascadeEnrichment] Crustdata verified: ${crustdataResult.title} at ${crustdataResult.companyName}`);
+        console.log(`[Contact] Crustdata verified: ${crustdataResult.title} at ${crustdataResult.companyName}`);
         crustdataData = crustdataResult;
         confidenceFlag = 'verified';
         
@@ -695,11 +721,11 @@ export async function enrichContactCascade(
               });
               employerLeftDetected = true;
               employerLeftReason = `${fullName} previously worked at ${companyName || companyDomain}${pastExp?.endDate ? ` (left ${pastExp.endDate})` : ''}, now at ${crustdataResult.companyName || 'unknown'}. Source: Crustdata employment history`;
-              console.log(`[CascadeEnrichment] EMPLOYER LEFT DETECTED: ${employerLeftReason}`);
+              console.log(`[Contact] EMPLOYER LEFT DETECTED: ${employerLeftReason}`);
             } else if (pdlCompanyEmpty && crustdataResult.companyName && !crustdataCurrentCompanyMatches) {
               employerLeftDetected = true;
               employerLeftReason = `${fullName} now at ${crustdataResult.companyName} (was ${companyName || companyDomain} for this property). PDL shows no current employer, Crustdata shows different company. Source: Crustdata`;
-              console.log(`[CascadeEnrichment] EMPLOYER LEFT DETECTED (new company): ${employerLeftReason}`);
+              console.log(`[Contact] EMPLOYER LEFT DETECTED (new company): ${employerLeftReason}`);
             }
           }
         }
@@ -712,27 +738,27 @@ export async function enrichContactCascade(
           if (wasEmployedThere) {
             employerLeftDetected = true;
             employerLeftReason = `${fullName} previously worked at ${companyName || companyDomain} but appears to no longer be employed there. Both PDL and Crustdata show no current employer. Source: Crustdata employment history`;
-            console.log(`[CascadeEnrichment] EMPLOYER LEFT DETECTED (unemployed): ${employerLeftReason}`);
+            console.log(`[Contact] EMPLOYER LEFT DETECTED (unemployed): ${employerLeftReason}`);
           }
         }
       } else {
-        console.log('[CascadeEnrichment] Crustdata: no match found');
+        console.log('[Contact] Crustdata: no match found');
         confidenceFlag = pdlData ? 'unverified' : (verifiedEmail ? 'email_only' : 'no_match');
       }
     } catch (error) {
-      console.warn('[CascadeEnrichment] Crustdata verification failed:', error instanceof Error ? error.message : error);
+      console.warn('[Contact] Crustdata verification failed:', error instanceof Error ? error.message : error);
       confidenceFlag = pdlData ? 'unverified' : (verifiedEmail ? 'email_only' : 'no_match');
     }
   } else if (pdlDomainMatches) {
     confidenceFlag = 'pdl_matched';
-    console.log('[CascadeEnrichment] Stage 4: Skipped — PDL domain matches input');
+    console.log('[Contact] Verify (Crustdata): Skipped — PDL domain matches input');
   } else if (!foundLinkedin && !verifiedEmail) {
     confidenceFlag = pdlData ? 'unverified' : 'no_match';
-    console.log('[CascadeEnrichment] Stage 4: Skipped — no LinkedIn or email for Crustdata');
+    console.log('[Contact] Verify (Crustdata): Skipped — no LinkedIn or email');
   }
   
   if (!pdlData && !crustdataData && !verifiedEmail) {
-    console.log(`[CascadeEnrichment] No enrichment data found for: ${fullName}`);
+    console.log(`[Contact] No enrichment data found for: ${fullName}`);
     return buildEmptyResult(fullName, firstName, lastName, confidenceFlag);
   }
   
@@ -830,9 +856,12 @@ export async function enrichContactCascade(
     
     employerLeftDetected,
     employerLeftReason,
+
+    linkedinRejectedUrl: rejectedLinkedinUrl,
+    linkedinRejectedSource: rejectedLinkedinSource,
   };
   
-  console.log(`[CascadeEnrichment] Contact enrichment complete for ${fullName}: confidence=${confidenceFlag}, source=${result.enrichmentSource}`);
+  console.log(`[Contact] Enrichment complete for ${fullName}: confidence=${confidenceFlag}, source=${result.enrichmentSource}`);
   return result;
 }
 
@@ -897,5 +926,7 @@ function buildEmptyResult(fullName: string, firstName: string, lastName: string,
     crustdataEnriched: false,
     employerLeftDetected: false,
     employerLeftReason: null,
+    linkedinRejectedUrl: null,
+    linkedinRejectedSource: null,
   };
 }

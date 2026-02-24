@@ -305,6 +305,9 @@ export const contacts = pgTable('contacts', {
   crustdataEnrichedAt: timestamp('crustdata_enriched_at'),
   findymailVerified: boolean('findymail_verified'),
   findymailVerifyStatus: text('findymail_verify_status'),
+
+  linkedinRejectedUrl: text('linkedin_rejected_url'),
+  linkedinRejectedSource: text('linkedin_rejected_source'),
   
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
