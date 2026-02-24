@@ -6,6 +6,9 @@
 //   streamGeminiResponse  — streams a prompt through Gemini and returns full text
 //   callGeminiOnce        — wraps any async fn with the Gemini rate limiter
 //   callGeminiWithTimeout — legacy alias for callGeminiOnce (no internal retries)
+//
+// Also maintains a global ring-buffer debug log of all Gemini calls with full
+// request configs and raw response metadata for the Vertex AI Debug admin page.
 // ============================================================================
 
 import { GoogleGenAI } from "@google/genai";
@@ -20,14 +23,8 @@ import * as path from 'path';
 
 let vertexCredentialsReady = false;
 
-// Re-export so consumers that imported GEMINI_HTTP_TIMEOUT_MS from client.ts still work.
 export { GEMINI_HTTP_TIMEOUT_MS } from './config';
 
-/**
- * Write the GCP service-account JSON to disk (once) and set
- * GOOGLE_APPLICATION_CREDENTIALS so the SDK can authenticate.
- * Returns the project ID and Vertex AI location ('global').
- */
 export function ensureVertexCredentials(): { project: string; location: string } {
   const credsJson = process.env.GOOGLE_CLOUD_CREDENTIALS;
   if (!credsJson) {
@@ -57,111 +54,66 @@ export function ensureVertexCredentials(): { project: string; location: string }
   return { project, location: 'global' };
 }
 
-/** Create a new GoogleGenAI client authenticated via Vertex AI. */
 export function getGeminiClient(): GoogleGenAI {
   const { project, location } = ensureVertexCredentials();
   return new GoogleGenAI({ vertexai: true, project, location });
 }
 
-/**
- * Send a prompt to Gemini using streaming and collect the full response.
- *
- * Streaming avoids Node.js fetch timeouts that occur with large responses.
- * The returned object contains the concatenated text and the last
- * candidate (which carries grounding metadata needed for source extraction).
- *
- * @param client       – GoogleGenAI instance from getGeminiClient()
- * @param prompt       – The full prompt string
- * @param options.tools          – e.g. [{ googleSearch: {} }] for search grounding
- * @param options.temperature    – Sampling temperature (default from config)
- * @param options.thinkingLevel  – Gemini thinking mode depth
- * @param options.latLng         – Geo-bias for search grounding (property coords)
- */
-export async function streamGeminiResponse(
-  client: GoogleGenAI,
-  prompt: string,
-  options: { tools?: any[]; temperature?: number; thinkingLevel?: 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH'; latLng?: { latitude: number; longitude: number }; stageName?: string } = {}
-): Promise<StreamedGeminiResponse> {
-  const tag = options.stageName || 'unknown';
-  const config: any = {
-    temperature: options.temperature ?? DEFAULT_TEMPERATURE,
-    httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
-  };
-  if (options.thinkingLevel) {
-    config.thinkingConfig = { thinkingLevel: options.thinkingLevel };
-  }
-  if (options.tools) {
-    config.tools = options.tools;
-  }
-  if (options.latLng) {
-    config.toolConfig = {
-      retrievalConfig: {
-        latLng: options.latLng,
-      },
-    };
-  }
+// ---------------------------------------------------------------------------
+// Global debug log — ring buffer of full request/response details
+// ---------------------------------------------------------------------------
 
-  const stream = await client.models.generateContentStream({
-    model: GEMINI_MODEL,
-    contents: prompt,
-    config,
-  });
+export interface VertexDebugEntry {
+  id: number;
+  timestamp: number;
+  stageName: string;
+  durationMs: number;
+  error: boolean;
+  errorMessage?: string;
 
-  let fullText = '';
-  let lastCandidate: any = null;
-  let lastUsageMetadata: any = null;
-
-  try {
-    for await (const chunk of stream) {
-      if (chunk.text) {
-        fullText += chunk.text;
-      }
-      if (chunk.candidates && chunk.candidates.length > 0) {
-        lastCandidate = chunk.candidates[0];
-      }
-      if ((chunk as any).usageMetadata) {
-        lastUsageMetadata = (chunk as any).usageMetadata;
-      }
-    }
-  } catch (streamError) {
-    if (lastUsageMetadata) {
-      const partialUsage = extractTokenUsage(lastUsageMetadata);
-      const partialCost = computeGeminiCostUsd(partialUsage);
-      console.error(`[Gemini:${tag}] STREAM ERROR with partial usage — raw metadata: ${JSON.stringify(lastUsageMetadata)}`);
-      console.error(`[Gemini:${tag}] Partial tokens: prompt=${partialUsage.promptTokens} response=${partialUsage.responseTokens} thinking=${partialUsage.thinkingTokens} total=${partialUsage.totalTokens} | cost=$${partialCost.toFixed(6)}`);
-      logCall(tag, partialUsage, true);
-    } else {
-      console.error(`[Gemini:${tag}] STREAM ERROR with no usageMetadata captured`);
-    }
-    throw streamError;
-  }
-
-  const response: StreamedGeminiResponse = {
-    text: fullText,
+  request: {
+    model: string;
+    prompt: string;
+    temperature: number;
+    thinkingLevel?: string;
+    tools?: any;
+    toolConfig?: any;
+    latLng?: { latitude: number; longitude: number };
   };
 
-  if (lastCandidate) {
-    response.candidates = [lastCandidate];
-  }
-
-  if (lastUsageMetadata) {
-    console.log(`[Gemini:${tag}] RAW usageMetadata: ${JSON.stringify(lastUsageMetadata)}`);
-
-    response.tokenUsage = extractTokenUsage(lastUsageMetadata);
-    const cost = computeGeminiCostUsd(response.tokenUsage);
-
-    console.log(`[Gemini:${tag}] Tokens: prompt=${response.tokenUsage.promptTokens} response=${response.tokenUsage.responseTokens} thinking=${response.tokenUsage.thinkingTokens} total=${response.tokenUsage.totalTokens} | computedCost=$${cost.toFixed(6)}`);
-    logCall(tag, response.tokenUsage);
-
-    if (response.tokenUsage.promptTokens === 0 && response.tokenUsage.responseTokens === 0 && response.tokenUsage.totalTokens === 0) {
-      console.warn(`[Gemini:${tag}] usageMetadata present but all token counts are 0. Raw keys: ${Object.keys(lastUsageMetadata).join(', ')}`);
-    }
-  } else {
-    console.warn(`[Gemini:${tag}] No usageMetadata found in streamed response`);
-  }
-
-  return response;
+  response: {
+    text: string;
+    finishReason?: string;
+    rawUsageMetadata: any | null;
+    parsedTokenUsage: GeminiTokenUsage | null;
+    computedCostUsd: number;
+    groundingMetadata: any | null;
+    candidateCount: number;
+  };
 }
+
+const MAX_DEBUG_ENTRIES = 200;
+let debugEntryId = 0;
+const debugLog: VertexDebugEntry[] = [];
+
+function addDebugEntry(entry: VertexDebugEntry): void {
+  debugLog.push(entry);
+  if (debugLog.length > MAX_DEBUG_ENTRIES) {
+    debugLog.splice(0, debugLog.length - MAX_DEBUG_ENTRIES);
+  }
+}
+
+export function getVertexDebugLog(): VertexDebugEntry[] {
+  return [...debugLog];
+}
+
+export function clearVertexDebugLog(): void {
+  debugLog.length = 0;
+}
+
+// ---------------------------------------------------------------------------
+// Per-property call log (AsyncLocalStorage-based)
+// ---------------------------------------------------------------------------
 
 export interface GeminiCallRecord {
   stageName: string;
@@ -199,6 +151,10 @@ function logCall(stageName: string, usage: GeminiTokenUsage, error = false): voi
   });
 }
 
+// ---------------------------------------------------------------------------
+// Token extraction
+// ---------------------------------------------------------------------------
+
 function extractTokenUsage(meta: any): GeminiTokenUsage {
   const basePromptTokens = meta.promptTokenCount ?? 0;
   const toolUseTokens = meta.toolUsePromptTokenCount ?? 0;
@@ -209,12 +165,156 @@ function extractTokenUsage(meta: any): GeminiTokenUsage {
   return { promptTokens, responseTokens, thinkingTokens, totalTokens };
 }
 
-/**
- * Execute a single Gemini API call through the shared rate limiter.
- *
- * Logs queue wait time and API latency for performance monitoring.
- * Does NOT retry — the caller (each stage) owns its own retry loop.
- */
+// ---------------------------------------------------------------------------
+// streamGeminiResponse
+// ---------------------------------------------------------------------------
+
+export async function streamGeminiResponse(
+  client: GoogleGenAI,
+  prompt: string,
+  options: { tools?: any[]; temperature?: number; thinkingLevel?: 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH'; latLng?: { latitude: number; longitude: number }; stageName?: string } = {}
+): Promise<StreamedGeminiResponse> {
+  const tag = options.stageName || 'unknown';
+  const temperature = options.temperature ?? DEFAULT_TEMPERATURE;
+  const config: any = {
+    temperature,
+    httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
+  };
+  if (options.thinkingLevel) {
+    config.thinkingConfig = { thinkingLevel: options.thinkingLevel };
+  }
+  if (options.tools) {
+    config.tools = options.tools;
+  }
+  if (options.latLng) {
+    config.toolConfig = {
+      retrievalConfig: {
+        latLng: options.latLng,
+      },
+    };
+  }
+
+  const callStart = Date.now();
+  const entryId = ++debugEntryId;
+
+  const requestSnapshot = {
+    model: GEMINI_MODEL,
+    prompt,
+    temperature,
+    thinkingLevel: options.thinkingLevel,
+    tools: options.tools,
+    toolConfig: config.toolConfig,
+    latLng: options.latLng,
+  };
+
+  const stream = await client.models.generateContentStream({
+    model: GEMINI_MODEL,
+    contents: prompt,
+    config,
+  });
+
+  let fullText = '';
+  let lastCandidate: any = null;
+  let lastUsageMetadata: any = null;
+
+  try {
+    for await (const chunk of stream) {
+      if (chunk.text) {
+        fullText += chunk.text;
+      }
+      if (chunk.candidates && chunk.candidates.length > 0) {
+        lastCandidate = chunk.candidates[0];
+      }
+      if ((chunk as any).usageMetadata) {
+        lastUsageMetadata = (chunk as any).usageMetadata;
+      }
+    }
+  } catch (streamError) {
+    const durationMs = Date.now() - callStart;
+    const errMsg = streamError instanceof Error ? streamError.message : String(streamError);
+
+    if (lastUsageMetadata) {
+      const partialUsage = extractTokenUsage(lastUsageMetadata);
+      const partialCost = computeGeminiCostUsd(partialUsage);
+      console.error(`[Gemini:${tag}] STREAM ERROR with partial usage — raw metadata: ${JSON.stringify(lastUsageMetadata)}`);
+      console.error(`[Gemini:${tag}] Partial tokens: prompt=${partialUsage.promptTokens} response=${partialUsage.responseTokens} thinking=${partialUsage.thinkingTokens} total=${partialUsage.totalTokens} | cost=$${partialCost.toFixed(6)}`);
+      logCall(tag, partialUsage, true);
+
+      addDebugEntry({
+        id: entryId, timestamp: callStart, stageName: tag, durationMs, error: true, errorMessage: errMsg,
+        request: requestSnapshot,
+        response: {
+          text: fullText,
+          finishReason: lastCandidate?.finishReason,
+          rawUsageMetadata: lastUsageMetadata,
+          parsedTokenUsage: partialUsage,
+          computedCostUsd: partialCost,
+          groundingMetadata: lastCandidate?.groundingMetadata ?? null,
+          candidateCount: lastCandidate ? 1 : 0,
+        },
+      });
+    } else {
+      console.error(`[Gemini:${tag}] STREAM ERROR with no usageMetadata captured`);
+      addDebugEntry({
+        id: entryId, timestamp: callStart, stageName: tag, durationMs, error: true, errorMessage: errMsg,
+        request: requestSnapshot,
+        response: {
+          text: fullText, finishReason: undefined, rawUsageMetadata: null,
+          parsedTokenUsage: null, computedCostUsd: 0, groundingMetadata: null, candidateCount: 0,
+        },
+      });
+    }
+    throw streamError;
+  }
+
+  const durationMs = Date.now() - callStart;
+  const response: StreamedGeminiResponse = { text: fullText };
+
+  if (lastCandidate) {
+    response.candidates = [lastCandidate];
+  }
+
+  let parsedUsage: GeminiTokenUsage | null = null;
+  let costUsd = 0;
+
+  if (lastUsageMetadata) {
+    console.log(`[Gemini:${tag}] RAW usageMetadata: ${JSON.stringify(lastUsageMetadata)}`);
+
+    parsedUsage = extractTokenUsage(lastUsageMetadata);
+    response.tokenUsage = parsedUsage;
+    costUsd = computeGeminiCostUsd(parsedUsage);
+
+    console.log(`[Gemini:${tag}] Tokens: prompt=${parsedUsage.promptTokens} response=${parsedUsage.responseTokens} thinking=${parsedUsage.thinkingTokens} total=${parsedUsage.totalTokens} | computedCost=$${costUsd.toFixed(6)}`);
+    logCall(tag, parsedUsage);
+
+    if (parsedUsage.promptTokens === 0 && parsedUsage.responseTokens === 0 && parsedUsage.totalTokens === 0) {
+      console.warn(`[Gemini:${tag}] usageMetadata present but all token counts are 0. Raw keys: ${Object.keys(lastUsageMetadata).join(', ')}`);
+    }
+  } else {
+    console.warn(`[Gemini:${tag}] No usageMetadata found in streamed response`);
+  }
+
+  addDebugEntry({
+    id: entryId, timestamp: callStart, stageName: tag, durationMs, error: false,
+    request: requestSnapshot,
+    response: {
+      text: fullText,
+      finishReason: lastCandidate?.finishReason,
+      rawUsageMetadata: lastUsageMetadata,
+      parsedTokenUsage: parsedUsage,
+      computedCostUsd: costUsd,
+      groundingMetadata: lastCandidate?.groundingMetadata ?? null,
+      candidateCount: lastCandidate ? 1 : 0,
+    },
+  });
+
+  return response;
+}
+
+// ---------------------------------------------------------------------------
+// Rate-limited wrappers
+// ---------------------------------------------------------------------------
+
 export async function callGeminiOnce<T>(
   fn: () => Promise<T>
 ): Promise<T> {
@@ -240,10 +340,6 @@ export async function callGeminiOnce<T>(
   return rateLimiters.gemini.execute(wrappedFn);
 }
 
-/**
- * Legacy wrapper — identical to callGeminiOnce.
- * Kept for backward compatibility; the _retries param is ignored.
- */
 export async function callGeminiWithTimeout<T>(
   fn: () => Promise<T>,
   _retries: number = 1

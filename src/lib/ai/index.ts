@@ -27,8 +27,8 @@ export type {
 } from './types';
 
 export { isRetryableGeminiError, EnrichmentStageError, SchemaValidationError } from './errors';
-export { getGeminiClient, streamGeminiResponse, callGeminiOnce, callGeminiWithTimeout, GEMINI_HTTP_TIMEOUT_MS, runWithCallLog, getGeminiCallLog } from './client';
-export type { GeminiCallRecord } from './client';
+export { getGeminiClient, streamGeminiResponse, callGeminiOnce, callGeminiWithTimeout, GEMINI_HTTP_TIMEOUT_MS, runWithCallLog, getGeminiCallLog, getVertexDebugLog, clearVertexDebugLog } from './client';
+export type { GeminiCallRecord, VertexDebugEntry } from './client';
 export { computeGeminiCostUsd, GEMINI_PRICING } from './config';
 export { scoreSources, parseJsonResponse, extractGroundedSources } from './parsers';
 export { propertyLatLng, stripInternalMessages } from './helpers';

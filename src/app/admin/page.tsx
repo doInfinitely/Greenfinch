@@ -290,9 +290,14 @@ export default function AdminPage() {
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
           <p className="text-gray-600 mt-1">Manage data ingestion and enrichment</p>
-          <a href="/admin/costs" className="inline-flex items-center gap-1 text-sm text-green-700 hover:text-green-900 mt-2" data-testid="link-enrichment-costs">
-            View Enrichment Costs →
-          </a>
+          <div className="flex items-center gap-4 mt-2">
+            <a href="/admin/costs" className="inline-flex items-center gap-1 text-sm text-green-700 hover:text-green-900" data-testid="link-enrichment-costs">
+              View Enrichment Costs →
+            </a>
+            <a href="/admin/vertex-logs" className="inline-flex items-center gap-1 text-sm text-blue-700 hover:text-blue-900" data-testid="link-vertex-logs">
+              Vertex AI Debug Log →
+            </a>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
