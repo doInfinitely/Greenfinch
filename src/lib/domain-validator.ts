@@ -144,6 +144,23 @@ export async function validateDomain(
     const bodyText = await response.text();
     const lowerBody = bodyText.substring(0, 50000).toLowerCase();
 
+    const strippedText = lowerBody.replace(/<[^>]*>/g, '').trim();
+    const hasMinimalContent = strippedText.length < 500;
+
+    if (hasMinimalContent) {
+      const jsRedirectPattern = /window\.location\s*[.=]|document\.location\s*[.=]|location\.href\s*=|location\.replace\s*\(/;
+      const metaRefreshPattern = /<meta[^>]*http-equiv\s*=\s*["']?refresh["']?/i;
+      if (jsRedirectPattern.test(lowerBody) || metaRefreshPattern.test(lowerBody)) {
+        console.warn(`[DomainValidator] ${inputDomain} has minimal content with JS/meta redirect — likely parking page`);
+        return {
+          isValid: false,
+          reason: `Minimal content with JS/meta redirect — likely parking or redirect page`,
+          finalUrl,
+          finalDomain,
+        };
+      }
+    }
+
     let parkingScore = 0;
     const matchedIndicators: string[] = [];
 
@@ -154,7 +171,6 @@ export async function validateDomain(
       }
     }
 
-    const hasMinimalContent = lowerBody.replace(/<[^>]*>/g, '').trim().length < 500;
     if (hasMinimalContent) {
       parkingScore += 1;
     }

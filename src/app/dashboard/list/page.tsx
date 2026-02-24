@@ -258,7 +258,6 @@ export default function ListPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           propertyKeys,
-          onlyUnenriched: false,
         }),
       });
       

@@ -41,7 +41,6 @@ export async function POST(request: NextRequest) {
 
       const batchStatus = await startBullMQBatch({
         limit: Math.min(limit, 200),
-        onlyUnenriched,
         concurrency: Math.min(Math.max(1, concurrency), 50),
       });
 
@@ -72,7 +71,6 @@ export async function POST(request: NextRequest) {
 
     const batchStatus = await startBatch({
       limit: Math.min(limit, 200),
-      onlyUnenriched,
       concurrency: Math.min(Math.max(1, concurrency), 50),
     });
 

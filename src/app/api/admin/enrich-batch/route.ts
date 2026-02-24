@@ -2,33 +2,33 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isBullMQConfigured } from '@/lib/bullmq-connection';
 import { startBullMQBatch, isBullMQBatchRunning, cancelBullMQBatch } from '@/lib/bullmq-enrichment';
 import { startBatch, isBatchRunning, getMaxBatchSize, cancelBatch } from '@/lib/enrichment-queue';
-import { requireAdminAccess } from '@/lib/auth';
+import { requireSession, isAdmin } from '@/lib/auth';
 import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
 
+const NON_ADMIN_BATCH_LIMIT = 100;
 const checkRateLimit = rateLimitMiddleware(20, 60);
 
 export async function POST(request: NextRequest) {
+  let userIsAdmin = false;
   try {
     const rateResponse = await checkRateLimit(request);
     if (rateResponse) return rateResponse;
 
-    await requireAdminAccess();
+    const { user } = await requireSession();
+    userIsAdmin = isAdmin(user);
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-    if (error instanceof Error && error.message === 'FORBIDDEN') {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
   try {
     const body = await request.json();
-    const { propertyIds, propertyKeys, limit, onlyUnenriched, concurrency, useLegacy } = body;
+    const { propertyIds, propertyKeys, limit, concurrency, useLegacy } = body;
 
     const useBullMQ = isBullMQConfigured() && !useLegacy;
-    const maxBatchSize = getMaxBatchSize();
+    const maxBatchSize = userIsAdmin ? getMaxBatchSize() : Math.min(getMaxBatchSize(), NON_ADMIN_BATCH_LIMIT);
     const requestedLimit = limit ? Math.min(limit, maxBatchSize) : maxBatchSize;
 
     if (useBullMQ) {
@@ -45,7 +45,6 @@ export async function POST(request: NextRequest) {
         propertyIds,
         propertyKeys,
         limit: requestedLimit,
-        onlyUnenriched: onlyUnenriched ?? false,
         concurrency: concurrency ? Math.min(Math.max(1, concurrency), 50) : undefined,
       });
 
@@ -81,7 +80,6 @@ export async function POST(request: NextRequest) {
       propertyIds,
       propertyKeys,
       limit: requestedLimit,
-      onlyUnenriched: onlyUnenriched ?? false,
       concurrency: concurrency ? Math.min(Math.max(1, concurrency), 50) : undefined,
     });
 
@@ -142,13 +140,10 @@ export async function GET() {
 
 export async function DELETE(request: NextRequest) {
   try {
-    await requireAdminAccess();
+    await requireSession();
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-    if (error instanceof Error && error.message === 'FORBIDDEN') {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }

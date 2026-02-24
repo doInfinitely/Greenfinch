@@ -50,7 +50,8 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Contact Auto-Merge in Enrichment**: `findExistingContactByIdentifiers` accepts `autoMergeNameMatches` option. During enrichment, name+domain and name+employer matches return the existing contact (auto-merge) instead of creating duplicates. Manual/admin flows still flag for review.
 - **Organization Creation Locking**: `resolveOrganization` acquires a Redis lock (keyed on normalized domain or name) before the entire resolution flow, preventing concurrent creation of the same org by parallel workers.
 - **Junction Table Unique Constraints**: `property_contacts(property_id, contact_id)`, `property_organizations(property_id, org_id)`, and `contact_organizations(contact_id, org_id)` have unique indexes to prevent duplicate links.
-- **Batch Enrichment Filter**: `onlyUnenriched` mode only picks properties with NULL, `pending`, or `partial` enrichment status — already-enriched properties are excluded to prevent re-enrichment duplication.
+- **Batch Enrichment Filter**: All batch enrichment paths (legacy + BullMQ) always skip already-enriched properties, even when specific `propertyIds` or `propertyKeys` are provided. The `onlyUnenriched` option has been removed — filtering is always applied.
+- **Batch Enrichment Access**: All authenticated users can run batch enrichment (capped at 100 properties for non-admins, unlimited for Greenfinch admins). Enrichment status and cancellation endpoints are also open to all authenticated users.
 - **Batch Property Ingestion**: Properties are upserted in batches of 50 using INSERT ... ON CONFLICT DO UPDATE, reducing DB round-trips from ~3N to ~3*(N/50). Fallback to individual inserts on batch failure.
 - **Phone Research Waterfall**: On-demand 4-step phone lookup cascade using multiple providers.
 - **Map Marker Colors**: All property markers and clusters are solid green (#16a34a) with white stroke.

@@ -79,7 +79,6 @@ export default function AdminPage() {
   const [ingestionSettings, setIngestionSettings] = useState<{ zipCodes: string[]; defaultLimit: number; allZips: boolean; filters?: any } | null>(null);
 
   const [enrichLimit, setEnrichLimit] = useState('50');
-  const [onlyUnenriched, setOnlyUnenriched] = useState(true);
   const [enrichmentStatus, setEnrichmentStatus] = useState<EnrichmentStatus | null>(null);
   const [isStartingEnrichment, setIsStartingEnrichment] = useState(false);
 
@@ -247,7 +246,6 @@ export default function AdminPage() {
         credentials: 'include',
         body: JSON.stringify({
           limit: parseInt(enrichLimit) || 50,
-          onlyUnenriched,
         }),
       });
       const data = await response.json();
@@ -515,17 +513,7 @@ export default function AdminPage() {
               />
             </div>
 
-            <div className="mb-4">
-              <label className="flex items-center">
-                <input
-                  type="checkbox"
-                  checked={onlyUnenriched}
-                  onChange={(e) => setOnlyUnenriched(e.target.checked)}
-                  className="rounded border-gray-300 text-green-600 focus:ring-green-500"
-                />
-                <span className="ml-2 text-sm text-gray-700">Only unenriched properties</span>
-              </label>
-            </div>
+            <p className="text-xs text-gray-500 mb-4">Already-enriched properties are automatically skipped.</p>
 
             <div className="flex gap-2">
               <button

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { isBullMQConfigured } from '@/lib/bullmq-connection';
 import { getBullMQBatchStatus, isBullMQBatchRunning } from '@/lib/bullmq-enrichment';
 import { getQueueStatus, isBatchRunning, getMaxBatchSize } from '@/lib/enrichment-queue';
-import { requireAdminAccess } from '@/lib/auth';
+import { requireSession } from '@/lib/auth';
 import { rateLimiters } from '@/lib/rate-limiter';
 
 function buildBatchSummary(errors: Array<{ propertyKey: string; error: string; stage?: string; retryable?: boolean }>) {
@@ -53,65 +53,42 @@ function getCircuitBreakerStatus() {
 
 export async function GET() {
   try {
-    await requireAdminAccess();
+    await requireSession();
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-    if (error instanceof Error && error.message === 'FORBIDDEN') {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
     }
     return NextResponse.json({ error: 'Authentication failed' }, { status: 500 });
   }
 
   const circuitBreakers = getCircuitBreakerStatus();
-  const useBullMQ = isBullMQConfigured();
+  const hasBullMQ = isBullMQConfigured();
 
-  if (useBullMQ) {
-    const status = await getBullMQBatchStatus();
-    const isRunning = await isBullMQBatchRunning();
+  const bullmqStatus = hasBullMQ ? await getBullMQBatchStatus() : null;
+  const bullmqRunning = hasBullMQ ? await isBullMQBatchRunning() : false;
+  const legacyStatus = await getQueueStatus();
+  const legacyRunning = await isBatchRunning();
 
-    if (!status) {
-      return NextResponse.json({
-        status: 'idle',
-        message: 'No batch has been started yet',
-        isRunning: false,
-        engine: 'bullmq',
-        maxBatchSize: getMaxBatchSize(),
-        circuitBreakers,
-      });
+  let status = bullmqStatus || legacyStatus;
+  let isRunning = bullmqRunning || legacyRunning;
+  let engine: string = bullmqStatus ? 'bullmq' : 'legacy';
+
+  if (bullmqStatus && legacyStatus) {
+    const bullmqTime = bullmqStatus.startedAt ? new Date(bullmqStatus.startedAt).getTime() : 0;
+    const legacyTime = legacyStatus.startedAt ? new Date(legacyStatus.startedAt).getTime() : 0;
+    if (legacyTime > bullmqTime) {
+      status = legacyStatus;
+      isRunning = legacyRunning;
+      engine = 'legacy';
     }
-
-    const summary = buildBatchSummary(status.errors);
-
-    return NextResponse.json({
-      batchId: status.batchId,
-      status: status.status,
-      isRunning,
-      engine: 'bullmq',
-      progress: status.progress,
-      percentComplete: status.progress.total > 0 
-        ? Math.round((status.progress.processed / status.progress.total) * 100) 
-        : 0,
-      startedAt: status.startedAt,
-      completedAt: status.completedAt,
-      errors: status.errors.slice(-10),
-      errorCount: status.errors.length,
-      summary,
-      circuitBreakers,
-      maxBatchSize: getMaxBatchSize(),
-    });
   }
-
-  const status = await getQueueStatus();
-  const isRunning = await isBatchRunning();
 
   if (!status) {
     return NextResponse.json({
       status: 'idle',
       message: 'No batch has been started yet',
       isRunning: false,
-      engine: 'legacy',
+      engine: hasBullMQ ? 'bullmq' : 'legacy',
       maxBatchSize: getMaxBatchSize(),
       circuitBreakers,
     });
@@ -123,7 +100,7 @@ export async function GET() {
     batchId: status.batchId,
     status: status.status,
     isRunning,
-    engine: 'legacy',
+    engine,
     progress: status.progress,
     percentComplete: status.progress.total > 0 
       ? Math.round((status.progress.processed / status.progress.total) * 100) 

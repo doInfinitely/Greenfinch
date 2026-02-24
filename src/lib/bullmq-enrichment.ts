@@ -236,7 +236,6 @@ export interface StartBullMQBatchOptions {
   propertyIds?: string[];
   propertyKeys?: string[];
   limit?: number;
-  onlyUnenriched?: boolean;
   concurrency?: number;
 }
 
@@ -263,24 +262,40 @@ export async function startBullMQBatch(options: StartBullMQBatchOptions): Promis
 
   let propertyKeysToEnrich: string[] = [];
 
+  const unenrichedFilter = and(
+    eq(properties.isParentProperty, true),
+    or(
+      isNull(properties.enrichmentStatus),
+      eq(properties.enrichmentStatus, 'pending'),
+      eq(properties.enrichmentStatus, 'partial')
+    )
+  );
+
   if (options.propertyKeys && options.propertyKeys.length > 0) {
-    propertyKeysToEnrich = options.propertyKeys.slice(0, batchLimit);
-  } else if (options.propertyIds && options.propertyIds.length > 0) {
-    const propertiesFromDb = await db.query.properties.findMany({
-      where: inArray(properties.id, options.propertyIds.slice(0, batchLimit)),
+    const filtered = await db.query.properties.findMany({
+      where: and(
+        inArray(properties.propertyKey, options.propertyKeys.slice(0, batchLimit)),
+        unenrichedFilter
+      ),
       columns: { propertyKey: true },
     });
-    propertyKeysToEnrich = propertiesFromDb.map(p => p.propertyKey);
-  } else if (options.onlyUnenriched) {
-    const unenrichedProperties = await db.query.properties.findMany({
+    propertyKeysToEnrich = filtered.map(p => p.propertyKey);
+    const skipped = options.propertyKeys.length - propertyKeysToEnrich.length;
+    if (skipped > 0) console.log(`[BullMQ] Skipped ${skipped} already-enriched properties`);
+  } else if (options.propertyIds && options.propertyIds.length > 0) {
+    const filtered = await db.query.properties.findMany({
       where: and(
-        eq(properties.isParentProperty, true),
-        or(
-          isNull(properties.enrichmentStatus),
-          eq(properties.enrichmentStatus, 'pending'),
-          eq(properties.enrichmentStatus, 'partial')
-        )
+        inArray(properties.id, options.propertyIds.slice(0, batchLimit)),
+        unenrichedFilter
       ),
+      columns: { propertyKey: true },
+    });
+    propertyKeysToEnrich = filtered.map(p => p.propertyKey);
+    const skipped = options.propertyIds.length - propertyKeysToEnrich.length;
+    if (skipped > 0) console.log(`[BullMQ] Skipped ${skipped} already-enriched properties`);
+  } else {
+    const unenrichedProperties = await db.query.properties.findMany({
+      where: unenrichedFilter,
       columns: { propertyKey: true },
       limit: batchLimit,
     });
