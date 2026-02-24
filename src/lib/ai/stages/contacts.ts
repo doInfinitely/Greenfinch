@@ -97,12 +97,12 @@ ${companiesBlock}
 TASK: Search the web to find people who directly manage, operate, or maintain this specific property on a day-to-day basis. Focus on the property management company staff in the ${city}, ${state} area, not corporate headquarters executives. Search each associated company's website/domain and LinkedIn for relevant staff.
 
 PRIORITY ROLES (return these first; listed in priority order):
-- On-site property manager or community manager for this specific property
+- Property manager for this specific property (strongly preferred — this is the most valuable contact)
 - Facilities/maintenance director or chief engineer for this specific property
 - Regional/district property manager overseeing this property's area in ${state}
 - Asset manager or owner with direct responsibility for this property
 
-ONLY return people CURRENTLY verifiably connected to THIS property at THIS address.
+ONLY return people CURRENTLY verifiably connected to THIS property at THIS address. Prefer people with direct experience at this location over corporate executives.
 
 SOURCE REQUIREMENT: For each contact, provide the "src" field with the URL where you found them (LinkedIn profile, company team page, property listing, etc.). Only return contacts you can cite a source for.
 

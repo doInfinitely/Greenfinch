@@ -44,7 +44,7 @@ export async function identifyOwnership(
   const sqft = property.totalGrossBldgArea?.toLocaleString() || 'unknown';
 
   // -- Build the prompt -------------------------------------------------------
-  const prompt = `Find ALL beneficial owners, property management companies, and the direct website for this commercial property. Return ONLY valid JSON.
+  const prompt = `Find benficial owners, all associated property management companies, and the direct website for this commercial property. Return ONLY valid JSON.
 
 PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
 TYPE: ${classification.category} - ${classification.subcategory}, ${sqft} sqft
@@ -52,22 +52,29 @@ DCAD DEED OWNER: ${deedOwner} (transferred ${deedDate})
 ${secondaryOwner ? `DCAD SECONDARY: ${secondaryOwner}` : ''}
 ${legalInfo ? `LEGAL: ${legalInfo}` : ''}
 
-KEY DISTINCTION: The deed owner and the property manager (PM) are often DIFFERENT companies. The deed owner is the entity on the title (often an LLC, trust, or holding company). The PM is the company hired to handle day-to-day operations, leasing, maintenance, and tenant relations. Examples of third-party PMs: Willowbridge, CBRE, JLL, Cushman & Wakefield, Greystar, Capstone Real Estate Services, etc. If the owner self-manages (no third-party PM), return the owner as both "mgmt" and "owner".
-
-MULTIPLE COMPANIES: Properties may involve multiple companies. For example, an apartment complex might have a PM company (Willowbridge) AND a general community site (thevillagedallas.com run by a different entity). Return ALL companies you identify — include the DCAD entity, the parent/beneficial owner, AND any PM or operating companies. Each goes into the appropriate array.
-
 SEARCH SEQUENCE:
 1. Search "${classification.propertyName} ${property.city || 'Dallas'}" to find the property website and management company
-2. On the property website, look for "managed by", "a ___ community", or PM company branding in the footer — this identifies the PM. If the property site is hosted on a PM's domain (e.g. propertyname.greystar.com), that is the PM.
+2. On the property website, look for "managed by", "a ___ community", or PM company branding in the footer — this identifies the PM. If the property site is hosted on a PM's domain (e.g. propertyname.pmcompany.com or pmcompany.com/propertyname), that is likely the PM.
 3. Search "${classification.propertyName} ${property.city || 'Dallas'} property management" to cross-check or discover the PM if step 2 didn't find one
 4. Search the management company's portfolio or property listings to CONFIRM this property appears
 5. Search the management company website for this property listing to find a direct property management phone number
 6. Search "${deedOwner} Texas" on OpenCorporates or TX Secretary of State to find the entity behind the LLC/trust
 7. Search for news about acquisitions or sales of ${classification.propertyName} around ${deedDate} to identify the beneficial owner
 
-PROPERTY WEBSITE PRIORITY: First look for the property's own external marketing website. If none exists, fall back to a CRE listing page (apartments.com, loopnet.com, costar.com, crexi.com) that has a dedicated page for this property.
+
+PROPERTY WEBSITE PRIORITY: First look for the property's own external marketing website or its listing on its PM's site. If none exists, fall back to a CRE listing page (apartments.com, loopnet.com, costar.com, crexi.com) that has a dedicated page for this property.
 
 DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain from a URL you found in search results. If no search result contained the company's website, return null.
+
+**IMPORTANT NOTES**
+
+*KEY DISTINCTION*: The deed owner and the property manager (PM) are often DIFFERENT companies. The PM is the company hired to handle day-to-day operations, leasing, maintenance, and tenant relations. If the owner self-manages (no third-party PM), return the owner as both "mgmt" and "owner".
+
+*MULTIPLE COMPANIES*: Properties may involve multiple companies. For example, an apartment complex might have a PM company AND a general community site. Return ALL companies you identify.
+
+
+*SEARCH SOURCES*: Using current, accurate information is critcial as contact and property data changes frequently. Use recent sources and confirm company information, websites, and property information are current. Visit website domains you return and validate they are active and up to date.
+
 
 Return JSON (mgmt and owners are ARRAYS — include every company you identify):
 {
