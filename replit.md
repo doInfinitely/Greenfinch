@@ -54,6 +54,7 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Admin LinkedIn Overrides**: `/admin/linkedin-overrides` — review, approve, custom-set, or dismiss rejected LinkedIn URLs per contact.
 - **Admin Contact Merge**: `/admin/merge-contacts` — search and manually merge any two contacts with swap-direction support.
 - **Admin Property Merge**: `/admin/merge-properties` — search and manually merge any two properties; re-links all junction table rows, soft-deletes the merged-away property (`enrichmentStatus = 'merged'`).
+- **Admin Organizations**: `/admin/organizations` — greenfinch admins can list all Clerk orgs, create new orgs, view members/pending invitations per org, and invite users to any org (not just their active one). Non-greenfinch org admins use `/org-admin/team` to manage their own org.
 - **Map Marker Colors**: All property markers and clusters are solid green (#16a34a) with white stroke.
 - **Parcel Resolution**: Uses a pre-computed client-side parcel index for instant hash lookup.
 - **Map Viewport Persistence**: Map center/zoom saved to sessionStorage.

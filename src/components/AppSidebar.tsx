@@ -84,6 +84,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
       internalOnly: true,
       items: [
         { href: '/admin', label: 'Data Admin', icon: <Settings className="w-4 h-4" /> },
+        { href: '/admin/organizations', label: 'Organizations', icon: <Building2 className="w-4 h-4" /> },
         { href: '/admin/database', label: 'Database', icon: <Database className="w-4 h-4" /> },
         { href: '/admin/ai-config', label: 'AI Config', icon: <SlidersHorizontal className="w-4 h-4" /> },
         { href: '/admin/vertex-logs', label: 'Vertex AI Debug', icon: <Braces className="w-4 h-4" /> },
