@@ -43,8 +43,6 @@ export const THINKING_LEVELS = {
   STAGE_2_OWNERSHIP: 'MEDIUM' as const,
   /** Stage 3a — decision-maker identification (research-heavy). */
   STAGE_3A_CONTACTS: 'HIGH' as const,
-  /** Stage 3b — per-contact email/phone lookup (simple search). */
-  STAGE_3B_ENRICH: 'MINIMAL' as const,
   /** Summary cleanup — light editing, no reasoning needed. */
   SUMMARY_CLEANUP: 'MINIMAL' as const,
   /** Replacement contact search — simple web lookup. */
@@ -65,10 +63,8 @@ export const RETRIES = {
   STAGE_1: 3,
   /** Stage 2 — ownership.  3 attempts with linear back-off. */
   STAGE_2: 3,
-  /** Stage 3a — decision-maker identification.  3 attempts, linear back-off. */
+  /** Stage 3 — contact identification.  3 attempts, linear back-off. */
   STAGE_3A: 3,
-  /** Stage 3b — per-contact enrichment.  3 attempts, linear back-off. */
-  STAGE_3B: 3,
 };
 
 export const BACKOFF = {
@@ -80,10 +76,8 @@ export const BACKOFF = {
   STAGE_1_MAX_MS: 15_000,
   /** Stage 2: linear delay multiplier per attempt (ms). */
   STAGE_2_PER_ATTEMPT_MS: 3_000,
-  /** Stage 3a: linear delay multiplier per attempt (ms). */
+  /** Stage 3: linear delay multiplier per attempt (ms). */
   STAGE_3A_PER_ATTEMPT_MS: 3_000,
-  /** Stage 3b: linear delay multiplier per attempt (ms). */
-  STAGE_3B_PER_ATTEMPT_MS: 2_000,
 };
 
 // ---------------------------------------------------------------------------

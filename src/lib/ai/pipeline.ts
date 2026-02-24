@@ -146,7 +146,7 @@ export async function runFocusedEnrichment(
 
     logCostSummary(property);
 
-    console.log(`[FocusedEnrichment] All stages complete in ${totalMs}ms (3a: ${contactIdentificationMs}ms, 3b: ${contactEnrichmentMs}ms)`);
+    console.log(`[FocusedEnrichment] All stages complete in ${totalMs}ms (contacts: ${contactIdentificationMs}ms)`);
 
     return {
       propertyKey: property.parcelId || property.accountNum,

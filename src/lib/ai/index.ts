@@ -20,7 +20,6 @@ export type {
   DiscoveredContact,
   ScoredSource,
   IdentifiedDecisionMaker,
-  ContactEnrichmentResult,
   FocusedEnrichmentResult,
   EnrichmentStage,
   EnrichmentStageCheckpoint,

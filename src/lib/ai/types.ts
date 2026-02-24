@@ -114,7 +114,7 @@ export interface ScoredSource extends GroundedSource {
   trustTier: 'high' | 'medium' | 'low';
 }
 
-/** Raw contact record from Stage 3a before email/phone enrichment. */
+/** Contact record from Stage 3 (identification + optional email). */
 export interface IdentifiedDecisionMaker {
   name: string;
   title: string | null;
@@ -125,17 +125,7 @@ export interface IdentifiedDecisionMaker {
   connectionEvidence: string;
   sourceUrl: string | null;
   contactType: 'individual' | 'general';
-}
-
-/** Per-contact result from Stage 3b (email/phone lookup). */
-export interface ContactEnrichmentResult {
   email: string | null;
-  emailSource: 'ai_discovered' | null;
-  phone: string | null;
-  phoneLabel: 'direct_work' | 'office' | 'personal' | 'mobile' | null;
-  phoneConfidence: number | null;
-  location: string | null;
-  enrichmentSources: GroundedSource[];
 }
 
 /** Full pipeline output returned by runFocusedEnrichment. */

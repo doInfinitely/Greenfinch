@@ -333,7 +333,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
           if (validatedDomain) {
             entry.domain = validatedDomain;
           } else {
-            console.warn(`[FocusedEnrichment] Stage 2: ${label} domain "${aiDomain}" failed validation and no PDL match — will try email domain fallback after Stage 3b`);
+            console.warn(`[FocusedEnrichment] Stage 2: ${label} domain "${aiDomain}" failed validation and no PDL match — will try email domain fallback`);
             entry.domain = null;
           }
         }
