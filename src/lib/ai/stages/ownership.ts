@@ -258,8 +258,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
             const aiDomain = validated.managementCompany.domain.toLowerCase();
             const siteDomain = websiteResult.extractedDomain.toLowerCase();
             if (aiDomain !== siteDomain && !aiDomain.includes(siteDomain) && !siteDomain.includes(aiDomain)) {
-              console.log(`[FocusedEnrichment] Stage 2: Mgmt domain "${aiDomain}" differs from validated website domain "${siteDomain}" — using website domain`);
-              validated.managementCompany.domain = websiteResult.extractedDomain;
+              console.log(`[FocusedEnrichment] Stage 2: Mgmt domain "${aiDomain}" differs from property website domain "${siteDomain}" — keeping separate (PM domain ≠ property site)`);
             }
           }
         }

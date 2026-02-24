@@ -9,9 +9,12 @@ export async function GET(request: NextRequest) {
     await requireAdminAccess();
     
     const { searchParams } = new URL(request.url);
-    const period = searchParams.get('period') || 'daily';
+    const periodParam = searchParams.get('period') || 'daily';
     const days = parseInt(searchParams.get('days') || '30', 10);
     const provider = searchParams.get('provider');
+
+    const periodMap: Record<string, string> = { daily: 'day', week: 'week', month: 'month' };
+    const pgInterval = periodMap[periodParam] || 'day';
 
     const since = new Date();
     since.setDate(since.getDate() - days);
@@ -31,6 +34,8 @@ export async function GET(request: NextRequest) {
     }
     const propertyWhereClause = and(...propertyConditions);
 
+    const dateTruncExpr = sql`date_trunc(${sql.raw(`'${pgInterval}'`)}, ${enrichmentCostEvents.createdAt})`;
+
     const [summaryByProvider, dailyTrend, recentEvents, totals, byProperty] = await Promise.all([
       db.select({
         provider: enrichmentCostEvents.provider,
@@ -49,18 +54,15 @@ export async function GET(request: NextRequest) {
         .orderBy(desc(sum(enrichmentCostEvents.estimatedCostUsd))),
 
       db.select({
-        date: sql<string>`date_trunc(${period}, ${enrichmentCostEvents.createdAt})::date::text`,
+        date: sql<string>`${dateTruncExpr}::date::text`,
         provider: enrichmentCostEvents.provider,
         calls: count(),
         costUsd: sum(enrichmentCostEvents.estimatedCostUsd),
       })
         .from(enrichmentCostEvents)
         .where(whereClause)
-        .groupBy(
-          sql`date_trunc(${period}, ${enrichmentCostEvents.createdAt})`,
-          enrichmentCostEvents.provider
-        )
-        .orderBy(desc(sql`date_trunc(${period}, ${enrichmentCostEvents.createdAt})`)),
+        .groupBy(dateTruncExpr, enrichmentCostEvents.provider)
+        .orderBy(desc(dateTruncExpr)),
 
       db.select()
         .from(enrichmentCostEvents)
@@ -116,7 +118,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       success: true,
       data: {
-        period,
+        period: periodParam,
         days,
         totals: totals[0] || { totalCalls: 0, totalCostUsd: 0, totalCredits: 0, totalInputTokens: 0, totalOutputTokens: 0, totalThinkingTokens: 0 },
         byProvider: summaryByProvider,
