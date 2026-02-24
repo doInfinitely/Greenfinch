@@ -80,9 +80,9 @@ export const THINKING_LEVELS = {
   /** Stage 1 — property classification (straightforward lookup). */
   STAGE_1_CLASSIFY: 'MINIMAL' as const,
   /** Stage 2 — ownership & management (multi-step entity resolution). */
-  STAGE_2_OWNERSHIP: 'MEDIUM' as const,
+  STAGE_2_OWNERSHIP: 'LOW' as const,
   /** Stage 3a — decision-maker identification (research-heavy). */
-  STAGE_3A_CONTACTS: 'HIGH' as const,
+  STAGE_3A_CONTACTS: 'MEDIUM' as const,
   /** Summary cleanup — light editing, no reasoning needed. */
   SUMMARY_CLEANUP: 'MINIMAL' as const,
   /** Replacement contact search — simple web lookup. */
