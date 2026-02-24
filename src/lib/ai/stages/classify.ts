@@ -135,6 +135,7 @@ Return JSON:
       provider: 'gemini',
       endpoint: 'classify-property',
       entityType: 'property',
+      tokenUsage: response?.tokenUsage,
       success: false,
       errorMessage: 'Empty response after all retries',
     });
@@ -176,6 +177,7 @@ Return JSON:
     provider: 'gemini',
     endpoint: 'classify-property',
     entityType: 'property',
+    tokenUsage: response?.tokenUsage,
     success: true,
     metadata: { sourcesCount: sources.length },
   });

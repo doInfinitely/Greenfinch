@@ -9,6 +9,7 @@
 // ============================================================================
 
 export type {
+  GeminiTokenUsage,
   StreamedGeminiResponse,
   GroundedSource,
   StageResult,
@@ -27,6 +28,7 @@ export type {
 
 export { isRetryableGeminiError, EnrichmentStageError, SchemaValidationError } from './errors';
 export { getGeminiClient, streamGeminiResponse, callGeminiOnce, callGeminiWithTimeout, GEMINI_HTTP_TIMEOUT_MS } from './client';
+export { computeGeminiCostUsd, GEMINI_PRICING } from './config';
 export { scoreSources, parseJsonResponse, extractGroundedSources } from './parsers';
 export { propertyLatLng, stripInternalMessages } from './helpers';
 export { classifyAndVerifyProperty } from './stages/classify';

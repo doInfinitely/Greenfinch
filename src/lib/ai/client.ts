@@ -12,7 +12,7 @@ import { GoogleGenAI } from "@google/genai";
 import { GEMINI_MODEL } from "../constants";
 import { rateLimiters } from '../rate-limiter';
 import { GEMINI_HTTP_TIMEOUT_MS, DEFAULT_TEMPERATURE } from './config';
-import type { StreamedGeminiResponse } from './types';
+import type { StreamedGeminiResponse, GeminiTokenUsage } from './types';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -106,6 +106,7 @@ export async function streamGeminiResponse(
 
   let fullText = '';
   let lastCandidate: any = null;
+  let lastUsageMetadata: any = null;
 
   for await (const chunk of stream) {
     if (chunk.text) {
@@ -113,6 +114,9 @@ export async function streamGeminiResponse(
     }
     if (chunk.candidates && chunk.candidates.length > 0) {
       lastCandidate = chunk.candidates[0];
+    }
+    if ((chunk as any).usageMetadata) {
+      lastUsageMetadata = (chunk as any).usageMetadata;
     }
   }
 
@@ -122,6 +126,15 @@ export async function streamGeminiResponse(
 
   if (lastCandidate) {
     response.candidates = [lastCandidate];
+  }
+
+  if (lastUsageMetadata) {
+    response.tokenUsage = {
+      promptTokens: lastUsageMetadata.promptTokenCount ?? 0,
+      responseTokens: lastUsageMetadata.responseTokenCount ?? 0,
+      thinkingTokens: lastUsageMetadata.thoughtsTokenCount ?? 0,
+      totalTokens: lastUsageMetadata.totalTokenCount ?? 0,
+    };
   }
 
   return response;

@@ -68,6 +68,7 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Multi-Company Ownership**: Stage 2 returns arrays of owners and management companies (`additionalOwners`, `additionalManagementCompanies` on `OwnershipInfo`). All companies go through the same PDL → DNS → Gemini retry validation cascade. Primary (highest confidence) is written to singular DB columns; all companies are stored in `enrichment_json` and resolved as organizations.
 - **Cross-Stage Company Validation**: After Stage 3a, contact companies are checked against ALL known companies from Stage 2 (primary + additional owners/mgmt). Mismatches get `roleConfidence` downgraded.
 - **Proactive Phone Matching**: Stage 3b phones are compared against Stage 2's `propertyPhone`. Matching numbers are immediately labeled as `office` with low confidence.
+- **Token-Based Cost Tracking**: All Gemini API calls capture `usageMetadata` (input/output/thinking token counts) from streamed responses. Costs are computed using Flash 3 Preview pricing ($0.50/1M input, $3.00/1M output). Token counts stored in `enrichment_cost_events` table. Costs page shows per-provider token breakdowns and per-property cost aggregation.
 
 ## External Dependencies
 - **Snowflake**: Regrid parcel data ingestion.

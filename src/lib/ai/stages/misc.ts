@@ -65,6 +65,7 @@ ${preCleaned}`;
       provider: 'gemini',
       endpoint: 'cleanup-summary',
       entityType: 'property',
+      tokenUsage: response.tokenUsage,
       success: true,
     });
     return cleaned;
@@ -122,6 +123,7 @@ If you cannot find a replacement, return {"name": null}`;
         provider: 'gemini',
         endpoint: 'replacement-search',
         entityType: 'contact',
+        tokenUsage: response.tokenUsage,
         success: false,
         errorMessage: 'Empty response',
       });
@@ -137,6 +139,7 @@ If you cannot find a replacement, return {"name": null}`;
         provider: 'gemini',
         endpoint: 'replacement-search',
         entityType: 'contact',
+        tokenUsage: response.tokenUsage,
         success: false,
         errorMessage: 'Parse error',
       });
@@ -147,6 +150,7 @@ If you cannot find a replacement, return {"name": null}`;
       provider: 'gemini',
       endpoint: 'replacement-search',
       entityType: 'contact',
+      tokenUsage: response.tokenUsage,
       success: true,
       metadata: { found: !!parsed?.name, role: roleDesc, company },
     });

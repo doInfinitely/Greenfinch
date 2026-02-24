@@ -120,6 +120,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
           provider: 'gemini',
           endpoint: 'identify-ownership',
           entityType: 'property',
+          tokenUsage: response.tokenUsage,
           success: false,
           errorMessage: `Empty response attempt ${attempt}`,
         });
@@ -164,6 +165,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
         provider: 'gemini',
         endpoint: 'identify-ownership',
         entityType: 'property',
+        tokenUsage: response.tokenUsage,
         success: true,
         metadata: { sourcesCount: sources.length, attempt },
       });
@@ -477,6 +479,7 @@ Return JSON:
       provider: 'gemini',
       endpoint: 'retry-property-website',
       entityType: 'property',
+      tokenUsage: response.tokenUsage,
       success: true,
     });
 
@@ -548,6 +551,7 @@ Return JSON:
       provider: 'gemini',
       endpoint: 'retry-company-domain',
       entityType: 'organization',
+      tokenUsage: response.tokenUsage,
       success: true,
     });
 

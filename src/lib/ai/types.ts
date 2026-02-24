@@ -6,10 +6,19 @@
 // these types — keep them stable and document any changes carefully.
 // ============================================================================
 
+/** Token usage metadata captured from Gemini API responses. */
+export interface GeminiTokenUsage {
+  promptTokens: number;
+  responseTokens: number;
+  thinkingTokens: number;
+  totalTokens: number;
+}
+
 /** Raw response shape returned by streamGeminiResponse after consuming a stream. */
 export interface StreamedGeminiResponse {
   text: string;
   candidates?: any[];
+  tokenUsage?: GeminiTokenUsage;
 }
 
 /** A single web source cited by Gemini's search grounding metadata. */

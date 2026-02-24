@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ENRICHMENT_PROVIDER_LABELS } from '@/lib/schema';
-import { ArrowLeft, TrendingUp, DollarSign, Zap, AlertTriangle, RefreshCw } from 'lucide-react';
+import { ArrowLeft, TrendingUp, DollarSign, Zap, AlertTriangle, RefreshCw, Building2, Hash } from 'lucide-react';
 import Link from 'next/link';
 
 interface ProviderSummary {
@@ -14,6 +14,9 @@ interface ProviderSummary {
   failedCalls: number;
   totalCredits: string | null;
   totalCostUsd: string | null;
+  totalInputTokens: string | null;
+  totalOutputTokens: string | null;
+  totalThinkingTokens: string | null;
 }
 
 interface TrendItem {
@@ -29,6 +32,9 @@ interface CostEvent {
   endpoint: string;
   creditsUsed: number;
   estimatedCostUsd: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  thinkingTokens: number | null;
   entityType: string | null;
   entityId: string | null;
   triggeredBy: string | null;
@@ -38,6 +44,17 @@ interface CostEvent {
   createdAt: string;
 }
 
+interface PropertyCost {
+  entityId: string | null;
+  propertyName: string;
+  totalCalls: number;
+  totalCostUsd: string | null;
+  totalInputTokens: string | null;
+  totalOutputTokens: string | null;
+  totalThinkingTokens: string | null;
+  providers: string | null;
+}
+
 interface CostData {
   period: string;
   days: number;
@@ -45,16 +62,21 @@ interface CostData {
     totalCalls: number;
     totalCostUsd: string | null;
     totalCredits: string | null;
+    totalInputTokens: string | null;
+    totalOutputTokens: string | null;
+    totalThinkingTokens: string | null;
   };
   byProvider: ProviderSummary[];
   trend: TrendItem[];
   recentEvents: CostEvent[];
+  byProperty: PropertyCost[];
 }
 
 function formatCurrency(value: string | number | null): string {
   if (value === null || value === undefined) return '$0.00';
   const num = typeof value === 'string' ? parseFloat(value) : value;
   if (isNaN(num)) return '$0.00';
+  if (num < 0.01 && num > 0) return `$${num.toFixed(4)}`;
   return `$${num.toFixed(2)}`;
 }
 
@@ -62,6 +84,15 @@ function formatNumber(value: string | number | null): string {
   if (value === null || value === undefined) return '0';
   const num = typeof value === 'string' ? parseFloat(value) : value;
   return Math.round(num).toLocaleString();
+}
+
+function formatTokens(value: string | number | null): string {
+  if (value === null || value === undefined) return '—';
+  const num = typeof value === 'string' ? parseInt(value, 10) : value;
+  if (isNaN(num) || num === 0) return '—';
+  if (num >= 1_000_000) return `${(num / 1_000_000).toFixed(1)}M`;
+  if (num >= 1_000) return `${(num / 1_000).toFixed(1)}K`;
+  return num.toLocaleString();
 }
 
 function getProviderLabel(provider: string): string {
@@ -173,8 +204,8 @@ export default function EnrichmentCostsPage() {
         </div>
 
         {loading && !data ? (
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-            {[1, 2, 3].map(i => (
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
+            {[1, 2, 3, 4].map(i => (
               <div key={i} className="bg-white rounded-lg border border-gray-200 p-6 animate-pulse">
                 <div className="h-4 bg-gray-200 rounded w-24 mb-3" />
                 <div className="h-8 bg-gray-200 rounded w-32" />
@@ -183,7 +214,7 @@ export default function EnrichmentCostsPage() {
           </div>
         ) : data ? (
           <>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
               <div className="bg-white rounded-lg border border-gray-200 p-6" data-testid="card-total-spend">
                 <div className="flex items-center gap-2 mb-1">
                   <DollarSign className="w-4 h-4 text-green-600" />
@@ -200,6 +231,15 @@ export default function EnrichmentCostsPage() {
                 </div>
                 <p className="text-2xl font-bold text-gray-900">{formatNumber(data.totals.totalCalls)}</p>
                 <p className="text-xs text-gray-400 mt-1">{formatNumber(data.totals.totalCredits)} credits used</p>
+              </div>
+
+              <div className="bg-white rounded-lg border border-gray-200 p-6" data-testid="card-total-tokens">
+                <div className="flex items-center gap-2 mb-1">
+                  <Hash className="w-4 h-4 text-indigo-600" />
+                  <span className="text-sm font-medium text-gray-500">Gemini Tokens</span>
+                </div>
+                <p className="text-2xl font-bold text-gray-900">{formatTokens(data.totals.totalInputTokens)}<span className="text-sm font-normal text-gray-400"> in</span> / {formatTokens(data.totals.totalOutputTokens)}<span className="text-sm font-normal text-gray-400"> out</span></p>
+                <p className="text-xs text-gray-400 mt-1">{formatTokens(data.totals.totalThinkingTokens)} thinking tokens</p>
               </div>
 
               <div className="bg-white rounded-lg border border-gray-200 p-6" data-testid="card-providers-active">
@@ -227,6 +267,7 @@ export default function EnrichmentCostsPage() {
                       const totalCost = parseFloat(String(p.totalCostUsd || '0'));
                       const maxCost = Math.max(...data.byProvider.map(bp => parseFloat(String(bp.totalCostUsd || '0'))), 1);
                       const widthPct = Math.max((totalCost / maxCost) * 100, 2);
+                      const hasTokens = p.totalInputTokens || p.totalOutputTokens;
 
                       return (
                         <div key={p.provider} data-testid={`provider-row-${p.provider}`}>
@@ -247,6 +288,14 @@ export default function EnrichmentCostsPage() {
                               <span className="text-xs text-gray-400 ml-2">{formatNumber(p.totalCalls)} calls</span>
                             </div>
                           </div>
+                          {hasTokens && (
+                            <div className="text-xs text-gray-400 mb-1">
+                              {formatTokens(p.totalInputTokens)} in / {formatTokens(p.totalOutputTokens)} out
+                              {p.totalThinkingTokens && parseInt(String(p.totalThinkingTokens)) > 0 && (
+                                <span> · {formatTokens(p.totalThinkingTokens)} thinking</span>
+                              )}
+                            </div>
+                          )}
                           <div className="w-full bg-gray-100 rounded-full h-2">
                             <div
                               className="bg-green-500 h-2 rounded-full transition-all"
@@ -297,6 +346,47 @@ export default function EnrichmentCostsPage() {
               </div>
             </div>
 
+            <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6" data-testid="card-by-property">
+              <div className="flex items-center gap-2 mb-4">
+                <Building2 className="w-5 h-5 text-gray-600" />
+                <h2 className="text-lg font-semibold text-gray-900">Cost per Property</h2>
+              </div>
+              {(!data.byProperty || data.byProperty.length === 0) ? (
+                <p className="text-sm text-gray-400 text-center py-8">No per-property cost data available</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200">
+                        <th className="text-left py-2 text-xs font-medium text-gray-500 uppercase">Property</th>
+                        <th className="text-right py-2 text-xs font-medium text-gray-500 uppercase">Calls</th>
+                        <th className="text-right py-2 text-xs font-medium text-gray-500 uppercase">Input Tokens</th>
+                        <th className="text-right py-2 text-xs font-medium text-gray-500 uppercase">Output Tokens</th>
+                        <th className="text-right py-2 text-xs font-medium text-gray-500 uppercase">Thinking</th>
+                        <th className="text-right py-2 text-xs font-medium text-gray-500 uppercase">Cost</th>
+                        <th className="text-left py-2 text-xs font-medium text-gray-500 uppercase">Providers</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {data.byProperty.map((p, i) => (
+                        <tr key={i} data-testid={`property-cost-row-${i}`}>
+                          <td className="py-2 text-gray-900 max-w-[250px] truncate" title={p.propertyName}>
+                            {p.propertyName}
+                          </td>
+                          <td className="py-2 text-right text-gray-600">{formatNumber(p.totalCalls)}</td>
+                          <td className="py-2 text-right text-gray-600">{formatTokens(p.totalInputTokens)}</td>
+                          <td className="py-2 text-right text-gray-600">{formatTokens(p.totalOutputTokens)}</td>
+                          <td className="py-2 text-right text-gray-600">{formatTokens(p.totalThinkingTokens)}</td>
+                          <td className="py-2 text-right font-medium text-gray-900">{formatCurrency(p.totalCostUsd)}</td>
+                          <td className="py-2 text-gray-500 text-xs">{p.providers || '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             <div className="bg-white rounded-lg border border-gray-200 p-6" data-testid="card-recent-events">
               <h2 className="text-lg font-semibold text-gray-900 mb-4">Recent API Calls</h2>
               {data.recentEvents.length === 0 ? (
@@ -309,47 +399,50 @@ export default function EnrichmentCostsPage() {
                         <th className="text-left py-2 text-xs font-medium text-gray-500 uppercase">Time</th>
                         <th className="text-left py-2 text-xs font-medium text-gray-500 uppercase">Provider</th>
                         <th className="text-left py-2 text-xs font-medium text-gray-500 uppercase">Endpoint</th>
-                        <th className="text-left py-2 text-xs font-medium text-gray-500 uppercase">Entity</th>
+                        <th className="text-right py-2 text-xs font-medium text-gray-500 uppercase">Tokens</th>
                         <th className="text-right py-2 text-xs font-medium text-gray-500 uppercase">Cost</th>
                         <th className="text-center py-2 text-xs font-medium text-gray-500 uppercase">Status</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {data.recentEvents.map((event) => (
-                        <tr key={event.id} data-testid={`event-row-${event.id}`}>
-                          <td className="py-2 text-gray-500 whitespace-nowrap">
-                            {new Date(event.createdAt).toLocaleString('en-US', {
-                              month: 'short',
-                              day: 'numeric',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })}
-                          </td>
-                          <td className="py-2">
-                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getProviderColor(event.provider)}`}>
-                              {getProviderLabel(event.provider)}
-                            </span>
-                          </td>
-                          <td className="py-2 text-gray-900 font-mono text-xs">{event.endpoint}</td>
-                          <td className="py-2 text-gray-600 text-xs">
-                            {event.entityType && event.entityId ? (
-                              <span className="truncate max-w-[120px] block">
-                                {event.entityType}: {event.entityId.substring(0, 8)}...
+                      {data.recentEvents.map((event) => {
+                        const hasTokens = event.inputTokens || event.outputTokens;
+                        return (
+                          <tr key={event.id} data-testid={`event-row-${event.id}`}>
+                            <td className="py-2 text-gray-500 whitespace-nowrap">
+                              {new Date(event.createdAt).toLocaleString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit',
+                              })}
+                            </td>
+                            <td className="py-2">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getProviderColor(event.provider)}`}>
+                                {getProviderLabel(event.provider)}
                               </span>
-                            ) : (
-                              <span className="text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td className="py-2 text-right text-gray-900">{formatCurrency(event.estimatedCostUsd)}</td>
-                          <td className="py-2 text-center">
-                            {event.success ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">OK</span>
-                            ) : (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800" title={event.errorMessage || ''}>Fail</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="py-2 text-gray-900 font-mono text-xs">{event.endpoint}</td>
+                            <td className="py-2 text-right text-gray-600 text-xs whitespace-nowrap">
+                              {hasTokens ? (
+                                <span title={`In: ${event.inputTokens?.toLocaleString() || 0} / Out: ${event.outputTokens?.toLocaleString() || 0}${event.thinkingTokens ? ` / Think: ${event.thinkingTokens.toLocaleString()}` : ''}`}>
+                                  {formatTokens(event.inputTokens)}<span className="text-gray-400">/</span>{formatTokens(event.outputTokens)}
+                                </span>
+                              ) : (
+                                <span className="text-gray-400">—</span>
+                              )}
+                            </td>
+                            <td className="py-2 text-right text-gray-900">{formatCurrency(event.estimatedCostUsd)}</td>
+                            <td className="py-2 text-center">
+                              {event.success ? (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">OK</span>
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800" title={event.errorMessage || ''}>Fail</span>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

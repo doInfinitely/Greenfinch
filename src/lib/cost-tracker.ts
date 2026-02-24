@@ -1,6 +1,8 @@
 import { db } from '@/lib/db';
 import { enrichmentCostEvents } from '@/lib/schema';
 import type { EnrichmentProvider } from '@/lib/schema';
+import type { GeminiTokenUsage } from '@/lib/ai/types';
+import { computeGeminiCostUsd } from '@/lib/ai/config';
 
 const COST_PER_CREDIT: Record<EnrichmentProvider, number> = {
   pdl: 0.03,
@@ -22,6 +24,8 @@ interface TrackCostParams {
   provider: EnrichmentProvider;
   endpoint: string;
   credits?: number;
+  costOverrideUsd?: number;
+  tokenUsage?: GeminiTokenUsage;
   entityType?: string;
   entityId?: string;
   triggeredBy?: string;
@@ -34,8 +38,16 @@ interface TrackCostParams {
 
 export async function trackEnrichmentCost(params: TrackCostParams): Promise<void> {
   const credits = params.credits ?? 1;
-  const costPerCredit = COST_PER_CREDIT[params.provider] ?? 0.01;
-  const estimatedCostUsd = credits * costPerCredit;
+
+  let estimatedCostUsd: number;
+  if (params.costOverrideUsd !== undefined) {
+    estimatedCostUsd = params.costOverrideUsd;
+  } else if (params.provider === 'gemini' && params.tokenUsage) {
+    estimatedCostUsd = computeGeminiCostUsd(params.tokenUsage);
+  } else {
+    const costPerCredit = COST_PER_CREDIT[params.provider] ?? 0.01;
+    estimatedCostUsd = credits * costPerCredit;
+  }
 
   try {
     await db.insert(enrichmentCostEvents).values({
@@ -43,6 +55,9 @@ export async function trackEnrichmentCost(params: TrackCostParams): Promise<void
       endpoint: params.endpoint,
       creditsUsed: credits,
       estimatedCostUsd,
+      inputTokens: params.tokenUsage?.promptTokens ?? null,
+      outputTokens: params.tokenUsage?.responseTokens ?? null,
+      thinkingTokens: params.tokenUsage?.thinkingTokens ?? null,
       entityType: params.entityType ?? null,
       entityId: params.entityId ?? null,
       triggeredBy: params.triggeredBy ?? null,

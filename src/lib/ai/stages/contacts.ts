@@ -139,6 +139,7 @@ Return JSON:
           provider: 'gemini',
           endpoint: 'identify-decision-makers',
           entityType: 'property',
+          tokenUsage: response.tokenUsage,
           success: false,
           errorMessage: `Empty response attempt ${attempt}`,
         });
@@ -216,6 +217,7 @@ Return JSON:
         provider: 'gemini',
         endpoint: 'identify-decision-makers',
         entityType: 'property',
+        tokenUsage: response.tokenUsage,
         success: true,
         metadata: { contactsCount: contacts.length, sourcesCount: sources.length, attempt },
       });
@@ -314,6 +316,7 @@ RULES:
           provider: 'gemini',
           endpoint: 'enrich-contact-details',
           entityType: 'contact',
+          tokenUsage: response.tokenUsage,
           success: false,
           errorMessage: `Empty response attempt ${attempt}`,
         });
@@ -332,6 +335,7 @@ RULES:
         provider: 'gemini',
         endpoint: 'enrich-contact-details',
         entityType: 'contact',
+        tokenUsage: response.tokenUsage,
         success: true,
         metadata: { sourcesCount: sources.length, attempt },
       });
