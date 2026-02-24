@@ -277,9 +277,8 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
         );
         if (retryResult.url) {
           validated.propertyWebsite = retryResult.url;
-          if (retryResult.domain && !validated.managementCompany.domain) {
-            validated.managementCompany.domain = retryResult.domain;
-            console.log(`[FocusedEnrichment] Stage 2: Domain retry also provided mgmt domain: ${retryResult.domain}`);
+          if (retryResult.domain) {
+            console.log(`[FocusedEnrichment] Stage 2: Property website retry found domain "${retryResult.domain}" — keeping separate from mgmt company domains (each validated via PDL independently)`);
           }
         }
       }
