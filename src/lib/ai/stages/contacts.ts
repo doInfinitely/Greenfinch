@@ -62,6 +62,15 @@ async function identifyDecisionMakers(
   const city = property.city || 'Dallas';
   const state = (property as any).state || 'TX';
 
+  const additionalCompanyLines: string[] = [];
+  for (const addlMgmt of ownership.additionalManagementCompanies || []) {
+    if (addlMgmt.name) additionalCompanyLines.push(`ALSO MANAGED BY: ${addlMgmt.name} (${addlMgmt.domain || 'no website'})`);
+  }
+  for (const addlOwner of ownership.additionalOwners || []) {
+    if (addlOwner.name) additionalCompanyLines.push(`ALSO OWNED BY: ${addlOwner.name} (${addlOwner.domain || 'no website'})`);
+  }
+  const additionalInfo = additionalCompanyLines.length > 0 ? '\n' + additionalCompanyLines.join('\n') : '';
+
   // -- Build the prompt -------------------------------------------------------
   const prompt = `Find 3 people directly involved in managing THIS specific property. Return ONLY valid JSON.
 
@@ -70,7 +79,7 @@ TYPE: ${classification.category} - ${classification.subcategory}
 LOCATION: ${city}, ${state}
 MGMT CO: ${mgmtInfo}
 OWNER: ${ownerName}
-PROPERTY SITE: ${propertySite}
+PROPERTY SITE: ${propertySite}${additionalInfo}
 
 TASK: Search the web to find people who directly manage, operate, or maintain this specific property on a day-to-day basis. Focus on the property management company staff in the ${city}, ${state} area, not corporate headquarters executives.
 
@@ -471,17 +480,20 @@ export async function discoverContacts(
   }
 
   // -- Post-processing: fill missing mgmt company domain from contact emails --
-  if (!ownership.managementCompany?.domain && ownership.managementCompany?.name) {
-    const mgmtNameNorm = ownership.managementCompany.name.toLowerCase().replace(/[^a-z0-9]/g, '');
-    for (const c of rawContacts) {
-      if (c.email && c.company) {
-        const contactCompanyNorm = c.company.toLowerCase().replace(/[^a-z0-9]/g, '');
-        if (contactCompanyNorm.includes(mgmtNameNorm) || mgmtNameNorm.includes(contactCompanyNorm)) {
-          const emailDomain = c.email.split('@')[1]?.toLowerCase();
-          if (emailDomain && !FREE_EMAIL_DOMAINS.includes(emailDomain)) {
-            console.log(`[FocusedEnrichment] Email domain fallback for mgmt company "${ownership.managementCompany.name}" → ${emailDomain} from ${c.name}'s email`);
-            ownership.managementCompany.domain = emailDomain;
-            break;
+  const allMgmtCompanies = [ownership.managementCompany, ...(ownership.additionalManagementCompanies || [])];
+  for (const mgmt of allMgmtCompanies) {
+    if (!mgmt?.domain && mgmt?.name) {
+      const mgmtNameNorm = mgmt.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+      for (const c of rawContacts) {
+        if (c.email && c.company) {
+          const contactCompanyNorm = c.company.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (contactCompanyNorm.includes(mgmtNameNorm) || mgmtNameNorm.includes(contactCompanyNorm)) {
+            const emailDomain = c.email.split('@')[1]?.toLowerCase();
+            if (emailDomain && !FREE_EMAIL_DOMAINS.includes(emailDomain)) {
+              console.log(`[FocusedEnrichment] Email domain fallback for mgmt company "${mgmt.name}" → ${emailDomain} from ${c.name}'s email`);
+              mgmt.domain = emailDomain;
+              break;
+            }
           }
         }
       }
@@ -498,10 +510,12 @@ export async function discoverContacts(
 
   // -- Post-processing: cross-stage company validation ------------------------
   // Downgrade roleConfidence when a contact's company doesn't match any
-  // known company from Stage 2 (owner, mgmt, deed holder)
+  // known company from Stage 2 (owner, mgmt, deed holder, + additional)
   const knownCompanies = [
     ownership.managementCompany?.name,
     ownership.beneficialOwner?.name,
+    ...(ownership.additionalManagementCompanies || []).map(m => m.name),
+    ...(ownership.additionalOwners || []).map(o => o.name),
     property.bizName,
     property.ownerName1,
   ].filter(Boolean).map(n => n!.toLowerCase().replace(/[^a-z0-9]/g, ''));

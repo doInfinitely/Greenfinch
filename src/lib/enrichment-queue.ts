@@ -281,6 +281,38 @@ export async function saveEnrichmentResults(
     }
   }
 
+  for (const addlMgmt of ownership.additionalManagementCompanies || []) {
+    if (!addlMgmt?.name || addlMgmt.confidence <= 0) continue;
+    const addlMgmtName = addlMgmt.name.trim().toLowerCase();
+    const addlMgmtDomain = addlMgmt.domain?.trim().toLowerCase() || null;
+    if (existingNames.has(addlMgmtName) || (addlMgmtDomain && existingDomains.has(addlMgmtDomain))) continue;
+    console.log(`[SaveEnrichment] Adding org from additional mgmt: ${addlMgmt.name}`);
+    allOrgs.push({
+      name: addlMgmt.name,
+      domain: addlMgmt.domain || null,
+      orgType: 'management',
+      roles: ['property_manager'],
+    });
+    if (addlMgmtDomain) existingDomains.add(addlMgmtDomain);
+    existingNames.add(addlMgmtName);
+  }
+
+  for (const addlOwner of ownership.additionalOwners || []) {
+    if (!addlOwner?.name || addlOwner.confidence <= 0) continue;
+    const addlOwnerName = addlOwner.name.trim().toLowerCase();
+    const addlOwnerDomain = addlOwner.domain?.trim().toLowerCase() || null;
+    if (existingNames.has(addlOwnerName) || (addlOwnerDomain && existingDomains.has(addlOwnerDomain))) continue;
+    console.log(`[SaveEnrichment] Adding org from additional owner: ${addlOwner.name}`);
+    allOrgs.push({
+      name: addlOwner.name,
+      domain: addlOwner.domain || null,
+      orgType: addlOwner.type || 'owner',
+      roles: ['owner'],
+    });
+    if (addlOwnerDomain) existingDomains.add(addlOwnerDomain);
+    existingNames.add(addlOwnerName);
+  }
+
   for (const contact of discoveredContacts) {
     if (!contact.company) continue;
     const cName = contact.company.trim().toLowerCase();

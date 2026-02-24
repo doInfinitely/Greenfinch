@@ -15,7 +15,7 @@
 // ============================================================================
 
 import type { CommercialProperty } from "../../snowflake";
-import type { StageResult, OwnershipInfo, PropertyClassification } from '../types';
+import type { StageResult, OwnershipInfo, PropertyClassification, BeneficialOwnerEntry, ManagementCompanyEntry } from '../types';
 import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout } from '../client';
 import { extractGroundedSources, parseJsonResponse, validateStage2Schema } from '../parsers';
 import { propertyLatLng, extractUsefulLegalInfo, crossValidateOwnership, OWNER_TYPE_MAP } from '../helpers';
@@ -44,7 +44,7 @@ export async function identifyOwnership(
   const sqft = property.totalGrossBldgArea?.toLocaleString() || 'unknown';
 
   // -- Build the prompt -------------------------------------------------------
-  const prompt = `Find the beneficial owner, property management company, and direct website for this commercial property. Return ONLY valid JSON.
+  const prompt = `Find ALL beneficial owners, property management companies, and the direct website for this commercial property. Return ONLY valid JSON.
 
 PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
 TYPE: ${classification.category} - ${classification.subcategory}, ${sqft} sqft
@@ -53,6 +53,8 @@ ${secondaryOwner ? `DCAD SECONDARY: ${secondaryOwner}` : ''}
 ${legalInfo ? `LEGAL: ${legalInfo}` : ''}
 
 KEY DISTINCTION: The deed owner and the property manager (PM) are often DIFFERENT companies. The deed owner is the entity on the title (often an LLC, trust, or holding company). The PM is the company hired to handle day-to-day operations, leasing, maintenance, and tenant relations. Examples of third-party PMs: Willowbridge, CBRE, JLL, Cushman & Wakefield, Greystar, Capstone Real Estate Services, etc. If the owner self-manages (no third-party PM), return the owner as both "mgmt" and "owner".
+
+MULTIPLE COMPANIES: Properties may involve multiple companies. For example, an apartment complex might have a PM company (Willowbridge) AND a general community site (thevillagedallas.com run by a different entity). Return ALL companies you identify — include the DCAD entity, the parent/beneficial owner, AND any PM or operating companies. Each goes into the appropriate array.
 
 SEARCH SEQUENCE:
 1. Search "${classification.propertyName} ${property.city || 'Dallas'}" to find the property website and management company
@@ -67,19 +69,23 @@ PROPERTY WEBSITE PRIORITY: First look for the property's own external marketing 
 
 DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain from a URL you found in search results. If no search result contained the company's website, return null.
 
-Return JSON:
+Return JSON (mgmt and owners are ARRAYS — include every company you identify):
 {
-  "mgmt": {
-    "name": "Property management company name | null",
-    "domain": "pm-company.com | null",
-    "c": 0.0
-  },
-  "owner": {
-    "name": "Beneficial owner entity | null",
-    "type": "REIT | PE | Family Office | Individual | Corporation | Institutional | Syndicator | null",
-    "domain": "owner-co.com | null",
-    "c": 0.0
-  },
+  "mgmt": [
+    {
+      "name": "Property management company name | null",
+      "domain": "pm-company.com | null",
+      "c": 0.0
+    }
+  ],
+  "owners": [
+    {
+      "name": "Beneficial owner entity | null",
+      "type": "REIT | PE | Family Office | Individual | Corporation | Institutional | Syndicator | null",
+      "domain": "owner-co.com | null",
+      "c": 0.0
+    }
+  ],
   "site": "https://property-website-or-listing.com | null",
   "siteSource": "full URL where property site was found | null",
   "phone": "+1XXXXXXXXXX | null",
@@ -128,6 +134,8 @@ Return JSON:
           data: {
             beneficialOwner: { name: null, type: null, domain: null, confidence: 0 },
             managementCompany: { name: null, domain: null, confidence: 0 },
+            additionalOwners: [],
+            additionalManagementCompanies: [],
             propertyWebsite: null,
             propertyPhone: null,
           },
@@ -160,17 +168,53 @@ Return JSON:
         metadata: { sourcesCount: sources.length, attempt },
       });
 
-      // -- Map owner type to canonical enum -----------------------------------
-      const ownerType = parsed.owner?.type ? (OWNER_TYPE_MAP[parsed.owner.type] || null) : null;
+      // -- Normalize arrays: support both old single-object and new array format
+      const rawMgmtArr: any[] = Array.isArray(parsed.mgmt)
+        ? parsed.mgmt
+        : (parsed.mgmt && typeof parsed.mgmt === 'object' ? [parsed.mgmt] : []);
+      const rawOwnerArr: any[] = Array.isArray(parsed.owners)
+        ? parsed.owners
+        : Array.isArray(parsed.owner)
+          ? parsed.owner
+          : (parsed.owner && typeof parsed.owner === 'object' ? [parsed.owner] : []);
 
-      // -- Extract domains and property site ------------------------------------
-      // Mgmt/owner domains are validated downstream via PDL + DNS, so we don't
-      // require a domainSource citation from Gemini (they usually come from
-      // search results, not a specific citable page).
-      let mgmtDomain = parsed.mgmt?.domain ?? null;
+      // -- Clean domain helper ------------------------------------------------
+      const cleanDomain = (d: any): string | null => {
+        if (!d || d === 'null' || typeof d !== 'string') return null;
+        return d.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
+      };
 
-      // Property site still requires a source citation — it's a specific URL
-      // that we can verify, so an uncited one is likely hallucinated.
+      // -- Parse management company entries -----------------------------------
+      const allMgmt: ManagementCompanyEntry[] = rawMgmtArr
+        .filter((m: any) => m && typeof m === 'object' && m.name && m.name !== 'null')
+        .map((m: any) => ({
+          name: m.name ?? null,
+          domain: cleanDomain(m.domain),
+          confidence: m.c ?? 0,
+        }));
+
+      // -- Parse owner entries ------------------------------------------------
+      const allOwners: BeneficialOwnerEntry[] = rawOwnerArr
+        .filter((o: any) => o && typeof o === 'object' && o.name && o.name !== 'null')
+        .map((o: any) => ({
+          name: o.name ?? null,
+          type: o.type ? (OWNER_TYPE_MAP[o.type] ?? null) : null,
+          domain: cleanDomain(o.domain),
+          confidence: o.c ?? 0,
+        }));
+
+      // Sort by confidence descending so index 0 is the primary
+      allMgmt.sort((a, b) => b.confidence - a.confidence);
+      allOwners.sort((a, b) => b.confidence - a.confidence);
+
+      const primaryMgmt: ManagementCompanyEntry = allMgmt[0] || { name: null, domain: null, confidence: 0 };
+      const additionalMgmt = allMgmt.slice(1);
+      const primaryOwner: BeneficialOwnerEntry = allOwners[0] || { name: null, type: null, domain: null, confidence: 0 };
+      const additionalOwners = allOwners.slice(1);
+
+      console.log(`[FocusedEnrichment] Stage 2: parsed ${allMgmt.length} mgmt companies, ${allOwners.length} owners`);
+
+      // -- Extract property site -----------------------------------------------
       let propertySite = parsed.site ?? null;
       const siteSource = parsed.siteSource ?? null;
       if (propertySite && !siteSource) {
@@ -178,24 +222,12 @@ Return JSON:
         propertySite = null;
       }
 
-      // Clean raw owner domain (strip protocol, www, trailing slash)
-      const ownerDomain = parsed.owner?.domain && parsed.owner.domain !== 'null'
-        ? parsed.owner.domain.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase()
-        : null;
-
       // -- Assemble initial ownership data ------------------------------------
       const ownershipData: OwnershipInfo = {
-        beneficialOwner: {
-          name: parsed.owner?.name ?? null,
-          type: ownerType,
-          domain: ownerDomain,
-          confidence: parsed.owner?.c ?? 0,
-        },
-        managementCompany: {
-          name: parsed.mgmt?.name ?? null,
-          domain: mgmtDomain,
-          confidence: parsed.mgmt?.c ?? 0,
-        },
+        beneficialOwner: primaryOwner,
+        managementCompany: primaryMgmt,
+        additionalOwners,
+        additionalManagementCompanies: additionalMgmt,
         propertyWebsite: propertySite,
         propertyPhone: parsed.phone ?? null,
       };
@@ -251,107 +283,89 @@ Return JSON:
         }
       }
 
-      // -- Management company domain validation cascade -----------------------
+      // -- Company domain validation cascade (shared for all companies) --------
       // Priority: PDL → DNS validation → Gemini retry search
-      if (validated.managementCompany.name) {
-        const aiDomain = validated.managementCompany.domain;
+      // Applied to primary + additional companies identically
+      const validateCompanyDomain = async (
+        entry: { name: string | null; domain: string | null },
+        label: string,
+        skipRetrySearch = false
+      ): Promise<void> => {
+        if (!entry.name) return;
+        const aiDomain = entry.domain;
         let pdlResolvedDomain: string | null = null;
 
-        // Step 1: Try PDL Company Enrich for authoritative domain lookup
         try {
           const { enrichCompanyPDL } = await import('../../pdl');
-          console.log(`[FocusedEnrichment] Stage 2: PDL lookup for "${validated.managementCompany.name}" (AI domain: ${aiDomain || 'none'})`);
+          console.log(`[FocusedEnrichment] Stage 2: PDL lookup for ${label} "${entry.name}" (AI domain: ${aiDomain || 'none'})`);
           const pdlResult = await enrichCompanyPDL(aiDomain || '', {
-            name: validated.managementCompany.name,
+            name: entry.name,
             locality: propCity || undefined,
             region: 'TX',
           });
 
           if (pdlResult.found && pdlResult.website) {
-            const pdlDomain = pdlResult.website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
-            console.log(`[FocusedEnrichment] Stage 2: PDL confirmed "${validated.managementCompany.name}" → ${pdlDomain}`);
-            pdlResolvedDomain = pdlDomain;
+            pdlResolvedDomain = pdlResult.website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
+            console.log(`[FocusedEnrichment] Stage 2: PDL confirmed ${label} "${entry.name}" → ${pdlResolvedDomain}`);
           } else {
-            console.log(`[FocusedEnrichment] Stage 2: PDL did not find "${validated.managementCompany.name}"`);
+            console.log(`[FocusedEnrichment] Stage 2: PDL did not find ${label} "${entry.name}"`);
           }
         } catch (pdlErr) {
-          console.warn(`[FocusedEnrichment] Stage 2: PDL lookup failed for "${validated.managementCompany.name}":`, pdlErr instanceof Error ? pdlErr.message : pdlErr);
+          console.warn(`[FocusedEnrichment] Stage 2: PDL lookup failed for ${label} "${entry.name}":`, pdlErr instanceof Error ? pdlErr.message : pdlErr);
         }
 
         if (pdlResolvedDomain) {
-          validated.managementCompany.domain = pdlResolvedDomain;
+          entry.domain = pdlResolvedDomain;
         } else if (aiDomain) {
-          // Step 2: Validate the AI-provided domain with DNS checks
-          const validatedMgmtDomain = await validateAndCleanDomain(
+          const validatedDomain = await validateAndCleanDomain(
             aiDomain,
-            mgmtName,
-            'mgmt company domain'
+            entry.name || undefined,
+            `${label} company domain`
           );
-          if (validatedMgmtDomain) {
-            validated.managementCompany.domain = validatedMgmtDomain;
+          if (validatedDomain) {
+            entry.domain = validatedDomain;
           } else {
-            console.warn(`[FocusedEnrichment] Stage 2: Mgmt domain "${aiDomain}" failed validation and no PDL match — will try email domain fallback after Stage 3b`);
-            validated.managementCompany.domain = null;
+            console.warn(`[FocusedEnrichment] Stage 2: ${label} domain "${aiDomain}" failed validation and no PDL match — will try email domain fallback after Stage 3b`);
+            entry.domain = null;
           }
         }
 
-        // Step 3: If still no domain, run a Gemini retry search
-        if (!validated.managementCompany.domain) {
-          console.log(`[FocusedEnrichment] Stage 2: No mgmt domain — running company domain retry...`);
+        if (!entry.domain && !skipRetrySearch) {
+          console.log(`[FocusedEnrichment] Stage 2: No ${label} domain — running company domain retry...`);
           const retryDomain = await retryFindCompanyDomain(
-            validated.managementCompany.name,
+            entry.name!,
             propCity,
             propertyLatLng(property)
           );
           if (retryDomain) {
-            validated.managementCompany.domain = retryDomain;
+            entry.domain = retryDomain;
           }
         }
+      };
+
+      // Validate primary management company
+      await validateCompanyDomain(validated.managementCompany, 'mgmt');
+
+      // Validate primary beneficial owner
+      await validateCompanyDomain(validated.beneficialOwner, 'owner');
+
+      // Validate additional management companies (skip Gemini retry to limit API calls)
+      for (const addlMgmt of validated.additionalManagementCompanies) {
+        await validateCompanyDomain(addlMgmt, 'additional mgmt', true);
       }
 
-      // -- Beneficial owner domain validation (same cascade) ------------------
-      if (validated.beneficialOwner.name) {
-        const aiOwnerDomain = validated.beneficialOwner.domain;
-        let pdlOwnerDomain: string | null = null;
-
-        try {
-          const { enrichCompanyPDL } = await import('../../pdl');
-          console.log(`[FocusedEnrichment] Stage 2: PDL lookup for owner "${validated.beneficialOwner.name}" (AI domain: ${aiOwnerDomain || 'none'})`);
-          const pdlResult = await enrichCompanyPDL(aiOwnerDomain || '', {
-            name: validated.beneficialOwner.name,
-            locality: propCity || undefined,
-            region: 'TX',
-          });
-
-          if (pdlResult.found && pdlResult.website) {
-            pdlOwnerDomain = pdlResult.website.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/$/, '').toLowerCase();
-            console.log(`[FocusedEnrichment] Stage 2: PDL confirmed owner "${validated.beneficialOwner.name}" → ${pdlOwnerDomain}`);
-          } else {
-            console.log(`[FocusedEnrichment] Stage 2: PDL did not find owner "${validated.beneficialOwner.name}"`);
-          }
-        } catch (pdlErr) {
-          console.warn(`[FocusedEnrichment] Stage 2: PDL lookup failed for owner "${validated.beneficialOwner.name}":`, pdlErr instanceof Error ? pdlErr.message : pdlErr);
-        }
-
-        if (pdlOwnerDomain) {
-          validated.beneficialOwner.domain = pdlOwnerDomain;
-        } else if (aiOwnerDomain) {
-          const validatedOwnerDomain = await validateAndCleanDomain(
-            aiOwnerDomain,
-            validated.beneficialOwner.name || undefined,
-            'owner company domain'
-          );
-          if (validatedOwnerDomain) {
-            validated.beneficialOwner.domain = validatedOwnerDomain;
-          } else {
-            console.warn(`[FocusedEnrichment] Stage 2: Owner domain "${aiOwnerDomain}" failed validation and no PDL match — will try email domain fallback after Stage 3b`);
-            validated.beneficialOwner.domain = null;
-          }
-        }
+      // Validate additional owners (skip Gemini retry to limit API calls)
+      for (const addlOwner of validated.additionalOwners) {
+        await validateCompanyDomain(addlOwner, 'additional owner', true);
       }
+
+      const allMgmtNames = [validated.managementCompany, ...validated.additionalManagementCompanies]
+        .filter(m => m.name).map(m => `${m.name} (${m.domain || 'no domain'})`).join(', ');
+      const allOwnerNames = [validated.beneficialOwner, ...validated.additionalOwners]
+        .filter(o => o.name).map(o => `${o.name} (${o.domain || 'no domain'})`).join(', ');
 
       console.log(`[FocusedEnrichment] Stage 2 complete with ${sources.length} grounded sources`);
-      console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${validated.propertyWebsite || 'none'}, phone: ${validated.propertyPhone || 'none'}, mgmt: ${validated.managementCompany.name || 'none'} (${validated.managementCompany.domain || 'no domain'}), owner: ${validated.beneficialOwner.name || 'none'} (${validated.beneficialOwner.domain || 'no domain'})`);
+      console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${validated.propertyWebsite || 'none'}, phone: ${validated.propertyPhone || 'none'}, mgmt: [${allMgmtNames || 'none'}], owners: [${allOwnerNames || 'none'}]`);
 
       return {
         data: validated,
@@ -377,6 +391,8 @@ Return JSON:
         data: {
           beneficialOwner: { name: null, type: null, domain: null, confidence: 0 },
           managementCompany: { name: null, domain: null, confidence: 0 },
+          additionalOwners: [],
+          additionalManagementCompanies: [],
           propertyWebsite: null,
           propertyPhone: null,
         },
@@ -390,6 +406,8 @@ Return JSON:
     data: {
       beneficialOwner: { name: null, type: null, domain: null, confidence: 0 },
       managementCompany: { name: null, domain: null, confidence: 0 },
+      additionalOwners: [],
+      additionalManagementCompanies: [],
       propertyWebsite: null,
       propertyPhone: null,
     },

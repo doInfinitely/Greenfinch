@@ -17,7 +17,7 @@ export const GEMINI_HTTP_TIMEOUT_MS = 120_000; // 120 seconds
 export const DEFAULT_TEMPERATURE = 1.0;
 
 /** Lower temperature used for deterministic editing tasks (e.g. summary cleanup). */
-export const CLEANUP_TEMPERATURE = 0.1;
+export const CLEANUP_TEMPERATURE = 0.2;
 
 // ---------------------------------------------------------------------------
 // Thinking Levels

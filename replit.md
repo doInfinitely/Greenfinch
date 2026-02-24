@@ -65,7 +65,8 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Schema Validation**: Lightweight runtime validation (`validateStage1Schema`, `validateStage2Schema`, `validateStage3aSchema`) after `parseJsonResponse` — retries on schema violations in Stage 2 and 3a.
 - **Contact Source Provenance**: Stage 3a prompt requires `src` (source URL) per contact. Contacts without a source URL get `roleConfidence` capped at 0.4.
 - **Stage 3a Domain Validation**: All `companyDomain` values from Stage 3a are validated with `validateAndCleanDomain` before passing to Stage 3b and downstream enrichment.
-- **Cross-Stage Company Validation**: After Stage 3a, contact companies are checked against Stage 2's management company and beneficial owner. Mismatches get `roleConfidence` downgraded.
+- **Multi-Company Ownership**: Stage 2 returns arrays of owners and management companies (`additionalOwners`, `additionalManagementCompanies` on `OwnershipInfo`). All companies go through the same PDL → DNS → Gemini retry validation cascade. Primary (highest confidence) is written to singular DB columns; all companies are stored in `enrichment_json` and resolved as organizations.
+- **Cross-Stage Company Validation**: After Stage 3a, contact companies are checked against ALL known companies from Stage 2 (primary + additional owners/mgmt). Mismatches get `roleConfidence` downgraded.
 - **Proactive Phone Matching**: Stage 3b phones are compared against Stage 2's `propertyPhone`. Matching numbers are immediately labeled as `office` with low confidence.
 
 ## External Dependencies

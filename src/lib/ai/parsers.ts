@@ -163,6 +163,12 @@ export function scoreSources(sources: GroundedSource[], ownership: OwnershipInfo
   if (ownership.managementCompany?.domain) {
     knownDomains.push(ownership.managementCompany.domain.toLowerCase());
   }
+  for (const addlMgmt of ownership.additionalManagementCompanies || []) {
+    if (addlMgmt.domain) knownDomains.push(addlMgmt.domain.toLowerCase());
+  }
+  for (const addlOwner of ownership.additionalOwners || []) {
+    if (addlOwner.domain) knownDomains.push(addlOwner.domain.toLowerCase());
+  }
   if (ownership.propertyWebsite) {
     try {
       knownDomains.push(new URL(ownership.propertyWebsite).hostname.toLowerCase());
@@ -199,16 +205,18 @@ export function validateStage1Schema(parsed: any): void {
   }
 }
 
-/** Ensure Stage 2 JSON has both "mgmt" and "owner" objects. */
+/** Ensure Stage 2 JSON has mgmt and owner/owners (object or array). */
 export function validateStage2Schema(parsed: any): void {
   if (typeof parsed !== 'object' || parsed === null) {
     throw new SchemaValidationError('Stage 2', `Expected object, got ${typeof parsed}`);
   }
-  if (!parsed.mgmt || typeof parsed.mgmt !== 'object') {
-    throw new SchemaValidationError('Stage 2', `Missing or invalid "mgmt" object`);
+  const mgmt = parsed.mgmt;
+  if (!mgmt || (typeof mgmt !== 'object' && !Array.isArray(mgmt))) {
+    throw new SchemaValidationError('Stage 2', `Missing or invalid "mgmt" (expected object or array)`);
   }
-  if (!parsed.owner || typeof parsed.owner !== 'object') {
-    throw new SchemaValidationError('Stage 2', `Missing or invalid "owner" object`);
+  const owner = parsed.owners ?? parsed.owner;
+  if (!owner || (typeof owner !== 'object' && !Array.isArray(owner))) {
+    throw new SchemaValidationError('Stage 2', `Missing or invalid "owner"/"owners" (expected object or array)`);
   }
 }
 

@@ -164,19 +164,22 @@ export function deduplicateContacts(contacts: DiscoveredContact[]): DiscoveredCo
 
 /**
  * Cross-validate ownership data after Stage 2 parsing.
- * Currently checks whether the management company domain and the property
- * website domain are consistent — logs a warning if they disagree and
- * the management company confidence is low.
+ * Checks whether any management company domain and the property website
+ * domain are consistent — logs a warning if they all disagree and
+ * the primary management company confidence is low.
  */
 export function crossValidateOwnership(ownership: OwnershipInfo): OwnershipInfo {
-  if (ownership.managementCompany.domain && ownership.propertyWebsite) {
+  if (ownership.propertyWebsite) {
     try {
       const siteHost = new URL(ownership.propertyWebsite).hostname.toLowerCase();
-      const mgmtDomain = ownership.managementCompany.domain.toLowerCase();
-      if (!siteHost.includes(mgmtDomain) && !mgmtDomain.includes(siteHost)) {
-        if (ownership.managementCompany.confidence < 0.5) {
-          console.warn('[FocusedEnrichment] Low-confidence mgmt co with separate property website — verify');
-        }
+      const allMgmtDomains = [
+        ownership.managementCompany.domain,
+        ...(ownership.additionalManagementCompanies || []).map(m => m.domain),
+      ].filter(Boolean).map(d => d!.toLowerCase());
+
+      const anyMatch = allMgmtDomains.some(d => siteHost.includes(d) || d.includes(siteHost));
+      if (!anyMatch && allMgmtDomains.length > 0 && ownership.managementCompany.confidence < 0.5) {
+        console.warn('[FocusedEnrichment] Low-confidence mgmt co(s) with separate property website — verify');
       }
     } catch { /* invalid URL, skip */ }
   }

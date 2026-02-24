@@ -50,19 +50,34 @@ export interface PropertyDataAndClassification {
   classification: PropertyClassification;
 }
 
-/** Stage 2 output: beneficial owner, management company, and property web presence. */
+/** A single beneficial owner entity identified in Stage 2. */
+export interface BeneficialOwnerEntry {
+  name: string | null;
+  type: "REIT" | "Private Equity" | "Family Office" | "Individual" | "Corporation" | "Institutional" | "Syndicator" | null;
+  domain: string | null;
+  confidence: number;
+}
+
+/** A single management company entity identified in Stage 2. */
+export interface ManagementCompanyEntry {
+  name: string | null;
+  domain: string | null;
+  confidence: number;
+}
+
+/** Stage 2 output: beneficial owner(s), management company(ies), and property web presence.
+ *
+ *  The primary `beneficialOwner` and `managementCompany` are the highest-confidence
+ *  entries and remain backward-compatible with all downstream code.
+ *  `additionalOwners` / `additionalManagementCompanies` capture any extra entities
+ *  identified by Gemini — they go through the same validation pipeline and are
+ *  persisted in enrichment_json / resolved as organizations.
+ */
 export interface OwnershipInfo {
-  beneficialOwner: {
-    name: string | null;
-    type: "REIT" | "Private Equity" | "Family Office" | "Individual" | "Corporation" | "Institutional" | "Syndicator" | null;
-    domain: string | null;
-    confidence: number;
-  };
-  managementCompany: {
-    name: string | null;
-    domain: string | null;
-    confidence: number;
-  };
+  beneficialOwner: BeneficialOwnerEntry;
+  managementCompany: ManagementCompanyEntry;
+  additionalOwners: BeneficialOwnerEntry[];
+  additionalManagementCompanies: ManagementCompanyEntry[];
   propertyWebsite: string | null;
   propertyPhone: string | null;
 }
