@@ -22,7 +22,7 @@ import { propertyLatLng, extractUsefulLegalInfo, crossValidateOwnership, OWNER_T
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validatePropertyWebsite, validateAndCleanDomain } from '../../domain-validator';
 import {
-  THINKING_LEVELS, RETRIES, BACKOFF, GOOGLE_SEARCH_TOOL,
+  THINKING_LEVELS, RETRIES, BACKOFF, GOOGLE_SEARCH_TOOL, STAGE_MODELS,
 } from '../config';
 
 /**
@@ -114,6 +114,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
           thinkingLevel: THINKING_LEVELS.STAGE_2_OWNERSHIP,
           latLng: propertyLatLng(property),
           stageName: 'stage2-ownership',
+          model: STAGE_MODELS.STAGE_2_OWNERSHIP,
         }),
         2
       );
@@ -472,6 +473,7 @@ Return JSON:
         thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
         latLng,
         stageName: 'stage2-retry-property-website',
+        model: STAGE_MODELS.DOMAIN_RETRY,
       }),
       1
     );
@@ -546,6 +548,7 @@ Return JSON:
         thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
         latLng,
         stageName: 'stage2-retry-company-domain',
+        model: STAGE_MODELS.DOMAIN_RETRY,
       }),
       1
     );

@@ -22,6 +22,8 @@ import type { GeminiTokenUsage } from '@/lib/ai/types';
 export const GEMINI_PRICING = {
   INPUT_PER_1M_TOKENS: 0.50,
   OUTPUT_PER_1M_TOKENS: 3.00,
+  SEARCH_GROUNDING_PER_SEARCH_GEMINI3: 0.035,
+  SEARCH_GROUNDING_PER_PROMPT_OTHER: 0.035,
 } as const;
 
 const GEMINI_INPUT_PER_TOKEN = GEMINI_PRICING.INPUT_PER_1M_TOKENS / 1_000_000;
@@ -31,7 +33,8 @@ export function computeGeminiCostUsd(usage: GeminiTokenUsage | undefined): numbe
   if (!usage) return 0;
   const inputCost = usage.promptTokens * GEMINI_INPUT_PER_TOKEN;
   const outputCost = (usage.responseTokens + usage.thinkingTokens) * GEMINI_OUTPUT_PER_TOKEN;
-  return inputCost + outputCost;
+  const groundingCost = usage.searchGroundingCostUsd ?? 0;
+  return inputCost + outputCost + groundingCost;
 }
 
 // ---------------------------------------------------------------------------

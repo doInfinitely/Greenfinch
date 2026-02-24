@@ -28,7 +28,7 @@ import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validateAndCleanDomain } from '../../domain-validator';
 import {
   THINKING_LEVELS, RETRIES, BACKOFF, CONFIDENCE,
-  FREE_EMAIL_DOMAINS, GOOGLE_SEARCH_TOOL,
+  FREE_EMAIL_DOMAINS, GOOGLE_SEARCH_TOOL, STAGE_MODELS,
 } from '../config';
 
 // =============================================================================
@@ -127,6 +127,7 @@ Return JSON:
           thinkingLevel: THINKING_LEVELS.STAGE_3A_CONTACTS,
           latLng: propertyLatLng(property),
           stageName: 'stage3-contacts',
+          model: STAGE_MODELS.STAGE_3_CONTACTS,
         }),
         2
       );

@@ -14,7 +14,7 @@ import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout } from '..
 import { stripInternalMessages } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import {
-  CLEANUP_TEMPERATURE, THINKING_LEVELS, GOOGLE_SEARCH_TOOL,
+  CLEANUP_TEMPERATURE, THINKING_LEVELS, GOOGLE_SEARCH_TOOL, STAGE_MODELS,
 } from '../config';
 
 /**
@@ -56,6 +56,7 @@ ${preCleaned}`;
         temperature: CLEANUP_TEMPERATURE,
         thinkingLevel: THINKING_LEVELS.SUMMARY_CLEANUP,
         stageName: 'summary-cleanup',
+        model: STAGE_MODELS.SUMMARY_CLEANUP,
       }),
       1
     );
@@ -115,6 +116,7 @@ If you cannot find a replacement, return {"name": null}`;
         tools: GOOGLE_SEARCH_TOOL,
         thinkingLevel: THINKING_LEVELS.REPLACEMENT_SEARCH,
         stageName: 'replacement-search',
+        model: STAGE_MODELS.REPLACEMENT_SEARCH,
       }),
       1
     );

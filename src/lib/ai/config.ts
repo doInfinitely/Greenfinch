@@ -10,6 +10,8 @@
 // Model & HTTP
 // ---------------------------------------------------------------------------
 
+import { GEMINI_MODEL } from '../constants';
+
 /** HTTP timeout for every Gemini streaming call (ms). */
 export const GEMINI_HTTP_TIMEOUT_MS = 120_000; // 120 seconds
 
@@ -18,6 +20,44 @@ export const DEFAULT_TEMPERATURE = 1.0;
 
 /** Lower temperature used for deterministic editing tasks (e.g. summary cleanup). */
 export const CLEANUP_TEMPERATURE = 0.2;
+
+// ---------------------------------------------------------------------------
+// Per-Stage Model Configuration
+//
+// Each stage can use a different Gemini model.  Defaults to the global
+// GEMINI_MODEL from constants.ts.  Change individual stages here without
+// affecting the rest of the pipeline.
+// ---------------------------------------------------------------------------
+
+export const STAGE_MODELS = {
+  STAGE_1_CLASSIFY: GEMINI_MODEL,
+  STAGE_2_OWNERSHIP: GEMINI_MODEL,
+  STAGE_3_CONTACTS: GEMINI_MODEL,
+  SUMMARY_CLEANUP: GEMINI_MODEL,
+  REPLACEMENT_SEARCH: GEMINI_MODEL,
+  DOMAIN_RETRY: GEMINI_MODEL,
+} as const;
+
+// ---------------------------------------------------------------------------
+// Search Grounding Configuration
+//
+// Controls how aggressively stages use Google Search grounding.
+//
+// dynamicThreshold (0.0 – 1.0):
+//   When using googleSearchRetrieval with MODE_DYNAMIC, the model only
+//   triggers a search when its internal confidence is BELOW this threshold.
+//     0.0 = always search (max web data, highest cost)
+//     1.0 = never search (pure model knowledge)
+//   Default 0.3 keeps search aggressive for data-freshness.
+//
+// Note: gemini-3-flash-preview uses the `googleSearch` tool which always
+//       searches. The dynamic threshold applies when using other models
+//       with `googleSearchRetrieval`.
+// ---------------------------------------------------------------------------
+
+export const SEARCH_GROUNDING = {
+  DYNAMIC_THRESHOLD: 0.3,
+} as const;
 
 // ---------------------------------------------------------------------------
 // Gemini Pricing — re-exported from centralized pricing-config.ts

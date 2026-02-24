@@ -10,6 +10,8 @@ interface TokenUsage {
   responseTokens: number;
   thinkingTokens: number;
   totalTokens: number;
+  searchGroundingUsed?: boolean;
+  searchGroundingCostUsd?: number;
 }
 
 interface DebugEntry {
@@ -36,6 +38,7 @@ interface DebugEntry {
     computedCostUsd: number;
     groundingMetadata: any | null;
     candidateCount: number;
+    searchGroundingUsed?: boolean;
   };
 }
 
@@ -425,7 +428,8 @@ export default function VertexLogsPage() {
 
   const totalCost = filteredEntries.reduce((sum, e) => sum + e.response.computedCostUsd, 0);
   const totalTokens = filteredEntries.reduce((sum, e) => sum + (e.response.parsedTokenUsage?.totalTokens ?? 0), 0);
-  const searchGroundingTokens = filteredEntries.reduce((sum, e) => sum + (e.response.rawUsageMetadata?.toolUsePromptTokenCount ?? 0), 0);
+  const searchGroundingCount = filteredEntries.filter(e => e.response.searchGroundingUsed).length;
+  const searchGroundingCost = filteredEntries.reduce((sum, e) => sum + (e.response.parsedTokenUsage?.searchGroundingCostUsd ?? 0), 0);
   const errorCount = filteredEntries.filter(e => e.error).length;
 
   return (
@@ -473,14 +477,12 @@ export default function VertexLogsPage() {
         <div className="bg-white rounded-lg border border-gray-200 p-4" data-testid="stat-search-grounding">
           <div className="text-xs text-gray-500 font-medium flex items-center gap-1">
             <Search className="w-3 h-3" />
-            Search Grounding Tokens
+            Search Grounding
           </div>
-          <div className={`text-2xl font-bold ${searchGroundingTokens > 0 ? 'text-yellow-700' : 'text-red-600'}`}>
-            {searchGroundingTokens.toLocaleString()}
+          <div className={`text-2xl font-bold ${searchGroundingCount > 0 ? 'text-yellow-700' : 'text-gray-400'}`}>
+            {searchGroundingCount} / {filteredEntries.length}
           </div>
-          {searchGroundingTokens === 0 && filteredEntries.length > 0 && (
-            <div className="text-xs text-red-500 font-medium">Not captured — check toolUsePromptTokenCount</div>
-          )}
+          <div className="text-xs text-gray-500">${searchGroundingCost.toFixed(4)} grounding cost</div>
         </div>
         <div className="bg-white rounded-lg border border-gray-200 p-4" data-testid="stat-total-cost">
           <div className="text-xs text-gray-500 font-medium">Computed Cost</div>

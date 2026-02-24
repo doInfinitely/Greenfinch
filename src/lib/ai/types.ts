@@ -12,6 +12,8 @@ export interface GeminiTokenUsage {
   responseTokens: number;
   thinkingTokens: number;
   totalTokens: number;
+  searchGroundingUsed: boolean;
+  searchGroundingCostUsd: number;
 }
 
 /** Raw response shape returned by streamGeminiResponse after consuming a stream. */

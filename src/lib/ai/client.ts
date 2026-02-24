@@ -15,7 +15,7 @@ import { GoogleGenAI } from "@google/genai";
 import { GEMINI_MODEL } from "../constants";
 import { rateLimiters } from '../rate-limiter';
 import { GEMINI_HTTP_TIMEOUT_MS, DEFAULT_TEMPERATURE } from './config';
-import { computeGeminiCostUsd } from './config';
+import { computeGeminiCostUsd, GEMINI_PRICING } from './config';
 import type { StreamedGeminiResponse, GeminiTokenUsage } from './types';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import * as fs from 'fs';
@@ -89,6 +89,7 @@ export interface VertexDebugEntry {
     computedCostUsd: number;
     groundingMetadata: any | null;
     candidateCount: number;
+    searchGroundingUsed: boolean;
   };
 }
 
@@ -122,6 +123,8 @@ export interface GeminiCallRecord {
   thinkingTokens: number;
   totalTokens: number;
   costUsd: number;
+  searchGroundingUsed: boolean;
+  searchGroundingCostUsd: number;
   timestamp: number;
   error?: boolean;
 }
@@ -146,23 +149,53 @@ function logCall(stageName: string, usage: GeminiTokenUsage, error = false): voi
     thinkingTokens: usage.thinkingTokens,
     totalTokens: usage.totalTokens,
     costUsd: computeGeminiCostUsd(usage),
+    searchGroundingUsed: usage.searchGroundingUsed,
+    searchGroundingCostUsd: usage.searchGroundingCostUsd,
     timestamp: Date.now(),
     error,
   });
 }
 
 // ---------------------------------------------------------------------------
+// Search grounding detection
+// ---------------------------------------------------------------------------
+
+function isGemini3Model(model: string): boolean {
+  return model.includes('gemini-3') || model.includes('gemini-3.');
+}
+
+function detectSearchGrounding(candidate: any): boolean {
+  if (!candidate?.groundingMetadata) return false;
+  const gm = candidate.groundingMetadata;
+  return !!(
+    gm.searchEntryPoint ||
+    (gm.groundingChunks && gm.groundingChunks.length > 0) ||
+    (gm.groundingSupports && gm.groundingSupports.length > 0) ||
+    (gm.webSearchQueries && gm.webSearchQueries.length > 0)
+  );
+}
+
+function computeSearchGroundingCost(model: string, searchUsed: boolean): number {
+  if (!searchUsed) return 0;
+  if (isGemini3Model(model)) {
+    return GEMINI_PRICING.SEARCH_GROUNDING_PER_SEARCH_GEMINI3;
+  }
+  return GEMINI_PRICING.SEARCH_GROUNDING_PER_PROMPT_OTHER;
+}
+
+// ---------------------------------------------------------------------------
 // Token extraction
 // ---------------------------------------------------------------------------
 
-function extractTokenUsage(meta: any): GeminiTokenUsage {
+function extractTokenUsage(meta: any, model: string, searchGroundingUsed: boolean): GeminiTokenUsage {
   const basePromptTokens = meta.promptTokenCount ?? 0;
   const toolUseTokens = meta.toolUsePromptTokenCount ?? 0;
   const promptTokens = basePromptTokens + toolUseTokens;
   const responseTokens = meta.responseTokenCount ?? meta.candidatesTokenCount ?? 0;
   const thinkingTokens = meta.thoughtsTokenCount ?? 0;
   const totalTokens = meta.totalTokenCount ?? 0;
-  return { promptTokens, responseTokens, thinkingTokens, totalTokens };
+  const searchGroundingCostUsd = computeSearchGroundingCost(model, searchGroundingUsed);
+  return { promptTokens, responseTokens, thinkingTokens, totalTokens, searchGroundingUsed, searchGroundingCostUsd };
 }
 
 // ---------------------------------------------------------------------------
@@ -172,9 +205,10 @@ function extractTokenUsage(meta: any): GeminiTokenUsage {
 export async function streamGeminiResponse(
   client: GoogleGenAI,
   prompt: string,
-  options: { tools?: any[]; temperature?: number; thinkingLevel?: 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH'; latLng?: { latitude: number; longitude: number }; stageName?: string } = {}
+  options: { tools?: any[]; temperature?: number; thinkingLevel?: 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH'; latLng?: { latitude: number; longitude: number }; stageName?: string; model?: string } = {}
 ): Promise<StreamedGeminiResponse> {
   const tag = options.stageName || 'unknown';
+  const model = options.model || GEMINI_MODEL;
   const temperature = options.temperature ?? DEFAULT_TEMPERATURE;
   const config: any = {
     temperature,
@@ -198,7 +232,7 @@ export async function streamGeminiResponse(
   const entryId = ++debugEntryId;
 
   const requestSnapshot = {
-    model: GEMINI_MODEL,
+    model,
     prompt,
     temperature,
     thinkingLevel: options.thinkingLevel,
@@ -208,7 +242,7 @@ export async function streamGeminiResponse(
   };
 
   const stream = await client.models.generateContentStream({
-    model: GEMINI_MODEL,
+    model,
     contents: prompt,
     config,
   });
@@ -234,7 +268,8 @@ export async function streamGeminiResponse(
     const errMsg = streamError instanceof Error ? streamError.message : String(streamError);
 
     if (lastUsageMetadata) {
-      const partialUsage = extractTokenUsage(lastUsageMetadata);
+      const searchUsed = detectSearchGrounding(lastCandidate);
+      const partialUsage = extractTokenUsage(lastUsageMetadata, model, searchUsed);
       const partialCost = computeGeminiCostUsd(partialUsage);
       console.error(`[Gemini:${tag}] STREAM ERROR with partial usage — raw metadata: ${JSON.stringify(lastUsageMetadata)}`);
       console.error(`[Gemini:${tag}] Partial tokens: prompt=${partialUsage.promptTokens} response=${partialUsage.responseTokens} thinking=${partialUsage.thinkingTokens} total=${partialUsage.totalTokens} | cost=$${partialCost.toFixed(6)}`);
@@ -251,6 +286,7 @@ export async function streamGeminiResponse(
           computedCostUsd: partialCost,
           groundingMetadata: lastCandidate?.groundingMetadata ?? null,
           candidateCount: lastCandidate ? 1 : 0,
+          searchGroundingUsed: searchUsed,
         },
       });
     } else {
@@ -261,6 +297,7 @@ export async function streamGeminiResponse(
         response: {
           text: fullText, finishReason: undefined, rawUsageMetadata: null,
           parsedTokenUsage: null, computedCostUsd: 0, groundingMetadata: null, candidateCount: 0,
+          searchGroundingUsed: false,
         },
       });
     }
@@ -277,14 +314,17 @@ export async function streamGeminiResponse(
   let parsedUsage: GeminiTokenUsage | null = null;
   let costUsd = 0;
 
+  const searchGroundingUsed = detectSearchGrounding(lastCandidate);
+
   if (lastUsageMetadata) {
     console.log(`[Gemini:${tag}] RAW usageMetadata: ${JSON.stringify(lastUsageMetadata)}`);
 
-    parsedUsage = extractTokenUsage(lastUsageMetadata);
+    parsedUsage = extractTokenUsage(lastUsageMetadata, model, searchGroundingUsed);
     response.tokenUsage = parsedUsage;
     costUsd = computeGeminiCostUsd(parsedUsage);
 
-    console.log(`[Gemini:${tag}] Tokens: prompt=${parsedUsage.promptTokens} response=${parsedUsage.responseTokens} thinking=${parsedUsage.thinkingTokens} total=${parsedUsage.totalTokens} | computedCost=$${costUsd.toFixed(6)}`);
+    const groundingNote = searchGroundingUsed ? ` | grounding=$${parsedUsage.searchGroundingCostUsd.toFixed(4)}` : '';
+    console.log(`[Gemini:${tag}] Tokens: prompt=${parsedUsage.promptTokens} response=${parsedUsage.responseTokens} thinking=${parsedUsage.thinkingTokens} total=${parsedUsage.totalTokens} | computedCost=$${costUsd.toFixed(6)}${groundingNote}`);
     logCall(tag, parsedUsage);
 
     if (parsedUsage.promptTokens === 0 && parsedUsage.responseTokens === 0 && parsedUsage.totalTokens === 0) {
@@ -305,6 +345,7 @@ export async function streamGeminiResponse(
       computedCostUsd: costUsd,
       groundingMetadata: lastCandidate?.groundingMetadata ?? null,
       candidateCount: lastCandidate ? 1 : 0,
+      searchGroundingUsed,
     },
   });
 

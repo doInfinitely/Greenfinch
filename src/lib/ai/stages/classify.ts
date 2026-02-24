@@ -19,7 +19,7 @@ import { formatBuildingsSummary, formatCompactCategories, mapQualityGradeToClass
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { rateLimiters } from '../../rate-limiter';
 import {
-  THINKING_LEVELS, RETRIES, BACKOFF, GOOGLE_SEARCH_TOOL,
+  THINKING_LEVELS, RETRIES, BACKOFF, GOOGLE_SEARCH_TOOL, STAGE_MODELS,
 } from '../config';
 
 /**
@@ -94,6 +94,7 @@ Return JSON:
           thinkingLevel: THINKING_LEVELS.STAGE_1_CLASSIFY,
           latLng: propertyLatLng(property),
           stageName: 'stage1-classify',
+          model: STAGE_MODELS.STAGE_1_CLASSIFY,
         })
       );
 
