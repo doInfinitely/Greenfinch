@@ -63,11 +63,11 @@ export const GEMINI_MODEL = "gemini-3-flash-preview" as const;
 // Per-service rate limits (RPM, concurrent) are now managed by ServiceRateLimiter in rate-limiter.ts
 // These constants only control property-level parallelism and legacy concurrency caps
 export const CONCURRENCY = {
-  GEMINI: 50,           // Kept for reference; actual limit is in rate-limiter.ts (900 RPM, 50 concurrent)
+  GEMINI: 15,           // Kept for reference; actual limit is in rate-limiter.ts (200 RPM, 15 concurrent)
   SERP: 10,             // SERP API for LinkedIn lookups
   HUNTER: 3,            // Hunter.io email discovery - very low rate limit
   NEVERBOUNCE: 5,       // NeverBounce email validation
-  PROPERTIES: 15,       // Concurrent property enrichments - balanced for Gemini throughput; downstream APIs self-throttle via rate-limiter.ts
+  PROPERTIES: 8,        // Concurrent property enrichments - conservative for preview model; downstream APIs self-throttle via rate-limiter.ts
 };
 
 const mvpZipEnv = process.env.MVP_ZIP || '75225';

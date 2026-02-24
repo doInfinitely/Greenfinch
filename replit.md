@@ -42,8 +42,9 @@ Built with Next.js 16 (App Router), Tailwind CSS v3, Drizzle ORM with PostgreSQL
 - **Gemini Streaming**: All Gemini API calls use `generateContentStream` to bypass Node.js fetch timeout issues, with retry logic and timeout settings.
 - **Domain Validation**: `src/lib/domain-validator.ts` validates domains/URLs returned by AI enrichment for DNS resolution, redirects, and content, rejecting parking services.
 - **Enrichment Stage Checkpointing**: AI enrichment supports checkpoint-based resumption, saving partial results to prevent data loss.
-- **Automatic Retry Pass**: Retryable failures are automatically reattempted with reduced concurrency.
-- **Adaptive Concurrency**: Monitors error rates and adjusts concurrency dynamically.
+- **Circuit-Breaker-Aware Batch Processing**: When Gemini circuit breaker trips during batch enrichment, the queue pauses (capped at 120s) and waits for reset instead of burning through items as instant failures. Pre-wave checks, per-item throttling, and the retry pass all respect breaker state.
+- **Automatic Retry Pass**: Retryable failures are automatically reattempted with reduced concurrency. Retry delay dynamically adapts to circuit breaker reset timing.
+- **Adaptive Concurrency**: Monitors error rates and circuit breaker state, adjusts concurrency dynamically.
 - **BullMQ Job Queue**: Persistent job queue for robust background processing with automatic retries and metadata storage.
 - **Contact Creation Locking**: Distributed Redis lock per contact identity (email or name+domain/employer) during `saveEnrichmentResults` prevents concurrent batch workers from creating duplicate contacts. Lock key uses strongest available identifier for deterministic keying.
 - **Contact Auto-Merge in Enrichment**: `findExistingContactByIdentifiers` accepts `autoMergeNameMatches` option. During enrichment, name+domain and name+employer matches return the existing contact (auto-merge) instead of creating duplicates. Manual/admin flows still flag for review.

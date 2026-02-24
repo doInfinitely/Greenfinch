@@ -5,7 +5,8 @@ import { properties, contacts, organizations, propertyContacts, propertyOrganiza
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
 import { runFocusedEnrichment, cleanupAISummary, EnrichmentStageError } from './ai';
 import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpoint } from './ai';
-import { isCircuitBreakerError } from './rate-limiter';
+import { isCircuitBreakerError, rateLimiters } from './rate-limiter';
+import type { CircuitBreakerOpenError } from './rate-limiter';
 import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
 import { areCompaniesAffiliated, ensureEmployerOrgEnriched, enrichOrganizationByDomain, resolveOrganization } from './organization-enrichment';
@@ -1233,7 +1234,7 @@ let memoryIsProcessing = false;
 let memoryLastRequestTime = 0;
 let memoryBatchStartLock = false;
 const INDIVIDUAL_RATE_LIMIT_MS = 2000; // 2 seconds between individual requests
-const BATCH_LOCK_TTL_SECONDS = 300; // 5 minute lock for batch operations
+const BATCH_LOCK_TTL_SECONDS = 14400; // 4 hour lock for batch operations (supports 1000+ property batches)
 
 // Redis-backed state management with in-memory fallback
 async function getBatchStatus(): Promise<BatchStatus | null> {
@@ -1245,7 +1246,7 @@ async function getBatchStatus(): Promise<BatchStatus | null> {
 
 async function setBatchStatus(batch: BatchStatus): Promise<void> {
   if (isRedisConfigured()) {
-    await queueStateSet(REDIS_BATCH_KEY, batch, 3600); // 1 hour TTL
+    await queueStateSet(REDIS_BATCH_KEY, batch, 14400); // 4 hour TTL (supports long-running batches)
   }
   memoryBatch = batch;
 }
@@ -1267,7 +1268,7 @@ async function getQueueItems(): Promise<QueueItem[]> {
 
 async function setQueueItems(items: QueueItem[]): Promise<void> {
   if (isRedisConfigured()) {
-    await queueStateSet(REDIS_QUEUE_KEY, items, 3600);
+    await queueStateSet(REDIS_QUEUE_KEY, items, 14400); // 4 hour TTL
   }
   memoryQueue = items;
 }
@@ -1344,6 +1345,21 @@ export async function updateLastRequestTime(): Promise<void> {
 export async function addToQueue(items: QueueItem[]): Promise<void> {
   const currentQueue = await getQueueItems();
   await setQueueItems([...currentQueue, ...items]);
+}
+
+const MAX_BREAKER_WAIT_MS = 120000; // 2 minute max wait for any single circuit breaker pause
+
+async function waitForGeminiCircuitBreaker(context: string): Promise<boolean> {
+  const msUntilReset = rateLimiters.gemini.circuitBreakerMsUntilReset;
+  if (msUntilReset <= 0) return false;
+  const cappedWait = Math.min(msUntilReset + 1000, MAX_BREAKER_WAIT_MS);
+  const waitSec = Math.ceil(cappedWait / 1000);
+  console.log(`[EnrichmentQueue] ${context}: Gemini circuit breaker is open, waiting ${waitSec}s for reset (capped at ${MAX_BREAKER_WAIT_MS / 1000}s)...`);
+  await new Promise(resolve => setTimeout(resolve, cappedWait));
+  if (rateLimiters.gemini.circuitBreakerState === 'OPEN') {
+    console.warn(`[EnrichmentQueue] ${context}: Gemini breaker still open after ${waitSec}s wait, proceeding anyway`);
+  }
+  return true;
 }
 
 export async function processPropertyItem(
@@ -1432,7 +1448,12 @@ export async function processPropertyItem(
     }
 
     if (isCircuitBreakerError(error)) {
-      return { success: false, error: `Circuit breaker open: ${error.message}`, isRetryable: true };
+      const cbError = error as CircuitBreakerOpenError;
+      const waited = await waitForGeminiCircuitBreaker(`Property ${item.propertyKey}`);
+      if (waited && rateLimiters.gemini.circuitBreakerState !== 'OPEN') {
+        return { success: false, error: `Circuit breaker tripped: ${cbError.serviceName}`, isRetryable: true };
+      }
+      return { success: false, error: `Circuit breaker open: ${cbError.message}`, isRetryable: true };
     }
 
     const msg = error instanceof Error ? error.message : String(error);
@@ -1502,6 +1523,7 @@ class AdaptiveConcurrencyController {
   }
 
   shouldThrottle(): boolean {
+    if (rateLimiters.gemini.circuitBreakerState === 'OPEN') return true;
     if (this.recentResults.length < 5) return false;
     const errorRate = this.recentResults.filter(r => !r.success).length / this.recentResults.length;
     return errorRate >= this.errorThresholdDown;
@@ -1560,6 +1582,8 @@ async function processQueueInternal(): Promise<void> {
     let processedIndex = 0;
     
     while (processedIndex < items.length) {
+      await waitForGeminiCircuitBreaker(`Pre-wave`);
+
       const currentConcurrency = adaptiveController.concurrency;
       const waveEnd = Math.min(processedIndex + currentConcurrency, items.length);
       const waveItems = items.slice(processedIndex, waveEnd);
@@ -1576,9 +1600,14 @@ async function processQueueInternal(): Promise<void> {
           console.log(`[EnrichmentQueue] [${globalIndex + 1}/${items.length}] Processing: ${item.propertyKey}`);
           
           if (adaptiveController.shouldThrottle()) {
-            const throttleDelay = 2000 + Math.random() * 3000;
-            console.log(`[EnrichmentQueue] Throttling ${item.propertyKey} for ${Math.round(throttleDelay)}ms due to high error rate`);
-            await new Promise(resolve => setTimeout(resolve, throttleDelay));
+            const breakerWait = rateLimiters.gemini.circuitBreakerMsUntilReset;
+            if (breakerWait > 0) {
+              await waitForGeminiCircuitBreaker(`Throttle ${item.propertyKey}`);
+            } else {
+              const throttleDelay = 2000 + Math.random() * 3000;
+              console.log(`[EnrichmentQueue] Throttling ${item.propertyKey} for ${Math.round(throttleDelay)}ms due to high error rate`);
+              await new Promise(resolve => setTimeout(resolve, throttleDelay));
+            }
           }
 
           const result = await processPropertyItem(item, startTime);
@@ -1632,8 +1661,11 @@ async function processQueueInternal(): Promise<void> {
     if (retryableItems.length > 0 && batch) {
       console.log(`[EnrichmentQueue] Starting retry pass for ${retryableItems.length} failed properties...`);
 
-      const retryDelay = 10000;
+      const breakerWaitMs = rateLimiters.gemini.circuitBreakerMsUntilReset;
+      const retryDelay = Math.max(15000, breakerWaitMs + 2000);
+      console.log(`[EnrichmentQueue] Waiting ${Math.ceil(retryDelay / 1000)}s before retry pass (breaker reset: ${Math.ceil(breakerWaitMs / 1000)}s)`);
       await new Promise(resolve => setTimeout(resolve, retryDelay));
+      await waitForGeminiCircuitBreaker('Pre-retry');
 
       const retryConcurrency = Math.max(3, Math.floor(concurrencyLimit / 3));
       const retryLimit = pLimit(retryConcurrency);

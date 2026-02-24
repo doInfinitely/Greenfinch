@@ -75,6 +75,13 @@ export class CircuitBreaker {
     }
   }
 
+  get msUntilReset(): number {
+    if (this.state !== CircuitBreakerState.OPEN) return 0;
+    const elapsed = Date.now() - this.openedAt;
+    if (elapsed >= this.currentResetTimeout) return 0;
+    return this.currentResetTimeout - elapsed;
+  }
+
   recordSuccess(): void {
     if (this.state === CircuitBreakerState.HALF_OPEN) {
       this.state = CircuitBreakerState.CLOSED;
@@ -240,6 +247,11 @@ export class ServiceRateLimiter {
     return this.circuitBreaker.currentState;
   }
 
+  get circuitBreakerMsUntilReset(): number {
+    if (!this.circuitBreaker) return 0;
+    return this.circuitBreaker.msUntilReset;
+  }
+
   resetCircuitBreaker(): void {
     if (this.circuitBreaker) {
       this.circuitBreaker.reset();
@@ -324,7 +336,7 @@ function defaultIsRateLimitError(error: any): boolean {
 }
 
 export const rateLimiters = {
-  gemini: new ServiceRateLimiter({ name: 'Gemini', maxPerMinute: 900, maxConcurrent: 50, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
+  gemini: new ServiceRateLimiter({ name: 'Gemini', maxPerMinute: 200, maxConcurrent: 15, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
   findymail: new ServiceRateLimiter({ name: 'Findymail', maxConcurrent: 250, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
   crustdata: new ServiceRateLimiter({ name: 'Crustdata', maxPerMinute: 14, maxConcurrent: 5, circuitBreaker: { failureThreshold: 3, resetTimeoutMs: 60000 } }),
   pdlPerson: new ServiceRateLimiter({ name: 'PDL Person', maxPerMinute: 90, maxConcurrent: 30, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
