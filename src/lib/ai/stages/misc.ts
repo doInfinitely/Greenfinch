@@ -55,6 +55,7 @@ ${preCleaned}`;
       () => streamGeminiResponse(client, prompt, {
         temperature: CLEANUP_TEMPERATURE,
         thinkingLevel: THINKING_LEVELS.SUMMARY_CLEANUP,
+        stageName: 'summary-cleanup',
       }),
       1
     );
@@ -113,6 +114,7 @@ If you cannot find a replacement, return {"name": null}`;
       () => streamGeminiResponse(client, prompt, {
         tools: GOOGLE_SEARCH_TOOL,
         thinkingLevel: THINKING_LEVELS.REPLACEMENT_SEARCH,
+        stageName: 'replacement-search',
       }),
       1
     );

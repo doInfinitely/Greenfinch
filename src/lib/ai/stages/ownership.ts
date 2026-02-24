@@ -113,6 +113,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
           tools: GOOGLE_SEARCH_TOOL,
           thinkingLevel: THINKING_LEVELS.STAGE_2_OWNERSHIP,
           latLng: propertyLatLng(property),
+          stageName: 'stage2-ownership',
         }),
         2
       );
@@ -470,6 +471,7 @@ Return JSON:
         tools: GOOGLE_SEARCH_TOOL,
         thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
         latLng,
+        stageName: 'stage2-retry-property-website',
       }),
       1
     );
@@ -543,6 +545,7 @@ Return JSON:
         tools: GOOGLE_SEARCH_TOOL,
         thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
         latLng,
+        stageName: 'stage2-retry-company-domain',
       }),
       1
     );

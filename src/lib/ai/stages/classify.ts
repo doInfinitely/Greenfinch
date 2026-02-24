@@ -93,6 +93,7 @@ Return JSON:
           tools: GOOGLE_SEARCH_TOOL,
           thinkingLevel: THINKING_LEVELS.STAGE_1_CLASSIFY,
           latLng: propertyLatLng(property),
+          stageName: 'stage1-classify',
         })
       );
 

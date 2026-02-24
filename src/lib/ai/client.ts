@@ -12,7 +12,9 @@ import { GoogleGenAI } from "@google/genai";
 import { GEMINI_MODEL } from "../constants";
 import { rateLimiters } from '../rate-limiter';
 import { GEMINI_HTTP_TIMEOUT_MS, DEFAULT_TEMPERATURE } from './config';
+import { computeGeminiCostUsd } from './config';
 import type { StreamedGeminiResponse, GeminiTokenUsage } from './types';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -78,8 +80,9 @@ export function getGeminiClient(): GoogleGenAI {
 export async function streamGeminiResponse(
   client: GoogleGenAI,
   prompt: string,
-  options: { tools?: any[]; temperature?: number; thinkingLevel?: 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH'; latLng?: { latitude: number; longitude: number } } = {}
+  options: { tools?: any[]; temperature?: number; thinkingLevel?: 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH'; latLng?: { latitude: number; longitude: number }; stageName?: string } = {}
 ): Promise<StreamedGeminiResponse> {
+  const tag = options.stageName || 'unknown';
   const config: any = {
     temperature: options.temperature ?? DEFAULT_TEMPERATURE,
     httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
@@ -108,16 +111,29 @@ export async function streamGeminiResponse(
   let lastCandidate: any = null;
   let lastUsageMetadata: any = null;
 
-  for await (const chunk of stream) {
-    if (chunk.text) {
-      fullText += chunk.text;
+  try {
+    for await (const chunk of stream) {
+      if (chunk.text) {
+        fullText += chunk.text;
+      }
+      if (chunk.candidates && chunk.candidates.length > 0) {
+        lastCandidate = chunk.candidates[0];
+      }
+      if ((chunk as any).usageMetadata) {
+        lastUsageMetadata = (chunk as any).usageMetadata;
+      }
     }
-    if (chunk.candidates && chunk.candidates.length > 0) {
-      lastCandidate = chunk.candidates[0];
+  } catch (streamError) {
+    if (lastUsageMetadata) {
+      const partialUsage = extractTokenUsage(lastUsageMetadata);
+      const partialCost = computeGeminiCostUsd(partialUsage);
+      console.error(`[Gemini:${tag}] STREAM ERROR with partial usage — raw metadata: ${JSON.stringify(lastUsageMetadata)}`);
+      console.error(`[Gemini:${tag}] Partial tokens: prompt=${partialUsage.promptTokens} response=${partialUsage.responseTokens} thinking=${partialUsage.thinkingTokens} total=${partialUsage.totalTokens} | cost=$${partialCost.toFixed(6)}`);
+      logCall(tag, partialUsage, true);
+    } else {
+      console.error(`[Gemini:${tag}] STREAM ERROR with no usageMetadata captured`);
     }
-    if ((chunk as any).usageMetadata) {
-      lastUsageMetadata = (chunk as any).usageMetadata;
-    }
+    throw streamError;
   }
 
   const response: StreamedGeminiResponse = {
@@ -129,28 +145,68 @@ export async function streamGeminiResponse(
   }
 
   if (lastUsageMetadata) {
-    const basePromptTokens = lastUsageMetadata.promptTokenCount ?? 0;
-    const toolUseTokens = lastUsageMetadata.toolUsePromptTokenCount ?? 0;
-    const promptTokens = basePromptTokens + toolUseTokens;
-    const responseTokens = lastUsageMetadata.responseTokenCount ?? lastUsageMetadata.candidatesTokenCount ?? 0;
-    const thinkingTokens = lastUsageMetadata.thoughtsTokenCount ?? 0;
-    const totalTokens = lastUsageMetadata.totalTokenCount ?? 0;
+    console.log(`[Gemini:${tag}] RAW usageMetadata: ${JSON.stringify(lastUsageMetadata)}`);
 
-    if (promptTokens === 0 && responseTokens === 0 && totalTokens === 0) {
-      console.warn('[Gemini] usageMetadata present but all token counts are 0. Raw keys:', Object.keys(lastUsageMetadata).join(', '));
+    response.tokenUsage = extractTokenUsage(lastUsageMetadata);
+    const cost = computeGeminiCostUsd(response.tokenUsage);
+
+    console.log(`[Gemini:${tag}] Tokens: prompt=${response.tokenUsage.promptTokens} response=${response.tokenUsage.responseTokens} thinking=${response.tokenUsage.thinkingTokens} total=${response.tokenUsage.totalTokens} | computedCost=$${cost.toFixed(6)}`);
+    logCall(tag, response.tokenUsage);
+
+    if (response.tokenUsage.promptTokens === 0 && response.tokenUsage.responseTokens === 0 && response.tokenUsage.totalTokens === 0) {
+      console.warn(`[Gemini:${tag}] usageMetadata present but all token counts are 0. Raw keys: ${Object.keys(lastUsageMetadata).join(', ')}`);
     }
-
-    response.tokenUsage = {
-      promptTokens,
-      responseTokens,
-      thinkingTokens,
-      totalTokens,
-    };
   } else {
-    console.warn('[Gemini] No usageMetadata found in streamed response');
+    console.warn(`[Gemini:${tag}] No usageMetadata found in streamed response`);
   }
 
   return response;
+}
+
+export interface GeminiCallRecord {
+  stageName: string;
+  promptTokens: number;
+  responseTokens: number;
+  thinkingTokens: number;
+  totalTokens: number;
+  costUsd: number;
+  timestamp: number;
+  error?: boolean;
+}
+
+const callLogStorage = new AsyncLocalStorage<GeminiCallRecord[]>();
+
+export function runWithCallLog<T>(fn: () => Promise<T>): Promise<T> {
+  return callLogStorage.run([], fn);
+}
+
+export function getGeminiCallLog(): GeminiCallRecord[] {
+  return [...(callLogStorage.getStore() || [])];
+}
+
+function logCall(stageName: string, usage: GeminiTokenUsage, error = false): void {
+  const store = callLogStorage.getStore();
+  if (!store) return;
+  store.push({
+    stageName,
+    promptTokens: usage.promptTokens,
+    responseTokens: usage.responseTokens,
+    thinkingTokens: usage.thinkingTokens,
+    totalTokens: usage.totalTokens,
+    costUsd: computeGeminiCostUsd(usage),
+    timestamp: Date.now(),
+    error,
+  });
+}
+
+function extractTokenUsage(meta: any): GeminiTokenUsage {
+  const basePromptTokens = meta.promptTokenCount ?? 0;
+  const toolUseTokens = meta.toolUsePromptTokenCount ?? 0;
+  const promptTokens = basePromptTokens + toolUseTokens;
+  const responseTokens = meta.responseTokenCount ?? meta.candidatesTokenCount ?? 0;
+  const thinkingTokens = meta.thoughtsTokenCount ?? 0;
+  const totalTokens = meta.totalTokenCount ?? 0;
+  return { promptTokens, responseTokens, thinkingTokens, totalTokens };
 }
 
 /**

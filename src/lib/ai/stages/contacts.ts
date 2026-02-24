@@ -138,6 +138,7 @@ Return JSON:
           tools: GOOGLE_SEARCH_TOOL,
           thinkingLevel: THINKING_LEVELS.STAGE_3A_CONTACTS,
           latLng: propertyLatLng(property),
+          stageName: 'stage3a-contacts',
         }),
         2
       );
@@ -318,6 +319,7 @@ RULES:
           tools: GOOGLE_SEARCH_TOOL,
           thinkingLevel: THINKING_LEVELS.STAGE_3B_ENRICH,
           latLng,
+          stageName: `stage3b-enrich-${contact.name.replace(/\s+/g, '-').toLowerCase()}`,
         }),
         2
       );
