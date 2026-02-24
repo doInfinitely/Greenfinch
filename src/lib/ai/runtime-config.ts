@@ -34,7 +34,9 @@ export const STAGE_LABELS: Record<StageKey, string> = {
 
 export const AVAILABLE_MODELS = [
   'gemini-3-flash-preview',
-  'gemini-2.5-pro-preview-05-06',
+  'gemini-3-flash',
+  'gemini-2.5-flash',
+  'gemini-2.5-pro',
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
 ] as const;
