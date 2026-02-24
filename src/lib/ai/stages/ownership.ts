@@ -22,7 +22,7 @@ import { propertyLatLng, extractUsefulLegalInfo, crossValidateOwnership, OWNER_T
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validatePropertyWebsite, validateAndCleanDomain } from '../../domain-validator';
 import {
-  THINKING_LEVELS, RETRIES, BACKOFF, GOOGLE_SEARCH_TOOL, STAGE_MODELS,
+  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, getSearchGroundingTools,
 } from '../config';
 
 /**
@@ -110,7 +110,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
       // Call Gemini with search grounding and LOW thinking for multi-step reasoning
       const response = await callGeminiWithTimeout(
         () => streamGeminiResponse(client, prompt, {
-          tools: GOOGLE_SEARCH_TOOL,
+          tools: getSearchGroundingTools('stage2_ownership'),
           thinkingLevel: THINKING_LEVELS.STAGE_2_OWNERSHIP,
           latLng: propertyLatLng(property),
           stageName: 'stage2-ownership',
@@ -469,7 +469,7 @@ Return JSON:
     console.log(`[FocusedEnrichment] Domain retry: searching for property website for "${propertyName}"...`);
     const response = await callGeminiWithTimeout(
       () => streamGeminiResponse(client, prompt, {
-        tools: GOOGLE_SEARCH_TOOL,
+        tools: getSearchGroundingTools('domain_retry'),
         thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
         latLng,
         stageName: 'stage2-retry-property-website',
@@ -544,7 +544,7 @@ Return JSON:
     console.log(`[FocusedEnrichment] Domain retry: searching for company domain for "${companyName}"...`);
     const response = await callGeminiWithTimeout(
       () => streamGeminiResponse(client, prompt, {
-        tools: GOOGLE_SEARCH_TOOL,
+        tools: getSearchGroundingTools('domain_retry'),
         thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
         latLng,
         stageName: 'stage2-retry-company-domain',

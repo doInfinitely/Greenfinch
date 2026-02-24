@@ -28,7 +28,7 @@ import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validateAndCleanDomain } from '../../domain-validator';
 import {
   THINKING_LEVELS, RETRIES, BACKOFF, CONFIDENCE,
-  FREE_EMAIL_DOMAINS, GOOGLE_SEARCH_TOOL, STAGE_MODELS,
+  FREE_EMAIL_DOMAINS, STAGE_MODELS, getSearchGroundingTools,
 } from '../config';
 
 // =============================================================================
@@ -123,7 +123,7 @@ Return JSON:
 
       const response = await callGeminiWithTimeout(
         () => streamGeminiResponse(client, prompt, {
-          tools: GOOGLE_SEARCH_TOOL,
+          tools: getSearchGroundingTools('stage3_contacts'),
           thinkingLevel: THINKING_LEVELS.STAGE_3A_CONTACTS,
           latLng: propertyLatLng(property),
           stageName: 'stage3-contacts',

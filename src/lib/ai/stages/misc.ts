@@ -14,7 +14,7 @@ import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout } from '..
 import { stripInternalMessages } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import {
-  CLEANUP_TEMPERATURE, THINKING_LEVELS, GOOGLE_SEARCH_TOOL, STAGE_MODELS,
+  THINKING_LEVELS, STAGE_MODELS, getSearchGroundingTools, STAGE_TEMPERATURES,
 } from '../config';
 
 /**
@@ -53,7 +53,7 @@ ${preCleaned}`;
   try {
     const response = await callGeminiWithTimeout(
       () => streamGeminiResponse(client, prompt, {
-        temperature: CLEANUP_TEMPERATURE,
+        temperature: STAGE_TEMPERATURES.SUMMARY_CLEANUP,
         thinkingLevel: THINKING_LEVELS.SUMMARY_CLEANUP,
         stageName: 'summary-cleanup',
         model: STAGE_MODELS.SUMMARY_CLEANUP,
@@ -113,7 +113,7 @@ If you cannot find a replacement, return {"name": null}`;
   try {
     const response = await callGeminiWithTimeout(
       () => streamGeminiResponse(client, prompt, {
-        tools: GOOGLE_SEARCH_TOOL,
+        tools: getSearchGroundingTools('replacement_search'),
         thinkingLevel: THINKING_LEVELS.REPLACEMENT_SEARCH,
         stageName: 'replacement-search',
         model: STAGE_MODELS.REPLACEMENT_SEARCH,

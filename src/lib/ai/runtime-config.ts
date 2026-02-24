@@ -1,0 +1,135 @@
+import * as fs from 'fs';
+import * as path from 'path';
+import { GEMINI_MODEL } from '../constants';
+
+const CONFIG_FILE = path.join('/tmp', 'ai-stage-config.json');
+
+export type ThinkingLevel = 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH';
+
+export interface StageConfig {
+  model: string;
+  searchGrounding: boolean;
+  thinkingLevel: ThinkingLevel;
+  temperature: number;
+  dynamicThreshold: number;
+  maxRetries: number;
+}
+
+export type StageKey =
+  | 'stage1_classify'
+  | 'stage2_ownership'
+  | 'stage3_contacts'
+  | 'summary_cleanup'
+  | 'replacement_search'
+  | 'domain_retry';
+
+export const STAGE_LABELS: Record<StageKey, string> = {
+  stage1_classify: 'Stage 1 — Classification',
+  stage2_ownership: 'Stage 2 — Ownership',
+  stage3_contacts: 'Stage 3 — Contacts',
+  summary_cleanup: 'Summary Cleanup',
+  replacement_search: 'Replacement Search',
+  domain_retry: 'Domain Retry',
+};
+
+export const AVAILABLE_MODELS = [
+  'gemini-3-flash-preview',
+  'gemini-2.5-flash-preview-05-20',
+  'gemini-2.5-pro-preview-05-06',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+] as const;
+
+export type RuntimeConfig = Record<StageKey, StageConfig>;
+
+function defaultStageConfig(overrides?: Partial<StageConfig>): StageConfig {
+  return {
+    model: GEMINI_MODEL,
+    searchGrounding: true,
+    thinkingLevel: 'MINIMAL',
+    temperature: 1.0,
+    dynamicThreshold: 0.3,
+    maxRetries: 3,
+    ...overrides,
+  };
+}
+
+const FACTORY_DEFAULTS: RuntimeConfig = {
+  stage1_classify: defaultStageConfig({ thinkingLevel: 'MINIMAL', maxRetries: 3 }),
+  stage2_ownership: defaultStageConfig({ thinkingLevel: 'LOW', maxRetries: 3 }),
+  stage3_contacts: defaultStageConfig({ thinkingLevel: 'MEDIUM', maxRetries: 3 }),
+  summary_cleanup: defaultStageConfig({ thinkingLevel: 'MINIMAL', temperature: 0.2, searchGrounding: false, maxRetries: 1 }),
+  replacement_search: defaultStageConfig({ thinkingLevel: 'MEDIUM', maxRetries: 1 }),
+  domain_retry: defaultStageConfig({ thinkingLevel: 'MINIMAL', maxRetries: 1 }),
+};
+
+let _config: RuntimeConfig | null = null;
+
+function loadConfig(): RuntimeConfig {
+  if (_config) return _config;
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
+      const parsed = JSON.parse(raw) as Partial<RuntimeConfig>;
+      _config = { ...structuredClone(FACTORY_DEFAULTS) };
+      for (const key of Object.keys(FACTORY_DEFAULTS) as StageKey[]) {
+        if (parsed[key]) {
+          _config[key] = { ...FACTORY_DEFAULTS[key], ...parsed[key] };
+        }
+      }
+      return _config;
+    }
+  } catch (e) {
+    console.warn('[AIConfig] Failed to load config, using defaults:', e);
+  }
+  _config = structuredClone(FACTORY_DEFAULTS);
+  return _config;
+}
+
+function saveConfig(config: RuntimeConfig): void {
+  _config = config;
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+  } catch (e) {
+    console.error('[AIConfig] Failed to save config:', e);
+  }
+}
+
+export function getStageConfig(stage: StageKey): StageConfig {
+  return loadConfig()[stage];
+}
+
+export function getAllStageConfigs(): RuntimeConfig {
+  return structuredClone(loadConfig());
+}
+
+export function updateStageConfig(stage: StageKey, updates: Partial<StageConfig>): StageConfig {
+  const config = loadConfig();
+  config[stage] = { ...config[stage], ...updates };
+  saveConfig(config);
+  console.log(`[AIConfig] Updated ${stage}:`, JSON.stringify(config[stage]));
+  return config[stage];
+}
+
+export function updateAllStageConfigs(newConfig: RuntimeConfig): RuntimeConfig {
+  const config = structuredClone(FACTORY_DEFAULTS);
+  for (const key of Object.keys(FACTORY_DEFAULTS) as StageKey[]) {
+    if (newConfig[key]) {
+      config[key] = { ...FACTORY_DEFAULTS[key], ...newConfig[key] };
+    }
+  }
+  saveConfig(config);
+  console.log('[AIConfig] Bulk updated all stages');
+  return config;
+}
+
+export function resetToDefaults(): RuntimeConfig {
+  const config = structuredClone(FACTORY_DEFAULTS);
+  saveConfig(config);
+  console.log('[AIConfig] Reset all stages to factory defaults');
+  return config;
+}
+
+export function getFactoryDefaults(): RuntimeConfig {
+  return structuredClone(FACTORY_DEFAULTS);
+}
