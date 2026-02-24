@@ -5,7 +5,7 @@ import type { GeminiTokenUsage } from '@/lib/ai/types';
 import { computeGeminiCostUsd } from '@/lib/ai/config';
 
 const COST_PER_CREDIT: Record<EnrichmentProvider, number> = {
-  pdl: 0.03,
+  pdl: 0.035,
   apollo: 0.01,
   hunter: 0.01,
   findymail: 0.05,
@@ -17,6 +17,11 @@ const COST_PER_CREDIT: Record<EnrichmentProvider, number> = {
   leadmagic: 0.03,
   enrichlayer: 0.02,
 };
+
+export const PDL_COST = {
+  COMPANY_ENRICH_SUCCESS: 0.035,
+  PERSON_ENRICH_SUCCESS: 0.07,
+} as const;
 
 let lastCostTrackerError = 0;
 

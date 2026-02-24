@@ -129,12 +129,23 @@ export async function streamGeminiResponse(
   }
 
   if (lastUsageMetadata) {
+    const promptTokens = lastUsageMetadata.promptTokenCount ?? 0;
+    const responseTokens = lastUsageMetadata.responseTokenCount ?? lastUsageMetadata.candidatesTokenCount ?? 0;
+    const thinkingTokens = lastUsageMetadata.thoughtsTokenCount ?? 0;
+    const totalTokens = lastUsageMetadata.totalTokenCount ?? 0;
+
+    if (promptTokens === 0 && responseTokens === 0 && totalTokens === 0) {
+      console.warn('[Gemini] usageMetadata present but all token counts are 0. Raw metadata:', JSON.stringify(lastUsageMetadata));
+    }
+
     response.tokenUsage = {
-      promptTokens: lastUsageMetadata.promptTokenCount ?? 0,
-      responseTokens: lastUsageMetadata.responseTokenCount ?? 0,
-      thinkingTokens: lastUsageMetadata.thoughtsTokenCount ?? 0,
-      totalTokens: lastUsageMetadata.totalTokenCount ?? 0,
+      promptTokens,
+      responseTokens,
+      thinkingTokens,
+      totalTokens,
     };
+  } else {
+    console.warn('[Gemini] No usageMetadata found in streamed response');
   }
 
   return response;

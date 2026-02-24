@@ -1,4 +1,4 @@
-import { trackCostFireAndForget } from '@/lib/cost-tracker';
+import { trackCostFireAndForget, PDL_COST } from '@/lib/cost-tracker';
 import { rateLimiters, withRetry } from './rate-limiter';
 import { normalizeDomain } from './normalization';
 
@@ -395,6 +395,7 @@ export async function enrichPersonPDL(
       provider: 'pdl',
       endpoint: options.useSearch ? 'person/search' : 'person/enrich',
       entityType: 'contact',
+      costOverrideUsd: PDL_COST.PERSON_ENRICH_SUCCESS,
       success: true,
       metadata: { found: true },
     });
@@ -582,6 +583,7 @@ export async function enrichCompanyPDL(
       provider: 'pdl',
       endpoint: 'company/enrich',
       entityType: 'company',
+      costOverrideUsd: PDL_COST.COMPANY_ENRICH_SUCCESS,
       success: true,
       metadata: { found: true },
     });
