@@ -54,22 +54,34 @@ async function identifyDecisionMakers(
 ): Promise<StageResult<{ contacts: IdentifiedDecisionMaker[] }>> {
   const client = getGeminiClient();
 
-  const mgmtName = ownership.managementCompany?.name || null;
-  const mgmtDomain = ownership.managementCompany?.domain || null;
-  const mgmtInfo = mgmtName ? `${mgmtName} (${mgmtDomain || 'no website'})` : 'Unknown';
-  const ownerName = ownership.beneficialOwner?.name || property.bizName || property.ownerName1 || 'Unknown';
   const propertySite = ownership.propertyWebsite || 'none';
   const city = property.city || 'Dallas';
   const state = (property as any).state || 'TX';
 
-  const additionalCompanyLines: string[] = [];
+  const companyLines: string[] = [];
+  if (ownership.managementCompany?.name && ownership.managementCompany.confidence > 0) {
+    const m = ownership.managementCompany;
+    companyLines.push(`- MANAGEMENT (primary): ${m.name} | domain: ${m.domain || 'unknown'}`);
+  }
   for (const addlMgmt of ownership.additionalManagementCompanies || []) {
-    if (addlMgmt.name) additionalCompanyLines.push(`ALSO MANAGED BY: ${addlMgmt.name} (${addlMgmt.domain || 'no website'})`);
+    if (addlMgmt.name && addlMgmt.confidence > 0) {
+      companyLines.push(`- MANAGEMENT: ${addlMgmt.name} | domain: ${addlMgmt.domain || 'unknown'}`);
+    }
+  }
+  if (ownership.beneficialOwner?.name && ownership.beneficialOwner.confidence > 0) {
+    const o = ownership.beneficialOwner;
+    companyLines.push(`- OWNER${o.type ? ` (${o.type})` : ''}: ${o.name} | domain: ${o.domain || 'unknown'}`);
   }
   for (const addlOwner of ownership.additionalOwners || []) {
-    if (addlOwner.name) additionalCompanyLines.push(`ALSO OWNED BY: ${addlOwner.name} (${addlOwner.domain || 'no website'})`);
+    if (addlOwner.name && addlOwner.confidence > 0) {
+      companyLines.push(`- OWNER${addlOwner.type ? ` (${addlOwner.type})` : ''}: ${addlOwner.name} | domain: ${addlOwner.domain || 'unknown'}`);
+    }
   }
-  const additionalInfo = additionalCompanyLines.length > 0 ? '\n' + additionalCompanyLines.join('\n') : '';
+  if (companyLines.length === 0) {
+    const fallbackOwner = property.bizName || property.ownerName1 || 'Unknown';
+    companyLines.push(`- OWNER: ${fallbackOwner} | domain: unknown`);
+  }
+  const companiesBlock = companyLines.join('\n');
 
   // -- Build the prompt -------------------------------------------------------
   const prompt = `Find 3 people directly involved in managing THIS specific property. Return ONLY valid JSON.
@@ -77,11 +89,12 @@ async function identifyDecisionMakers(
 PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
 TYPE: ${classification.category} - ${classification.subcategory}
 LOCATION: ${city}, ${state}
-MGMT CO: ${mgmtInfo}
-OWNER: ${ownerName}
-PROPERTY SITE: ${propertySite}${additionalInfo}
+PROPERTY SITE: ${propertySite}
 
-TASK: Search the web to find people who directly manage, operate, or maintain this specific property on a day-to-day basis. Focus on the property management company staff in the ${city}, ${state} area, not corporate headquarters executives.
+ASSOCIATED COMPANIES (search for contacts at ALL of these):
+${companiesBlock}
+
+TASK: Search the web to find people who directly manage, operate, or maintain this specific property on a day-to-day basis. Focus on the property management company staff in the ${city}, ${state} area, not corporate headquarters executives. Search each associated company's website/domain and LinkedIn for relevant staff.
 
 PRIORITY ROLES (return these first; listed in priority order):
 - On-site property manager or community manager for this specific property
@@ -112,7 +125,7 @@ Return JSON:
 }`;
 
   console.log('[FocusedEnrichment] Stage 3a: Identifying decision-makers...');
-  console.log(`[FocusedEnrichment] Stage 3a input - Property: ${classification.propertyName}, Mgmt: ${mgmtInfo}`);
+  console.log(`[FocusedEnrichment] Stage 3a input - Property: ${classification.propertyName}, Companies: ${companyLines.length}`);
 
   // -- Retry loop -------------------------------------------------------------
   for (let attempt = 1; attempt <= RETRIES.STAGE_3A; attempt++) {
