@@ -63,33 +63,40 @@ const FACTORY_DEFAULTS: RuntimeConfig = {
   domain_retry: defaultStageConfig({ thinkingLevel: 'MINIMAL', maxRetries: 1 }),
 };
 
-let _config: RuntimeConfig | null = null;
+let _lastMtimeMs = 0;
+let _cached: RuntimeConfig | null = null;
 
 function loadConfig(): RuntimeConfig {
-  if (_config) return _config;
   try {
     if (fs.existsSync(CONFIG_FILE)) {
+      const stat = fs.statSync(CONFIG_FILE);
+      if (_cached && stat.mtimeMs === _lastMtimeMs) {
+        return _cached;
+      }
       const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
       const parsed = JSON.parse(raw) as Partial<RuntimeConfig>;
-      _config = { ...structuredClone(FACTORY_DEFAULTS) };
+      const config = structuredClone(FACTORY_DEFAULTS);
       for (const key of Object.keys(FACTORY_DEFAULTS) as StageKey[]) {
         if (parsed[key]) {
-          _config[key] = { ...FACTORY_DEFAULTS[key], ...parsed[key] };
+          config[key] = { ...FACTORY_DEFAULTS[key], ...parsed[key] };
         }
       }
-      return _config;
+      _cached = config;
+      _lastMtimeMs = stat.mtimeMs;
+      return config;
     }
   } catch (e) {
     console.warn('[AIConfig] Failed to load config, using defaults:', e);
   }
-  _config = structuredClone(FACTORY_DEFAULTS);
-  return _config;
+  return structuredClone(FACTORY_DEFAULTS);
 }
 
 function saveConfig(config: RuntimeConfig): void {
-  _config = config;
   try {
     fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), 'utf-8');
+    const stat = fs.statSync(CONFIG_FILE);
+    _cached = config;
+    _lastMtimeMs = stat.mtimeMs;
   } catch (e) {
     console.error('[AIConfig] Failed to save config:', e);
   }
