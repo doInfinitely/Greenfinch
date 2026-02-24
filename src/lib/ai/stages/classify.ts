@@ -19,7 +19,7 @@ import { formatBuildingsSummary, formatCompactCategories, mapQualityGradeToClass
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { rateLimiters } from '../../rate-limiter';
 import {
-  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, getSearchGroundingTools,
+  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, STAGE_TEMPERATURES, getSearchGroundingTools,
 } from '../config';
 
 /**
@@ -91,6 +91,7 @@ Return JSON:
       response = await rateLimiters.gemini.execute(() =>
         streamGeminiResponse(client, prompt, {
           tools: getSearchGroundingTools('stage1_classify'),
+          temperature: STAGE_TEMPERATURES.STAGE_1_CLASSIFY,
           thinkingLevel: THINKING_LEVELS.STAGE_1_CLASSIFY,
           latLng: propertyLatLng(property),
           stageName: 'stage1-classify',

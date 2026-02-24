@@ -114,6 +114,7 @@ If you cannot find a replacement, return {"name": null}`;
     const response = await callGeminiWithTimeout(
       () => streamGeminiResponse(client, prompt, {
         tools: getSearchGroundingTools('replacement_search'),
+        temperature: STAGE_TEMPERATURES.REPLACEMENT_SEARCH,
         thinkingLevel: THINKING_LEVELS.REPLACEMENT_SEARCH,
         stageName: 'replacement-search',
         model: STAGE_MODELS.REPLACEMENT_SEARCH,

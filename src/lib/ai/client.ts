@@ -224,8 +224,12 @@ export async function streamGeminiResponse(
     httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
   };
   const supportsThinking = /gemini-(2\.5-.+-preview|3[\.\-])/i.test(model);
-  if (options.thinkingLevel && supportsThinking) {
+  if (options.thinkingLevel && options.thinkingLevel !== 'NONE' && supportsThinking) {
     config.thinkingConfig = { thinkingLevel: options.thinkingLevel };
+    if (temperature < 1.0) {
+      console.warn(`[Gemini:${tag}] Thinking mode requires temperature >= 1.0, overriding ${temperature} → 1.0`);
+      config.temperature = 1.0;
+    }
   }
   if (options.tools) {
     config.tools = options.tools;

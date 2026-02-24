@@ -39,10 +39,6 @@ export const STAGE_MODELS = {
 // Search Grounding Configuration (runtime-driven)
 // ---------------------------------------------------------------------------
 
-export const SEARCH_GROUNDING = {
-  get DYNAMIC_THRESHOLD() { return getStageConfig('stage1_classify').dynamicThreshold; },
-};
-
 export function getSearchGroundingTools(stageKey: StageKey): any[] | undefined {
   const cfg = getStageConfig(stageKey);
   if (!cfg.searchGrounding) return undefined;

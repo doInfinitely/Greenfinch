@@ -22,7 +22,7 @@ import { propertyLatLng, extractUsefulLegalInfo, crossValidateOwnership, OWNER_T
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validatePropertyWebsite, validateAndCleanDomain } from '../../domain-validator';
 import {
-  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, getSearchGroundingTools,
+  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, STAGE_TEMPERATURES, getSearchGroundingTools,
 } from '../config';
 
 /**
@@ -111,6 +111,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
       const response = await callGeminiWithTimeout(
         () => streamGeminiResponse(client, prompt, {
           tools: getSearchGroundingTools('stage2_ownership'),
+          temperature: STAGE_TEMPERATURES.STAGE_2_OWNERSHIP,
           thinkingLevel: THINKING_LEVELS.STAGE_2_OWNERSHIP,
           latLng: propertyLatLng(property),
           stageName: 'stage2-ownership',
@@ -470,6 +471,7 @@ Return JSON:
     const response = await callGeminiWithTimeout(
       () => streamGeminiResponse(client, prompt, {
         tools: getSearchGroundingTools('domain_retry'),
+        temperature: STAGE_TEMPERATURES.DOMAIN_RETRY,
         thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
         latLng,
         stageName: 'stage2-retry-property-website',
@@ -545,6 +547,7 @@ Return JSON:
     const response = await callGeminiWithTimeout(
       () => streamGeminiResponse(client, prompt, {
         tools: getSearchGroundingTools('domain_retry'),
+        temperature: STAGE_TEMPERATURES.DOMAIN_RETRY,
         thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
         latLng,
         stageName: 'stage2-retry-company-domain',

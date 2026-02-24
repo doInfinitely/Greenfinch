@@ -34,7 +34,7 @@ function isGemini3(model: string): boolean {
 }
 
 function supportsThinking(model: string): boolean {
-  return model.includes('gemini-2.5') || model.includes('gemini-3');
+  return /gemini-(2\.5-.+-preview|3[\.\-])/i.test(model);
 }
 
 function getModelFamily(model: string): string {
@@ -45,8 +45,8 @@ function getModelFamily(model: string): string {
 }
 
 function getSearchGroundingNote(model: string): string {
-  if (isGemini3(model)) return 'Gemini 3 always searches when enabled ($0.035/query)';
-  return 'Dynamic threshold controls when search triggers ($0.035/prompt)';
+  if (isGemini3(model)) return 'Gemini 3: $0.035 per search query';
+  return 'Flat $0.035 per prompt when search is triggered';
 }
 
 export default function AIConfigPage() {
@@ -267,7 +267,7 @@ function StageCard({
   const thinkingSupported = supportsThinking(config.model);
   const gem3 = isGemini3(config.model);
 
-  const hasChanges = (['model', 'searchGrounding', 'thinkingLevel', 'temperature', 'dynamicThreshold', 'maxRetries'] as (keyof StageConfig)[])
+  const hasChanges = (['model', 'searchGrounding', 'thinkingLevel', 'temperature', 'maxRetries'] as (keyof StageConfig)[])
     .some(f => isModified(stageKey, f));
 
   return (
@@ -369,27 +369,6 @@ function StageCard({
               <p className="text-xs text-gray-400 mt-1">{getSearchGroundingNote(config.model)}</p>
             </div>
 
-            {config.searchGrounding && !gem3 && (
-              <div data-testid={`input-threshold-${stageKey}`}>
-                <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5">
-                  Dynamic Threshold
-                  {isModified(stageKey, 'dynamicThreshold') && <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />}
-                </label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="range"
-                    min="0"
-                    max="1"
-                    step="0.05"
-                    value={config.dynamicThreshold}
-                    onChange={e => onUpdate({ dynamicThreshold: parseFloat(e.target.value) })}
-                    className="flex-1 accent-green-600"
-                  />
-                  <span className="text-sm font-mono w-8 text-right">{config.dynamicThreshold.toFixed(2)}</span>
-                </div>
-                <p className="text-xs text-gray-400 mt-1">0.0 = always search · 1.0 = never search</p>
-              </div>
-            )}
 
             <div data-testid={`input-retries-${stageKey}`}>
               <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5">
