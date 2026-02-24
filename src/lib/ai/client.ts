@@ -223,7 +223,8 @@ export async function streamGeminiResponse(
     temperature,
     httpOptions: { timeout: GEMINI_HTTP_TIMEOUT_MS },
   };
-  if (options.thinkingLevel) {
+  const supportsThinking = /gemini-(2\.5-.+-preview|3[\.\-])/i.test(model);
+  if (options.thinkingLevel && supportsThinking) {
     config.thinkingConfig = { thinkingLevel: options.thinkingLevel };
   }
   if (options.tools) {
