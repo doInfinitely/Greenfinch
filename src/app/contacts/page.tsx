@@ -1057,7 +1057,7 @@ export default function ContactsPage() {
                         Contact <SortIcon column="fullName" />
                       </th>
                       <th
-                        className="px-1 py-3 w-12 cursor-pointer hover:bg-gray-100 transition-colors border-l border-r border-gray-200"
+                        className={`px-1 py-3 w-12 cursor-pointer hover:bg-gray-100 transition-colors border-l border-gray-200 ${showContactInfo ? '' : 'border-r'}`}
                         onClick={() => setShowContactInfo(!showContactInfo)}
                         title={showContactInfo ? 'Hide contact info' : 'Show contact info'}
                         data-testid="button-toggle-contact-info"
@@ -1072,16 +1072,16 @@ export default function ContactsPage() {
                       </th>
                       {showContactInfo && (
                         <>
-                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider animate-col-expand">
                             LinkedIn
                           </th>
                           <th
                             onClick={() => handleSort('email')}
-                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 animate-col-expand"
                           >
                             Email <SortIcon column="email" />
                           </th>
-                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 animate-col-expand">
                             Phone
                           </th>
                         </>
@@ -1151,7 +1151,7 @@ export default function ContactsPage() {
                             </div>
                           </td>
                           <td
-                            className="px-1 py-3 border-l border-r border-gray-100 cursor-pointer"
+                            className={`px-1 py-3 border-l border-gray-100 cursor-pointer ${showContactInfo ? '' : 'border-r'}`}
                             onClick={(e) => { e.stopPropagation(); setShowContactInfo(!showContactInfo); }}
                             data-testid={`contact-status-icons-${contact.id}`}
                           >
@@ -1174,7 +1174,7 @@ export default function ContactsPage() {
                           </td>
                           {showContactInfo && (
                             <>
-                              <td className="px-3 py-3">
+                              <td className="px-3 py-3 animate-col-expand">
                                 {contact.linkedinUrl ? (
                                   <a
                                     href={contact.linkedinUrl}
@@ -1193,7 +1193,7 @@ export default function ContactsPage() {
                                 )}
                               </td>
                               <td 
-                                className="px-3 py-3 overflow-hidden"
+                                className="px-3 py-3 overflow-hidden animate-col-expand"
                                 onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                               >
                                 {contact.email ? (
@@ -1210,7 +1210,7 @@ export default function ContactsPage() {
                                 )}
                               </td>
                               <td 
-                                className="px-3 py-3"
+                                className="px-3 py-3 border-r border-gray-100 animate-col-expand"
                                 onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                               >
                                 {(() => {
