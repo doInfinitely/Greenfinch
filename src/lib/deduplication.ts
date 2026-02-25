@@ -268,7 +268,7 @@ function sortContactsByPriority(a: typeof contacts.$inferSelect, b: typeof conta
  * Merge duplicate organizations
  * Updates all foreign key references and deletes duplicates
  */
-export async function mergeOrganizations(duplicates: DuplicateGroup<typeof organizations.$inferSelect>[]): Promise<{ merged: number; errors: string[] }> {
+async function mergeOrganizations(duplicates: DuplicateGroup<typeof organizations.$inferSelect>[]): Promise<{ merged: number; errors: string[] }> {
   let merged = 0;
   const errors: string[] = [];
   
@@ -433,7 +433,7 @@ export async function runDeduplication(): Promise<DeduplicationResult & { potent
 /**
  * Find existing organization by normalized domain
  */
-export async function findExistingOrganization(domain: string): Promise<(typeof organizations.$inferSelect) | null> {
+async function findExistingOrganization(domain: string): Promise<(typeof organizations.$inferSelect) | null> {
   const normalizedDomain = normalizeDomain(domain);
   if (!normalizedDomain) return null;
   
@@ -451,7 +451,7 @@ export async function findExistingOrganization(domain: string): Promise<(typeof 
 /**
  * Find existing contact by name + domain
  */
-export async function findExistingContact(
+async function findExistingContact(
   fullName: string, 
   companyDomain: string | null
 ): Promise<(typeof contacts.$inferSelect) | null> {

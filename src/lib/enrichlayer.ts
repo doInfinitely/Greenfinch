@@ -140,7 +140,7 @@ function parseFullName(fullName: string): { firstName: string; lastName: string 
   return { firstName, lastName };
 }
 
-export async function lookupPerson(input: EnrichLayerPersonInput): Promise<EnrichLayerPersonResult> {
+async function lookupPerson(input: EnrichLayerPersonInput): Promise<EnrichLayerPersonResult> {
   if (!ENRICHLAYER_API_KEY) {
     console.error('[EnrichLayer] API key not configured');
     return { success: false, error: 'EnrichLayer API key not configured' };
@@ -370,7 +370,7 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
   }
 }
 
-export async function enrichContact(contact: {
+async function enrichContact(contact: {
   fullName: string;
   companyDomain?: string | null;
   linkedinUrl?: string | null;
@@ -398,7 +398,7 @@ export interface WorkEmailResult {
   creditsUsed?: number;
 }
 
-export async function lookupWorkEmail(linkedinUrl: string, options?: {
+async function lookupWorkEmail(linkedinUrl: string, options?: {
   validate?: boolean;
   useCache?: 'if-present' | 'if-recent' | 'never';
   expectedDomain?: string;  // Filter to only accept emails from this domain
@@ -637,7 +637,7 @@ export interface CompanyProfileResult {
  * Resolve a company domain to LinkedIn company URL
  * Cost: ~1 credit
  */
-export async function resolveCompanyByDomain(domain: string): Promise<CompanyResolveResult> {
+async function resolveCompanyByDomain(domain: string): Promise<CompanyResolveResult> {
   if (!ENRICHLAYER_API_KEY) {
     console.warn('[EnrichLayer] API key not configured');
     return { success: false, error: 'API key not configured' };
@@ -705,7 +705,7 @@ export async function resolveCompanyByDomain(domain: string): Promise<CompanyRes
  * Get company profile by LinkedIn URL with industry/category data
  * Cost: ~3 credits (base) + 1 credit for categories + 1 credit for extra
  */
-export async function getCompanyProfile(linkedinUrl: string): Promise<CompanyProfileResult> {
+async function getCompanyProfile(linkedinUrl: string): Promise<CompanyProfileResult> {
   if (!ENRICHLAYER_API_KEY) {
     console.warn('[EnrichLayer] API key not configured');
     return { success: false, error: 'API key not configured' };

@@ -116,11 +116,6 @@ export function normalizeCity(city: string | null | undefined): string {
   return city.split(/\s+/).map(toTitleCase).join(' ');
 }
 
-export function normalizeCounty(county: string | null | undefined): string {
-  if (!county) return '';
-  return county.split(/\s+/).map(toTitleCase).join(' ');
-}
-
 /**
  * Normalize a domain for comparison/storage.
  * Strips www. prefix, lowercases, and trims whitespace.
@@ -134,27 +129,3 @@ export function capitalizeSentences(text: string | null | undefined): string {
   return text.replace(/(^|[.!?]\s+)([a-z])/g, (_, prefix, char) => prefix + char.toUpperCase());
 }
 
-export function normalizeAllFields(data: {
-  address?: string | null;
-  owner?: string | null;
-  owner2?: string | null;
-  city?: string | null;
-  county?: string | null;
-  commonName?: string | null;
-}): {
-  address: string;
-  owner: string;
-  owner2: string;
-  city: string;
-  county: string;
-  commonName: string;
-} {
-  return {
-    address: normalizeAddress(data.address),
-    owner: normalizeOwnerName(data.owner),
-    owner2: normalizeOwnerName(data.owner2),
-    city: normalizeCity(data.city),
-    county: normalizeCounty(data.county),
-    commonName: normalizeCommonName(data.commonName),
-  };
-}

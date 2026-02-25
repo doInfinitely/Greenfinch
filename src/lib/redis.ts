@@ -52,19 +52,6 @@ export async function cacheSet<T>(key: string, value: T, ttlSeconds: number): Pr
   }
 }
 
-export async function cacheDelete(key: string): Promise<boolean> {
-  const r = getRedis();
-  if (!r) return false;
-  
-  try {
-    await r.del(`${CACHE_PREFIX}${key}`);
-    return true;
-  } catch (error) {
-    console.error('[Redis] Cache delete error:', error);
-    return false;
-  }
-}
-
 const lockTokens = new Map<string, string>();
 
 export async function acquireLock(lockName: string, ttlSeconds: number = 30): Promise<boolean> {
@@ -109,45 +96,6 @@ export async function releaseLock(lockName: string): Promise<boolean> {
     console.error('[Redis] Release lock error:', error);
     lockTokens.delete(lockName);
     return false;
-  }
-}
-
-export async function queuePush(queueName: string, item: unknown): Promise<boolean> {
-  const r = getRedis();
-  if (!r) return false;
-  
-  try {
-    await r.rpush(`${QUEUE_PREFIX}${queueName}`, JSON.stringify(item));
-    return true;
-  } catch (error) {
-    console.error('[Redis] Queue push error:', error);
-    return false;
-  }
-}
-
-export async function queuePop<T>(queueName: string): Promise<T | null> {
-  const r = getRedis();
-  if (!r) return null;
-  
-  try {
-    const item = await r.lpop<string>(`${QUEUE_PREFIX}${queueName}`);
-    if (!item) return null;
-    return JSON.parse(item) as T;
-  } catch (error) {
-    console.error('[Redis] Queue pop error:', error);
-    return null;
-  }
-}
-
-export async function queueLength(queueName: string): Promise<number> {
-  const r = getRedis();
-  if (!r) return 0;
-  
-  try {
-    return await r.llen(`${QUEUE_PREFIX}${queueName}`);
-  } catch (error) {
-    console.error('[Redis] Queue length error:', error);
-    return 0;
   }
 }
 
@@ -224,19 +172,6 @@ export async function hashDelete(hashName: string, field: string): Promise<boole
     return true;
   } catch (error) {
     console.error('[Redis] Hash delete error:', error);
-    return false;
-  }
-}
-
-export async function setWithExpiry(key: string, value: unknown, ttlSeconds: number): Promise<boolean> {
-  const r = getRedis();
-  if (!r) return false;
-  
-  try {
-    await r.set(key, JSON.stringify(value), { ex: ttlSeconds });
-    return true;
-  } catch (error) {
-    console.error('[Redis] Set with expiry error:', error);
     return false;
   }
 }

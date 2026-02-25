@@ -1488,7 +1488,7 @@ function updateProgressStats(batch: BatchStatus, startTime: number): void {
   }
 }
 
-export async function processQueue(): Promise<void> {
+async function processQueue(): Promise<void> {
   // Check if already processing
   if (await isBatchRunning()) {
     console.log('[EnrichmentQueue] Already processing, skipping');

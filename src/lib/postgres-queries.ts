@@ -337,20 +337,7 @@ export async function getFilteredPropertiesFromPostgres(
   return results.map(formatPropertyResult);
 }
 
-export async function getPropertyByIdFromPostgres(
-  id: string
-): Promise<PropertyResult | null> {
-  const results = await db
-    .select()
-    .from(properties)
-    .where(eq(properties.id, id))
-    .limit(1);
-  
-  if (results.length === 0) return null;
-  return formatPropertyResult(results[0]);
-}
-
-export async function getPropertyByKeyFromPostgres(
+async function getPropertyByKeyFromPostgres(
   propertyKey: string
 ): Promise<PropertyResult | null> {
   const results = await db
@@ -401,41 +388,3 @@ export async function resolveParcelToProperty(
   };
 }
 
-export async function getPropertyStats(): Promise<{
-  totalProperties: number;
-  totalParcels: number;
-  enrichedCount: number;
-  pendingCount: number;
-}> {
-  const [propCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(properties)
-    .where(eq(properties.isActive, true));
-  
-  const [parcelCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(parcelToProperty);
-  
-  const [enrichedCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(properties)
-    .where(and(
-      eq(properties.isActive, true),
-      eq(properties.enrichmentStatus, 'enriched')
-    ));
-  
-  const [pendingCount] = await db
-    .select({ count: sql<number>`count(*)::int` })
-    .from(properties)
-    .where(and(
-      eq(properties.isActive, true),
-      eq(properties.enrichmentStatus, 'pending')
-    ));
-  
-  return {
-    totalProperties: propCount?.count || 0,
-    totalParcels: parcelCount?.count || 0,
-    enrichedCount: enrichedCount?.count || 0,
-    pendingCount: pendingCount?.count || 0,
-  };
-}

@@ -217,21 +217,6 @@ function createWorker(concurrency: number): Worker {
   return worker;
 }
 
-export function initEnrichmentWorker(): void {
-  if (!isBullMQConfigured()) {
-    console.log('[BullMQ] Not configured, skipping worker init');
-    return;
-  }
-
-  if (enrichmentWorker) {
-    console.log('[BullMQ] Worker already initialized');
-    return;
-  }
-
-  enrichmentWorker = createWorker(CONCURRENCY.PROPERTIES);
-  console.log('[BullMQ] Enrichment worker initialized');
-}
-
 export interface StartBullMQBatchOptions {
   propertyIds?: string[];
   propertyKeys?: string[];
@@ -394,10 +379,6 @@ export async function isBullMQBatchRunning(): Promise<boolean> {
 
 let cancelledBatchId: string | null = null;
 
-export function isBatchCancelled(batchId: string): boolean {
-  return cancelledBatchId === batchId;
-}
-
 export async function cancelBullMQBatch(): Promise<{ cancelled: boolean; message: string }> {
   if (!isBullMQConfigured()) {
     return { cancelled: false, message: 'BullMQ not configured' };
@@ -492,21 +473,3 @@ export async function flushBullMQData(): Promise<{ flushed: boolean; message: st
   };
 }
 
-export async function shutdownBullMQ(): Promise<void> {
-  if (enrichmentWorker) {
-    await enrichmentWorker.close();
-    enrichmentWorker = null;
-  }
-  if (queueEvents) {
-    await queueEvents.close();
-    queueEvents = null;
-  }
-  if (enrichmentQueue) {
-    await enrichmentQueue.close();
-    enrichmentQueue = null;
-  }
-  if (metaRedis) {
-    await metaRedis.quit();
-    metaRedis = null;
-  }
-}

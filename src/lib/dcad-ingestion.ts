@@ -333,7 +333,7 @@ export async function getCommercialPropertiesByZip(
   return rows.map(mapRowToProperty);
 }
 
-export async function getAllCommercialProperties(
+async function getAllCommercialProperties(
   limit: number = 50000,
   offset: number = 0,
   filters?: IngestionFilters
@@ -492,7 +492,7 @@ function mapRowToProperty(row: any): DCadCommercialProperty {
   };
 }
 
-export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): AggregatedProperty[] {
+function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): AggregatedProperty[] {
   const groupedByAccount = new Map<string, DCadCommercialProperty[]>();
   
   for (const row of rows) {
@@ -661,7 +661,7 @@ export function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): Agg
 // Identify parent/constituent relationships using GIS_PARCEL_ID from DCAD
 // Parent = account where ACCOUNT_NUM equals GIS_PARCEL_ID
 // Constituents = other accounts that share the same GIS_PARCEL_ID
-export function identifyParcelRelationships(properties: AggregatedProperty[]): Map<string, {
+function identifyParcelRelationships(properties: AggregatedProperty[]): Map<string, {
   parentAccountNum: string;
   constituentAccountNums: string[];
   llUuid: string | null;
@@ -797,7 +797,7 @@ function buildPropertyData(
 
 const UPSERT_BATCH_SIZE = 50;
 
-export async function batchUpsertPropertiesToPostgres(
+async function batchUpsertPropertiesToPostgres(
   props: AggregatedProperty[],
   relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[]; llUuid?: string | null }>
 ): Promise<{ created: number; updated: number; errors: number }> {
@@ -940,7 +940,7 @@ export async function batchUpsertPropertiesToPostgres(
   return result;
 }
 
-export async function upsertAggregatedPropertyToPostgres(
+async function upsertAggregatedPropertyToPostgres(
   prop: AggregatedProperty,
   relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[]; llUuid?: string | null }>
 ): Promise<{ created: boolean }> {
@@ -985,7 +985,7 @@ export async function upsertAggregatedPropertyToPostgres(
   return { created: existingProperty.length === 0 };
 }
 
-export async function upsertPropertyToPostgres(
+async function upsertPropertyToPostgres(
   prop: DCadCommercialProperty
 ): Promise<{ created: boolean }> {
   const aggregated = aggregatePropertiesByParcel([prop]);
@@ -1067,7 +1067,7 @@ export async function runIngestion(
   return stats;
 }
 
-export async function getParentAccountsByAccountNums(
+async function getParentAccountsByAccountNums(
   accountNums: string[]
 ): Promise<DCadCommercialProperty[]> {
   if (accountNums.length === 0) return [];

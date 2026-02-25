@@ -2,7 +2,7 @@ import { db } from './db';
 import { users, serviceProviders } from './schema';
 import { eq, ilike } from 'drizzle-orm';
 import { currentUser, auth } from '@clerk/nextjs/server';
-import { ROLES, INTERNAL_ORG_SLUG, Permission, getRolePermissions } from './permissions';
+import { INTERNAL_ORG_SLUG } from './permissions';
 
 export type UserRole = 'standard_user' | 'team_manager' | 'account_admin' | 'system_admin';
 
@@ -65,20 +65,8 @@ export async function requireSession(): Promise<{ user: User }> {
   return session;
 }
 
-export async function requireRole(allowedRoles: UserRole[]): Promise<{ user: User }> {
-  const session = await requireSession();
-  if (!allowedRoles.includes(session.user.role)) {
-    throw new Error('FORBIDDEN');
-  }
-  return session;
-}
-
 export function isAdmin(user: User): boolean {
   return user.role === 'system_admin' || user.role === 'account_admin';
-}
-
-export function isSystemAdmin(user: User): boolean {
-  return user.role === 'system_admin';
 }
 
 interface ClerkUser {
@@ -246,42 +234,6 @@ export async function getUserId(): Promise<string | null> {
   return userId;
 }
 
-export async function getUserPermissions(): Promise<Set<Permission>> {
-  const authData = await auth();
-  const permissions = new Set<Permission>();
-  
-  const orgRole = authData.orgRole;
-  if (orgRole) {
-    getRolePermissions(orgRole).forEach(p => permissions.add(p));
-  }
-  
-  return permissions;
-}
-
-export async function hasPermission(permission: Permission): Promise<boolean> {
-  const permissions = await getUserPermissions();
-  return permissions.has(permission);
-}
-
-export async function isInternalUser(): Promise<boolean> {
-  const user = await currentUser();
-  const memberships = (user as { organizationMemberships?: Array<{ organization: { slug: string } }> })?.organizationMemberships;
-  return memberships?.some(
-    (mem) => mem.organization.slug === INTERNAL_ORG_SLUG
-  ) ?? false;
-}
-
-export async function isInternalAdmin(): Promise<boolean> {
-  const authData = await auth();
-  return authData.orgSlug === INTERNAL_ORG_SLUG && authData.orgRole === 'org:admin';
-}
-
-export async function requirePermission(permission: Permission): Promise<void> {
-  if (!(await hasPermission(permission))) {
-    throw new Error(`FORBIDDEN: Missing permission ${permission}`);
-  }
-}
-
 export async function requireAdminAccess(): Promise<void> {
   const authData = await auth();
   
@@ -296,14 +248,3 @@ export async function requireAdminAccess(): Promise<void> {
   }
 }
 
-export async function requireInternalAccess(): Promise<void> {
-  const authData = await auth();
-  
-  if (!authData.userId) {
-    throw new Error('UNAUTHORIZED');
-  }
-  
-  if (authData.orgSlug !== INTERNAL_ORG_SLUG) {
-    throw new Error('FORBIDDEN');
-  }
-}
