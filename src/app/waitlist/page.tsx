@@ -9,6 +9,8 @@ export default function WaitlistPage() {
   const [name, setName] = useState('');
   const [company, setCompany] = useState('');
   const [role, setRole] = useState('');
+  const [industry, setIndustry] = useState('');
+  const [phone, setPhone] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [error, setError] = useState('');
@@ -22,7 +24,7 @@ export default function WaitlistPage() {
       const response = await fetch('/api/waitlist', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, name, company, role }),
+        body: JSON.stringify({ email, name, company, role, industry, phone }),
       });
 
       if (!response.ok) {
@@ -126,7 +128,7 @@ export default function WaitlistPage() {
 
                   <div>
                     <label htmlFor="company" className="block text-sm font-medium text-gray-700 mb-1">
-                      Company
+                      Company <span className="text-gray-400 font-normal">(optional)</span>
                     </label>
                     <input
                       type="text"
@@ -137,6 +139,31 @@ export default function WaitlistPage() {
                       placeholder="Acme Corp"
                       data-testid="input-company"
                     />
+                  </div>
+
+                  <div>
+                    <label htmlFor="industry" className="block text-sm font-medium text-gray-700 mb-1">
+                      Industry
+                    </label>
+                    <select
+                      id="industry"
+                      value={industry}
+                      onChange={(e) => setIndustry(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                      data-testid="select-industry"
+                    >
+                      <option value="">Select your industry</option>
+                      <option value="janitorial">Janitorial / Commercial Cleaning</option>
+                      <option value="landscaping">Landscaping & Grounds Maintenance</option>
+                      <option value="hvac">HVAC & Mechanical Services</option>
+                      <option value="security">Security Services</option>
+                      <option value="roofing">Roofing & Exterior Maintenance</option>
+                      <option value="pest_control">Pest Control</option>
+                      <option value="plumbing">Plumbing Services</option>
+                      <option value="electrical">Electrical Services</option>
+                      <option value="painting">Painting & Coatings</option>
+                      <option value="fire_protection">Fire Protection & Life Safety</option>
+                    </select>
                   </div>
 
                   <div>
@@ -159,6 +186,21 @@ export default function WaitlistPage() {
                       <option value="executive">Executive / C-Suite</option>
                       <option value="other">Other</option>
                     </select>
+                  </div>
+
+                  <div>
+                    <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
+                      Work Phone <span className="text-gray-400 font-normal">(optional)</span>
+                    </label>
+                    <input
+                      type="tel"
+                      id="phone"
+                      value={phone}
+                      onChange={(e) => setPhone(e.target.value)}
+                      className="w-full px-4 py-3 border border-gray-200 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
+                      placeholder="(555) 123-4567"
+                      data-testid="input-phone"
+                    />
                   </div>
                 </div>
 

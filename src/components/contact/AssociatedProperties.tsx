@@ -1,10 +1,11 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, ListPlus } from 'lucide-react';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
 import type { PropertyRelation } from './types';
+import BulkAddToListModal from '@/components/BulkAddToListModal';
 
 function LowConfidenceMarker({ confidence }: { confidence: number | null | undefined }) {
   if (confidence === null || confidence === undefined || confidence >= 0.70) return null;
@@ -66,74 +67,148 @@ interface AssociatedPropertiesProps {
 
 export default function AssociatedProperties({ properties }: AssociatedPropertiesProps) {
   const grouped = useMemo(() => groupProperties(properties), [properties]);
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState<Set<string>>(new Set());
+  const [showBulkAddToList, setShowBulkAddToList] = useState(false);
+
+  const allPropertyIds = useMemo(() => grouped.map(p => p.propertyKey || p.id), [grouped]);
+  const allSelected = grouped.length > 0 && selectedPropertyIds.size === grouped.length;
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedPropertyIds(new Set(allPropertyIds));
+    } else {
+      setSelectedPropertyIds(new Set());
+    }
+  };
+
+  const handleToggleProperty = (propertyId: string, checked: boolean) => {
+    const next = new Set(selectedPropertyIds);
+    if (checked) {
+      next.add(propertyId);
+    } else {
+      next.delete(propertyId);
+    }
+    setSelectedPropertyIds(next);
+  };
 
   return (
     <div className="bg-white rounded-lg border border-gray-200 p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">
-        Associated Properties
-        <span className="ml-2 text-sm font-normal text-gray-500">({grouped.length})</span>
-      </h2>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold text-gray-900">
+            Associated Properties
+            <span className="ml-2 text-sm font-normal text-gray-500">({grouped.length})</span>
+          </h2>
+          {grouped.length > 0 && (
+            <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer" data-testid="checkbox-select-all-properties">
+              <input
+                type="checkbox"
+                className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                checked={allSelected}
+                onChange={(e) => handleSelectAll(e.target.checked)}
+              />
+              Select all
+            </label>
+          )}
+        </div>
+        {selectedPropertyIds.size > 0 && (
+          <button
+            onClick={() => setShowBulkAddToList(true)}
+            className="inline-flex items-center px-3 py-1.5 text-sm font-medium text-green-700 bg-green-50 border border-green-200 rounded-lg hover:bg-green-100 transition-colors"
+            data-testid="button-bulk-add-properties-to-list"
+          >
+            <ListPlus className="w-4 h-4 mr-1.5" />
+            Add {selectedPropertyIds.size} to List
+          </button>
+        )}
+      </div>
       
       {grouped.length === 0 ? (
         <p className="text-gray-500 text-center py-8">No properties associated with this contact.</p>
       ) : (
         <div className="space-y-3">
-          {grouped.map((prop) => (
-            <Link
-              key={prop.propertyKey || prop.id}
-              href={`/property/${prop.propertyKey || prop.id}`}
-              className="block p-4 border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors"
-              data-testid={`link-property-${prop.propertyKey || prop.id}`}
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex-1 min-w-0">
-                  {prop.commonName && (
-                    <p className="font-medium text-gray-900 truncate">
-                      {(() => {
-                        const name = prop.commonName;
-                        const upperCount = (name.match(/[A-Z]/g) || []).length;
-                        const letterCount = (name.match(/[a-zA-Z]/g) || []).length;
-                        if (letterCount > 0 && upperCount / letterCount > 0.8) {
-                          return name.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
-                        }
-                        return name;
-                      })()}
-                    </p>
-                  )}
-                  <p className={prop.commonName ? "text-sm text-gray-600 truncate" : "font-medium text-gray-900 truncate"}>
-                    {prop.address || 'Unknown Address'}
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    {[prop.city, prop.state, prop.zip].filter(Boolean).join(', ')}
-                  </p>
-                  {prop.assetCategory && (
-                    <span className="inline-block mt-1 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
-                      {prop.assetCategory}
-                    </span>
-                  )}
-                </div>
-                <div className="flex flex-col items-end gap-1 ml-2">
-                  <div className="flex flex-wrap gap-1 justify-end">
-                    {prop.roles.map((r) => (
-                      <span key={r.role} className="flex items-center">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[r.role] || ROLE_COLORS.other}`}>
-                          {ROLE_LABELS[r.role] || r.role}
+          {grouped.map((prop) => {
+            const propertyId = prop.propertyKey || prop.id;
+            return (
+              <div
+                key={propertyId}
+                className="flex items-start gap-3 p-4 border border-gray-200 rounded-lg hover:border-green-300 hover:bg-green-50 transition-colors"
+                data-testid={`row-property-${propertyId}`}
+              >
+                <input
+                  type="checkbox"
+                  className="rounded border-gray-300 text-green-600 focus:ring-green-500 flex-shrink-0 mt-1"
+                  checked={selectedPropertyIds.has(propertyId)}
+                  onChange={(e) => handleToggleProperty(propertyId, e.target.checked)}
+                  onClick={(e) => e.stopPropagation()}
+                  data-testid={`checkbox-property-${propertyId}`}
+                />
+                <Link
+                  href={`/property/${propertyId}`}
+                  className="flex-1 min-w-0"
+                  data-testid={`link-property-${propertyId}`}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1 min-w-0">
+                      {prop.commonName && (
+                        <p className="font-medium text-gray-900 truncate">
+                          {(() => {
+                            const name = prop.commonName;
+                            const upperCount = (name.match(/[A-Z]/g) || []).length;
+                            const letterCount = (name.match(/[a-zA-Z]/g) || []).length;
+                            if (letterCount > 0 && upperCount / letterCount > 0.8) {
+                              return name.toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+                            }
+                            return name;
+                          })()}
+                        </p>
+                      )}
+                      <p className={prop.commonName ? "text-sm text-gray-600 truncate" : "font-medium text-gray-900 truncate"}>
+                        {prop.address || 'Unknown Address'}
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        {[prop.city, prop.state, prop.zip].filter(Boolean).join(', ')}
+                      </p>
+                      {prop.assetCategory && (
+                        <span className="inline-block mt-1 px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded">
+                          {prop.assetCategory}
                         </span>
-                        <LowConfidenceMarker confidence={r.confidenceScore} />
-                      </span>
-                    ))}
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1 ml-2">
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        {prop.roles.map((r) => (
+                          <span key={r.role} className="flex items-center">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[r.role] || ROLE_COLORS.other}`}>
+                              {ROLE_LABELS[r.role] || r.role}
+                            </span>
+                            <LowConfidenceMarker confidence={r.confidenceScore} />
+                          </span>
+                        ))}
+                      </div>
+                      {prop.relationshipStatus === 'job_change_detected' && (
+                        <span className="text-xs text-amber-600 font-medium" data-testid={`badge-job-change-${propertyId}`}>
+                          May have changed jobs
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  {prop.relationshipStatus === 'job_change_detected' && (
-                    <span className="text-xs text-amber-600 font-medium" data-testid={`badge-job-change-${prop.propertyKey || prop.id}`}>
-                      May have changed jobs
-                    </span>
-                  )}
-                </div>
+                </Link>
               </div>
-            </Link>
-          ))}
+            );
+          })}
         </div>
       )}
+
+      <BulkAddToListModal
+        isOpen={showBulkAddToList}
+        onClose={() => {
+          setShowBulkAddToList(false);
+          setSelectedPropertyIds(new Set());
+        }}
+        itemIds={Array.from(selectedPropertyIds)}
+        itemType="properties"
+      />
     </div>
   );
 }

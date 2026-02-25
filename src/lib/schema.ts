@@ -506,6 +506,8 @@ export const waitlistSignups = pgTable('waitlist_signups', {
   name: text('name'),
   company: text('company'),
   role: text('role'),
+  industry: text('industry'),
+  phone: text('phone'),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => ({
   emailIdx: uniqueIndex('idx_waitlist_email').on(table.email),
@@ -742,6 +744,11 @@ export const propertyPipeline = pgTable('property_pipeline', {
   // Last status change
   statusChangedAt: timestamp('status_changed_at').defaultNow(),
   statusChangedByUserId: uuid('status_changed_by_user_id').references(() => users.id),
+  
+  lostReason: text('lost_reason'),
+  lostNotes: text('lost_notes'),
+  disqualifiedReason: text('disqualified_reason'),
+  disqualifiedNotes: text('disqualified_notes'),
   
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),

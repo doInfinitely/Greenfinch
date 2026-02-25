@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -82,6 +83,14 @@ const PIPELINE_PROGRESSION: PipelineStatusType[] = [
   'won',
 ];
 
+const DQ_REASON_CODES = [
+  { value: 'unserviceable', label: 'Unserviceable Location/Property' },
+  { value: 'insufficient_budget', label: 'Insufficient Budget' },
+  { value: 'unresponsive', label: 'Unresponsive / Cannot Reach' },
+  { value: 'not_a_fit', label: 'Not a Fit for Our Services' },
+  { value: 'duplicate', label: 'Duplicate Property' },
+] as const;
+
 interface Owner {
   id: string;
   firstName: string | null;
@@ -120,6 +129,9 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
   const [selectedOwnerId, setSelectedOwnerId] = useState<string>('');
   const [claiming, setClaiming] = useState(false);
+  const [showDqDialog, setShowDqDialog] = useState(false);
+  const [dqReason, setDqReason] = useState('');
+  const [dqNotes, setDqNotes] = useState('');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -155,7 +167,13 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
     }
   }
 
-  async function updateStatus(newStatus: PipelineStatusType, dealValue?: number) {
+  async function updateStatus(newStatus: PipelineStatusType, dealValue?: number, extraFields?: { disqualifiedReason?: string; disqualifiedNotes?: string }) {
+    // Check if we need to prompt for DQ reason
+    if (newStatus === 'disqualified' && !extraFields?.disqualifiedReason) {
+      setShowDqDialog(true);
+      return;
+    }
+
     // Check if we need to prompt for deal value
     const existingDealValue = pipeline?.dealValue;
     if (newStatus === 'qualified' && !dealValue && !existingDealValue) {
@@ -181,7 +199,8 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
         body: JSON.stringify({ 
           status: newStatus, 
           dealValue: dealValue || existingDealValue,
-          autoClaim: shouldAutoClaim 
+          autoClaim: shouldAutoClaim,
+          ...extraFields,
         }),
       });
 
@@ -224,6 +243,21 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
       return;
     }
     updateStatus(pendingStatus || 'qualified', value);
+  }
+
+  function handleDqSubmit() {
+    if (!dqReason) {
+      toast({
+        title: 'Reason required',
+        description: 'Please select a disqualification reason',
+        variant: 'destructive',
+      });
+      return;
+    }
+    setShowDqDialog(false);
+    updateStatus('disqualified', undefined, { disqualifiedReason: dqReason, disqualifiedNotes: dqNotes || undefined });
+    setDqReason('');
+    setDqNotes('');
   }
 
   async function fetchOrgMembers() {
@@ -691,6 +725,70 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        <Dialog open={showDqDialog} onOpenChange={(open) => {
+          if (!open) {
+            setDqReason('');
+            setDqNotes('');
+          }
+          setShowDqDialog(open);
+        }}>
+          <DialogContent className="bg-white border-gray-200" onCloseAutoFocus={(e) => e.preventDefault()}>
+            <DialogHeader>
+              <DialogTitle className="text-gray-900">Disqualify Property</DialogTitle>
+              <DialogDescription className="text-gray-500">
+                Select a reason for disqualifying this property.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-4 space-y-4">
+              <div>
+                <Label htmlFor="dqReason" className="text-gray-700">Reason</Label>
+                <Select value={dqReason} onValueChange={setDqReason}>
+                  <SelectTrigger className="mt-2" data-testid="select-dq-reason">
+                    <SelectValue placeholder="Select a reason" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-popover border shadow-lg">
+                    {DQ_REASON_CODES.map((code) => (
+                      <SelectItem key={code.value} value={code.value} data-testid={`select-item-dq-${code.value}`}>
+                        {code.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="dqNotes" className="text-gray-700">Notes (optional)</Label>
+                <Textarea
+                  id="dqNotes"
+                  placeholder="Additional context..."
+                  value={dqNotes}
+                  onChange={(e) => setDqNotes(e.target.value)}
+                  className="mt-2 bg-white border-gray-200 text-gray-900"
+                  data-testid="input-dq-notes"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowDqDialog(false);
+                  setDqReason('');
+                  setDqNotes('');
+                }}
+                data-testid="button-cancel-dq"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDqSubmit}
+                disabled={!dqReason}
+                data-testid="button-confirm-dq"
+              >
+                Disqualify
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </>
     );
   }
@@ -806,6 +904,70 @@ export default function PipelineStatus({ propertyId, inline = false, autoAssignO
               data-testid="button-confirm-deal-value"
             >
               {pendingStatus === 'qualified' ? 'Qualify' : 'Update'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={showDqDialog} onOpenChange={(open) => {
+        if (!open) {
+          setDqReason('');
+          setDqNotes('');
+        }
+        setShowDqDialog(open);
+      }}>
+        <DialogContent className="bg-white border-gray-200" onCloseAutoFocus={(e) => e.preventDefault()}>
+          <DialogHeader>
+            <DialogTitle className="text-gray-900">Disqualify Property</DialogTitle>
+            <DialogDescription className="text-gray-500">
+              Select a reason for disqualifying this property.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div>
+              <Label htmlFor="dqReason" className="text-gray-700">Reason</Label>
+              <Select value={dqReason} onValueChange={setDqReason}>
+                <SelectTrigger className="mt-2" data-testid="select-dq-reason">
+                  <SelectValue placeholder="Select a reason" />
+                </SelectTrigger>
+                <SelectContent className="bg-popover border shadow-lg">
+                  {DQ_REASON_CODES.map((code) => (
+                    <SelectItem key={code.value} value={code.value} data-testid={`select-item-dq-${code.value}`}>
+                      {code.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="dqNotes" className="text-gray-700">Notes (optional)</Label>
+              <Textarea
+                id="dqNotes"
+                placeholder="Additional context..."
+                value={dqNotes}
+                onChange={(e) => setDqNotes(e.target.value)}
+                className="mt-2 bg-white border-gray-200 text-gray-900"
+                data-testid="input-dq-notes"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDqDialog(false);
+                setDqReason('');
+                setDqNotes('');
+              }}
+              data-testid="button-cancel-dq"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDqSubmit}
+              disabled={!dqReason}
+              data-testid="button-confirm-dq"
+            >
+              Disqualify
             </Button>
           </DialogFooter>
         </DialogContent>

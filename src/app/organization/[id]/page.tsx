@@ -332,6 +332,8 @@ export default function OrganizationDetailPage() {
   const [brandLoading, setBrandLoading] = useState(false);
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
   const [showBulkAddToList, setShowBulkAddToList] = useState(false);
+  const [selectedPropertyIds, setSelectedPropertyIds] = useState<Set<string>>(new Set());
+  const [showBulkAddPropertiesToList, setShowBulkAddPropertiesToList] = useState(false);
   const enrichTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { startEnrichment } = useEnrichment();
   const { getEnrichmentStatus } = useEnrichmentQueue();
@@ -764,9 +766,41 @@ export default function OrganizationDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div id="properties-section" className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Properties ({properties.length})
-              </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Properties ({properties.length})
+                  </h2>
+                  {properties.length > 0 && (
+                    <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer" data-testid="checkbox-select-all-properties">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        checked={properties.length > 0 && selectedPropertyIds.size === consolidatePropertiesForDisplay(properties).length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedPropertyIds(new Set(consolidatePropertiesForDisplay(properties).map(p => p.propertyKey || p.id)));
+                          } else {
+                            setSelectedPropertyIds(new Set());
+                          }
+                        }}
+                      />
+                      Select all
+                    </label>
+                  )}
+                </div>
+                {selectedPropertyIds.size > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowBulkAddPropertiesToList(true)}
+                    data-testid="button-bulk-add-properties-to-list"
+                  >
+                    <ListPlus className="w-4 h-4 mr-1.5" />
+                    Add {selectedPropertyIds.size} to List
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="divide-y divide-gray-200 max-h-[500px] overflow-y-auto">
               {properties.length === 0 ? (
@@ -774,50 +808,73 @@ export default function OrganizationDetailPage() {
                   No properties associated with this organization
                 </div>
               ) : (
-                consolidatePropertiesForDisplay(properties).map((property) => (
-                  <Link
-                    key={property.propertyKey || property.id}
-                    href={`/property/${property.propertyKey || property.id}`}
-                    className="block px-6 py-4 hover:bg-gray-50"
-                    data-testid={`link-property-${property.propertyKey || property.id}`}
-                    aria-label={`View property ${property.commonName || property.address || 'details'}`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        {property.commonName && (
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {formatPropertyName(property.commonName)}
-                          </p>
-                        )}
-                        <p className="text-sm text-gray-600 truncate">
-                          {property.address || 'No address'}
-                        </p>
-                        <p className="text-xs text-gray-400">
-                          {[property.city, property.state, property.zip].filter(Boolean).join(', ')}
-                        </p>
-                      </div>
-                      <div className="ml-4 flex flex-col items-end gap-2">
-                        {property.allRoles && property.allRoles.length > 0 && (
-                          <div className="flex flex-wrap justify-end gap-1">
-                            {property.allRoles.map((role) => (
-                              <span
-                                key={role}
-                                className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[role] || ROLE_COLORS.other}`}
-                              >
-                                {formatRoleLabel(role)}
-                              </span>
-                            ))}
+                consolidatePropertiesForDisplay(properties).map((property) => {
+                  const propertyId = property.propertyKey || property.id;
+                  return (
+                    <div
+                      key={propertyId}
+                      className="flex items-center px-6 py-4 hover:bg-gray-50 gap-3"
+                      data-testid={`row-property-${propertyId}`}
+                    >
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-green-600 focus:ring-green-500 flex-shrink-0"
+                        checked={selectedPropertyIds.has(propertyId)}
+                        onChange={(e) => {
+                          const next = new Set(selectedPropertyIds);
+                          if (e.target.checked) {
+                            next.add(propertyId);
+                          } else {
+                            next.delete(propertyId);
+                          }
+                          setSelectedPropertyIds(next);
+                        }}
+                        data-testid={`checkbox-property-${propertyId}`}
+                      />
+                      <Link
+                        href={`/property/${propertyId}`}
+                        className="flex-1 min-w-0"
+                        data-testid={`link-property-${propertyId}`}
+                        aria-label={`View property ${property.commonName || property.address || 'details'}`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1 min-w-0">
+                            {property.commonName && (
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {formatPropertyName(property.commonName)}
+                              </p>
+                            )}
+                            <p className="text-sm text-gray-600 truncate">
+                              {property.address || 'No address'}
+                            </p>
+                            <p className="text-xs text-gray-400">
+                              {[property.city, property.state, property.zip].filter(Boolean).join(', ')}
+                            </p>
                           </div>
-                        )}
-                        {property.assetCategory && (
-                          <span className="text-xs text-gray-400">
-                            {property.assetCategory}
-                          </span>
-                        )}
-                      </div>
+                          <div className="ml-4 flex flex-col items-end gap-2">
+                            {property.allRoles && property.allRoles.length > 0 && (
+                              <div className="flex flex-wrap justify-end gap-1">
+                                {property.allRoles.map((role) => (
+                                  <span
+                                    key={role}
+                                    className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${ROLE_COLORS[role] || ROLE_COLORS.other}`}
+                                  >
+                                    {formatRoleLabel(role)}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                            {property.assetCategory && (
+                              <span className="text-xs text-gray-400">
+                                {property.assetCategory}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </Link>
                     </div>
-                  </Link>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -956,6 +1013,16 @@ export default function OrganizationDetailPage() {
         }}
         itemIds={Array.from(selectedContactIds)}
         itemType="contacts"
+      />
+
+      <BulkAddToListModal
+        isOpen={showBulkAddPropertiesToList}
+        onClose={() => {
+          setShowBulkAddPropertiesToList(false);
+          setSelectedPropertyIds(new Set());
+        }}
+        itemIds={Array.from(selectedPropertyIds)}
+        itemType="properties"
       />
     </div>
   );

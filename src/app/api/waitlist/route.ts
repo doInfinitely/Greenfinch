@@ -6,7 +6,7 @@ import { eq } from 'drizzle-orm';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { email, name, company, role } = body;
+    const { email, name, company, role, industry, phone } = body;
 
     if (!email) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 });
@@ -34,6 +34,8 @@ export async function POST(request: Request) {
       name: name || null,
       company: company || null,
       role: role || null,
+      industry: industry || null,
+      phone: phone || null,
     });
 
     return NextResponse.json({ message: 'Successfully joined waitlist' }, { status: 201 });

@@ -7,7 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { BulkActionBar } from '@/components/BulkActionBar';
-import { ListPlus, Filter, Mail, Phone, Loader2, Plus, ExternalLink } from 'lucide-react';
+import { ListPlus, Filter, Mail, Phone, Loader2, Plus, ExternalLink, Columns3 } from 'lucide-react';
 import { ContactCardSkeleton } from '@/components/PageSkeleton';
 import { EmailStatusIcon, PhoneStatusIcon, hasAnyPhone, hasOnlyOfficeLine, hasHighQualityPhone } from '@/components/ContactStatusIcons';
 import { formatPhoneNumber } from '@/lib/phone-format';
@@ -155,6 +155,7 @@ export default function ContactsPage() {
   const [hasValidEmail, setHasValidEmail] = useState(false);
   const [hasPhone, setHasPhone] = useState(false);
   const [hasLinkedIn, setHasLinkedIn] = useState(false);
+  const [showContactInfo, setShowContactInfo] = useState(false);
   const [bulkEmailConfirmation, setBulkEmailConfirmation] = useState<BulkConfirmation>({
     isOpen: false,
     contactsToProcess: [],
@@ -1036,22 +1037,23 @@ export default function ContactsPage() {
         ) : (
           <>
             <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
+                <div className="flex items-center justify-end px-3 py-1.5 bg-gray-50 border-b">
+                  <Button
+                    variant={showContactInfo ? 'default' : 'outline'}
+                    size="sm"
+                    onClick={() => setShowContactInfo(!showContactInfo)}
+                    className="gap-1.5 text-xs"
+                    data-testid="button-toggle-contact-info"
+                  >
+                    <Columns3 className="w-3.5 h-3.5" />
+                    {showContactInfo ? 'Hide Contact Info' : 'Show Contact Info'}
+                  </Button>
+                </div>
               <div className="overflow-x-auto">
-                <table className="w-full divide-y divide-gray-200 table-fixed">
-                  <colgroup>
-                    <col className="w-10" />
-                    <col style={{ width: '17%' }} />
-                    <col style={{ width: '18%' }} />
-                    <col style={{ width: '14%' }} />
-                    <col style={{ width: '14%' }} />
-                    <col style={{ width: '12%' }} />
-                    <col style={{ width: '7%' }} />
-                    <col style={{ width: '8%' }} />
-                    <col style={{ width: '10%' }} />
-                  </colgroup>
+                <table className={`w-full divide-y divide-gray-200 ${showContactInfo ? 'min-w-[1100px]' : ''}`}>
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-3 py-3 text-left">
+                      <th className="px-3 py-3 text-left w-10">
                         <Checkbox
                           checked={allSelected}
                           indeterminate={someSelected && !allSelected}
@@ -1067,15 +1069,6 @@ export default function ContactsPage() {
                         Contact <SortIcon column="fullName" />
                       </th>
                       <th
-                        onClick={() => handleSort('email')}
-                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                      >
-                        Email <SortIcon column="email" />
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Phone
-                      </th>
-                      <th
                         onClick={() => handleSort('title')}
                         className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
                       >
@@ -1089,16 +1082,29 @@ export default function ContactsPage() {
                       </th>
                       <th
                         onClick={() => handleSort('propertyCount')}
-                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 text-center"
                       >
                         Props <SortIcon column="propertyCount" />
                       </th>
                       <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        LinkedIn
-                      </th>
-                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Location
                       </th>
+                      {showContactInfo && (
+                        <>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            LinkedIn
+                          </th>
+                          <th
+                            onClick={() => handleSort('email')}
+                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          >
+                            Email <SortIcon column="email" />
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Phone
+                          </th>
+                        </>
+                      )}
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -1158,51 +1164,6 @@ export default function ContactsPage() {
                             className="px-3 py-3 overflow-hidden"
                             onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
-                            {contact.email ? (
-                              <a
-                                href={`mailto:${contact.email}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="text-sm text-green-600 underline truncate block"
-                                data-testid={`link-email-${contact.id}`}
-                              >
-                                {contact.email}
-                              </a>
-                            ) : (
-                              <span className="text-sm text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td 
-                            className="px-3 py-3"
-                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
-                          >
-                            {(() => {
-                              const phones = getPhoneNumbers(contact);
-                              if (phones.length === 0) {
-                                return <span className="text-sm text-gray-400">—</span>;
-                              }
-                              return (
-                                <div className="flex flex-col gap-0.5">
-                                  {phones.map((p) => (
-                                    <div key={p.number} className="flex items-center gap-1 whitespace-nowrap">
-                                      <a
-                                        href={`tel:${p.number}`}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="text-sm text-green-600 underline"
-                                        data-testid={`link-phone-${contact.id}-${p.number}`}
-                                      >
-                                        {formatPhoneNumber(p.number, p.extension)}
-                                      </a>
-                                      {p.label && <span className="text-xs text-gray-400">({p.label})</span>}
-                                    </div>
-                                  ))}
-                                </div>
-                              );
-                            })()}
-                          </td>
-                          <td 
-                            className="px-3 py-3 overflow-hidden"
-                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
-                          >
                             {contact.title ? (
                               <span className="text-sm text-gray-900 truncate block">{contact.title}</span>
                             ) : (
@@ -1227,26 +1188,6 @@ export default function ContactsPage() {
                             <span className="text-sm text-gray-900">{contact.propertyCount}</span>
                           </td>
                           <td 
-                            className="px-3 py-3"
-                          >
-                            {contact.linkedinUrl ? (
-                              <a
-                                href={contact.linkedinUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                onClick={(e) => e.stopPropagation()}
-                                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
-                                data-testid={`link-linkedin-${contact.id}`}
-                              >
-                                <img src={linkedinLogo.src} alt="LinkedIn" className="w-3.5 h-3.5" />
-                                <span className="hidden lg:inline">Profile</span>
-                                <ExternalLink className="w-3 h-3" />
-                              </a>
-                            ) : (
-                              <span className="text-sm text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td 
                             className="px-3 py-3 overflow-hidden"
                             onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
@@ -1256,10 +1197,77 @@ export default function ContactsPage() {
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
+                          {showContactInfo && (
+                            <>
+                              <td className="px-3 py-3">
+                                {contact.linkedinUrl ? (
+                                  <a
+                                    href={contact.linkedinUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline whitespace-nowrap"
+                                    data-testid={`link-linkedin-${contact.id}`}
+                                  >
+                                    <img src={linkedinLogo.src} alt="LinkedIn" className="w-3.5 h-3.5" />
+                                    Profile
+                                    <ExternalLink className="w-3 h-3" />
+                                  </a>
+                                ) : (
+                                  <span className="text-sm text-gray-400">—</span>
+                                )}
+                              </td>
+                              <td 
+                                className="px-3 py-3 overflow-hidden"
+                                onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
+                              >
+                                {contact.email ? (
+                                  <a
+                                    href={`mailto:${contact.email}`}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="text-sm text-green-600 underline truncate block"
+                                    data-testid={`link-email-${contact.id}`}
+                                  >
+                                    {contact.email}
+                                  </a>
+                                ) : (
+                                  <span className="text-sm text-gray-400">—</span>
+                                )}
+                              </td>
+                              <td 
+                                className="px-3 py-3"
+                                onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
+                              >
+                                {(() => {
+                                  const phones = getPhoneNumbers(contact);
+                                  if (phones.length === 0) {
+                                    return <span className="text-sm text-gray-400">—</span>;
+                                  }
+                                  return (
+                                    <div className="flex flex-col gap-0.5">
+                                      {phones.map((p) => (
+                                        <div key={p.number} className="flex items-center gap-1 whitespace-nowrap">
+                                          <a
+                                            href={`tel:${p.number}`}
+                                            onClick={(e) => e.stopPropagation()}
+                                            className="text-sm text-green-600 underline"
+                                            data-testid={`link-phone-${contact.id}-${p.number}`}
+                                          >
+                                            {formatPhoneNumber(p.number, p.extension)}
+                                          </a>
+                                          {p.label && <span className="text-xs text-gray-400">({p.label})</span>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  );
+                                })()}
+                              </td>
+                            </>
+                          )}
                         </tr>
                         {expandedContact === contact.id && (
                           <tr>
-                            <td colSpan={9} className="px-4 py-3 bg-gray-50">
+                            <td colSpan={showContactInfo ? 9 : 6} className="px-4 py-3 bg-gray-50">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {contact.properties.length > 0 && (
                                   <div>

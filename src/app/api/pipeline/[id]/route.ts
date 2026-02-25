@@ -17,7 +17,7 @@ export async function PATCH(
 
     const { id } = await params;
     const body = await request.json();
-    const { status, ownerId } = body;
+    const { status, ownerId, lostReason, lostNotes } = body;
 
     const existing = await db
       .select()
@@ -42,6 +42,11 @@ export async function PATCH(
       }
       updateData.status = status;
       updateData.statusChangedAt = new Date();
+
+      if (status === 'lost') {
+        updateData.lostReason = lostReason || null;
+        updateData.lostNotes = lostNotes || null;
+      }
     }
 
     if (ownerId !== undefined) {

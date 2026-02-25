@@ -11,9 +11,20 @@ import { PIPELINE_STATUS_LABELS, type PipelineStatus } from '@/lib/schema';
 import { Loader2, Clock, Users, Check, X, Eye, EyeOff, ChevronRight, ChevronLeft, GripVertical, Undo2, Redo2 } from 'lucide-react';
 import { PipelineBoardSkeleton } from '@/components/PageSkeleton';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
 import { normalizeCommonName } from '@/lib/normalization';
 import { formatCurrencyCompact } from '@/lib/utils';
+
+const LOST_REASONS = [
+  { value: 'competitor_won', label: 'Lost to Competitor' },
+  { value: 'no_budget', label: 'No Budget' },
+  { value: 'timing_not_right', label: 'Timing Not Right' },
+  { value: 'no_decision', label: 'No Decision Made' },
+  { value: 'existing_vendor', label: 'Staying with Existing Vendor' },
+  { value: 'project_cancelled', label: 'Project Cancelled' },
+] as const;
 
 interface OrgMember {
   id: string;
@@ -113,6 +124,10 @@ export default function PipelineBoard() {
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
   const [showHint, setShowHint] = useState(true);
+  const [lostModalOpen, setLostModalOpen] = useState(false);
+  const [lostReason, setLostReason] = useState<string>('');
+  const [lostNotes, setLostNotes] = useState('');
+  const [pendingLostItem, setPendingLostItem] = useState<{ item: PipelineItem; source: 'quick' | 'drag'; apiEndpoint: 'pipeline' | 'property' } | null>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const hintTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
@@ -219,6 +234,7 @@ export default function PipelineBoard() {
     fromStatus: PipelineStatus,
     toStatus: PipelineStatus,
     apiEndpoint: 'pipeline' | 'property',
+    extra?: { lostReason?: string; lostNotes?: string },
   ) => {
     setUpdating(itemId);
 
@@ -227,11 +243,25 @@ export default function PipelineBoard() {
       const newItems = { ...prev.items };
       const newCounts = { ...prev.counts };
 
-      const item = newItems[fromStatus]?.find(i => i.id === itemId);
+      let item = newItems[fromStatus]?.find(i => i.id === itemId);
+      let actualFromStatus: PipelineStatus = fromStatus;
+
+      if (!item) {
+        const allStatuses: PipelineStatus[] = ['new', 'qualified', 'attempted_contact', 'active_opportunity', 'won', 'lost', 'disqualified'];
+        for (const s of allStatuses) {
+          const found = newItems[s]?.find(i => i.id === itemId);
+          if (found) {
+            item = found;
+            actualFromStatus = s;
+            break;
+          }
+        }
+      }
+
       if (!item) return prev;
 
-      newItems[fromStatus] = newItems[fromStatus].filter(i => i.id !== itemId);
-      newCounts[fromStatus] = newItems[fromStatus].length;
+      newItems[actualFromStatus] = newItems[actualFromStatus].filter(i => i.id !== itemId);
+      newCounts[actualFromStatus] = newItems[actualFromStatus].length;
 
       const updatedItem = { ...item, status: toStatus, statusChangedAt: new Date().toISOString() };
       newItems[toStatus] = [updatedItem, ...newItems[toStatus]];
@@ -246,10 +276,14 @@ export default function PipelineBoard() {
         : `/api/properties/${propertyId}/pipeline`;
       const method = apiEndpoint === 'pipeline' ? 'PATCH' : 'POST';
 
+      const bodyData: Record<string, unknown> = { status: toStatus };
+      if (extra?.lostReason) bodyData.lostReason = extra.lostReason;
+      if (extra?.lostNotes) bodyData.lostNotes = extra.lostNotes;
+
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: toStatus }),
+        body: JSON.stringify(bodyData),
       });
 
       if (!response.ok) throw new Error('Failed to update');
@@ -343,17 +377,104 @@ export default function PipelineBoard() {
     setDragOverColumn(status);
   }, []);
 
+  const openLostModal = useCallback((item: PipelineItem, apiEndpoint: 'pipeline' | 'property') => {
+    setPendingLostItem({ item, source: apiEndpoint === 'property' ? 'quick' : 'drag', apiEndpoint });
+    setLostReason('');
+    setLostNotes('');
+    setLostModalOpen(true);
+  }, []);
+
+  const handleLostConfirm = useCallback(async () => {
+    if (!pendingLostItem || !lostReason) return;
+
+    const { item, apiEndpoint } = pendingLostItem;
+    const oldStatus = item.status;
+    const newStatus: PipelineStatus = 'lost';
+
+    setLostModalOpen(false);
+    setUpdating(item.id);
+
+    setData(prev => {
+      if (!prev) return prev;
+      const newItems = { ...prev.items };
+      const newCounts = { ...prev.counts };
+
+      newItems[oldStatus] = newItems[oldStatus].filter(i => i.id !== item.id);
+      newCounts[oldStatus] = newItems[oldStatus].length;
+
+      const updatedItem = { ...item, status: newStatus, statusChangedAt: new Date().toISOString() };
+      newItems[newStatus] = [...newItems[newStatus], updatedItem];
+      newCounts[newStatus] = newItems[newStatus].length;
+
+      return { items: newItems, counts: newCounts };
+    });
+
+    try {
+      const url = apiEndpoint === 'pipeline'
+        ? `/api/pipeline/${item.id}`
+        : `/api/properties/${item.propertyId}/pipeline`;
+      const method = apiEndpoint === 'pipeline' ? 'PATCH' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus, lostReason, lostNotes: lostNotes || null }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update');
+
+      pushToUndoStack({
+        itemId: item.id,
+        propertyId: item.propertyId,
+        oldStatus,
+        newStatus,
+        timestamp: Date.now(),
+        apiEndpoint,
+      });
+
+      toast({
+        title: 'Closed Lost',
+        description: `Deal moved to ${PIPELINE_STATUS_LABELS[newStatus]}`,
+      });
+    } catch {
+      fetchBoardData();
+      toast({
+        title: 'Error',
+        description: 'Failed to update status',
+        variant: 'destructive',
+      });
+    } finally {
+      setUpdating(null);
+      setPendingLostItem(null);
+      setLostReason('');
+      setLostNotes('');
+    }
+  }, [pendingLostItem, lostReason, lostNotes, fetchBoardData, toast, pushToUndoStack]);
+
+  const handleLostCancel = useCallback(() => {
+    setLostModalOpen(false);
+    setPendingLostItem(null);
+    setLostReason('');
+    setLostNotes('');
+    setDraggedItem(null);
+    setDragOverColumn(null);
+  }, []);
+
   // Quick action to set status to won or lost
   const handleQuickStatus = useCallback(async (item: PipelineItem, newStatus: 'won' | 'lost', e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     
     if (item.status === newStatus) return;
+
+    if (newStatus === 'lost') {
+      openLostModal(item, 'property');
+      return;
+    }
     
     const oldStatus = item.status;
     setUpdating(item.id);
     
-    // Optimistic update
     setData(prev => {
       if (!prev) return prev;
       const newItems = { ...prev.items };
@@ -388,7 +509,7 @@ export default function PipelineBoard() {
       });
 
       toast({
-        title: newStatus === 'won' ? 'Closed Won!' : 'Closed Lost',
+        title: 'Closed Won!',
         description: `Deal moved to ${PIPELINE_STATUS_LABELS[newStatus]}`,
       });
     } catch (error) {
@@ -401,7 +522,7 @@ export default function PipelineBoard() {
     } finally {
       setUpdating(null);
     }
-  }, [fetchBoardData, toast, pushToUndoStack]);
+  }, [fetchBoardData, toast, pushToUndoStack, openLostModal]);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     const currentTarget = e.currentTarget as HTMLElement;
@@ -416,6 +537,13 @@ export default function PipelineBoard() {
     setDragOverColumn(null);
 
     if (!draggedItem || draggedItem.status === newStatus) {
+      return;
+    }
+
+    if (newStatus === 'lost') {
+      const itemSnapshot = { ...draggedItem };
+      setDraggedItem(null);
+      openLostModal(itemSnapshot, 'pipeline');
       return;
     }
 
@@ -491,7 +619,7 @@ export default function PipelineBoard() {
     } finally {
       setUpdating(null);
     }
-  }, [draggedItem, toast, pushToUndoStack]);
+  }, [draggedItem, toast, pushToUndoStack, openLostModal]);
 
   return (
     <AppSidebar>
@@ -753,6 +881,63 @@ export default function PipelineBoard() {
             </div>
         )}
       </div>
+
+      <Dialog open={lostModalOpen} onOpenChange={(open) => { if (!open) handleLostCancel(); }}>
+        <DialogContent className="sm:max-w-md" data-testid="dialog-lost-reason">
+          <DialogHeader>
+            <DialogTitle>Mark as Lost</DialogTitle>
+            <DialogDescription>
+              Select a reason for losing this deal.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              {LOST_REASONS.map((reason) => (
+                <button
+                  key={reason.value}
+                  type="button"
+                  onClick={() => setLostReason(reason.value)}
+                  className={`w-full text-left px-3 py-2.5 rounded-md border text-sm transition-colors ${
+                    lostReason === reason.value
+                      ? 'border-primary bg-primary/10 text-foreground font-medium'
+                      : 'border-border text-foreground hover-elevate'
+                  }`}
+                  data-testid={`option-lost-reason-${reason.value}`}
+                >
+                  {reason.label}
+                </button>
+              ))}
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm text-muted-foreground" htmlFor="lost-notes">
+                Notes (optional)
+              </label>
+              <Textarea
+                id="lost-notes"
+                value={lostNotes}
+                onChange={(e) => setLostNotes(e.target.value)}
+                placeholder="Add any additional context..."
+                className="resize-none"
+                rows={3}
+                data-testid="input-lost-notes"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={handleLostCancel} data-testid="button-lost-cancel">
+              Cancel
+            </Button>
+            <Button
+              onClick={handleLostConfirm}
+              disabled={!lostReason}
+              variant="destructive"
+              data-testid="button-lost-confirm"
+            >
+              Confirm Lost
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AppSidebar>
   );
 }

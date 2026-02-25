@@ -107,7 +107,7 @@ export async function POST(
     }
 
     const body = await request.json();
-    const { status, dealValue, autoClaim, ownerId } = body;
+    const { status, dealValue, autoClaim, ownerId, disqualifiedReason, disqualifiedNotes, lostReason, lostNotes } = body;
 
     if (!status || !PIPELINE_STATUSES.includes(status)) {
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
@@ -163,6 +163,10 @@ export async function POST(
           statusChangedByUserId: session.user.id,
           updatedAt: new Date(),
           ...(shouldAutoAssign && { ownerId: session.user.id }),
+          ...(status === 'disqualified' && { disqualifiedReason: disqualifiedReason || null, disqualifiedNotes: disqualifiedNotes || null }),
+          ...(status === 'lost' && { lostReason: lostReason || null, lostNotes: lostNotes || null }),
+          ...(status !== 'disqualified' && { disqualifiedReason: null, disqualifiedNotes: null }),
+          ...(status !== 'lost' && { lostReason: null, lostNotes: null }),
         })
         .where(eq(propertyPipeline.id, existingPipeline.id))
         .returning();
@@ -192,6 +196,8 @@ export async function POST(
           dealValue: dealValue || null,
           statusChangedByUserId: session.user.id,
           ...(assignedOwnerId && { ownerId: assignedOwnerId }),
+          ...(status === 'disqualified' && { disqualifiedReason: disqualifiedReason || null, disqualifiedNotes: disqualifiedNotes || null }),
+          ...(status === 'lost' && { lostReason: lostReason || null, lostNotes: lostNotes || null }),
         })
         .returning();
       
