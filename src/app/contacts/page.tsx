@@ -7,9 +7,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { BulkActionBar } from '@/components/BulkActionBar';
-import { ListPlus, Filter, Mail, Phone, Loader2, Plus, ExternalLink, Columns3 } from 'lucide-react';
+import { ListPlus, Filter, Mail, Phone, Loader2, Plus, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ContactCardSkeleton } from '@/components/PageSkeleton';
-import { EmailStatusIcon, PhoneStatusIcon, hasAnyPhone, hasOnlyOfficeLine, hasHighQualityPhone } from '@/components/ContactStatusIcons';
+import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine, hasHighQualityPhone } from '@/components/ContactStatusIcons';
 import { formatPhoneNumber } from '@/lib/phone-format';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useToast } from '@/hooks/use-toast';
@@ -1037,18 +1037,6 @@ export default function ContactsPage() {
         ) : (
           <>
             <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
-                <div className="flex items-center justify-end px-3 py-1.5 bg-gray-50 border-b">
-                  <Button
-                    variant={showContactInfo ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setShowContactInfo(!showContactInfo)}
-                    className="gap-1.5 text-xs"
-                    data-testid="button-toggle-contact-info"
-                  >
-                    <Columns3 className="w-3.5 h-3.5" />
-                    {showContactInfo ? 'Hide Contact Info' : 'Show Contact Info'}
-                  </Button>
-                </div>
               <div className="overflow-x-auto">
                 <table className={`w-full divide-y divide-gray-200 ${showContactInfo ? 'min-w-[1100px]' : ''}`}>
                   <thead className="bg-gray-50">
@@ -1088,6 +1076,21 @@ export default function ContactsPage() {
                       </th>
                       <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Location
+                      </th>
+                      <th className="w-8 p-0 relative">
+                        <div className="absolute inset-y-0 left-0 w-px bg-gray-300" />
+                        <button
+                          onClick={() => setShowContactInfo(!showContactInfo)}
+                          className="flex items-center justify-center w-full h-full hover:bg-gray-100 transition-colors"
+                          title={showContactInfo ? 'Hide contact info' : 'Show contact info'}
+                          data-testid="button-toggle-contact-info"
+                        >
+                          {showContactInfo ? (
+                            <ChevronLeft className="w-4 h-4 text-gray-400" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-gray-400" />
+                          )}
+                        </button>
                       </th>
                       {showContactInfo && (
                         <>
@@ -1147,6 +1150,10 @@ export default function ContactsPage() {
                                 </span>
                               </div>
                               <div className="flex items-center gap-0.5 flex-shrink-0" data-testid={`contact-status-icons-${contact.id}`}>
+                                <LinkedInStatusIcon
+                                  hasLinkedIn={!!contact.linkedinUrl}
+                                  size="sm"
+                                />
                                 <EmailStatusIcon 
                                   hasEmail={!!contact.email} 
                                   status={contact.emailValidationStatus || contact.emailStatus}
@@ -1196,6 +1203,9 @@ export default function ContactsPage() {
                             ) : (
                               <span className="text-sm text-gray-400">—</span>
                             )}
+                          </td>
+                          <td className="w-8 p-0 relative">
+                            <div className="absolute inset-y-0 left-0 w-px bg-gray-200" />
                           </td>
                           {showContactInfo && (
                             <>
@@ -1267,7 +1277,7 @@ export default function ContactsPage() {
                         </tr>
                         {expandedContact === contact.id && (
                           <tr>
-                            <td colSpan={showContactInfo ? 9 : 6} className="px-4 py-3 bg-gray-50">
+                            <td colSpan={showContactInfo ? 10 : 7} className="px-4 py-3 bg-gray-50">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {contact.properties.length > 0 && (
                                   <div>
