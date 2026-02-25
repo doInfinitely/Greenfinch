@@ -246,13 +246,7 @@ export default function MapPage() {
   const handleSearchSelect = useCallback((suggestion: SearchSuggestion) => {
     const zoom = getZoomForType(suggestion.type, !!suggestion.propertyKey);
     mapRef.current?.flyTo(suggestion.lat, suggestion.lon, zoom);
-    
-    if (suggestion.propertyKey) {
-      setTimeout(() => {
-        router.push(`/property/${suggestion.propertyKey}`);
-      }, 1600);
-    }
-  }, [router]);
+  }, []);
 
   // All filtering is done server-side - allProperties already contains only matching properties
   // visibleProperties filters to what's in the current map bounds (for sidebar display)
