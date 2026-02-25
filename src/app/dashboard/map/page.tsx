@@ -377,7 +377,9 @@ export default function MapPage() {
               <button
                 key={f.properties.propertyKey}
                 onClick={() => handlePropertyClick(f.properties.propertyKey)}
-                className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-gray-50 transition-colors"
+                onMouseEnter={() => mapRef.current?.highlightProperty(f.properties.propertyKey)}
+                onMouseLeave={() => mapRef.current?.highlightProperty(null)}
+                className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-amber-50 transition-colors"
                 data-testid={`property-item-${f.properties.propertyKey}`}
               >
                 {f.properties.commonName ? (

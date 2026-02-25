@@ -15,7 +15,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft } from 'lucide-react';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
-import { AdminOnly } from '@/components/PermissionGate';
+import { AdminOnly, PermissionGate } from '@/components/PermissionGate';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import PipelineStatus from '@/components/PipelineStatus';
@@ -408,7 +408,7 @@ export default function PropertyHeader({
               }
 
               return (
-                <AdminOnly>
+                <PermissionGate permission="properties:enrich">
                   <Button
                     variant="outline"
                     size="sm"
@@ -431,7 +431,7 @@ export default function PropertyHeader({
                     )}
                     {isEnrichmentActive ? 'Researching...' : enrichmentHasFailed ? 'Retry Research' : 'Research'}
                   </Button>
-                </AdminOnly>
+                </PermissionGate>
               );
             })()}
             <PipelineStatus propertyId={property.propertyKey} inline autoAssignOnFirstStatus hideOwnerControls hideOwnerDisplay triggerAssignDialog={assignDialogTrigger} isCustomer={isCurrentCustomer} initialData={pipelineData} initialLoaded={pipelineLoaded} onPipelineChange={onPipelineChange} />

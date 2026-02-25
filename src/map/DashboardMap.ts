@@ -252,6 +252,26 @@ export class DashboardMap {
           },
         });
       }
+
+      if (!this.map.getLayer('property-points-highlighted')) {
+        this.map.addLayer({
+          id: 'property-points-highlighted',
+          type: 'circle',
+          source: 'properties',
+          filter: ['==', ['get', 'propertyKey'], ''],
+          paint: {
+            'circle-color': '#f59e0b',
+            'circle-radius': [
+              'interpolate', ['linear'], ['zoom'],
+              10, 9,
+              13, 12,
+              16, 15,
+            ],
+            'circle-stroke-width': 2.5,
+            'circle-stroke-color': '#ffffff',
+          },
+        });
+      }
     }
   }
 
@@ -769,6 +789,16 @@ export class DashboardMap {
     if (this.searchMarker) {
       this.searchMarker.remove();
       this.searchMarker = null;
+    }
+  }
+
+  highlightProperty(propertyKey: string | null) {
+    if (!this.map || !this.styleReady) return;
+    const filter = propertyKey
+      ? ['==', ['get', 'propertyKey'], propertyKey]
+      : ['==', ['get', 'propertyKey'], ''];
+    if (this.map.getLayer('property-points-highlighted')) {
+      this.map.setFilter('property-points-highlighted', filter as any);
     }
   }
 
