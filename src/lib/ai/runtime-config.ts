@@ -62,7 +62,7 @@ const FACTORY_DEFAULTS: RuntimeConfig = {
   stage2_ownership: defaultStageConfig({ thinkingLevel: 'LOW', maxRetries: 3, timeoutMs: 120_000 }),
   stage3_contacts: defaultStageConfig({ thinkingLevel: 'MEDIUM', maxRetries: 3, timeoutMs: 120_000 }),
   summary_cleanup: defaultStageConfig({ thinkingLevel: 'MINIMAL', temperature: 0.2, searchGrounding: false, maxRetries: 1, timeoutMs: 60_000 }),
-  replacement_search: defaultStageConfig({ thinkingLevel: 'MEDIUM', maxRetries: 1, timeoutMs: 60_000 }),
+  replacement_search: defaultStageConfig({ thinkingLevel: 'MEDIUM', maxRetries: 3, timeoutMs: 60_000 }),
   domain_retry: defaultStageConfig({ thinkingLevel: 'MINIMAL', maxRetries: 1, timeoutMs: 60_000 }),
 };
 

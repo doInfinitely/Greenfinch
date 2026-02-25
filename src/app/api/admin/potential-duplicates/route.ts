@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireSession, requireAdminAccess } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { potentialDuplicates, contacts } from '@/lib/schema';
-import { eq, and, or, desc } from 'drizzle-orm';
+import { eq, and, or, desc, inArray } from 'drizzle-orm';
 import { mergeContacts } from '@/lib/deduplication';
 
 export async function GET(request: NextRequest) {
@@ -19,41 +19,30 @@ export async function GET(request: NextRequest) {
       .where(eq(potentialDuplicates.status, status))
       .orderBy(desc(potentialDuplicates.createdAt));
 
-    const enriched = await Promise.all(
-      flags.map(async (flag) => {
-        const [contactA, contactB] = await Promise.all([
-          db.query.contacts.findFirst({ where: eq(contacts.id, flag.contactIdA) }),
-          db.query.contacts.findFirst({ where: eq(contacts.id, flag.contactIdB) }),
-        ]);
-        return {
-          ...flag,
-          contactA: contactA ? {
-            id: contactA.id,
-            fullName: contactA.fullName,
-            email: contactA.email,
-            title: contactA.title,
-            employerName: contactA.employerName,
-            companyDomain: contactA.companyDomain,
-            phone: contactA.phone,
-            linkedinUrl: contactA.linkedinUrl,
-            emailValidationStatus: contactA.emailValidationStatus,
-            source: contactA.source,
-          } : null,
-          contactB: contactB ? {
-            id: contactB.id,
-            fullName: contactB.fullName,
-            email: contactB.email,
-            title: contactB.title,
-            employerName: contactB.employerName,
-            companyDomain: contactB.companyDomain,
-            phone: contactB.phone,
-            linkedinUrl: contactB.linkedinUrl,
-            emailValidationStatus: contactB.emailValidationStatus,
-            source: contactB.source,
-          } : null,
-        };
-      })
-    );
+    const allIds = [...new Set(flags.flatMap(f => [f.contactIdA, f.contactIdB]))];
+    const allContacts = allIds.length > 0
+      ? await db.select().from(contacts).where(inArray(contacts.id, allIds))
+      : [];
+    const contactMap = new Map(allContacts.map(c => [c.id, c]));
+
+    const pickFields = (c: typeof allContacts[number] | undefined) => c ? {
+      id: c.id,
+      fullName: c.fullName,
+      email: c.email,
+      title: c.title,
+      employerName: c.employerName,
+      companyDomain: c.companyDomain,
+      phone: c.phone,
+      linkedinUrl: c.linkedinUrl,
+      emailValidationStatus: c.emailValidationStatus,
+      source: c.source,
+    } : null;
+
+    const enriched = flags.map(flag => ({
+      ...flag,
+      contactA: pickFields(contactMap.get(flag.contactIdA)),
+      contactB: pickFields(contactMap.get(flag.contactIdB)),
+    }));
 
     const valid = enriched.filter(e => e.contactA && e.contactB);
 
@@ -134,7 +123,7 @@ export async function POST(request: NextRequest) {
         })
         .where(eq(potentialDuplicates.id, flagId));
 
-      const relatedFlags = await db.select().from(potentialDuplicates).where(
+      const relatedFlags = await db.select({ id: potentialDuplicates.id }).from(potentialDuplicates).where(
         and(
           eq(potentialDuplicates.status, 'pending'),
           or(
@@ -143,14 +132,14 @@ export async function POST(request: NextRequest) {
           )
         )
       );
-      for (const related of relatedFlags) {
+      if (relatedFlags.length > 0) {
         await db.update(potentialDuplicates)
           .set({
             status: 'merged',
             resolvedByUserId: session.user.clerkId,
             resolvedAt: new Date(),
           })
-          .where(eq(potentialDuplicates.id, related.id));
+          .where(inArray(potentialDuplicates.id, relatedFlags.map(r => r.id)));
       }
 
       return NextResponse.json({

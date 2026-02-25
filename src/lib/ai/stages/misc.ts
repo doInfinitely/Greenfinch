@@ -14,7 +14,7 @@ import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout, withTimeo
 import { stripInternalMessages } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import {
-  THINKING_LEVELS, STAGE_MODELS, getSearchGroundingTools, STAGE_TEMPERATURES, STAGE_TIMEOUTS,
+  THINKING_LEVELS, STAGE_MODELS, getSearchGroundingTools, STAGE_TEMPERATURES, STAGE_TIMEOUTS, RETRIES,
 } from '../config';
 
 /**
@@ -95,12 +95,26 @@ ${preCleaned}`;
  * no longer at their employer.  Returns the new person's name/title/email
  * or null if no replacement is found.
  */
+function isRetryableReplacementError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    msg.includes('429') ||
+    msg.includes('RESOURCE_EXHAUSTED') ||
+    msg.includes('quota') ||
+    msg.includes('timed out') ||
+    msg.includes('timeout') ||
+    msg.includes('503') ||
+    msg.includes('UNAVAILABLE')
+  );
+}
+
 export async function searchForReplacementContact(
   roleDesc: string,
   company: string,
   propertyAddress?: string
 ): Promise<{ name: string | null; title: string | null; email: string | null; company: string } | null> {
   const client = getGeminiClient();
+  const maxAttempts = RETRIES.REPLACEMENT_SEARCH + 1;
 
   const addressContext = propertyAddress ? ` at ${propertyAddress}` : '';
   const prompt = `Search the web to find the current ${roleDesc}${addressContext} for ${company}. The previous person in this role has left. I need the name and title of their replacement. Return ONLY valid JSON.
@@ -114,71 +128,85 @@ export async function searchForReplacementContact(
 
 If you cannot find a replacement, return {"name": null}`;
 
-  try {
-    const response = await withTimeout(
-      callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, {
-          tools: getSearchGroundingTools('replacement_search'),
-          temperature: STAGE_TEMPERATURES.REPLACEMENT_SEARCH,
-          thinkingLevel: THINKING_LEVELS.REPLACEMENT_SEARCH,
-          stageName: 'replacement-search',
-          model: STAGE_MODELS.REPLACEMENT_SEARCH,
-        }),
-        1
-      ),
-      STAGE_TIMEOUTS.REPLACEMENT_SEARCH,
-      'replacement-search'
-    );
-
-    const text = response.text?.trim() || '';
-    if (!text) {
-      trackCostFireAndForget({
-        provider: 'gemini',
-        endpoint: 'replacement-search',
-        entityType: 'contact',
-        tokenUsage: response.tokenUsage,
-        success: false,
-        errorMessage: 'Empty response',
-      });
-      return null;
-    }
-
-    let parsed: any;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-    } catch {
+      const response = await withTimeout(
+        callGeminiWithTimeout(
+          () => streamGeminiResponse(client, prompt, {
+            tools: getSearchGroundingTools('replacement_search'),
+            temperature: STAGE_TEMPERATURES.REPLACEMENT_SEARCH,
+            thinkingLevel: THINKING_LEVELS.REPLACEMENT_SEARCH,
+            stageName: 'replacement-search',
+            model: STAGE_MODELS.REPLACEMENT_SEARCH,
+          }),
+          1
+        ),
+        STAGE_TIMEOUTS.REPLACEMENT_SEARCH,
+        'replacement-search'
+      );
+
+      const text = response.text?.trim() || '';
+      if (!text) {
+        trackCostFireAndForget({
+          provider: 'gemini',
+          endpoint: 'replacement-search',
+          entityType: 'contact',
+          tokenUsage: response.tokenUsage,
+          success: false,
+          errorMessage: 'Empty response',
+        });
+        return null;
+      }
+
+      let parsed: any;
+      try {
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+      } catch {
+        trackCostFireAndForget({
+          provider: 'gemini',
+          endpoint: 'replacement-search',
+          entityType: 'contact',
+          tokenUsage: response.tokenUsage,
+          success: false,
+          errorMessage: 'Parse error',
+        });
+        return null;
+      }
+
       trackCostFireAndForget({
         provider: 'gemini',
         endpoint: 'replacement-search',
         entityType: 'contact',
         tokenUsage: response.tokenUsage,
-        success: false,
-        errorMessage: 'Parse error',
+        success: true,
+        metadata: { found: !!parsed?.name, role: roleDesc, company },
       });
-      return null;
+
+      if (!parsed?.name) return null;
+      return { name: parsed.name, title: parsed.title || null, email: parsed.email || null, company: parsed.company || company };
+
+    } catch (error) {
+      const retryable = isRetryableReplacementError(error);
+      const errMsg = error instanceof Error ? error.message : String(error);
+
+      if (!retryable || attempt >= maxAttempts) {
+        trackCostFireAndForget({
+          provider: 'gemini',
+          endpoint: 'replacement-search',
+          entityType: 'contact',
+          success: false,
+          errorMessage: errMsg,
+        });
+        console.error(`[ReplacementSearch] Gemini error (attempt ${attempt}/${maxAttempts}, giving up): ${errMsg}`);
+        return null;
+      }
+
+      const backoffMs = Math.min(2_000 * Math.pow(2, attempt - 1), 16_000);
+      console.warn(`[ReplacementSearch] Retryable error (attempt ${attempt}/${maxAttempts}), retrying in ${backoffMs}ms: ${errMsg}`);
+      await new Promise(resolve => setTimeout(resolve, backoffMs));
     }
-
-    trackCostFireAndForget({
-      provider: 'gemini',
-      endpoint: 'replacement-search',
-      entityType: 'contact',
-      tokenUsage: response.tokenUsage,
-      success: true,
-      metadata: { found: !!parsed?.name, role: roleDesc, company },
-    });
-
-    if (!parsed?.name) return null;
-    return { name: parsed.name, title: parsed.title || null, email: parsed.email || null, company: parsed.company || company };
-  } catch (error) {
-    trackCostFireAndForget({
-      provider: 'gemini',
-      endpoint: 'replacement-search',
-      entityType: 'contact',
-      success: false,
-      errorMessage: error instanceof Error ? error.message : String(error),
-    });
-    console.error(`[ReplacementSearch] Gemini error: ${error instanceof Error ? error.message : error}`);
-    return null;
   }
+
+  return null;
 }

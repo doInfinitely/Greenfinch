@@ -112,6 +112,7 @@ export const RETRIES = {
   get STAGE_1() { return getStageConfig('stage1_classify').maxRetries; },
   get STAGE_2() { return getStageConfig('stage2_ownership').maxRetries; },
   get STAGE_3A() { return getStageConfig('stage3_contacts').maxRetries; },
+  get REPLACEMENT_SEARCH() { return getStageConfig('replacement_search').maxRetries; },
 };
 
 export const BACKOFF = {
