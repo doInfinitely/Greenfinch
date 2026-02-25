@@ -1036,8 +1036,26 @@ export default function ContactsPage() {
           </div>
         ) : (
           <>
-            <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
+            <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden relative">
+              <div className="absolute right-0 top-0 bottom-0 z-10 flex items-start" style={{ pointerEvents: 'none' }}>
+                <div className="relative h-full">
+                  <div className="absolute top-0 bottom-0 left-0 w-px bg-gray-300" />
+                  <button
+                    onClick={() => setShowContactInfo(!showContactInfo)}
+                    className="sticky top-1/3 -translate-x-1/2 ml-px w-7 h-7 rounded-full bg-white border border-gray-300 shadow-sm flex items-center justify-center hover:bg-gray-50 hover:border-gray-400 transition-colors"
+                    style={{ pointerEvents: 'auto' }}
+                    title={showContactInfo ? 'Hide contact info' : 'Show contact info'}
+                    data-testid="button-toggle-contact-info"
+                  >
+                    {showContactInfo ? (
+                      <ChevronRight className="w-4 h-4 text-gray-500" />
+                    ) : (
+                      <ChevronLeft className="w-4 h-4 text-gray-500" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              <div className={`overflow-x-auto ${showContactInfo ? '' : 'pr-4'}`}>
                 <table className={`w-full divide-y divide-gray-200 ${showContactInfo ? 'min-w-[1100px]' : ''}`}>
                   <thead className="bg-gray-50">
                     <tr>
@@ -1076,21 +1094,6 @@ export default function ContactsPage() {
                       </th>
                       <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Location
-                      </th>
-                      <th className="w-8 p-0 relative">
-                        <div className="absolute inset-y-0 left-0 w-px bg-gray-300" />
-                        <button
-                          onClick={() => setShowContactInfo(!showContactInfo)}
-                          className="flex items-center justify-center w-full h-full hover:bg-gray-100 transition-colors"
-                          title={showContactInfo ? 'Hide contact info' : 'Show contact info'}
-                          data-testid="button-toggle-contact-info"
-                        >
-                          {showContactInfo ? (
-                            <ChevronLeft className="w-4 h-4 text-gray-400" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4 text-gray-400" />
-                          )}
-                        </button>
                       </th>
                       {showContactInfo && (
                         <>
@@ -1204,9 +1207,6 @@ export default function ContactsPage() {
                               <span className="text-sm text-gray-400">—</span>
                             )}
                           </td>
-                          <td className="w-8 p-0 relative">
-                            <div className="absolute inset-y-0 left-0 w-px bg-gray-200" />
-                          </td>
                           {showContactInfo && (
                             <>
                               <td className="px-3 py-3">
@@ -1277,7 +1277,7 @@ export default function ContactsPage() {
                         </tr>
                         {expandedContact === contact.id && (
                           <tr>
-                            <td colSpan={showContactInfo ? 10 : 7} className="px-4 py-3 bg-gray-50">
+                            <td colSpan={showContactInfo ? 9 : 6} className="px-4 py-3 bg-gray-50">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {contact.properties.length > 0 && (
                                   <div>
