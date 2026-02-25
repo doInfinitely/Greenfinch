@@ -1057,7 +1057,7 @@ export default function ContactsPage() {
                         Contact <SortIcon column="fullName" />
                       </th>
                       <th
-                        className="px-1 py-3 w-12 cursor-pointer hover:bg-gray-100 transition-colors border-l border-gray-200"
+                        className="px-1 py-3 w-12 cursor-pointer hover:bg-gray-100 transition-colors border-l border-r border-gray-200"
                         onClick={() => setShowContactInfo(!showContactInfo)}
                         title={showContactInfo ? 'Hide contact info' : 'Show contact info'}
                         data-testid="button-toggle-contact-info"
@@ -1151,7 +1151,7 @@ export default function ContactsPage() {
                             </div>
                           </td>
                           <td
-                            className="px-1 py-3 border-l border-gray-100 cursor-pointer"
+                            className="px-1 py-3 border-l border-r border-gray-100 cursor-pointer"
                             onClick={(e) => { e.stopPropagation(); setShowContactInfo(!showContactInfo); }}
                             data-testid={`contact-status-icons-${contact.id}`}
                           >
