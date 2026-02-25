@@ -1399,15 +1399,13 @@ export default function ContactsPage() {
                               size="sm"
                             />
                             <EmailStatusIcon
-                              email={contact.email}
-                              emailStatus={contact.emailStatus}
+                              hasEmail={!!contact.email}
+                              status={contact.emailStatus}
                               size="sm"
                             />
                             <PhoneStatusIcon
-                              phones={(() => {
-                                const p = getPhoneNumbers(contact);
-                                return p.map(ph => ({ number: ph.number, type: ph.label || null, status: null }));
-                              })()}
+                              hasPhone={hasAnyPhone(contact)}
+                              isOfficeOnly={hasOnlyOfficeLine(contact)}
                               size="sm"
                             />
                           </div>
