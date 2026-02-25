@@ -2,10 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, ListPlus } from 'lucide-react';
+import { Plus, ListPlus, CheckSquare } from 'lucide-react';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
 import { AdminOnly } from '@/components/PermissionGate';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
@@ -64,6 +65,7 @@ interface ContactsSectionProps {
   onShowAddContactModal: () => void;
   onEnrichment: () => void;
   onSetContactForListModal: (id: string) => void;
+  onBulkAddToList?: (contactIds: string[]) => void;
 }
 
 export default function ContactsSection({
@@ -71,39 +73,106 @@ export default function ContactsSection({
   onShowAddContactModal,
   onEnrichment,
   onSetContactForListModal,
+  onBulkAddToList,
 }: ContactsSectionProps) {
   const router = useRouter();
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
+
+  const contactsWithIds = contacts.filter(c => c.id);
+
+  const toggleContact = (contactId: string) => {
+    setSelectedContactIds(prev => {
+      const next = new Set(prev);
+      if (next.has(contactId)) {
+        next.delete(contactId);
+      } else {
+        next.add(contactId);
+      }
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    if (selectedContactIds.size === contactsWithIds.length) {
+      setSelectedContactIds(new Set());
+    } else {
+      setSelectedContactIds(new Set(contactsWithIds.map(c => c.id)));
+    }
+  };
+
+  const handleBulkAddToList = () => {
+    if (onBulkAddToList && selectedContactIds.size > 0) {
+      onBulkAddToList([...selectedContactIds]);
+    }
+  };
 
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between gap-2 mb-4">
         <h2 className="text-lg font-semibold text-gray-900">
           Contacts ({contacts.length})
         </h2>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onShowAddContactModal}
-          data-testid="button-add-contact"
-        >
-          <Plus className="w-4 h-4 mr-1" />
-          Add Contact
-        </Button>
+        <div className="flex items-center flex-wrap gap-2">
+          {selectedContactIds.size > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleBulkAddToList}
+              data-testid="button-bulk-add-to-list"
+            >
+              <ListPlus className="w-4 h-4 mr-1" />
+              Add {selectedContactIds.size} to List
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onShowAddContactModal}
+            data-testid="button-add-contact"
+          >
+            <Plus className="w-4 h-4 mr-1" />
+            Add Contact
+          </Button>
+        </div>
       </div>
+      {contacts.length > 0 && contactsWithIds.length > 1 && (
+        <div className="flex items-center gap-2 mb-3">
+          <Checkbox
+            checked={selectedContactIds.size === contactsWithIds.length && contactsWithIds.length > 0}
+            onChange={toggleAll}
+            data-testid="checkbox-select-all-contacts"
+          />
+          <span className="text-sm text-gray-500">
+            {selectedContactIds.size > 0
+              ? `${selectedContactIds.size} selected`
+              : 'Select all'}
+          </span>
+        </div>
+      )}
       {contacts.length > 0 ? (
         <div className="space-y-3">
           {sortContactsByRelevance(contacts).map((contact, i) => {
             const isFormer = contact.relationshipStatus === 'former' || contact.relationshipStatus === 'job_change_detected';
             const bestPhone = getBestPhone(contact);
             const formattedPhone = bestPhone ? formatPhoneNumber(bestPhone, contact.phoneExtension) : null;
+            const isSelected = contact.id ? selectedContactIds.has(contact.id) : false;
             return (
               <div 
                 key={`${contact.id || contact.email}-${i}`} 
-                className={`p-4 rounded-lg transition-colors ${isFormer ? 'bg-gray-100 opacity-70' : 'bg-gray-50'} ${contact.id ? 'cursor-pointer hover:bg-gray-100' : ''}`}
+                className={`p-4 rounded-lg transition-colors ${isSelected ? 'ring-1 ring-green-400 bg-green-50/50' : isFormer ? 'bg-gray-100 opacity-70' : 'bg-gray-50'} ${contact.id ? 'cursor-pointer hover:bg-gray-100' : ''}`}
                 onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                 data-testid={`contact-row-${contact.id}`}
               >
                 <div className="flex items-start space-x-3">
+                  {contact.id && (
+                    <div className="flex-shrink-0 pt-1" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={isSelected}
+                        onChange={() => toggleContact(contact.id)}
+                        data-testid={`checkbox-contact-${contact.id}`}
+                      />
+                    </div>
+                  )}
                   <ContactAvatar photoUrl={contact.photoUrl} name={contact.fullName || ''} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center flex-wrap gap-2 mb-1">

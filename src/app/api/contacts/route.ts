@@ -158,6 +158,7 @@ export async function GET(request: NextRequest) {
         emailStatus: contacts.emailStatus,
         emailValidationStatus: contacts.emailValidationStatus,
         linkedinUrl: contacts.linkedinUrl,
+        photoUrl: contacts.photoUrl,
         location: contacts.location,
         source: contacts.source,
         createdAt: contacts.createdAt,

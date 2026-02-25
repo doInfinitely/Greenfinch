@@ -97,55 +97,55 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
       const sv = new google.maps.StreetViewService();
       const location = new google.maps.LatLng(property.lat!, property.lon!);
 
-      let panoResolved = false;
-      const panoTimeout = setTimeout(() => {
-        if (!panoResolved && mounted) {
-          panoResolved = true;
+      const radiusAttempts = [300, 800, 1500];
+
+      const tryRadius = (index: number) => {
+        if (!mounted || !containerRef.current) return;
+        if (index >= radiusAttempts.length) {
           setStatus('unavailable');
+          return;
         }
-      }, 10000);
 
-      sv.getPanorama(
-        {
-          location,
-          radius: 300,
-          source: google.maps.StreetViewSource.OUTDOOR,
-          preference: google.maps.StreetViewPreference.NEAREST,
-        },
-        (data, panoStatus) => {
-          if (panoResolved || !mounted || !containerRef.current) {
-            clearTimeout(panoTimeout);
-            return;
+        sv.getPanorama(
+          {
+            location,
+            radius: radiusAttempts[index],
+            source: google.maps.StreetViewSource.OUTDOOR,
+            preference: google.maps.StreetViewPreference.NEAREST,
+          },
+          (data, panoStatus) => {
+            if (!mounted || !containerRef.current) return;
+
+            if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
+              const panoLocation = data.location.latLng;
+              const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, location) ?? 0;
+
+              new google.maps.StreetViewPanorama(containerRef.current!, {
+                position: panoLocation,
+                pov: { heading: computedHeading, pitch: 5 },
+                zoom: 0,
+                addressControl: false,
+                showRoadLabels: false,
+                linksControl: false,
+                panControl: false,
+                zoomControl: false,
+                enableCloseButton: false,
+                motionTracking: false,
+                motionTrackingControl: false,
+                fullscreenControl: false,
+                clickToGo: false,
+                disableDefaultUI: true,
+              });
+
+              setStatus('ready');
+            } else {
+              tryRadius(index + 1);
+            }
           }
-          panoResolved = true;
-          clearTimeout(panoTimeout);
-          if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
-            const panoLocation = data.location.latLng;
-            const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, location) ?? 0;
+        );
+      };
 
-            new google.maps.StreetViewPanorama(containerRef.current!, {
-              position: panoLocation,
-              pov: { heading: computedHeading, pitch: 5 },
-              zoom: 0,
-              addressControl: false,
-              showRoadLabels: false,
-              linksControl: false,
-              panControl: false,
-              zoomControl: false,
-              enableCloseButton: false,
-              motionTracking: false,
-              motionTrackingControl: false,
-              fullscreenControl: false,
-              clickToGo: false,
-              disableDefaultUI: true,
-            });
-
-            setStatus('ready');
-          } else {
-            setStatus('unavailable');
-          }
-        }
-      );
+      tryRadius(0);
     };
 
     init();

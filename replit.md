@@ -179,6 +179,14 @@ src/
 - Map viewport persisted to sessionStorage
 - "New" filter shows unviewed properties (blue dot)
 - Enrichment queue items are clickable/linkable
+- Pipeline board: Undo/redo buttons for stage moves (session-only, max 20 history entries)
+- Pipeline board: "Show Lost"/"Hide Lost" toggle button text
+- Property list: Sortable by lot size, building sqft, contacts (via `sortBy`/`sortDir` query params)
+- Map sidebar: Client-side sorting by name, lot size, or building sqft
+- Street View: Progressive radius retry (50→150→500m expanded, 300→800→1500m banner) on no imagery
+- Street View expanded: Desktop shows mini-map with pegman for location navigation
+- Contacts list: Avatar, Properties count column, dedicated LinkedIn column, no LinkedIn icon next to name
+- Bulk "Add to List": Available on property detail ContactsSection and organization detail contacts
 
 ## External Dependencies
 - **Snowflake**: Regrid parcel data ingestion

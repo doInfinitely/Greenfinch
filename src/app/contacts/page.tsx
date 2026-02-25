@@ -5,10 +5,11 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { BulkActionBar } from '@/components/BulkActionBar';
-import { ListPlus, Filter, Mail, Phone, Loader2, Plus } from 'lucide-react';
+import { ListPlus, Filter, Mail, Phone, Loader2, Plus, ExternalLink } from 'lucide-react';
 import { ContactCardSkeleton } from '@/components/PageSkeleton';
-import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, LinkedInLink, hasAnyPhone, hasOnlyOfficeLine, hasHighQualityPhone } from '@/components/ContactStatusIcons';
+import { EmailStatusIcon, PhoneStatusIcon, hasAnyPhone, hasOnlyOfficeLine, hasHighQualityPhone } from '@/components/ContactStatusIcons';
 import { formatPhoneNumber } from '@/lib/phone-format';
 import linkedinLogo from '@/assets/linkedin-logo.png';
 import { useToast } from '@/hooks/use-toast';
@@ -61,6 +62,7 @@ interface Contact {
   emailStatus: string | null;
   emailValidationStatus: string | null;
   linkedinUrl: string | null;
+  photoUrl: string | null;
   location: string | null;
   source: string | null;
   createdAt: string;
@@ -1038,11 +1040,13 @@ export default function ContactsPage() {
                 <table className="w-full divide-y divide-gray-200 table-fixed">
                   <colgroup>
                     <col className="w-10" />
-                    <col style={{ width: '18%' }} />
-                    <col style={{ width: '22%' }} />
-                    <col style={{ width: '18%' }} />
+                    <col style={{ width: '17%' }} />
                     <col style={{ width: '18%' }} />
                     <col style={{ width: '14%' }} />
+                    <col style={{ width: '14%' }} />
+                    <col style={{ width: '12%' }} />
+                    <col style={{ width: '7%' }} />
+                    <col style={{ width: '8%' }} />
                     <col style={{ width: '10%' }} />
                   </colgroup>
                   <thead className="bg-gray-50">
@@ -1083,6 +1087,15 @@ export default function ContactsPage() {
                       >
                         Employer <SortIcon column="employerName" />
                       </th>
+                      <th
+                        onClick={() => handleSort('propertyCount')}
+                        className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                      >
+                        Props <SortIcon column="propertyCount" />
+                      </th>
+                      <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        LinkedIn
+                      </th>
                       <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Location
                       </th>
@@ -1111,14 +1124,21 @@ export default function ContactsPage() {
                             className="px-3 py-3"
                             onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-2">
+                              <Avatar className="w-7 h-7 flex-shrink-0" data-testid={`avatar-contact-${contact.id}`}>
+                                {contact.photoUrl && (
+                                  <AvatarImage src={contact.photoUrl} alt={contact.fullName || 'Contact'} />
+                                )}
+                                <AvatarFallback className="bg-green-100 text-green-700 text-xs font-semibold">
+                                  {contact.fullName
+                                    ? contact.fullName.split(' ').map(n => n[0]).filter(Boolean).slice(0, 2).join('').toUpperCase()
+                                    : '?'}
+                                </AvatarFallback>
+                              </Avatar>
                               <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-sm font-medium text-gray-900 truncate">
-                                    {contact.fullName || 'Unknown'}
-                                  </span>
-                                  <LinkedInLink linkedinUrl={contact.linkedinUrl} size="sm" />
-                                </div>
+                                <span className="text-sm font-medium text-gray-900 truncate block">
+                                  {contact.fullName || 'Unknown'}
+                                </span>
                               </div>
                               <div className="flex items-center gap-0.5 flex-shrink-0" data-testid={`contact-status-icons-${contact.id}`}>
                                 <EmailStatusIcon 
@@ -1129,10 +1149,6 @@ export default function ContactsPage() {
                                 <PhoneStatusIcon 
                                   hasPhone={hasAnyPhone(contact)}
                                   isOfficeOnly={hasOnlyOfficeLine(contact)}
-                                  size="sm"
-                                />
-                                <LinkedInStatusIcon 
-                                  hasLinkedIn={!!contact.linkedinUrl}
                                   size="sm"
                                 />
                               </div>
@@ -1204,6 +1220,33 @@ export default function ContactsPage() {
                             )}
                           </td>
                           <td 
+                            className="px-3 py-3 text-center"
+                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
+                            data-testid={`text-property-count-${contact.id}`}
+                          >
+                            <span className="text-sm text-gray-900">{contact.propertyCount}</span>
+                          </td>
+                          <td 
+                            className="px-3 py-3"
+                          >
+                            {contact.linkedinUrl ? (
+                              <a
+                                href={contact.linkedinUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={(e) => e.stopPropagation()}
+                                className="inline-flex items-center gap-1 text-sm text-blue-600 hover:underline"
+                                data-testid={`link-linkedin-${contact.id}`}
+                              >
+                                <img src={linkedinLogo.src} alt="LinkedIn" className="w-3.5 h-3.5" />
+                                <span className="hidden lg:inline">Profile</span>
+                                <ExternalLink className="w-3 h-3" />
+                              </a>
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td 
                             className="px-3 py-3 overflow-hidden"
                             onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                           >
@@ -1216,7 +1259,7 @@ export default function ContactsPage() {
                         </tr>
                         {expandedContact === contact.id && (
                           <tr>
-                            <td colSpan={7} className="px-4 py-3 bg-gray-50">
+                            <td colSpan={9} className="px-4 py-3 bg-gray-50">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {contact.properties.length > 0 && (
                                   <div>

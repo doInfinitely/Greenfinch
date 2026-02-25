@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, type ChangeEvent } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import dynamic from 'next/dynamic';
 import type { MapBounds } from '@/map/DashboardMap';
@@ -9,6 +9,9 @@ import PropertyFilters, { FilterState, serializeFiltersToParams, parseFiltersFro
 import MapSearchBar from '@/components/MapSearchBar';
 import { useToast } from '@/hooks/use-toast';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
+import { ArrowUpDown } from 'lucide-react';
+
+type SidebarSortField = 'name' | 'lotSqft' | 'buildingSqft';
 
 const MapCanvas = dynamic(() => import('@/map/MapCanvas'), {
   ssr: false,
@@ -83,6 +86,7 @@ export default function MapPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
   const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
+  const [sidebarSort, setSidebarSort] = useState<SidebarSortField>('name');
 
   const prevFiltersRef = useRef<string>('');
   const shouldAutoFitRef = useRef(false);
@@ -260,6 +264,27 @@ export default function MapPage() {
     });
   }, [bounds, allProperties]);
 
+  const sortedVisibleProperties = useMemo(() => {
+    const sorted = [...visibleProperties];
+    switch (sidebarSort) {
+      case 'lotSqft':
+        sorted.sort((a, b) => (b.properties.lotSqft || 0) - (a.properties.lotSqft || 0));
+        break;
+      case 'buildingSqft':
+        sorted.sort((a, b) => (b.properties.buildingSqft || 0) - (a.properties.buildingSqft || 0));
+        break;
+      case 'name':
+      default:
+        sorted.sort((a, b) => {
+          const nameA = (a.properties.commonName || a.properties.address || '').toLowerCase();
+          const nameB = (b.properties.commonName || b.properties.address || '').toLowerCase();
+          return nameA.localeCompare(nameB);
+        });
+        break;
+    }
+    return sorted;
+  }, [visibleProperties, sidebarSort]);
+
   if (configLoading) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-gray-50">
@@ -317,9 +342,24 @@ export default function MapPage() {
 
       <div className="hidden md:flex md:w-80 bg-white border-l border-gray-200 flex-col">
         <div className="px-4 py-3 border-b border-gray-200">
-          <h2 className="font-semibold text-gray-900">
-            Properties in View <span className="text-green-600 font-normal">({visibleProperties.length})</span>
-          </h2>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h2 className="font-semibold text-gray-900">
+              Properties in View <span className="text-green-600 font-normal">({visibleProperties.length})</span>
+            </h2>
+            <div className="flex items-center gap-1.5">
+              <ArrowUpDown className="w-3.5 h-3.5 text-gray-400" />
+              <select
+                value={sidebarSort}
+                onChange={(e: ChangeEvent<HTMLSelectElement>) => setSidebarSort(e.target.value as SidebarSortField)}
+                className="text-xs border border-gray-200 rounded-md px-1.5 py-1 text-gray-600 bg-white focus:outline-none focus:ring-1 focus:ring-green-500"
+                data-testid="select-sidebar-sort"
+              >
+                <option value="name">Name</option>
+                <option value="lotSqft">Lot Size</option>
+                <option value="buildingSqft">Building Sqft</option>
+              </select>
+            </div>
+          </div>
           <p className="text-xs text-gray-500 mt-1">
             {allProperties.length} matching filters
           </p>
@@ -333,7 +373,7 @@ export default function MapPage() {
               <p>Pan or zoom to see properties</p>
             </div>
           ) : (
-            visibleProperties.slice(0, 100).map((f) => (
+            sortedVisibleProperties.slice(0, 100).map((f) => (
               <button
                 key={f.properties.propertyKey}
                 onClick={() => handlePropertyClick(f.properties.propertyKey)}
@@ -368,6 +408,13 @@ export default function MapPage() {
                   {f.properties.lotSqft > 0 && (
                     <span className="text-[10px] text-gray-500">
                       {(f.properties.lotSqft / 43560).toFixed(1)} ac
+                    </span>
+                  )}
+                  {f.properties.buildingSqft > 0 && (
+                    <span className="text-[10px] text-gray-500">
+                      {f.properties.buildingSqft >= 1000
+                        ? `${(f.properties.buildingSqft / 1000).toFixed(1)}k`
+                        : f.properties.buildingSqft} sqft
                     </span>
                   )}
                 </div>

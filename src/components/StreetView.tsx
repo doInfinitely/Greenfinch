@@ -68,11 +68,21 @@ function loadGoogleMapsApi(apiKey: string): Promise<void> {
 
 export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }: StreetViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const miniMapRef = useRef<HTMLDivElement>(null);
   const panoramaRef = useRef<unknown>(null);
+  const miniMapInstanceRef = useRef<unknown>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
   const [error, setError] = useState<string | null>(null);
+  const [isDesktop, setIsDesktop] = useState(false);
   const statusRef = useRef(status);
   statusRef.current = status;
+
+  useEffect(() => {
+    const checkDesktop = () => setIsDesktop(window.innerWidth >= 1024);
+    checkDesktop();
+    window.addEventListener('resize', checkDesktop);
+    return () => window.removeEventListener('resize', checkDesktop);
+  }, []);
 
   useEffect(() => {
     if (!containerRef.current || !apiKey) return;
@@ -93,61 +103,93 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }
 
         const sv = new google.maps.StreetViewService();
         const propertyLocation = new google.maps.LatLng(lat, lon);
+        const desktop = window.innerWidth >= 1024;
 
-        let panoResolved = false;
-        const panoTimeout = setTimeout(() => {
-          if (!panoResolved && mounted) {
-            panoResolved = true;
+        const radiusAttempts = [50, 150, 500];
+
+        const tryRadius = (index: number) => {
+          if (!mounted || !containerRef.current) return;
+          if (index >= radiusAttempts.length) {
             setStatus('unavailable');
+            return;
           }
-        }, 8000);
 
-        sv.getPanorama(
-          {
-            location: propertyLocation,
-            radius: 50,
-            source: google.maps.StreetViewSource.OUTDOOR,
-            preference: google.maps.StreetViewPreference.NEAREST,
-          },
-          (data, panoStatus) => {
-            if (panoResolved || !mounted || !containerRef.current) {
-              clearTimeout(panoTimeout);
-              return;
+          sv.getPanorama(
+            {
+              location: propertyLocation,
+              radius: radiusAttempts[index],
+              source: google.maps.StreetViewSource.OUTDOOR,
+              preference: google.maps.StreetViewPreference.NEAREST,
+            },
+            (data, panoStatus) => {
+              if (!mounted || !containerRef.current) return;
+
+              if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
+                const panoLocation = data.location.latLng;
+
+                const computedHeading = google.maps.geometry?.spherical?.computeHeading(
+                  panoLocation,
+                  propertyLocation
+                ) ?? heading;
+
+                const panorama = new google.maps.StreetViewPanorama(containerRef.current!, {
+                  pano: data.location.pano!,
+                  pov: {
+                    heading: computedHeading,
+                    pitch,
+                  },
+                  zoom: 0,
+                  clickToGo: desktop,
+                  linksControl: desktop,
+                  motionTracking: false,
+                  motionTrackingControl: false,
+                  addressControl: true,
+                  fullscreenControl: true,
+                  panControl: true,
+                  enableCloseButton: false,
+                });
+
+                panoramaRef.current = panorama;
+
+                if (desktop && miniMapRef.current) {
+                  const miniMap = new google.maps.Map(miniMapRef.current, {
+                    center: panoLocation,
+                    zoom: 15,
+                    disableDefaultUI: true,
+                    zoomControl: true,
+                    mapTypeId: google.maps.MapTypeId.ROADMAP,
+                    streetViewControl: true,
+                    gestureHandling: 'greedy',
+                  });
+
+                  miniMap.setStreetView(panorama);
+                  miniMapInstanceRef.current = miniMap;
+
+                  const propertyMarker = new google.maps.Marker({
+                    position: propertyLocation,
+                    map: miniMap,
+                    title: 'Property Location',
+                    icon: {
+                      path: google.maps.SymbolPath.CIRCLE,
+                      scale: 6,
+                      fillColor: '#16a34a',
+                      fillOpacity: 1,
+                      strokeColor: '#ffffff',
+                      strokeWeight: 2,
+                    },
+                  });
+                  void propertyMarker;
+                }
+
+                setStatus('ready');
+              } else {
+                tryRadius(index + 1);
+              }
             }
-            panoResolved = true;
-            clearTimeout(panoTimeout);
+          );
+        };
 
-            if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
-              const panoLocation = data.location.latLng;
-
-              const computedHeading = google.maps.geometry?.spherical?.computeHeading(
-                panoLocation,
-                propertyLocation
-              ) ?? heading;
-
-              panoramaRef.current = new google.maps.StreetViewPanorama(containerRef.current!, {
-                pano: data.location.pano!,
-                pov: {
-                  heading: computedHeading,
-                  pitch,
-                },
-                zoom: 0,
-                clickToGo: false,
-                linksControl: false,
-                motionTracking: false,
-                motionTrackingControl: false,
-                addressControl: true,
-                fullscreenControl: true,
-                panControl: true,
-                enableCloseButton: false,
-              });
-
-              setStatus('ready');
-            } else {
-              setStatus('unavailable');
-            }
-          }
-        );
+        tryRadius(0);
       } catch (err) {
         if (mounted) {
           setError(err instanceof Error ? err.message : 'Failed to load Street View');
@@ -163,6 +205,9 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }
       clearTimeout(hardTimeout);
       if (panoramaRef.current) {
         panoramaRef.current = null;
+      }
+      if (miniMapInstanceRef.current) {
+        miniMapInstanceRef.current = null;
       }
     };
   }, [apiKey, lat, lon, heading, pitch]);
@@ -185,6 +230,19 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }
   return (
     <div className="relative w-full h-full">
       <div ref={containerRef} className="w-full h-full" />
+      {isDesktop && (
+        <div
+          ref={miniMapRef}
+          data-testid="streetview-minimap"
+          className="absolute bottom-4 left-4 rounded-md shadow-lg border border-gray-300 bg-white"
+          style={{
+            width: 200,
+            height: 150,
+            display: status === 'ready' ? 'block' : 'none',
+            zIndex: 10,
+          }}
+        />
+      )}
       {status === 'loading' && (
         <div className="absolute inset-0 bg-gray-100 flex items-center justify-center">
           <div className="text-center">

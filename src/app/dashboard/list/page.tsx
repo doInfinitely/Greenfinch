@@ -8,7 +8,7 @@ import { useDebounce } from '@/hooks/use-debounce';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
-import { Sparkles, ListPlus, Users } from 'lucide-react';
+import { Sparkles, ListPlus, Users, ArrowUp, ArrowDown } from 'lucide-react';
 import { TableSkeleton } from '@/components/PageSkeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
@@ -82,6 +82,8 @@ export default function ListPage() {
   const [selectedProperties, setSelectedProperties] = useState<Set<string>>(new Set());
   const [showAddToListModal, setShowAddToListModal] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
+  const [sortBy, setSortBy] = useState<string | null>(null);
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const { getEnrichmentStatus } = useEnrichmentQueue();
   const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
 
@@ -96,7 +98,7 @@ export default function ListPage() {
   }, [router, pathname]);
 
   const { data, isLoading, isFetching } = useQuery<{ properties: Property[]; pagination: PaginationInfo }>({
-    queryKey: ['/api/properties/search', debouncedQuery, currentPage, pageSize, filters],
+    queryKey: ['/api/properties/search', debouncedQuery, currentPage, pageSize, filters, sortBy, sortDir],
     queryFn: async () => {
       const params = new URLSearchParams();
       params.set('page', String(currentPage));
@@ -140,6 +142,10 @@ export default function ListPage() {
       }
       if (filters.contactId) {
         params.set('contactId', filters.contactId);
+      }
+      if (sortBy) {
+        params.set('sortBy', sortBy);
+        params.set('sortDir', sortDir);
       }
       const response = await fetch(`/api/properties/search?${params.toString()}`);
       if (!response.ok) {
@@ -231,6 +237,28 @@ export default function ListPage() {
   const handleDeselectAll = useCallback(() => {
     setSelectedProperties(new Set());
   }, []);
+
+  const handleSort = useCallback((field: string) => {
+    if (sortBy === field) {
+      if (sortDir === 'asc') {
+        setSortDir('desc');
+      } else {
+        setSortBy(null);
+        setSortDir('asc');
+      }
+    } else {
+      setSortBy(field);
+      setSortDir('asc');
+    }
+    setCurrentPage(1);
+  }, [sortBy, sortDir]);
+
+  const SortIcon = ({ field }: { field: string }) => {
+    if (sortBy !== field) return null;
+    return sortDir === 'asc'
+      ? <ArrowUp className="w-3 h-3 inline-block ml-1" />
+      : <ArrowDown className="w-3 h-3 inline-block ml-1" />;
+  };
 
   const { startEnrichment } = useEnrichment();
 
@@ -353,9 +381,28 @@ export default function ListPage() {
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Property</th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Contacts</th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700"
+                      onClick={() => handleSort('contactCount')}
+                      data-testid="sort-header-contacts"
+                    >
+                      Contacts<SortIcon field="contactCount" />
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Orgs</th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Lot</th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700"
+                      onClick={() => handleSort('lotSqft')}
+                      data-testid="sort-header-lot"
+                    >
+                      Lot<SortIcon field="lotSqft" />
+                    </th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700"
+                      onClick={() => handleSort('buildingSqft')}
+                      data-testid="sort-header-building-sqft"
+                    >
+                      Building Sqft<SortIcon field="buildingSqft" />
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">Location</th>
                   </tr>
                 </thead>
@@ -464,6 +511,9 @@ export default function ListPage() {
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
                         {formatLotSize(p.lotSqft)}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)} data-testid={`text-building-sqft-${p.propertyKey}`}>
+                        {formatBuildingSqft(p.buildingSqft)}
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-500 min-w-[120px]" onClick={() => handleRowClick(p.propertyKey)}>
                         {[p.city, p.state].filter(Boolean).join(', ')}

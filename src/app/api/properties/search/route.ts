@@ -1,12 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties, propertyPipeline, propertyContacts, propertyOrganizations, organizations } from '@/lib/schema';
-import { sql, ilike, or, and, eq, inArray, isNotNull, isNull, gte, lte, type SQL } from 'drizzle-orm';
+import { sql, ilike, or, and, eq, inArray, isNotNull, isNull, gte, lte, asc, desc, type SQL } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 1000;
 const SQFT_PER_ACRE = 43560;
+
+const VALID_SORT_FIELDS = ['commonName', 'lotSqft', 'buildingSqft', 'contactCount'] as const;
+type SortField = typeof VALID_SORT_FIELDS[number];
+type SortDir = 'asc' | 'desc';
 
 function validateLimit(value: string | null): number {
   if (!value) return DEFAULT_LIMIT;
@@ -44,6 +48,10 @@ export async function GET(request: NextRequest) {
     const maxNetSqft = searchParams.get('maxNetSqft') ? parseFloat(searchParams.get('maxNetSqft')!) : null;
     const organizationId = searchParams.get('organizationId');
     const contactId = searchParams.get('contactId');
+    const sortByParam = searchParams.get('sortBy') as SortField | null;
+    const sortDirParam = (searchParams.get('sortDir') || 'asc') as SortDir;
+    const sortBy: SortField | null = sortByParam && VALID_SORT_FIELDS.includes(sortByParam) ? sortByParam : null;
+    const sortDir: SortDir = sortDirParam === 'desc' ? 'desc' : 'asc';
     
     const conditions: ReturnType<typeof eq>[] = [
       eq(properties.isActive, true),
@@ -222,9 +230,23 @@ export async function GET(request: NextRequest) {
         .from(properties)
         .where(whereClause)
         .orderBy(
-          sql`CASE WHEN ${properties.commonName} IS NOT NULL THEN 0 ELSE 1 END`,
-          properties.commonName,
-          properties.regridAddress
+          ...(sortBy === 'lotSqft'
+            ? [sortDir === 'desc' ? sql`${properties.lotSqft} DESC NULLS LAST` : sql`${properties.lotSqft} ASC NULLS LAST`]
+            : sortBy === 'buildingSqft'
+            ? [sortDir === 'desc' ? sql`${properties.buildingSqft} DESC NULLS LAST` : sql`${properties.buildingSqft} ASC NULLS LAST`]
+            : sortBy === 'contactCount'
+            ? [sortDir === 'desc'
+                ? sql`(SELECT count(*) FROM ${propertyContacts} WHERE ${propertyContacts.propertyId} = ${properties.id}) DESC`
+                : sql`(SELECT count(*) FROM ${propertyContacts} WHERE ${propertyContacts.propertyId} = ${properties.id}) ASC`]
+            : sortBy === 'commonName'
+            ? [sortDir === 'desc'
+                ? sql`COALESCE(${properties.commonName}, ${properties.regridAddress}) DESC`
+                : sql`COALESCE(${properties.commonName}, ${properties.regridAddress}) ASC`]
+            : [
+                sql`CASE WHEN ${properties.commonName} IS NOT NULL THEN 0 ELSE 1 END`,
+                sql`${properties.commonName} ASC`,
+                sql`${properties.regridAddress} ASC`,
+              ])
         )
         .limit(limit)
         .offset(offset)

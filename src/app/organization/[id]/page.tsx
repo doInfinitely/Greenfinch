@@ -6,7 +6,7 @@ import Link from 'next/link';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
-import { Loader2, XCircle, MoreVertical, FileJson, Users, Building2, Phone, Mail, Globe, Calendar, Briefcase } from 'lucide-react';
+import { Loader2, XCircle, MoreVertical, FileJson, Users, Building2, Phone, Mail, Globe, Calendar, Briefcase, ListPlus } from 'lucide-react';
 import { SiLinkedin, SiFacebook, SiCrunchbase, SiInstagram, SiYoutube, SiGithub, SiPinterest, SiReddit, SiTelegram, SiSnapchat } from 'react-icons/si';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { EmailStatusIcon, PhoneStatusIcon, LinkedInStatusIcon, hasAnyPhone, hasOnlyOfficeLine } from '@/components/ContactStatusIcons';
@@ -22,6 +22,7 @@ import { Button } from '@/components/ui/button';
 import { ROLE_LABELS, ROLE_COLORS, formatRoleLabel } from '@/lib/constants';
 import { capitalizeSentences } from '@/lib/normalization';
 import { decode } from 'blurhash';
+import BulkAddToListModal from '@/components/BulkAddToListModal';
 
 // Helper to title-case ALL CAPS names for better display
 function formatPropertyName(name: string | null): string | null {
@@ -329,6 +330,8 @@ export default function OrganizationDetailPage() {
   const [enrichMessage, setEnrichMessage] = useState<string | null>(null);
   const [brandData, setBrandData] = useState<BrandData | null>(null);
   const [brandLoading, setBrandLoading] = useState(false);
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
+  const [showBulkAddToList, setShowBulkAddToList] = useState(false);
   const enrichTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { startEnrichment } = useEnrichment();
   const { getEnrichmentStatus } = useEnrichmentQueue();
@@ -821,9 +824,41 @@ export default function OrganizationDetailPage() {
 
           <div id="contacts-section" className="bg-white rounded-lg border border-gray-200 overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-200 bg-gray-50">
-              <h2 className="text-lg font-semibold text-gray-900">
-                Contacts ({contacts.length})
-              </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-3">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    Contacts ({contacts.length})
+                  </h2>
+                  {contacts.length > 0 && (
+                    <label className="flex items-center gap-1.5 text-xs text-gray-500 cursor-pointer" data-testid="checkbox-select-all-contacts">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300 text-green-600 focus:ring-green-500"
+                        checked={contacts.length > 0 && selectedContactIds.size === contacts.length}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedContactIds(new Set(contacts.map(c => c.id)));
+                          } else {
+                            setSelectedContactIds(new Set());
+                          }
+                        }}
+                      />
+                      Select all
+                    </label>
+                  )}
+                </div>
+                {selectedContactIds.size > 0 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setShowBulkAddToList(true)}
+                    data-testid="button-bulk-add-contacts-to-list"
+                  >
+                    <ListPlus className="w-4 h-4 mr-1.5" />
+                    Add {selectedContactIds.size} to List
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="divide-y divide-gray-200 max-h-[500px] overflow-y-auto">
               {contacts.length === 0 ? (
@@ -832,59 +867,79 @@ export default function OrganizationDetailPage() {
                 </div>
               ) : (
                 contacts.map((contact) => (
-                  <Link
+                  <div
                     key={contact.id}
-                    href={`/contact/${contact.id}`}
-                    className="block px-6 py-4 hover:bg-gray-50"
-                    data-testid={`link-contact-${contact.id}`}
-                    aria-label={`View contact ${contact.fullName || 'details'}`}
+                    className="flex items-center px-6 py-4 hover:bg-gray-50 gap-3"
+                    data-testid={`row-contact-${contact.id}`}
                   >
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {contact.fullName || 'Unnamed Contact'}
-                        </p>
-                        {contact.title && (
-                          <p className="text-sm text-gray-600 truncate">
-                            {contact.title}
+                    <input
+                      type="checkbox"
+                      className="rounded border-gray-300 text-green-600 focus:ring-green-500 flex-shrink-0"
+                      checked={selectedContactIds.has(contact.id)}
+                      onChange={(e) => {
+                        const next = new Set(selectedContactIds);
+                        if (e.target.checked) {
+                          next.add(contact.id);
+                        } else {
+                          next.delete(contact.id);
+                        }
+                        setSelectedContactIds(next);
+                      }}
+                      data-testid={`checkbox-contact-${contact.id}`}
+                    />
+                    <Link
+                      href={`/contact/${contact.id}`}
+                      className="flex-1 min-w-0"
+                      data-testid={`link-contact-${contact.id}`}
+                      aria-label={`View contact ${contact.fullName || 'details'}`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 truncate">
+                            {contact.fullName || 'Unnamed Contact'}
                           </p>
-                        )}
-                        {contact.email && (
-                          <p className="text-xs text-gray-400 truncate">
-                            {contact.email}
-                          </p>
-                        )}
+                          {contact.title && (
+                            <p className="text-sm text-gray-600 truncate">
+                              {contact.title}
+                            </p>
+                          )}
+                          {contact.email && (
+                            <p className="text-xs text-gray-400 truncate">
+                              {contact.email}
+                            </p>
+                          )}
+                        </div>
+                        <div className="ml-4 flex items-center gap-1.5">
+                          <EmailStatusIcon 
+                            hasEmail={!!contact.email} 
+                            status={contact.emailValidationStatus || contact.emailStatus}
+                            size="sm"
+                          />
+                          <PhoneStatusIcon 
+                            hasPhone={hasAnyPhone({
+                              phone: contact.phone,
+                              aiPhone: contact.aiPhone,
+                              enrichmentPhoneWork: contact.enrichmentPhoneWork,
+                              enrichmentPhonePersonal: contact.enrichmentPhonePersonal,
+                            })}
+                            isOfficeOnly={hasOnlyOfficeLine({
+                              phone: contact.phone,
+                              phoneLabel: contact.phoneLabel,
+                              aiPhone: contact.aiPhone,
+                              aiPhoneLabel: contact.aiPhoneLabel,
+                              enrichmentPhoneWork: contact.enrichmentPhoneWork,
+                              enrichmentPhonePersonal: contact.enrichmentPhonePersonal,
+                            })}
+                            size="sm"
+                          />
+                          <LinkedInStatusIcon 
+                            hasLinkedIn={!!contact.linkedinUrl}
+                            size="sm"
+                          />
+                        </div>
                       </div>
-                      <div className="ml-4 flex items-center gap-1.5">
-                        <EmailStatusIcon 
-                          hasEmail={!!contact.email} 
-                          status={contact.emailValidationStatus || contact.emailStatus}
-                          size="sm"
-                        />
-                        <PhoneStatusIcon 
-                          hasPhone={hasAnyPhone({
-                            phone: contact.phone,
-                            aiPhone: contact.aiPhone,
-                            enrichmentPhoneWork: contact.enrichmentPhoneWork,
-                            enrichmentPhonePersonal: contact.enrichmentPhonePersonal,
-                          })}
-                          isOfficeOnly={hasOnlyOfficeLine({
-                            phone: contact.phone,
-                            phoneLabel: contact.phoneLabel,
-                            aiPhone: contact.aiPhone,
-                            aiPhoneLabel: contact.aiPhoneLabel,
-                            enrichmentPhoneWork: contact.enrichmentPhoneWork,
-                            enrichmentPhonePersonal: contact.enrichmentPhonePersonal,
-                          })}
-                          size="sm"
-                        />
-                        <LinkedInStatusIcon 
-                          hasLinkedIn={!!contact.linkedinUrl}
-                          size="sm"
-                        />
-                      </div>
-                    </div>
-                  </Link>
+                    </Link>
+                  </div>
                 ))
               )}
             </div>
@@ -892,6 +947,16 @@ export default function OrganizationDetailPage() {
         </div>
 
       </main>
+
+      <BulkAddToListModal
+        isOpen={showBulkAddToList}
+        onClose={() => {
+          setShowBulkAddToList(false);
+          setSelectedContactIds(new Set());
+        }}
+        itemIds={Array.from(selectedContactIds)}
+        itemType="contacts"
+      />
     </div>
   );
 }

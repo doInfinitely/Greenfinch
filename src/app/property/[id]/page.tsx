@@ -6,6 +6,7 @@ import dynamic from 'next/dynamic';
 import { X, Wrench, Maximize2, Flag } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import AddToListModal from '@/components/AddToListModal';
+import BulkAddToListModal from '@/components/BulkAddToListModal';
 import AddContactModal from '@/components/AddContactModal';
 import StreetView from '@/components/StreetView';
 import { useEnrichment } from '@/hooks/use-enrichment';
@@ -50,6 +51,8 @@ export default function PropertyDetailPage() {
   const [showAddToListModal, setShowAddToListModal] = useState(false);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [contactForListModal, setContactForListModal] = useState<string | null>(null);
+  const [bulkContactIds, setBulkContactIds] = useState<string[]>([]);
+  const [showBulkAddToListModal, setShowBulkAddToListModal] = useState(false);
   const [assignDialogTrigger, setAssignDialogTrigger] = useState(0);
   const [isCurrentCustomer, setIsCurrentCustomer] = useState(false);
   const { startEnrichment } = useEnrichment();
@@ -629,6 +632,10 @@ export default function PropertyDetailPage() {
               onShowAddContactModal={() => setShowAddContactModal(true)}
               onEnrichment={handleEnrichment}
               onSetContactForListModal={setContactForListModal}
+              onBulkAddToList={(ids) => {
+                setBulkContactIds(ids);
+                setShowBulkAddToListModal(true);
+              }}
             />
 
             <OwnershipSection
@@ -813,6 +820,16 @@ export default function PropertyDetailPage() {
           itemType="contacts"
         />
       )}
+
+      <BulkAddToListModal
+        isOpen={showBulkAddToListModal}
+        onClose={() => {
+          setShowBulkAddToListModal(false);
+          setBulkContactIds([]);
+        }}
+        itemIds={bulkContactIds}
+        itemType="contacts"
+      />
 
       {expandedMapType && property?.lat && property?.lon && (
         <div className="fixed inset-0 z-50 overflow-hidden">

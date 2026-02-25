@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { PIPELINE_STATUS_LABELS, type PipelineStatus } from '@/lib/schema';
-import { Loader2, Clock, Users, Check, X, Eye, EyeOff, ChevronRight, ChevronLeft, GripVertical } from 'lucide-react';
+import { Loader2, Clock, Users, Check, X, Eye, EyeOff, ChevronRight, ChevronLeft, GripVertical, Undo2, Redo2 } from 'lucide-react';
 import { PipelineBoardSkeleton } from '@/components/PageSkeleton';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -62,6 +62,17 @@ interface BoardData {
   counts: Record<PipelineStatus, number>;
 }
 
+const MAX_HISTORY = 20;
+
+interface HistoryEntry {
+  itemId: string;
+  propertyId: string;
+  oldStatus: PipelineStatus;
+  newStatus: PipelineStatus;
+  timestamp: number;
+  apiEndpoint: 'pipeline' | 'property';
+}
+
 function getDaysInStage(statusChangedAt: string): number {
   const changed = new Date(statusChangedAt);
   const now = new Date();
@@ -97,6 +108,8 @@ export default function PipelineBoard() {
   const [ownerFilter, setOwnerFilter] = useState<string>('mine');
   const [orgMembers, setOrgMembers] = useState<OrgMember[]>([]);
   const [showLost, setShowLost] = useState(false);
+  const [undoStack, setUndoStack] = useState<HistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
   const [showHint, setShowHint] = useState(true);
@@ -192,6 +205,120 @@ export default function PipelineBoard() {
     fetchBoardData();
   }, [fetchBoardData]);
 
+  const pushToUndoStack = useCallback((entry: HistoryEntry) => {
+    setUndoStack(prev => {
+      const next = [entry, ...prev];
+      return next.slice(0, MAX_HISTORY);
+    });
+    setRedoStack([]);
+  }, []);
+
+  const applyStatusChange = useCallback(async (
+    itemId: string,
+    propertyId: string,
+    fromStatus: PipelineStatus,
+    toStatus: PipelineStatus,
+    apiEndpoint: 'pipeline' | 'property',
+  ) => {
+    setUpdating(itemId);
+
+    setData(prev => {
+      if (!prev) return prev;
+      const newItems = { ...prev.items };
+      const newCounts = { ...prev.counts };
+
+      const item = newItems[fromStatus]?.find(i => i.id === itemId);
+      if (!item) return prev;
+
+      newItems[fromStatus] = newItems[fromStatus].filter(i => i.id !== itemId);
+      newCounts[fromStatus] = newItems[fromStatus].length;
+
+      const updatedItem = { ...item, status: toStatus, statusChangedAt: new Date().toISOString() };
+      newItems[toStatus] = [updatedItem, ...newItems[toStatus]];
+      newCounts[toStatus] = newItems[toStatus].length;
+
+      return { items: newItems, counts: newCounts };
+    });
+
+    try {
+      const url = apiEndpoint === 'pipeline'
+        ? `/api/pipeline/${itemId}`
+        : `/api/properties/${propertyId}/pipeline`;
+      const method = apiEndpoint === 'pipeline' ? 'PATCH' : 'POST';
+
+      const response = await fetch(url, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: toStatus }),
+      });
+
+      if (!response.ok) throw new Error('Failed to update');
+      return true;
+    } catch {
+      fetchBoardData();
+      toast({
+        title: 'Error',
+        description: 'Failed to update status. Changes reverted.',
+        variant: 'destructive',
+      });
+      return false;
+    } finally {
+      setUpdating(null);
+    }
+  }, [fetchBoardData, toast]);
+
+  const handleUndo = useCallback(async () => {
+    if (undoStack.length === 0) return;
+
+    const entry = undoStack[0];
+    setUndoStack(prev => prev.slice(1));
+
+    const success = await applyStatusChange(
+      entry.itemId,
+      entry.propertyId,
+      entry.newStatus,
+      entry.oldStatus,
+      entry.apiEndpoint,
+    );
+
+    if (success) {
+      setRedoStack(prev => {
+        const next = [entry, ...prev];
+        return next.slice(0, MAX_HISTORY);
+      });
+      toast({
+        title: 'Undone',
+        description: `Moved back to ${PIPELINE_STATUS_LABELS[entry.oldStatus]}`,
+      });
+    }
+  }, [undoStack, applyStatusChange, toast]);
+
+  const handleRedo = useCallback(async () => {
+    if (redoStack.length === 0) return;
+
+    const entry = redoStack[0];
+    setRedoStack(prev => prev.slice(1));
+
+    const success = await applyStatusChange(
+      entry.itemId,
+      entry.propertyId,
+      entry.oldStatus,
+      entry.newStatus,
+      entry.apiEndpoint,
+    );
+
+    if (success) {
+      setUndoStack(prev => {
+        const next = [entry, ...prev];
+        return next.slice(0, MAX_HISTORY);
+      });
+      toast({
+        title: 'Redone',
+        description: `Moved to ${PIPELINE_STATUS_LABELS[entry.newStatus]}`,
+      });
+    }
+  }, [redoStack, applyStatusChange, toast]);
+
   const handleDragStart = useCallback((e: React.DragEvent, item: PipelineItem) => {
     setDraggedItem(item);
     e.dataTransfer.effectAllowed = 'move';
@@ -251,12 +378,20 @@ export default function PipelineBoard() {
       
       if (!response.ok) throw new Error('Failed to update');
       
+      pushToUndoStack({
+        itemId: item.id,
+        propertyId: item.propertyId,
+        oldStatus,
+        newStatus,
+        timestamp: Date.now(),
+        apiEndpoint: 'property',
+      });
+
       toast({
         title: newStatus === 'won' ? 'Closed Won!' : 'Closed Lost',
         description: `Deal moved to ${PIPELINE_STATUS_LABELS[newStatus]}`,
       });
     } catch (error) {
-      // Revert on error
       fetchBoardData();
       toast({
         title: 'Error',
@@ -266,7 +401,7 @@ export default function PipelineBoard() {
     } finally {
       setUpdating(null);
     }
-  }, [fetchBoardData, toast]);
+  }, [fetchBoardData, toast, pushToUndoStack]);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     const currentTarget = e.currentTarget as HTMLElement;
@@ -318,6 +453,15 @@ export default function PipelineBoard() {
         throw new Error('Failed to update status');
       }
 
+      pushToUndoStack({
+        itemId,
+        propertyId: itemSnapshot.propertyId,
+        oldStatus,
+        newStatus,
+        timestamp: Date.now(),
+        apiEndpoint: 'pipeline',
+      });
+
       toast({
         title: 'Status updated',
         description: `Moved to ${PIPELINE_STATUS_LABELS[newStatus]}`,
@@ -347,7 +491,7 @@ export default function PipelineBoard() {
     } finally {
       setUpdating(null);
     }
-  }, [draggedItem, toast]);
+  }, [draggedItem, toast, pushToUndoStack]);
 
   return (
     <AppSidebar>
@@ -364,6 +508,30 @@ export default function PipelineBoard() {
             </div>
             
             <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleUndo}
+                  disabled={undoStack.length === 0 || updating !== null}
+                  className="touch-manipulation"
+                  title="Undo last move"
+                  data-testid="button-undo"
+                >
+                  <Undo2 className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleRedo}
+                  disabled={redoStack.length === 0 || updating !== null}
+                  className="touch-manipulation"
+                  title="Redo last move"
+                  data-testid="button-redo"
+                >
+                  <Redo2 className="w-4 h-4" />
+                </Button>
+              </div>
               <Button
                 variant={showLost ? 'default' : 'outline'}
                 size="sm"
@@ -372,7 +540,7 @@ export default function PipelineBoard() {
                 data-testid="button-toggle-lost"
               >
                 {showLost ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                <span className="hidden sm:inline text-sm">{showLost ? 'Hide' : 'Show'}</span>
+                <span className="hidden sm:inline text-sm">{showLost ? 'Hide Lost' : 'Show Lost'}</span>
               </Button>
               
               {isAdmin && (
