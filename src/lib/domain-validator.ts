@@ -31,6 +31,35 @@ const PARKING_DOMAINS = new Set([
   'epik.com',
 ]);
 
+const NOT_FOUND_INDICATORS = [
+  'property not found',
+  'listing not found',
+  'page not found',
+  'this listing is no longer available',
+  'listing has been removed',
+  'listing is no longer active',
+  'this property is no longer available',
+  'no longer available for',
+  'this page could not be found',
+  "we couldn't find this page",
+  "we can't find this page",
+  'the page you requested was not found',
+  '404 not found',
+  'error 404',
+  'http 404',
+];
+
+const NOT_FOUND_TITLE_PATTERNS = [
+  '404',
+  'not found',
+  'page not found',
+  'property not found',
+  'listing not found',
+  'error - ',
+  'oops!',
+  'oops -',
+];
+
 const PARKING_INDICATORS = [
   'domain is for sale',
   'buy this domain',
@@ -198,7 +227,34 @@ async function _fetchAndValidateDomain(
     }
 
     const titleMatch = lowerBody.match(/<title[^>]*>(.*?)<\/title>/);
-    const pageTitle = titleMatch ? titleMatch[1].trim() : '';
+    const pageTitle = titleMatch ? titleMatch[1].trim().toLowerCase() : '';
+
+    // Check for "not found" / expired listing pages before parking detection
+    if (pageTitle) {
+      const titleIsNotFound = NOT_FOUND_TITLE_PATTERNS.some(p => pageTitle === p || pageTitle.startsWith(p) || pageTitle.includes(p));
+      if (titleIsNotFound) {
+        console.warn(`[DomainValidator] ${inputDomain} page title indicates not-found: "${pageTitle}"`);
+        return wrap({
+          isValid: false,
+          reason: `Page title indicates not-found or error: "${pageTitle}"`,
+          finalUrl,
+          finalDomain,
+        });
+      }
+    }
+
+    for (const indicator of NOT_FOUND_INDICATORS) {
+      if (lowerBody.includes(indicator)) {
+        console.warn(`[DomainValidator] ${inputDomain} page content indicates not-found: "${indicator}"`);
+        return wrap({
+          isValid: false,
+          reason: `Page content indicates not-found: "${indicator}"`,
+          finalUrl,
+          finalDomain,
+        });
+      }
+    }
+
     if (pageTitle && (
       pageTitle.includes('for sale') ||
       pageTitle.includes('parked') ||
@@ -273,7 +329,13 @@ export async function validateDomain(
 ): Promise<DomainValidationResult> {
   const inputDomain = extractDomain(url);
   const fullUrl = url.startsWith('http') ? url : `https://${url}`;
-  const cacheKey = `${inputDomain}|${expectedCompanyName || ''}`;
+  // Use full URL as cache key when the URL has a non-root path (e.g. a specific listing page)
+  // so different listing URLs on the same domain (e.g. LoopNet) are cached independently.
+  let urlPath = '/';
+  try { urlPath = new URL(fullUrl).pathname; } catch { /* keep default */ }
+  const cacheKey = urlPath.length > 1
+    ? `${fullUrl}|${expectedCompanyName || ''}`
+    : `${inputDomain}|${expectedCompanyName || ''}`;
 
   const cached = getCached(cacheKey);
   if (cached) return cached;
