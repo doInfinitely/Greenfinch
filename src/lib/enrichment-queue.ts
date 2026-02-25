@@ -1150,7 +1150,7 @@ async function searchForReplacement(
         relationshipNote: `Replacement found via AI search after previous contact left role`,
         relationshipStatus: 'active',
         relationshipVerifiedAt: new Date(),
-      });
+      }).onConflictDoNothing();
       console.log(`[ReplacementSearch] Linked replacement ${result.name} to property ${propertyId}`);
 
       try {

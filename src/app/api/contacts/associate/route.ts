@@ -85,7 +85,7 @@ export async function POST(request: NextRequest) {
       role,
       confidenceScore: 1.0,
       relationshipConfidence: 'high',
-    });
+    }).onConflictDoNothing();
 
     return NextResponse.json({
       success: true,

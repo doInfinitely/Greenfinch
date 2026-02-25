@@ -422,6 +422,7 @@ export const propertyContacts = pgTable('property_contacts', {
   discoveredAt: timestamp('discovered_at').defaultNow(),
 }, (table) => ({
   propertyContactIdx: index('idx_property_contacts').on(table.propertyId, table.contactId),
+  propertyContactUnique: uniqueIndex('property_contacts_property_id_contact_id_unique').on(table.propertyId, table.contactId),
 }));
 
 // Junction: Property <-> Organization
