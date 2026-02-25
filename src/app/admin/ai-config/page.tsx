@@ -86,10 +86,8 @@ export default function AIConfigPage() {
 
     if (updates.model) {
       const newModel = updates.model;
-      if (!supportsThinking(newModel) && config[stage].thinkingLevel !== 'NONE') {
-        updated[stage].thinkingLevel = 'NONE';
-      }
-      if (supportsThinking(newModel) && updated[stage].thinkingLevel !== 'NONE') {
+      updated[stage].thinkingLevel = 'NONE';
+      if (!supportsThinking(newModel)) {
         updated[stage].temperature = 1.0;
       }
     }
