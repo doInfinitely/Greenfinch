@@ -1070,6 +1070,22 @@ export default function ContactsPage() {
                           )}
                         </div>
                       </th>
+                      {showContactInfo && (
+                        <>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            LinkedIn
+                          </th>
+                          <th
+                            onClick={() => handleSort('email')}
+                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                          >
+                            Email <SortIcon column="email" />
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Phone
+                          </th>
+                        </>
+                      )}
                       <th
                         onClick={() => handleSort('title')}
                         className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
@@ -1091,22 +1107,6 @@ export default function ContactsPage() {
                       <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Location
                       </th>
-                      {showContactInfo && (
-                        <>
-                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            LinkedIn
-                          </th>
-                          <th
-                            onClick={() => handleSort('email')}
-                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
-                          >
-                            Email <SortIcon column="email" />
-                          </th>
-                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Phone
-                          </th>
-                        </>
-                      )}
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
@@ -1171,43 +1171,6 @@ export default function ContactsPage() {
                                 size="sm"
                               />
                             </div>
-                          </td>
-                          <td 
-                            className="px-3 py-3 overflow-hidden"
-                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
-                          >
-                            {contact.title ? (
-                              <span className="text-sm text-gray-900 truncate block">{contact.title}</span>
-                            ) : (
-                              <span className="text-sm text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td 
-                            className="px-3 py-3 overflow-hidden"
-                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
-                          >
-                            {contact.employerName ? (
-                              <span className="text-sm text-gray-900 truncate block">{contact.employerName}</span>
-                            ) : (
-                              <span className="text-sm text-gray-400">—</span>
-                            )}
-                          </td>
-                          <td 
-                            className="px-3 py-3 text-center"
-                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
-                            data-testid={`text-property-count-${contact.id}`}
-                          >
-                            <span className="text-sm text-gray-900">{contact.propertyCount}</span>
-                          </td>
-                          <td 
-                            className="px-3 py-3 overflow-hidden"
-                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
-                          >
-                            {contact.location ? (
-                              <span className="text-sm text-gray-600 truncate block">{contact.location}</span>
-                            ) : (
-                              <span className="text-sm text-gray-400">—</span>
-                            )}
                           </td>
                           {showContactInfo && (
                             <>
@@ -1276,6 +1239,43 @@ export default function ContactsPage() {
                               </td>
                             </>
                           )}
+                          <td 
+                            className="px-3 py-3 overflow-hidden"
+                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
+                          >
+                            {contact.title ? (
+                              <span className="text-sm text-gray-900 truncate block">{contact.title}</span>
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td 
+                            className="px-3 py-3 overflow-hidden"
+                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
+                          >
+                            {contact.employerName ? (
+                              <span className="text-sm text-gray-900 truncate block">{contact.employerName}</span>
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
+                          <td 
+                            className="px-3 py-3 text-center"
+                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
+                            data-testid={`text-property-count-${contact.id}`}
+                          >
+                            <span className="text-sm text-gray-900">{contact.propertyCount}</span>
+                          </td>
+                          <td 
+                            className="px-3 py-3 overflow-hidden"
+                            onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
+                          >
+                            {contact.location ? (
+                              <span className="text-sm text-gray-600 truncate block">{contact.location}</span>
+                            ) : (
+                              <span className="text-sm text-gray-400">—</span>
+                            )}
+                          </td>
                         </tr>
                         {expandedContact === contact.id && (
                           <tr>
