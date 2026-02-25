@@ -25,22 +25,44 @@ function formatTimeout(ms: number): string {
 type StageKey = 'stage1_classify' | 'stage2_ownership' | 'stage3_contacts' | 'summary_cleanup' | 'replacement_search' | 'domain_retry';
 type RuntimeConfig = Record<StageKey, StageConfig>;
 
-const THINKING_LEVELS: ThinkingLevel[] = ['NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH'];
+const ALL_THINKING_LEVELS: ThinkingLevel[] = ['NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH'];
 
 const THINKING_DESCRIPTIONS: Record<ThinkingLevel, string> = {
   NONE: 'No reasoning',
-  MINIMAL: 'Fast, simple lookups',
-  LOW: 'Balanced reasoning',
-  MEDIUM: 'Multi-step research',
+  MINIMAL: 'Minimal (Flash only)',
+  LOW: 'Fast reasoning',
+  MEDIUM: 'Balanced (Flash / 3.1 Pro)',
   HIGH: 'Deep analysis',
 };
 
-function isGemini3(model: string): boolean {
-  return model.includes('gemini-3');
+/**
+ * Thinking levels supported by each model — mirrors runtime-config.ts MODEL_THINKING_LEVELS.
+ * gemini-3-flash-preview : MINIMAL | LOW | MEDIUM | HIGH  (always thinks, no NONE)
+ * gemini-3-pro-preview   : LOW | HIGH only
+ * gemini-2.5-*           : NONE | MINIMAL | LOW | MEDIUM | HIGH
+ * gemini-2.0-*           : NONE only (no thinking)
+ */
+const MODEL_THINKING_LEVELS: Record<string, ThinkingLevel[]> = {
+  'gemini-3-flash-preview': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+  'gemini-3-pro-preview':   ['LOW', 'HIGH'],
+  'gemini-2.5-flash':       ['NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+  'gemini-2.5-pro':         ['NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+  'gemini-2.0-flash':       ['NONE'],
+  'gemini-2.0-flash-lite':  ['NONE'],
+};
+
+function validThinkingLevels(model: string): ThinkingLevel[] {
+  return MODEL_THINKING_LEVELS[model] ?? ALL_THINKING_LEVELS;
 }
 
-function supportsThinking(model: string): boolean {
-  return /gemini-(2\.5-.+-preview|3[\.\-])/i.test(model);
+function clampThinkingLevel(model: string, level: ThinkingLevel): ThinkingLevel {
+  const valid = validThinkingLevels(model);
+  if (valid.includes(level)) return level;
+  const preference: ThinkingLevel[] = ['NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH'];
+  const idx = preference.indexOf(level);
+  for (let i = idx; i >= 0; i--) { if (valid.includes(preference[i])) return preference[i]; }
+  for (let i = idx + 1; i < preference.length; i++) { if (valid.includes(preference[i])) return preference[i]; }
+  return valid[0];
 }
 
 function getModelFamily(model: string): string {
@@ -50,8 +72,15 @@ function getModelFamily(model: string): string {
   return 'Unknown';
 }
 
+function getModelNote(model: string): string {
+  if (model === 'gemini-3-pro-preview') return 'Thinking: LOW or HIGH only';
+  if (model === 'gemini-3-flash-preview') return 'Thinking: MINIMAL → HIGH (always on)';
+  if (model.includes('gemini-2.0')) return 'No thinking support';
+  return 'All thinking levels supported';
+}
+
 function getSearchGroundingNote(model: string): string {
-  if (isGemini3(model)) return 'Gemini 3: $0.035 per search query';
+  if (model.includes('gemini-3')) return 'Gemini 3: $0.035 per search query';
   return 'Flat $0.035 per prompt when search is triggered';
 }
 
@@ -88,20 +117,17 @@ export default function AIConfigPage() {
 
   const updateStage = (stage: StageKey, updates: Partial<StageConfig>) => {
     if (!config) return;
-    const updated = { ...config, [stage]: { ...config[stage], ...updates } };
+    const merged = { ...config[stage], ...updates };
 
     if (updates.model) {
-      const newModel = updates.model;
-      updated[stage].thinkingLevel = 'NONE';
-      if (!supportsThinking(newModel)) {
-        updated[stage].temperature = 1.0;
-      }
+      merged.thinkingLevel = clampThinkingLevel(updates.model, merged.thinkingLevel);
     }
 
-    if (updates.thinkingLevel && updates.thinkingLevel !== 'NONE') {
-      updated[stage].temperature = 1.0;
+    if (merged.thinkingLevel !== 'NONE') {
+      merged.temperature = 1.0;
     }
 
+    const updated = { ...config, [stage]: merged };
     setConfig(updated);
     setDirty(true);
     setSaveMessage(null);
@@ -268,8 +294,8 @@ function StageCard({
 }) {
   const [expanded, setExpanded] = useState(true);
   const modelFamily = getModelFamily(config.model);
-  const thinkingSupported = supportsThinking(config.model);
-  const gem3 = isGemini3(config.model);
+  const allowedLevels = validThinkingLevels(config.model);
+  const thinkingActive = config.thinkingLevel !== 'NONE';
 
   const hasChanges = (['model', 'searchGrounding', 'thinkingLevel', 'temperature', 'maxRetries', 'timeoutMs'] as (keyof StageConfig)[])
     .some(f => isModified(stageKey, f));
@@ -306,7 +332,7 @@ function StageCard({
                   <option key={m} value={m}>{m}</option>
                 ))}
               </select>
-              <p className="text-xs text-gray-400 mt-1">{modelFamily}</p>
+              <p className="text-xs text-gray-400 mt-1">{getModelNote(config.model)}</p>
             </div>
 
             <div data-testid={`select-thinking-${stageKey}`}>
@@ -314,22 +340,22 @@ function StageCard({
                 <Brain className="w-3.5 h-3.5" /> Thinking Level
                 {isModified(stageKey, 'thinkingLevel') && <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />}
               </label>
-              {thinkingSupported ? (
+              {allowedLevels.length === 1 && allowedLevels[0] === 'NONE' ? (
+                <div className="w-full border border-gray-100 rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-400">
+                  Not supported by this model
+                </div>
+              ) : (
                 <select
                   className="w-full border border-gray-200 rounded-md px-3 py-2 text-sm bg-white focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none"
                   value={config.thinkingLevel}
                   onChange={e => onUpdate({ thinkingLevel: e.target.value as ThinkingLevel })}
                 >
-                  {THINKING_LEVELS.map(level => (
+                  {allowedLevels.map(level => (
                     <option key={level} value={level}>{level} — {THINKING_DESCRIPTIONS[level]}</option>
                   ))}
                 </select>
-              ) : (
-                <div className="w-full border border-gray-100 rounded-md px-3 py-2 text-sm bg-gray-50 text-gray-400">
-                  Not supported by this model
-                </div>
               )}
-              {thinkingSupported && config.thinkingLevel !== 'NONE' && (
+              {thinkingActive && (
                 <p className="text-xs text-amber-600 mt-1">Temperature locked to 1.0 when thinking is enabled</p>
               )}
             </div>
@@ -347,7 +373,7 @@ function StageCard({
                   step="0.1"
                   value={config.temperature}
                   onChange={e => onUpdate({ temperature: parseFloat(e.target.value) })}
-                  disabled={thinkingSupported && config.thinkingLevel !== 'NONE'}
+                  disabled={thinkingActive}
                   className="flex-1 accent-green-600"
                 />
                 <span className="text-sm font-mono w-8 text-right">{config.temperature.toFixed(1)}</span>

@@ -42,6 +42,42 @@ export const AVAILABLE_MODELS = [
   'gemini-2.0-flash-lite',
 ] as const;
 
+/**
+ * Thinking levels supported by each model, based on official Vertex AI docs.
+ *
+ * gemini-3-flash-preview : MINIMAL | LOW | MEDIUM | HIGH  (always thinks — no NONE)
+ * gemini-3-pro-preview   : LOW | HIGH only               (no NONE, MINIMAL, or MEDIUM)
+ * gemini-2.5-*           : NONE | MINIMAL | LOW | MEDIUM | HIGH
+ * gemini-2.0-*           : NONE only (no thinking support)
+ */
+export const MODEL_THINKING_LEVELS: Record<string, ThinkingLevel[]> = {
+  'gemini-3-flash-preview': ['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+  'gemini-3-pro-preview':   ['LOW', 'HIGH'],
+  'gemini-2.5-flash':       ['NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+  'gemini-2.5-pro':         ['NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH'],
+  'gemini-2.0-flash':       ['NONE'],
+  'gemini-2.0-flash-lite':  ['NONE'],
+};
+
+/** Default thinking level to use when the current level is invalid for a new model. */
+export function clampThinkingLevel(model: string, level: ThinkingLevel): ThinkingLevel {
+  const valid = MODEL_THINKING_LEVELS[model];
+  if (!valid) return level;
+  if (valid.includes(level)) return level;
+  // Pick the closest valid level by preference order
+  const preference: ThinkingLevel[] = ['NONE', 'MINIMAL', 'LOW', 'MEDIUM', 'HIGH'];
+  const levelIdx = preference.indexOf(level);
+  // Walk down from current level to find nearest valid lower level
+  for (let i = levelIdx; i >= 0; i--) {
+    if (valid.includes(preference[i])) return preference[i];
+  }
+  // Walk up if nothing lower works
+  for (let i = levelIdx + 1; i < preference.length; i++) {
+    if (valid.includes(preference[i])) return preference[i];
+  }
+  return valid[0];
+}
+
 export type RuntimeConfig = Record<StageKey, StageConfig>;
 
 function defaultStageConfig(overrides?: Partial<StageConfig>): StageConfig {
@@ -121,7 +157,9 @@ export function getAllStageConfigs(): RuntimeConfig {
 
 export function updateStageConfig(stage: StageKey, updates: Partial<StageConfig>): StageConfig {
   const config = loadConfig();
-  config[stage] = { ...config[stage], ...updates };
+  const merged = { ...config[stage], ...updates };
+  merged.thinkingLevel = clampThinkingLevel(merged.model, merged.thinkingLevel);
+  config[stage] = merged;
   saveConfig(config);
   console.log(`[AIConfig] Updated ${stage}:`, JSON.stringify(config[stage]));
   return config[stage];
@@ -131,7 +169,9 @@ export function updateAllStageConfigs(newConfig: RuntimeConfig): RuntimeConfig {
   const config = structuredClone(FACTORY_DEFAULTS);
   for (const key of Object.keys(FACTORY_DEFAULTS) as StageKey[]) {
     if (newConfig[key]) {
-      config[key] = { ...FACTORY_DEFAULTS[key], ...newConfig[key] };
+      const merged = { ...FACTORY_DEFAULTS[key], ...newConfig[key] };
+      merged.thinkingLevel = clampThinkingLevel(merged.model, merged.thinkingLevel);
+      config[key] = merged;
     }
   }
   saveConfig(config);
