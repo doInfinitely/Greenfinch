@@ -1359,55 +1359,130 @@ export default function ContactsPage() {
             </div>
 
             <div className="md:hidden bg-white rounded-lg border border-gray-200 divide-y divide-gray-200">
-              {contacts.map((contact) => (
-                <div
-                  key={contact.id}
-                  className={`flex items-start gap-3 p-4 transition-colors ${selectedContacts.has(contact.id) ? 'bg-green-50' : ''}`}
-                  data-testid={`mobile-contact-card-${contact.id}`}
-                >
-                  <div className="pt-0.5 flex-shrink-0">
-                    <Checkbox
-                      checked={selectedContacts.has(contact.id)}
-                      onChange={(e) => handleSelectContact(contact.id, e.target.checked)}
-                      aria-label={`Select ${contact.fullName || 'contact'}`}
-                      data-testid={`mobile-checkbox-contact-${contact.id}`}
-                    />
-                  </div>
-                  <Link
-                    href={`/contact/${contact.id}`}
-                    className="flex-1 min-w-0"
+              {contacts.map((contact) => {
+                const mobileExpanded = expandedContact === contact.id;
+                return (
+                  <div
+                    key={contact.id}
+                    className={`p-4 transition-colors ${selectedContacts.has(contact.id) ? 'bg-green-50' : ''}`}
+                    data-testid={`mobile-contact-card-${contact.id}`}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium text-gray-900 truncate">
-                          {contact.fullName || 'Unknown'}
-                        </p>
-                        {contact.email && (
-                          <p className="text-sm text-green-600 truncate">{contact.email}</p>
-                        )}
-                        {contact.title && (
-                          <p className="text-xs text-gray-500 mt-1">{contact.title}</p>
-                        )}
+                    <div className="flex items-start gap-3">
+                      <div className="pt-0.5 flex-shrink-0">
+                        <Checkbox
+                          checked={selectedContacts.has(contact.id)}
+                          onChange={(e) => handleSelectContact(contact.id, e.target.checked)}
+                          aria-label={`Select ${contact.fullName || 'contact'}`}
+                          data-testid={`mobile-checkbox-contact-${contact.id}`}
+                        />
                       </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        {contact.emailStatus && (
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${getEmailStatusColor(contact.emailStatus)}`}>
-                            {contact.emailStatus}
+                      <div
+                        className="flex-1 min-w-0 cursor-pointer"
+                        onClick={() => setExpandedContact(mobileExpanded ? null : contact.id)}
+                        data-testid={`mobile-contact-toggle-${contact.id}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-gray-900 truncate">
+                              {contact.fullName || 'Unknown'}
+                            </p>
+                            {contact.title && (
+                              <p className="text-xs text-gray-500 mt-0.5">{contact.title}</p>
+                            )}
+                            {contact.organizations?.[0]?.orgName && (
+                              <p className="text-xs text-gray-400 truncate">{contact.organizations[0].orgName}</p>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 shrink-0 pt-0.5">
+                            <LinkedInStatusIcon
+                              linkedinUrl={contact.linkedinUrl}
+                              size="sm"
+                            />
+                            <EmailStatusIcon
+                              email={contact.email}
+                              emailStatus={contact.emailStatus}
+                              size="sm"
+                            />
+                            <PhoneStatusIcon
+                              phones={(() => {
+                                const p = getPhoneNumbers(contact);
+                                return p.map(ph => ({ number: ph.number, type: ph.label || null, status: null }));
+                              })()}
+                              size="sm"
+                            />
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                            {contact.propertyCount} props
                           </span>
-                        )}
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
+                            {contact.organizationCount} orgs
+                          </span>
+                          <ChevronRight className={`w-4 h-4 text-gray-400 ml-auto transition-transform ${mobileExpanded ? 'rotate-90' : ''}`} />
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 mt-2">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                        {contact.propertyCount} properties
-                      </span>
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-purple-100 text-purple-800">
-                        {contact.organizationCount} orgs
-                      </span>
-                    </div>
-                  </Link>
-                </div>
-              ))}
+                    {mobileExpanded && (
+                      <div className="mt-3 ml-9 space-y-2 animate-col-expand">
+                        {contact.email && (
+                          <div className="flex items-center gap-2">
+                            <Mail className="w-4 h-4 text-gray-400 shrink-0" />
+                            <a href={`mailto:${contact.email}`} className="text-sm text-green-600 underline truncate" data-testid={`mobile-email-${contact.id}`}>
+                              {contact.email}
+                            </a>
+                          </div>
+                        )}
+                        {(() => {
+                          const phones = getPhoneNumbers(contact);
+                          return phones.length > 0 ? (
+                            <div className="flex items-start gap-2">
+                              <Phone className="w-4 h-4 text-gray-400 shrink-0 mt-0.5" />
+                              <div className="flex flex-col gap-0.5">
+                                {phones.map((p) => (
+                                  <a key={p.number} href={`tel:${p.number}`} className="text-sm text-green-600 underline" data-testid={`mobile-phone-${contact.id}-${p.number}`}>
+                                    {formatPhoneNumber(p.number, p.extension)}
+                                    {p.label && <span className="text-xs text-gray-400 ml-1">({p.label})</span>}
+                                  </a>
+                                ))}
+                              </div>
+                            </div>
+                          ) : null;
+                        })()}
+                        {contact.linkedinUrl && (
+                          <div className="flex items-center gap-2">
+                            <ExternalLink className="w-4 h-4 text-gray-400 shrink-0" />
+                            <a href={contact.linkedinUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 underline" data-testid={`mobile-linkedin-${contact.id}`}>
+                              LinkedIn Profile
+                            </a>
+                          </div>
+                        )}
+                        {contact.properties.length > 0 && (
+                          <div className="pt-1">
+                            <p className="text-xs font-medium text-gray-500 mb-1">Properties</p>
+                            {contact.properties.slice(0, 3).map((prop) => (
+                              <Link key={prop.propertyId} href={`/property/${prop.propertyKey || prop.propertyId}`} className="block text-xs text-green-600 underline truncate py-0.5" data-testid={`mobile-property-link-${contact.id}-${prop.propertyId}`}>
+                                {prop.address || prop.propertyKey || 'Unknown'}
+                              </Link>
+                            ))}
+                            {contact.properties.length > 3 && (
+                              <p className="text-xs text-gray-400">+{contact.properties.length - 3} more</p>
+                            )}
+                          </div>
+                        )}
+                        <Link
+                          href={`/contact/${contact.id}`}
+                          className="inline-flex items-center gap-1 text-sm text-green-600 font-medium pt-1"
+                          data-testid={`mobile-view-contact-${contact.id}`}
+                        >
+                          View full profile
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
 
             {pagination.total > 0 && (

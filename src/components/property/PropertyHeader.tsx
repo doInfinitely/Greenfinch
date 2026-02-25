@@ -349,12 +349,12 @@ export default function PropertyHeader({
                 }
                 return null;
               })()}
-              <Button variant="outline" size="icon" onClick={onShowAddToList} title="Add to prospecting list" disabled={!userId} data-testid="button-add-to-list">
+              <Button variant="outline" size="icon" onClick={onShowAddToList} title="Add to prospecting list" disabled={!userId} className="h-10 w-10 md:h-8 md:w-8 touch-manipulation" data-testid="button-add-to-list">
                 <ListPlus className="w-4 h-4" />
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="icon" data-testid="button-more-actions">
+                  <Button variant="outline" size="icon" className="h-10 w-10 md:h-8 md:w-8 touch-manipulation" data-testid="button-more-actions">
                     <MoreVertical className="w-4 h-4" />
                   </Button>
                 </DropdownMenuTrigger>

@@ -123,7 +123,12 @@ export default function PipelineBoard() {
   const [redoStack, setRedoStack] = useState<HistoryEntry[]>([]);
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(true);
-  const [showHint, setShowHint] = useState(true);
+  const [showHint, setShowHint] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return !localStorage.getItem('pipeline_swipe_hint_seen');
+    }
+    return false;
+  });
   const [lostModalOpen, setLostModalOpen] = useState(false);
   const [lostReason, setLostReason] = useState<string>('');
   const [lostNotes, setLostNotes] = useState('');
@@ -154,9 +159,9 @@ export default function PipelineBoard() {
     setCanScrollLeft(scrollLeft > 0);
     setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 10);
     
-    // Hide hint after first scroll
     if (showHint) {
       setShowHint(false);
+      localStorage.setItem('pipeline_swipe_hint_seen', '1');
       if (hintTimeoutRef.current) {
         clearTimeout(hintTimeoutRef.current);
       }
@@ -179,8 +184,14 @@ export default function PipelineBoard() {
     if (!container) return;
     
     container.addEventListener('scroll', handleScroll);
-    // Check initial scroll state
     setTimeout(handleScroll, 100);
+    
+    if (showHint) {
+      hintTimeoutRef.current = setTimeout(() => {
+        setShowHint(false);
+        localStorage.setItem('pipeline_swipe_hint_seen', '1');
+      }, 5000);
+    }
     
     return () => {
       container.removeEventListener('scroll', handleScroll);
@@ -188,7 +199,7 @@ export default function PipelineBoard() {
         clearTimeout(hintTimeoutRef.current);
       }
     };
-  }, [handleScroll]);
+  }, [handleScroll, showHint]);
 
   const fetchBoardData = useCallback(async () => {
     try {
