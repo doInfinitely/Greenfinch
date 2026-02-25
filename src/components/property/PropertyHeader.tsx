@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, X, Loader2, MoreVertical, ListPlus, User, XCircle, Eye, Sparkles, Maximize2 } from 'lucide-react';
+import { AlertTriangle, X, Loader2, MoreVertical, ListPlus, User, XCircle, Eye, Sparkles, Maximize2, RefreshCw } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -383,9 +383,30 @@ export default function PropertyHeader({
               const isEnrichmentActive = queueStatus.isActive;
               const enrichmentHasFailed = queueStatus.status === 'failed';
               const isResearchComplete = enrichmentStatus === 'completed' || enrichmentStatus === 'enriched';
-              
-              if (isResearchComplete) return null;
-              
+
+              if (isResearchComplete) {
+                return (
+                  <AdminOnly>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={onEnrichment}
+                      disabled={isEnrichmentActive}
+                      className="border-gray-300 text-gray-500 hover:border-purple-400 hover:text-purple-700"
+                      title="Re-run full AI enrichment (greenfinch admin only)"
+                      data-testid="button-re-run-enrichment"
+                    >
+                      {isEnrichmentActive ? (
+                        <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      ) : (
+                        <RefreshCw className="w-4 h-4 mr-1" />
+                      )}
+                      {isEnrichmentActive ? 'Researching...' : 'Re-run Research'}
+                    </Button>
+                  </AdminOnly>
+                );
+              }
+
               return (
                 <AdminOnly>
                   <Button
