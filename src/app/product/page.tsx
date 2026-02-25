@@ -47,7 +47,7 @@ export default function ProductPage() {
               <ul className="space-y-4">
                 {[
                   'Detailed parcel data (Lot size, Building SqFt)',
-                  'Zoning and land use codes',
+                  'Property type, use, and size',
                   'Ownership history and structure',
                   'Visual territory mapping',
                 ].map((item, index) => (
