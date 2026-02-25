@@ -28,13 +28,13 @@ export default function LandingPage() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className={`transition-all duration-700 ${isLoaded ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-4'}`}>
               <h1 className="text-5xl sm:text-6xl font-serif font-bold text-gray-900 leading-tight">
-                Find the right customers.{' '}
+                Stop Searching.{' '}
                 <span className="bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
-                  Close faster.
+                  Start Selling.
                 </span>
               </h1>
               <p className="mt-6 text-xl text-gray-600 leading-relaxed">
-                Stop driving by buildings and Googling names. greenfinch shows you who manages every commercial property in your territory — with verified contact info — so you spend less time researching and more time selling.
+                Stop driving by buildings and Googling names. Greenfinch.ai shows you who manages every commercial property in your territory — with verified contact info — so you spend less time researching and more time selling.
               </p>
               <div className="mt-8 flex flex-col sm:flex-row gap-4">
                 <Link
@@ -81,7 +81,7 @@ export default function LandingPage() {
               Less Research. More Revenue.
             </h2>
             <p className="mt-4 text-lg text-gray-600 max-w-2xl mx-auto">
-              Your team wastes hours chasing bad leads and outdated info. greenfinch gives you property intelligence and verified contacts so every call counts.
+              Your team wastes hours chasing bad leads and outdated info. Greenfinch.ai gives you property intelligence and verified contacts so every call counts.
             </p>
           </div>
           
@@ -180,7 +180,7 @@ export default function LandingPage() {
                 From prospect to proposal in fewer steps.
               </h2>
               <p className="text-lg text-gray-600 mb-6">
-                greenfinch sits upstream of your CRM. Find properties, verify contacts, and qualify leads before they ever hit your pipeline — so your team only works real opportunities.
+                Greenfinch.ai sits upstream of your CRM. Find properties, verify contacts, and qualify leads before they ever hit your pipeline — so your team only works real opportunities.
               </p>
               <Link
                 href="/product"
@@ -254,7 +254,7 @@ export default function LandingPage() {
             Ready to stop chasing and start closing?
           </h2>
           <p className="text-lg text-gray-300 mb-8">
-            Join the commercial service companies already using greenfinch to find better prospects, reach decision makers faster, and win more contracts.
+            Join the commercial service companies already using Greenfinch.ai to find better prospects, reach decision makers faster, and win more contracts.
           </p>
           <div className="flex flex-wrap justify-center gap-8 mb-8">
             <div className="flex items-center gap-3">

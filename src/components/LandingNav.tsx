@@ -27,14 +27,14 @@ export default function LandingNav() {
               <div className="w-10 h-10 relative flex-shrink-0">
                 <Image
                   src="/greenfinch-logo.png"
-                  alt="greenfinch.ai"
+                  alt="Greenfinch.ai"
                   fill
                   sizes="40px"
                   className="object-contain"
                   priority
                 />
               </div>
-              <span className="text-xl font-semibold text-gray-900">greenfinch.ai</span>
+              <span className="text-xl font-semibold text-gray-900">Greenfinch.ai</span>
             </Link>
             
             <div className="hidden md:flex items-center gap-6">

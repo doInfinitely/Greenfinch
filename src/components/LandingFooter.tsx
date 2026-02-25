@@ -14,14 +14,14 @@ export default function LandingFooter() {
               <div className="w-10 h-10 relative flex-shrink-0">
                 <Image
                   src="/greenfinch-logo.png"
-                  alt="greenfinch.ai"
+                  alt="Greenfinch.ai"
                   fill
                   sizes="40px"
                   className="object-contain"
                   priority
                 />
               </div>
-              <span className="text-xl font-semibold">greenfinch.ai</span>
+              <span className="text-xl font-semibold">Greenfinch.ai</span>
             </div>
             <p className="text-gray-400 text-sm max-w-md">
               The modern sales intelligence platform for commercial services. Find decision-makers, not just buildings.
@@ -69,7 +69,7 @@ export default function LandingFooter() {
         </div>
         
         <div className="border-t border-gray-800 pt-8 text-center text-gray-400 text-sm">
-          <p>&copy; {new Date().getFullYear()} greenfinch.ai. All rights reserved.</p>
+          <p>&copy; {new Date().getFullYear()} Greenfinch.ai. All rights reserved.</p>
         </div>
       </div>
     </footer>
