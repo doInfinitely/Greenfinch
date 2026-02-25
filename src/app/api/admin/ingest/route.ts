@@ -118,13 +118,14 @@ export async function POST(request: NextRequest) {
           configuredLimit,
         });
       }
-      const zipCounts: Record<string, number> = {};
-      let totalParcels = 0;
-      for (const zip of configuredZipCodes) {
-        const count = await countCommercialPropertiesByZip(zip);
-        zipCounts[zip] = count;
-        totalParcels += count;
-      }
+      const zipCountEntries = await Promise.all(
+        configuredZipCodes.map(async (zip) => {
+          const count = await countCommercialPropertiesByZip(zip);
+          return [zip, count] as const;
+        })
+      );
+      const zipCounts: Record<string, number> = Object.fromEntries(zipCountEntries);
+      const totalParcels = zipCountEntries.reduce((sum, [, c]) => sum + c, 0);
       return NextResponse.json({
         success: true,
         totalParcels,

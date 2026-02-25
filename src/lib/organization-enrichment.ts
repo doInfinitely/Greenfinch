@@ -1,6 +1,7 @@
 import { db } from './db';
 import { organizations, contactOrganizations, propertyOrganizations, properties } from './schema';
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
+import pLimit from 'p-limit';
 import { enrichOrganizationCascade, OrganizationEnrichmentResult as CascadeResult } from './cascade-enrichment';
 import { enrichCompanyPDL, type PDLCompanyResult } from './pdl';
 import { normalizeDomain } from './normalization';
@@ -545,21 +546,26 @@ export async function resolveAffiliatedCompanies(
   const idsToResolve = affiliatedPdlIds.slice(0, MAX_AFFILIATED_LOOKUPS);
   console.log(`[OrgEnrichment] Resolving ${idsToResolve.length} affiliated companies for org ${orgId}`);
 
-  for (const pdlId of idsToResolve) {
+  const existingByPdlId = await db.select({ id: organizations.id, name: organizations.name, domain: organizations.domain, pdlCompanyId: organizations.pdlCompanyId })
+    .from(organizations)
+    .where(inArray(organizations.pdlCompanyId, idsToResolve));
+  const knownPdlIds = new Set(existingByPdlId.map(o => o.pdlCompanyId));
+
+  const unknownIds = idsToResolve.filter(id => !knownPdlIds.has(id));
+  if (unknownIds.length === 0) {
+    console.log(`[OrgEnrichment] All ${idsToResolve.length} affiliated companies already in DB`);
+    return;
+  }
+
+  console.log(`[OrgEnrichment] ${knownPdlIds.size} already in DB, resolving ${unknownIds.length} new affiliated companies`);
+
+  const limit = pLimit(4);
+  await Promise.allSettled(unknownIds.map(pdlId => limit(async () => {
     try {
-      const existing = await db.query.organizations.findFirst({
-        where: eq(organizations.pdlCompanyId, pdlId),
-      });
-
-      if (existing) {
-        console.log(`[OrgEnrichment] Affiliated company ${pdlId} already in DB as "${existing.name}" (${existing.domain})`);
-        continue;
-      }
-
       const pdlResult = await enrichCompanyPDL('', { pdlId });
       if (!pdlResult.found || !pdlResult.name) {
         console.log(`[OrgEnrichment] PDL lookup for affiliated ID ${pdlId} — not found`);
-        continue;
+        return;
       }
 
       const domain = pdlResult.website
@@ -582,7 +588,7 @@ export async function resolveAffiliatedCompanies(
               .where(eq(organizations.id, existingByDomain.id));
           }
           console.log(`[OrgEnrichment] Affiliated company ${pdlId} matched existing org "${existingByDomain.name}" by domain ${domain}`);
-          continue;
+          return;
         }
       }
 
@@ -615,7 +621,7 @@ export async function resolveAffiliatedCompanies(
     } catch (err) {
       console.error(`[OrgEnrichment] Error resolving affiliated company ${pdlId}:`, err instanceof Error ? err.message : err);
     }
-  }
+  })));
 }
 
 async function findOrgByDomainOrName(domain: string | null, companyName: string | null): Promise<typeof organizations.$inferSelect | null> {

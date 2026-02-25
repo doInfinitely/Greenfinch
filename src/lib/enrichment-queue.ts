@@ -1100,12 +1100,15 @@ async function searchForReplacement(
         eq(propertyContacts.relationshipStatus, 'job_change_detected')
       )
     );
-    for (const link of existingFormerLinks) {
-      if (!link.contactId) continue;
-      const formerContact = await db.query.contacts.findFirst({ where: eq(contacts.id, link.contactId) });
-      if (formerContact && normalizeName(formerContact.fullName) === normalizedNameVal) {
-        console.log(`[ReplacementSearch] "${result.name}" matches a former contact on this property, skipping`);
-        return;
+    const formerContactIds = existingFormerLinks.map(l => l.contactId).filter((id): id is string => !!id);
+    if (formerContactIds.length > 0) {
+      const formerContacts = await db.select({ id: contacts.id, fullName: contacts.fullName })
+        .from(contacts).where(inArray(contacts.id, formerContactIds));
+      for (const fc of formerContacts) {
+        if (normalizeName(fc.fullName) === normalizedNameVal) {
+          console.log(`[ReplacementSearch] "${result.name}" matches a former contact on this property, skipping`);
+          return;
+        }
       }
     }
 
