@@ -19,8 +19,9 @@ import { formatBuildingsSummary, formatCompactCategories, mapQualityGradeToClass
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { rateLimiters } from '../../rate-limiter';
 import {
-  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, STAGE_TEMPERATURES, getSearchGroundingTools,
+  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, STAGE_TEMPERATURES, STAGE_TIMEOUTS, getSearchGroundingTools,
 } from '../config';
+import { withTimeout } from '../client';
 
 /**
  * Run Stage 1 of the AI enrichment pipeline.
@@ -88,15 +89,19 @@ Return JSON:
     console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${RETRIES.STAGE_1}...`);
 
     try {
-      response = await rateLimiters.gemini.execute(() =>
-        streamGeminiResponse(client, prompt, {
-          tools: getSearchGroundingTools('stage1_classify'),
-          temperature: STAGE_TEMPERATURES.STAGE_1_CLASSIFY,
-          thinkingLevel: THINKING_LEVELS.STAGE_1_CLASSIFY,
-          latLng: propertyLatLng(property),
-          stageName: 'stage1-classify',
-          model: STAGE_MODELS.STAGE_1_CLASSIFY,
-        })
+      response = await withTimeout(
+        rateLimiters.gemini.execute(() =>
+          streamGeminiResponse(client, prompt, {
+            tools: getSearchGroundingTools('stage1_classify'),
+            temperature: STAGE_TEMPERATURES.STAGE_1_CLASSIFY,
+            thinkingLevel: THINKING_LEVELS.STAGE_1_CLASSIFY,
+            latLng: propertyLatLng(property),
+            stageName: 'stage1-classify',
+            model: STAGE_MODELS.STAGE_1_CLASSIFY,
+          })
+        ),
+        STAGE_TIMEOUTS.STAGE_1_CLASSIFY,
+        'stage1-classify'
       );
 
       text = response.text?.trim() || '';

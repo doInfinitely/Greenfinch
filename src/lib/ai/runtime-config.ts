@@ -13,6 +13,7 @@ export interface StageConfig {
   temperature: number;
   dynamicThreshold: number;
   maxRetries: number;
+  timeoutMs: number;
 }
 
 export type StageKey =
@@ -51,17 +52,18 @@ function defaultStageConfig(overrides?: Partial<StageConfig>): StageConfig {
     temperature: 1.0,
     dynamicThreshold: 0.3,
     maxRetries: 3,
+    timeoutMs: 120_000,
     ...overrides,
   };
 }
 
 const FACTORY_DEFAULTS: RuntimeConfig = {
-  stage1_classify: defaultStageConfig({ thinkingLevel: 'MINIMAL', maxRetries: 3 }),
-  stage2_ownership: defaultStageConfig({ thinkingLevel: 'LOW', maxRetries: 3 }),
-  stage3_contacts: defaultStageConfig({ thinkingLevel: 'MEDIUM', maxRetries: 3 }),
-  summary_cleanup: defaultStageConfig({ thinkingLevel: 'MINIMAL', temperature: 0.2, searchGrounding: false, maxRetries: 1 }),
-  replacement_search: defaultStageConfig({ thinkingLevel: 'MEDIUM', maxRetries: 1 }),
-  domain_retry: defaultStageConfig({ thinkingLevel: 'MINIMAL', maxRetries: 1 }),
+  stage1_classify: defaultStageConfig({ thinkingLevel: 'MINIMAL', maxRetries: 3, timeoutMs: 90_000 }),
+  stage2_ownership: defaultStageConfig({ thinkingLevel: 'LOW', maxRetries: 3, timeoutMs: 120_000 }),
+  stage3_contacts: defaultStageConfig({ thinkingLevel: 'MEDIUM', maxRetries: 3, timeoutMs: 120_000 }),
+  summary_cleanup: defaultStageConfig({ thinkingLevel: 'MINIMAL', temperature: 0.2, searchGrounding: false, maxRetries: 1, timeoutMs: 60_000 }),
+  replacement_search: defaultStageConfig({ thinkingLevel: 'MEDIUM', maxRetries: 1, timeoutMs: 60_000 }),
+  domain_retry: defaultStageConfig({ thinkingLevel: 'MINIMAL', maxRetries: 1, timeoutMs: 60_000 }),
 };
 
 let _lastMtimeMs = 0;

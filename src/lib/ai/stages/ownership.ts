@@ -16,13 +16,13 @@
 
 import type { CommercialProperty } from "../../snowflake";
 import type { StageResult, OwnershipInfo, PropertyClassification, BeneficialOwnerEntry, ManagementCompanyEntry } from '../types';
-import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout } from '../client';
+import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout, withTimeout } from '../client';
 import { extractGroundedSources, parseJsonResponse, validateStage2Schema } from '../parsers';
 import { propertyLatLng, extractUsefulLegalInfo, crossValidateOwnership, OWNER_TYPE_MAP } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validatePropertyWebsite, validateAndCleanDomain } from '../../domain-validator';
 import {
-  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, STAGE_TEMPERATURES, getSearchGroundingTools,
+  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, STAGE_TEMPERATURES, STAGE_TIMEOUTS, getSearchGroundingTools,
 } from '../config';
 
 /**
@@ -108,16 +108,20 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
       console.log(`[FocusedEnrichment] Stage 2 attempt ${attempt}/${RETRIES.STAGE_2}...`);
 
       // Call Gemini with search grounding and LOW thinking for multi-step reasoning
-      const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, {
-          tools: getSearchGroundingTools('stage2_ownership'),
-          temperature: STAGE_TEMPERATURES.STAGE_2_OWNERSHIP,
-          thinkingLevel: THINKING_LEVELS.STAGE_2_OWNERSHIP,
-          latLng: propertyLatLng(property),
-          stageName: 'stage2-ownership',
-          model: STAGE_MODELS.STAGE_2_OWNERSHIP,
-        }),
-        2
+      const response = await withTimeout(
+        callGeminiWithTimeout(
+          () => streamGeminiResponse(client, prompt, {
+            tools: getSearchGroundingTools('stage2_ownership'),
+            temperature: STAGE_TEMPERATURES.STAGE_2_OWNERSHIP,
+            thinkingLevel: THINKING_LEVELS.STAGE_2_OWNERSHIP,
+            latLng: propertyLatLng(property),
+            stageName: 'stage2-ownership',
+            model: STAGE_MODELS.STAGE_2_OWNERSHIP,
+          }),
+          2
+        ),
+        STAGE_TIMEOUTS.STAGE_2_OWNERSHIP,
+        'stage2-ownership'
       );
 
       const text = response.text?.trim() || '';
@@ -468,16 +472,20 @@ Return JSON:
 
   try {
     console.log(`[FocusedEnrichment] Domain retry: searching for property website for "${propertyName}"...`);
-    const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, {
-        tools: getSearchGroundingTools('domain_retry'),
-        temperature: STAGE_TEMPERATURES.DOMAIN_RETRY,
-        thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
-        latLng,
-        stageName: 'stage2-retry-property-website',
-        model: STAGE_MODELS.DOMAIN_RETRY,
-      }),
-      1
+    const response = await withTimeout(
+      callGeminiWithTimeout(
+        () => streamGeminiResponse(client, prompt, {
+          tools: getSearchGroundingTools('domain_retry'),
+          temperature: STAGE_TEMPERATURES.DOMAIN_RETRY,
+          thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
+          latLng,
+          stageName: 'stage2-retry-property-website',
+          model: STAGE_MODELS.DOMAIN_RETRY,
+        }),
+        1
+      ),
+      STAGE_TIMEOUTS.DOMAIN_RETRY,
+      'stage2-retry-property-website'
     );
     const text = response.text?.trim() || '';
     if (!text) return { url: null, domain: null };
@@ -544,16 +552,20 @@ Return JSON:
 
   try {
     console.log(`[FocusedEnrichment] Domain retry: searching for company domain for "${companyName}"...`);
-    const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, {
-        tools: getSearchGroundingTools('domain_retry'),
-        temperature: STAGE_TEMPERATURES.DOMAIN_RETRY,
-        thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
-        latLng,
-        stageName: 'stage2-retry-company-domain',
-        model: STAGE_MODELS.DOMAIN_RETRY,
-      }),
-      1
+    const response = await withTimeout(
+      callGeminiWithTimeout(
+        () => streamGeminiResponse(client, prompt, {
+          tools: getSearchGroundingTools('domain_retry'),
+          temperature: STAGE_TEMPERATURES.DOMAIN_RETRY,
+          thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
+          latLng,
+          stageName: 'stage2-retry-company-domain',
+          model: STAGE_MODELS.DOMAIN_RETRY,
+        }),
+        1
+      ),
+      STAGE_TIMEOUTS.DOMAIN_RETRY,
+      'stage2-retry-company-domain'
     );
     const text = response.text?.trim() || '';
     if (!text) return null;

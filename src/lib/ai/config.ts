@@ -88,6 +88,23 @@ export const STAGE_TEMPERATURES = {
 };
 
 // ---------------------------------------------------------------------------
+// Per-Stage Timeout (runtime-driven)
+// ---------------------------------------------------------------------------
+
+function stageTimeout(key: StageKey): number {
+  return getStageConfig(key).timeoutMs;
+}
+
+export const STAGE_TIMEOUTS = {
+  get STAGE_1_CLASSIFY() { return stageTimeout('stage1_classify'); },
+  get STAGE_2_OWNERSHIP() { return stageTimeout('stage2_ownership'); },
+  get STAGE_3_CONTACTS() { return stageTimeout('stage3_contacts'); },
+  get SUMMARY_CLEANUP() { return stageTimeout('summary_cleanup'); },
+  get REPLACEMENT_SEARCH() { return stageTimeout('replacement_search'); },
+  get DOMAIN_RETRY() { return stageTimeout('domain_retry'); },
+};
+
+// ---------------------------------------------------------------------------
 // Retry & Back-off (runtime-driven retries, static backoff)
 // ---------------------------------------------------------------------------
 

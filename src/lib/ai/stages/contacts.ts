@@ -21,14 +21,14 @@ import type {
   StageResult, OwnershipInfo, PropertyClassification,
   IdentifiedDecisionMaker, DiscoveredContact
 } from '../types';
-import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout } from '../client';
+import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout, withTimeout } from '../client';
 import { extractGroundedSources, parseJsonResponse, validateStage3aSchema } from '../parsers';
 import { propertyLatLng, isLikelyConstructedEmail, deduplicateContacts } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validateAndCleanDomain } from '../../domain-validator';
 import {
   THINKING_LEVELS, RETRIES, BACKOFF, CONFIDENCE,
-  FREE_EMAIL_DOMAINS, STAGE_MODELS, STAGE_TEMPERATURES, getSearchGroundingTools,
+  FREE_EMAIL_DOMAINS, STAGE_MODELS, STAGE_TEMPERATURES, STAGE_TIMEOUTS, getSearchGroundingTools,
 } from '../config';
 
 // =============================================================================
@@ -121,16 +121,20 @@ Return JSON:
     try {
       console.log(`[FocusedEnrichment] Stage 3 attempt ${attempt}/${RETRIES.STAGE_3A}...`);
 
-      const response = await callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, {
-          tools: getSearchGroundingTools('stage3_contacts'),
-          temperature: STAGE_TEMPERATURES.STAGE_3_CONTACTS,
-          thinkingLevel: THINKING_LEVELS.STAGE_3A_CONTACTS,
-          latLng: propertyLatLng(property),
-          stageName: 'stage3-contacts',
-          model: STAGE_MODELS.STAGE_3_CONTACTS,
-        }),
-        2
+      const response = await withTimeout(
+        callGeminiWithTimeout(
+          () => streamGeminiResponse(client, prompt, {
+            tools: getSearchGroundingTools('stage3_contacts'),
+            temperature: STAGE_TEMPERATURES.STAGE_3_CONTACTS,
+            thinkingLevel: THINKING_LEVELS.STAGE_3A_CONTACTS,
+            latLng: propertyLatLng(property),
+            stageName: 'stage3-contacts',
+            model: STAGE_MODELS.STAGE_3_CONTACTS,
+          }),
+          2
+        ),
+        STAGE_TIMEOUTS.STAGE_3_CONTACTS,
+        'stage3-contacts'
       );
 
       const text = response.text?.trim() || '';

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, RefreshCw, RotateCcw, Save, ChevronDown, Check, AlertTriangle, Cpu, Search, Thermometer, Brain, Repeat } from 'lucide-react';
+import { ArrowLeft, RefreshCw, RotateCcw, Save, ChevronDown, Check, AlertTriangle, Cpu, Search, Thermometer, Brain, Repeat, Timer } from 'lucide-react';
 import Link from 'next/link';
 
 type ThinkingLevel = 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH';
@@ -14,6 +14,12 @@ interface StageConfig {
   temperature: number;
   dynamicThreshold: number;
   maxRetries: number;
+  timeoutMs: number;
+}
+
+const TIMEOUT_PRESETS = [30_000, 60_000, 90_000, 120_000, 180_000];
+function formatTimeout(ms: number): string {
+  return `${ms / 1000}s`;
 }
 
 type StageKey = 'stage1_classify' | 'stage2_ownership' | 'stage3_contacts' | 'summary_cleanup' | 'replacement_search' | 'domain_retry';
@@ -179,7 +185,7 @@ export default function AIConfigPage() {
           </Link>
           <div>
             <h1 className="text-xl font-semibold text-gray-900" data-testid="text-page-title">AI Enrichment Config</h1>
-            <p className="text-sm text-gray-500">Configure model, search grounding, thinking level, and retry settings per stage</p>
+            <p className="text-sm text-gray-500">Configure model, search grounding, thinking level, timeout, and retry settings per stage</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -265,7 +271,7 @@ function StageCard({
   const thinkingSupported = supportsThinking(config.model);
   const gem3 = isGemini3(config.model);
 
-  const hasChanges = (['model', 'searchGrounding', 'thinkingLevel', 'temperature', 'maxRetries'] as (keyof StageConfig)[])
+  const hasChanges = (['model', 'searchGrounding', 'thinkingLevel', 'temperature', 'maxRetries', 'timeoutMs'] as (keyof StageConfig)[])
     .some(f => isModified(stageKey, f));
 
   return (
@@ -385,6 +391,28 @@ function StageCard({
                     onClick={() => onUpdate({ maxRetries: n })}
                   >
                     {n}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div data-testid={`input-timeout-${stageKey}`}>
+              <label className="flex items-center gap-1.5 text-xs font-medium text-gray-600 mb-1.5">
+                <Timer className="w-3.5 h-3.5" /> Timeout per Attempt
+                {isModified(stageKey, 'timeoutMs') && <span className="w-1.5 h-1.5 rounded-full bg-yellow-500" />}
+              </label>
+              <div className="flex items-center gap-2">
+                {TIMEOUT_PRESETS.map(ms => (
+                  <button
+                    key={ms}
+                    className={`px-2.5 h-9 rounded-md text-sm font-medium border transition-colors ${
+                      config.timeoutMs === ms
+                        ? 'border-green-500 bg-green-50 text-green-700'
+                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                    }`}
+                    onClick={() => onUpdate({ timeoutMs: ms })}
+                  >
+                    {formatTimeout(ms)}
                   </button>
                 ))}
               </div>

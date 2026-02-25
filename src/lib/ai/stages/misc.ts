@@ -10,11 +10,11 @@
 //                               a contact's job_change_detected flag fires.
 // ============================================================================
 
-import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout } from '../client';
+import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout, withTimeout } from '../client';
 import { stripInternalMessages } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import {
-  THINKING_LEVELS, STAGE_MODELS, getSearchGroundingTools, STAGE_TEMPERATURES,
+  THINKING_LEVELS, STAGE_MODELS, getSearchGroundingTools, STAGE_TEMPERATURES, STAGE_TIMEOUTS,
 } from '../config';
 
 /**
@@ -51,14 +51,18 @@ Raw summary to polish:
 ${preCleaned}`;
 
   try {
-    const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, {
-        temperature: STAGE_TEMPERATURES.SUMMARY_CLEANUP,
-        thinkingLevel: THINKING_LEVELS.SUMMARY_CLEANUP,
-        stageName: 'summary-cleanup',
-        model: STAGE_MODELS.SUMMARY_CLEANUP,
-      }),
-      1
+    const response = await withTimeout(
+      callGeminiWithTimeout(
+        () => streamGeminiResponse(client, prompt, {
+          temperature: STAGE_TEMPERATURES.SUMMARY_CLEANUP,
+          thinkingLevel: THINKING_LEVELS.SUMMARY_CLEANUP,
+          stageName: 'summary-cleanup',
+          model: STAGE_MODELS.SUMMARY_CLEANUP,
+        }),
+        1
+      ),
+      STAGE_TIMEOUTS.SUMMARY_CLEANUP,
+      'summary-cleanup'
     );
     
     const cleaned = response.text?.trim() || preCleaned;
@@ -111,15 +115,19 @@ export async function searchForReplacementContact(
 If you cannot find a replacement, return {"name": null}`;
 
   try {
-    const response = await callGeminiWithTimeout(
-      () => streamGeminiResponse(client, prompt, {
-        tools: getSearchGroundingTools('replacement_search'),
-        temperature: STAGE_TEMPERATURES.REPLACEMENT_SEARCH,
-        thinkingLevel: THINKING_LEVELS.REPLACEMENT_SEARCH,
-        stageName: 'replacement-search',
-        model: STAGE_MODELS.REPLACEMENT_SEARCH,
-      }),
-      1
+    const response = await withTimeout(
+      callGeminiWithTimeout(
+        () => streamGeminiResponse(client, prompt, {
+          tools: getSearchGroundingTools('replacement_search'),
+          temperature: STAGE_TEMPERATURES.REPLACEMENT_SEARCH,
+          thinkingLevel: THINKING_LEVELS.REPLACEMENT_SEARCH,
+          stageName: 'replacement-search',
+          model: STAGE_MODELS.REPLACEMENT_SEARCH,
+        }),
+        1
+      ),
+      STAGE_TIMEOUTS.REPLACEMENT_SEARCH,
+      'replacement-search'
     );
 
     const text = response.text?.trim() || '';
