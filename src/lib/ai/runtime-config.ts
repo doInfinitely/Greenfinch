@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { GEMINI_MODEL } from '../constants';
 
-const CONFIG_FILE = path.join('/tmp', 'ai-stage-config.json');
+const CONFIG_FILE = path.join(process.cwd(), 'ai-stage-config.json');
 
 export type ThinkingLevel = 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH';
 

@@ -35,3 +35,4 @@ Thumbs.db
 *.swo
 # clerk configuration (can include secrets)
 /.clerk/
+ai-stage-config.json
