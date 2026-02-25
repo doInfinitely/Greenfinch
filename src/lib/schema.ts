@@ -195,6 +195,9 @@ export const properties = pgTable('properties', {
   zipIdx: index('idx_properties_zip').on(table.zip),
   assetSubcategoryIdx: index('idx_properties_asset_subcategory').on(table.assetSubcategory),
   enrichmentStatusIdx: index('idx_properties_enrichment_status').on(table.enrichmentStatus),
+  isActiveIdx: index('idx_properties_is_active').on(table.isActive),
+  createdAtIdx: index('idx_properties_created_at').on(table.createdAt),
+  regridOwnerIdx: index('idx_properties_regrid_owner').on(table.regridOwner),
 }));
 
 // Contacts table
@@ -314,6 +317,11 @@ export const contacts = pgTable('contacts', {
 }, (table) => ({
   emailIdx: uniqueIndex('idx_contacts_email').on(table.normalizedEmail),
   nameDomainIdx: index('idx_contacts_name_domain').on(table.normalizedName, table.companyDomain),
+  fullNameIdx: index('idx_contacts_full_name').on(table.fullName),
+  employerNameIdx: index('idx_contacts_employer_name').on(table.employerName),
+  linkedinUrlIdx: index('idx_contacts_linkedin_url').on(table.linkedinUrl),
+  emailStatusIdx: index('idx_contacts_email_status').on(table.emailStatus),
+  createdAtIdx: index('idx_contacts_created_at').on(table.createdAt),
 }));
 
 // Organizations table (Clearbit-compatible schema for provider flexibility)
@@ -405,6 +413,8 @@ export const organizations = pgTable('organizations', {
   parentOrgIdx: index('idx_organizations_parent').on(table.parentOrgId),
   ultimateParentOrgIdx: index('idx_organizations_ultimate_parent').on(table.ultimateParentOrgId),
   pdlCompanyIdx: index('idx_organizations_pdl_company_id').on(table.pdlCompanyId),
+  enrichmentStatusIdx: index('idx_organizations_enrichment_status').on(table.enrichmentStatus),
+  createdAtIdx: index('idx_organizations_created_at').on(table.createdAt),
 }));
 
 // Junction: Property <-> Contact
