@@ -431,25 +431,6 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
 }
 
 // =============================================================================
-// Deterministic LoopNet URL Builder
-//
-// LoopNet uses a predictable URL format for DCAD-indexed properties:
-//   /property/{address-slug}/{county-fips}-{parcel-number}/
-// Dallas County FIPS: 48113
-// =============================================================================
-
-const DALLAS_COUNTY_FIPS = '48113';
-
-function buildLoopNetUrl(address: string, city: string, zip: string, parcelnumb: string): string {
-  const slug = `${address} ${city} tx ${zip}`
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .trim()
-    .replace(/\s+/g, '-');
-  return `https://www.loopnet.com/property/${slug}/${DALLAS_COUNTY_FIPS}-${parcelnumb}/`;
-}
-
-// =============================================================================
 // Domain Retry Helpers
 //
 // When the initial Stage 2 response doesn't produce a valid property website
