@@ -120,6 +120,21 @@ body {
   }
 }
 
+@keyframes fade-slide-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
 .animate-col-expand {
   animation: fade-slide-in 0.2s ease-out;
+}
+
+.animate-col-collapse {
+  animation: fade-slide-out 0.15s ease-in forwards;
 }

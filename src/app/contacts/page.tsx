@@ -156,6 +156,21 @@ export default function ContactsPage() {
   const [hasPhone, setHasPhone] = useState(false);
   const [hasLinkedIn, setHasLinkedIn] = useState(false);
   const [showContactInfo, setShowContactInfo] = useState(false);
+  const [isCollapsingContactInfo, setIsCollapsingContactInfo] = useState(false);
+  const contactInfoVisible = showContactInfo || isCollapsingContactInfo;
+  const colAnimClass = isCollapsingContactInfo ? 'animate-col-collapse' : 'animate-col-expand';
+
+  const toggleContactInfo = useCallback(() => {
+    if (showContactInfo) {
+      setIsCollapsingContactInfo(true);
+      setTimeout(() => {
+        setShowContactInfo(false);
+        setIsCollapsingContactInfo(false);
+      }, 150);
+    } else {
+      setShowContactInfo(true);
+    }
+  }, [showContactInfo]);
   const [bulkEmailConfirmation, setBulkEmailConfirmation] = useState<BulkConfirmation>({
     isOpen: false,
     contactsToProcess: [],
@@ -1038,7 +1053,7 @@ export default function ContactsPage() {
           <>
             <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className={`w-full divide-y divide-gray-200 ${showContactInfo ? 'min-w-[1200px]' : ''}`}>
+                <table className={`w-full divide-y divide-gray-200 ${contactInfoVisible ? 'min-w-[1200px]' : ''}`}>
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-3 py-3 text-left w-10">
@@ -1057,31 +1072,31 @@ export default function ContactsPage() {
                         Contact <SortIcon column="fullName" />
                       </th>
                       <th
-                        className={`px-1 py-3 w-12 cursor-pointer hover:bg-gray-100 transition-colors border-l border-gray-200 ${showContactInfo ? '' : 'border-r'}`}
-                        onClick={() => setShowContactInfo(!showContactInfo)}
-                        title={showContactInfo ? 'Hide contact info' : 'Show contact info'}
+                        className={`px-1 py-3 w-12 cursor-pointer hover:bg-gray-100 transition-colors border-l border-gray-200 ${contactInfoVisible ? '' : 'border-r'}`}
+                        onClick={toggleContactInfo}
+                        title={contactInfoVisible ? 'Hide contact info' : 'Show contact info'}
                         data-testid="button-toggle-contact-info"
                       >
                         <div className="flex items-center justify-center gap-0.5">
-                          {showContactInfo ? (
+                          {contactInfoVisible ? (
                             <ChevronLeft className="w-3.5 h-3.5 text-gray-400" />
                           ) : (
                             <ChevronRight className="w-3.5 h-3.5 text-gray-400" />
                           )}
                         </div>
                       </th>
-                      {showContactInfo && (
+                      {contactInfoVisible && (
                         <>
-                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider animate-col-expand">
+                          <th className={`px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider ${colAnimClass}`}>
                             LinkedIn
                           </th>
                           <th
                             onClick={() => handleSort('email')}
-                            className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 animate-col-expand"
+                            className={`px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100 ${colAnimClass}`}
                           >
                             Email <SortIcon column="email" />
                           </th>
-                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 animate-col-expand">
+                          <th className={`px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider border-r border-gray-200 ${colAnimClass}`}>
                             Phone
                           </th>
                         </>
@@ -1151,8 +1166,8 @@ export default function ContactsPage() {
                             </div>
                           </td>
                           <td
-                            className={`px-1 py-3 border-l border-gray-100 cursor-pointer ${showContactInfo ? '' : 'border-r'}`}
-                            onClick={(e) => { e.stopPropagation(); setShowContactInfo(!showContactInfo); }}
+                            className={`px-1 py-3 border-l border-gray-100 cursor-pointer ${contactInfoVisible ? '' : 'border-r'}`}
+                            onClick={(e) => { e.stopPropagation(); toggleContactInfo(); }}
                             data-testid={`contact-status-icons-${contact.id}`}
                           >
                             <div className="flex items-center justify-center gap-0.5">
@@ -1172,9 +1187,9 @@ export default function ContactsPage() {
                               />
                             </div>
                           </td>
-                          {showContactInfo && (
+                          {contactInfoVisible && (
                             <>
-                              <td className="px-3 py-3 animate-col-expand">
+                              <td className={`px-3 py-3 ${colAnimClass}`}>
                                 {contact.linkedinUrl ? (
                                   <a
                                     href={contact.linkedinUrl}
@@ -1193,7 +1208,7 @@ export default function ContactsPage() {
                                 )}
                               </td>
                               <td 
-                                className="px-3 py-3 overflow-hidden animate-col-expand"
+                                className={`px-3 py-3 overflow-hidden ${colAnimClass}`}
                                 onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                               >
                                 {contact.email ? (
@@ -1210,7 +1225,7 @@ export default function ContactsPage() {
                                 )}
                               </td>
                               <td 
-                                className="px-3 py-3 border-r border-gray-100 animate-col-expand"
+                                className={`px-3 py-3 border-r border-gray-100 ${colAnimClass}`}
                                 onClick={() => contact.id && router.push(`/contact/${contact.id}`)}
                               >
                                 {(() => {
@@ -1279,7 +1294,7 @@ export default function ContactsPage() {
                         </tr>
                         {expandedContact === contact.id && (
                           <tr>
-                            <td colSpan={showContactInfo ? 10 : 7} className="px-4 py-3 bg-gray-50">
+                            <td colSpan={contactInfoVisible ? 10 : 7} className="px-4 py-3 bg-gray-50">
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {contact.properties.length > 0 && (
                                   <div>
