@@ -1395,7 +1395,7 @@ export default function ContactsPage() {
                           </div>
                           <div className="flex items-center gap-1 shrink-0 pt-0.5">
                             <LinkedInStatusIcon
-                              linkedinUrl={contact.linkedinUrl}
+                              hasLinkedIn={!!contact.linkedinUrl}
                               size="sm"
                             />
                             <EmailStatusIcon
