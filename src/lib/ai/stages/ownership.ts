@@ -62,9 +62,9 @@ SEARCH SEQUENCE:
 7. Search for news about acquisitions or sales of ${classification.propertyName} around ${deedDate} to identify the beneficial owner
 
 
-PROPERTY WEBSITE PRIORITY: First look for the property's own external marketing website or its listing on its PM's site. If none exists, fall back to a CRE listing page (apartments.com, loopnet.com, costar.com, crexi.com) that has a dedicated page for this property.
+PROPERTY WEBSITE PRIORITY: First look for the property's own external marketing website or its listing on its PM's site. If none exists, fall back to a CRE listing page (apartments.com, loopnet.com, costar.com, crexi.com) — but ONLY if you found the exact URL in a search result. Copy it character-for-character; do not guess or construct it. CRE listing URLs contain platform-internal IDs that cannot be predicted — a constructed URL will 404.
 
-DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain from a URL you found in search results. If no search result contained the company's website, return null.
+DOMAIN ACCURACY: For "domain" and "site" fields, copy the exact domain or URL from a search result you actually retrieved. If no search result contained the company's website or property listing URL, return null.
 
 **IMPORTANT NOTES**
 
@@ -428,6 +428,25 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
     summary: '',
     sources: [],
   };
+}
+
+// =============================================================================
+// Deterministic LoopNet URL Builder
+//
+// LoopNet uses a predictable URL format for DCAD-indexed properties:
+//   /property/{address-slug}/{county-fips}-{parcel-number}/
+// Dallas County FIPS: 48113
+// =============================================================================
+
+const DALLAS_COUNTY_FIPS = '48113';
+
+function buildLoopNetUrl(address: string, city: string, zip: string, parcelnumb: string): string {
+  const slug = `${address} ${city} tx ${zip}`
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, '')
+    .trim()
+    .replace(/\s+/g, '-');
+  return `https://www.loopnet.com/property/${slug}/${DALLAS_COUNTY_FIPS}-${parcelnumb}/`;
 }
 
 // =============================================================================
