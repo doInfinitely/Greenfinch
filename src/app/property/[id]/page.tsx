@@ -624,6 +624,13 @@ export default function PropertyDetailPage() {
               <PropertyAbout enrichedProperty={enrichedProperty} enrichmentStatus={enrichmentStatus} />
             )}
 
+            <ContactsSection
+              contacts={contacts}
+              onShowAddContactModal={() => setShowAddContactModal(true)}
+              onEnrichment={handleEnrichment}
+              onSetContactForListModal={setContactForListModal}
+            />
+
             <OwnershipSection
               property={property}
               enrichedProperty={enrichedProperty}
@@ -696,13 +703,6 @@ export default function PropertyDetailPage() {
                 )}
               </div>
             )}
-
-            <ContactsSection
-              contacts={contacts}
-              onShowAddContactModal={() => setShowAddContactModal(true)}
-              onEnrichment={handleEnrichment}
-              onSetContactForListModal={setContactForListModal}
-            />
 
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 opacity-60">
               <div className="flex items-center justify-between mb-4">
