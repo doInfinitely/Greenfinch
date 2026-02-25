@@ -13,7 +13,7 @@ interface PropertyResult {
   regridAddress: string | null;
   validatedAddress: string | null;
   city: string | null;
-  category: string | null;
+  assetCategory: string | null;
   dcadOwnerName1: string | null;
   enrichmentStatus: string | null;
   contactCount: number;
@@ -30,9 +30,9 @@ function PropertyCard({ property }: { property: PropertyResult }) {
           {property.city && <p className="text-xs text-gray-500">{property.city}</p>}
         </div>
       </div>
-      {property.category && (
+      {property.assetCategory && (
         <div>
-          <Badge variant="outline" className="text-xs">{property.category}</Badge>
+          <Badge variant="outline" className="text-xs">{property.assetCategory}</Badge>
         </div>
       )}
       {property.dcadOwnerName1 && (
@@ -104,7 +104,7 @@ function SearchPanel({
               >
                 <span className="font-medium">{addr}</span>
                 {p.city && <span className="text-gray-400 ml-2 text-xs">{p.city}</span>}
-                {p.category && <span className="text-gray-400 ml-2 text-xs">· {p.category}</span>}
+                {p.assetCategory && <span className="text-gray-400 ml-2 text-xs">· {p.assetCategory}</span>}
               </button>
             );
           })}

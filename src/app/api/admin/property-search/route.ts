@@ -20,7 +20,7 @@ export async function GET(req: NextRequest) {
         regridAddress: properties.regridAddress,
         validatedAddress: properties.validatedAddress,
         city: properties.city,
-        category: properties.category,
+        assetCategory: properties.assetCategory,
         dcadOwnerName1: properties.dcadOwnerName1,
         enrichmentStatus: properties.enrichmentStatus,
       })
@@ -43,7 +43,7 @@ export async function GET(req: NextRequest) {
         .where(or(...ids.map(id => eq(propertyContacts.propertyId, id))))
         .groupBy(propertyContacts.propertyId);
       for (const c of counts) {
-        contactCounts[c.propertyId] = c.count;
+        if (c.propertyId) contactCounts[c.propertyId] = c.count;
       }
     }
 

@@ -1,0 +1,68 @@
+2026-02-25T02:22:32Z info: Deployment: db2a41b0-3881-4cda-88a3-0c88cc5e1e0f
+2026-02-25T02:22:32Z info: Build: 88e082cc-53b2-4d6d-aa33-fb56ed680c4e
+2026-02-25T02:22:32Z info: Running Security Scan
+2026-02-25T02:23:36Z info: Security Scan Complete
+2026-02-25T02:23:37Z info: Preparing development database
+2026-02-25T02:23:39Z info: Copying development database to production database
+2026-02-25T02:24:18Z info: Successfully copied development database to production database
+2026-02-25T02:24:18Z info: Connecting to builder
+2026-02-25T02:24:18Z info: Builder connected
+2026-02-25T02:24:19Z info: Installing packages
+2026-02-25T02:24:20Z info: Starting Build
+
+> rest-express@1.0.0 build
+> tsx script/build.ts
+
+
+Building Next.js application...
+
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+
+This information is used to shape Next.js' roadmap and prioritize features.
+
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+
+▲ Next.js 16.1.2 (Turbopack)
+
+  Creating an optimized production build ...
+
+  Running TypeScript ...
+
+Failed to compile.
+
+
+./src/app/api/admin/property-search/route.ts:23:30
+Type error: Property 'category' does not exist on type 'PgTableWithColumns<{ name: "properties"; schema: undefined; columns: { id: PgColumn<{ name: "id"; tableName: "properties"; dataType: "string"; columnType: "PgUUID"; data: string; driverParam: string; notNull: true; hasDefault: true; ... 6 more ...; generated: undefined; }, {}, {}>; ... 102 more ...; isActive: PgColu...'.
+
+  21 |         validatedAddress: properties.validatedAddress,
+  22 |         city: properties.city,
+> 23 |         category: properties.category,
+     |                              ^
+  24 |         dcadOwnerName1: properties.dcadOwnerName1,
+  25 |         enrichmentStatus: properties.enrichmentStatus,
+  26 |       })
+
+Next.js build worker exited with code: 1 and signal: null
+
+Error: Command failed: npx next build
+    at genericNodeError (node:internal/errors:984:15)
+    at wrappedFn (node:internal/errors:538:14)
+    at checkExecSyncError (node:child_process:891:11)
+    at execSync (node:child_process:963:15)
+    at buildAll (/home/runner/workspace/script/build.ts:10:3) {
+  status: 1,
+  signal: null,
+  output: [ null, null, null ],
+  pid: 93,
+  stdout: null,
+  stderr: null
+}
+
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.10.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.10.1
+npm notice To update run: npm install -g npm@11.10.1
+npm notice
+

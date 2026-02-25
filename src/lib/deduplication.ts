@@ -700,14 +700,14 @@ export async function mergeProperties(keepId: string, mergeId: string): Promise<
   await moveRows(propertyViews);
 
   await db.update(properties)
-    .set({ enrichmentStatus: 'merged', aiSummary: `Merged into property ${keepId}` })
+    .set({ enrichmentStatus: 'merged' })
     .where(eq(properties.id, mergeId));
 
   try {
     await db.insert(adminAuditLog).values({
       action: 'merge_property',
-      targetId: mergeId,
-      details: { keepId, mergeId } as any,
+      targetTable: 'properties',
+      metadata: { keepId, mergeId },
     });
   } catch {
   }
