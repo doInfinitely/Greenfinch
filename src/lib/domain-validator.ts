@@ -56,12 +56,35 @@ const PARKING_INDICATORS = [
 ];
 
 const VALIDATION_TIMEOUT_MS = 8000;
+const DOMAIN_CACHE_TTL_MS = 5 * 60 * 1000;
 
 interface DomainValidationResult {
   isValid: boolean;
   reason: string;
   finalUrl?: string;
   finalDomain?: string;
+}
+
+interface DomainCacheEntry {
+  result: DomainValidationResult;
+  expiresAt: number;
+}
+
+const _domainCache = new Map<string, DomainCacheEntry>();
+
+function getCached(key: string): DomainValidationResult | null {
+  const entry = _domainCache.get(key);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) { _domainCache.delete(key); return null; }
+  return entry.result;
+}
+
+function setCache(key: string, result: DomainValidationResult): void {
+  _domainCache.set(key, { result, expiresAt: Date.now() + DOMAIN_CACHE_TTL_MS });
+  if (_domainCache.size > 500) {
+    const now = Date.now();
+    for (const [k, v] of _domainCache) { if (now > v.expiresAt) _domainCache.delete(k); }
+  }
 }
 
 function extractDomain(url: string): string {
@@ -79,12 +102,12 @@ function domainsMatch(domain1: string, domain2: string): boolean {
   return d1 === d2 || d1.endsWith(`.${d2}`) || d2.endsWith(`.${d1}`);
 }
 
-export async function validateDomain(
-  url: string,
+async function _fetchAndValidateDomain(
+  fullUrl: string,
+  inputDomain: string,
   expectedCompanyName?: string
-): Promise<DomainValidationResult> {
-  const inputDomain = extractDomain(url);
-  const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+): Promise<{ result: DomainValidationResult; cacheable: boolean }> {
+  const wrap = (result: DomainValidationResult, cacheable = true) => ({ result, cacheable });
 
   try {
     const controller = new AbortController();
@@ -106,12 +129,12 @@ export async function validateDomain(
 
     if (response.status === 403 || response.status === 429) {
       console.log(`[DomainValidator] ${inputDomain} returned ${response.status} — accepting as unverified (DNS resolved, likely anti-bot)`);
-      return {
+      return wrap({
         isValid: true,
         reason: `DNS resolves, HTTP ${response.status} (likely anti-bot protection)`,
         finalUrl: response.url,
         finalDomain: extractDomain(response.url),
-      };
+      });
     }
 
     const finalUrl = response.url;
@@ -120,25 +143,24 @@ export async function validateDomain(
     if (!domainsMatch(inputDomain, finalDomain)) {
       for (const parkingDomain of PARKING_DOMAINS) {
         if (finalDomain === parkingDomain || finalDomain.endsWith(`.${parkingDomain}`)) {
-          return {
+          return wrap({
             isValid: false,
             reason: `Redirects to parking service: ${finalDomain}`,
             finalUrl,
             finalDomain,
-          };
+          });
         }
       }
-
     }
 
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('text/html')) {
-      return {
+      return wrap({
         isValid: true,
         reason: 'Non-HTML response, assuming valid',
         finalUrl,
         finalDomain,
-      };
+      });
     }
 
     const bodyText = await response.text();
@@ -152,12 +174,12 @@ export async function validateDomain(
       const metaRefreshPattern = /<meta[^>]*http-equiv\s*=\s*["']?refresh["']?/i;
       if (jsRedirectPattern.test(lowerBody) || metaRefreshPattern.test(lowerBody)) {
         console.warn(`[DomainValidator] ${inputDomain} has minimal content with JS/meta redirect — likely parking page`);
-        return {
+        return wrap({
           isValid: false,
           reason: `Minimal content with JS/meta redirect — likely parking or redirect page`,
           finalUrl,
           finalDomain,
-        };
+        });
       }
     }
 
@@ -188,12 +210,12 @@ export async function validateDomain(
     }
 
     if (parkingScore >= 3) {
-      return {
+      return wrap({
         isValid: false,
         reason: `Domain appears parked (score=${parkingScore}): ${matchedIndicators.slice(0, 3).join(', ')}`,
         finalUrl,
         finalDomain,
-      };
+      });
     }
 
     if (!domainsMatch(inputDomain, finalDomain)) {
@@ -214,44 +236,51 @@ export async function validateDomain(
       }
     }
 
-    return {
+    return wrap({
       isValid: true,
       reason: 'Domain resolves and content appears legitimate',
       finalUrl,
       finalDomain,
-    };
+    });
 
   } catch (error) {
     const errMsg = error instanceof Error ? error.message : String(error);
 
     if (errMsg.includes('abort') || errMsg.includes('timeout')) {
       console.log(`[DomainValidator] ${inputDomain} timed out — accepting as unverified (connection was established)`);
-      return {
+      return wrap({
         isValid: true,
         reason: `Domain timed out but connection initiated (likely slow or heavy site)`,
         finalDomain: inputDomain,
-      };
+      }, false);
     }
 
     if (errMsg.includes('ENOTFOUND') || errMsg.includes('getaddrinfo')) {
-      return {
-        isValid: false,
-        reason: 'Domain does not resolve (DNS failure)',
-      };
+      return wrap({ isValid: false, reason: 'Domain does not resolve (DNS failure)' });
     }
 
     if (errMsg.includes('ECONNREFUSED') || errMsg.includes('ECONNRESET')) {
-      return {
-        isValid: false,
-        reason: `Connection refused/reset: ${errMsg}`,
-      };
+      return wrap({ isValid: false, reason: `Connection refused/reset: ${errMsg}` }, false);
     }
 
-    return {
-      isValid: false,
-      reason: `Validation error: ${errMsg.substring(0, 100)}`,
-    };
+    return wrap({ isValid: false, reason: `Validation error: ${errMsg.substring(0, 100)}` }, false);
   }
+}
+
+export async function validateDomain(
+  url: string,
+  expectedCompanyName?: string
+): Promise<DomainValidationResult> {
+  const inputDomain = extractDomain(url);
+  const fullUrl = url.startsWith('http') ? url : `https://${url}`;
+  const cacheKey = `${inputDomain}|${expectedCompanyName || ''}`;
+
+  const cached = getCached(cacheKey);
+  if (cached) return cached;
+
+  const { result, cacheable } = await _fetchAndValidateDomain(fullUrl, inputDomain, expectedCompanyName);
+  if (cacheable) setCache(cacheKey, result);
+  return result;
 }
 
 export async function validateAndCleanDomain(

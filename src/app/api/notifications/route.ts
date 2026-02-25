@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { notifications, users, properties } from '@/lib/schema';
-import { eq, and, desc, sql } from 'drizzle-orm';
+import { eq, and, desc, sql, inArray } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { getSession } from '@/lib/auth';
 
@@ -53,18 +53,19 @@ export async function GET(request: NextRequest) {
       .orderBy(desc(notifications.createdAt))
       .limit(limit);
 
-    const results = await query;
-
-    const unreadCount = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(notifications)
-      .where(
-        and(
-          eq(notifications.recipientUserId, session.user.id),
-          eq(notifications.clerkOrgId, authData.orgId),
-          eq(notifications.isRead, false)
-        )
-      );
+    const [results, unreadRows] = await Promise.all([
+      query,
+      db
+        .select({ count: sql<number>`count(*)` })
+        .from(notifications)
+        .where(
+          and(
+            eq(notifications.recipientUserId, session.user.id),
+            eq(notifications.clerkOrgId, authData.orgId),
+            eq(notifications.isRead, false)
+          )
+        ),
+    ]);
 
     return NextResponse.json({
       notifications: results.map(n => ({
@@ -87,7 +88,7 @@ export async function GET(request: NextRequest) {
         propertyAddress: n.propertyAddress,
         propertyCommonName: n.propertyCommonName,
       })),
-      unreadCount: Number(unreadCount[0]?.count || 0),
+      unreadCount: Number(unreadRows[0]?.count || 0),
     });
   } catch (error) {
     console.error('[Notifications API] Error:', error);
@@ -122,17 +123,15 @@ export async function PATCH(request: NextRequest) {
           )
         );
     } else if (Array.isArray(notificationIds) && notificationIds.length > 0) {
-      for (const id of notificationIds) {
-        await db
-          .update(notifications)
-          .set({ isRead: true, readAt: new Date() })
-          .where(
-            and(
-              eq(notifications.id, id),
-              eq(notifications.recipientUserId, session.user.id)
-            )
-          );
-      }
+      await db
+        .update(notifications)
+        .set({ isRead: true, readAt: new Date() })
+        .where(
+          and(
+            inArray(notifications.id, notificationIds),
+            eq(notifications.recipientUserId, session.user.id)
+          )
+        );
     }
 
     return NextResponse.json({ success: true });
