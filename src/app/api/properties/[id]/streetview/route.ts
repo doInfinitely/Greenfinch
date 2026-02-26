@@ -60,7 +60,7 @@ export async function GET(
 
     const fullAddress = [address, property.city, property.state, property.zip].filter(Boolean).join(', ');
 
-    const metadataUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${encodeURIComponent(fullAddress)}&source=outdoor&key=${googleApiKey}`;
+    const metadataUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${encodeURIComponent(fullAddress)}&radius=100&source=outdoor&key=${googleApiKey}`;
     const response = await fetch(metadataUrl);
     const data = await response.json();
 
@@ -85,5 +85,25 @@ export async function GET(
   } catch (error) {
     console.error('Street view metadata error:', error);
     return NextResponse.json({ success: false, error: 'Failed to fetch street view' }, { status: 500 });
+  }
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+
+  try {
+    const isUuid = UUID_REGEX.test(id);
+    await db
+      .update(properties)
+      .set({ streetviewPanoId: null })
+      .where(isUuid ? or(eq(properties.id, id), eq(properties.propertyKey, id)) : eq(properties.propertyKey, id));
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Street view cache clear error:', error);
+    return NextResponse.json({ success: false, error: 'Failed to clear cache' }, { status: 500 });
   }
 }

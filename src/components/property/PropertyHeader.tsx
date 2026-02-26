@@ -119,40 +119,31 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
         property.geocodedLon || property.lon
       );
 
-      if (panoId) {
-        const sv = new google.maps.StreetViewService();
-        sv.getPanorama({ pano: panoId }, (data, panoStatus) => {
-          if (!mounted || !containerRef.current) return;
-          if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
-            const panoLocation = data.location.latLng;
-            const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, propertyLocation) ?? 0;
-
-            new google.maps.StreetViewPanorama(containerRef.current!, {
-              pano: panoId!,
-              pov: { heading: computedHeading, pitch: 5 },
-              zoom: 0,
-              addressControl: false,
-              showRoadLabels: false,
-              linksControl: false,
-              panControl: false,
-              zoomControl: false,
-              enableCloseButton: false,
-              motionTracking: false,
-              motionTrackingControl: false,
-              fullscreenControl: false,
-              clickToGo: false,
-              disableDefaultUI: true,
-            });
-            setStatus('ready');
-          } else {
-            setStatus('unavailable');
-          }
-        });
-        return;
-      }
-
       const sv = new google.maps.StreetViewService();
       const radiusAttempts = [100, 300, 800];
+
+      const createPanorama = (panoLocation: google.maps.LatLng, panoOptions: { pano?: string; position?: google.maps.LatLng }) => {
+        if (!mounted || !containerRef.current) return;
+        const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, propertyLocation) ?? 0;
+
+        new google.maps.StreetViewPanorama(containerRef.current!, {
+          ...panoOptions,
+          pov: { heading: computedHeading, pitch: 5 },
+          zoom: 0,
+          addressControl: false,
+          showRoadLabels: false,
+          linksControl: false,
+          panControl: false,
+          zoomControl: false,
+          enableCloseButton: false,
+          motionTracking: false,
+          motionTrackingControl: false,
+          fullscreenControl: false,
+          clickToGo: false,
+          disableDefaultUI: true,
+        });
+        setStatus('ready');
+      };
 
       const tryRadius = (index: number) => {
         if (!mounted || !containerRef.current) return;
@@ -172,33 +163,26 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
             if (!mounted || !containerRef.current) return;
 
             if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
-              const panoLocation = data.location.latLng;
-              const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, propertyLocation) ?? 0;
-
-              new google.maps.StreetViewPanorama(containerRef.current!, {
-                position: panoLocation,
-                pov: { heading: computedHeading, pitch: 5 },
-                zoom: 0,
-                addressControl: false,
-                showRoadLabels: false,
-                linksControl: false,
-                panControl: false,
-                zoomControl: false,
-                enableCloseButton: false,
-                motionTracking: false,
-                motionTrackingControl: false,
-                fullscreenControl: false,
-                clickToGo: false,
-                disableDefaultUI: true,
-              });
-
-              setStatus('ready');
+              createPanorama(data.location.latLng, { position: data.location.latLng });
             } else {
               tryRadius(index + 1);
             }
           }
         );
       };
+
+      if (panoId) {
+        sv.getPanorama({ pano: panoId }, (data, panoStatus) => {
+          if (!mounted || !containerRef.current) return;
+          if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
+            createPanorama(data.location.latLng, { pano: panoId! });
+          } else {
+            fetch(`/api/properties/${property.propertyKey}/streetview`, { method: 'DELETE' }).catch(() => {});
+            tryRadius(0);
+          }
+        });
+        return;
+      }
 
       tryRadius(0);
     };

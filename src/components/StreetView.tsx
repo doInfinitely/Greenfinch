@@ -166,18 +166,6 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
           setStatus('ready');
         };
 
-        if (initialPanoId) {
-          sv.getPanorama({ pano: initialPanoId }, (data, panoStatus) => {
-            if (!mounted || !containerRef.current) return;
-            if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
-              initPanorama(initialPanoId!, data.location.latLng);
-            } else {
-              setStatus('unavailable');
-            }
-          });
-          return;
-        }
-
         const radiusAttempts = [100, 300, 800];
 
         const tryRadius = (index: number) => {
@@ -205,6 +193,18 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
             }
           );
         };
+
+        if (initialPanoId) {
+          sv.getPanorama({ pano: initialPanoId }, (data, panoStatus) => {
+            if (!mounted || !containerRef.current) return;
+            if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
+              initPanorama(initialPanoId!, data.location.latLng);
+            } else {
+              tryRadius(0);
+            }
+          });
+          return;
+        }
 
         tryRadius(0);
       } catch (err) {
