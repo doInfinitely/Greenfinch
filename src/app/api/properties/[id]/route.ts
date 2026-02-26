@@ -91,6 +91,8 @@ export async function GET(
         county: dbProperty.county,
         lat: dbProperty.lat,
         lon: dbProperty.lon,
+        geocodedLat: dbProperty.geocodedLat ?? null,
+        geocodedLon: dbProperty.geocodedLon ?? null,
         lotSqft: dbProperty.lotSqft,
         lotAcres,
         buildingSqft: dbProperty.buildingSqft,

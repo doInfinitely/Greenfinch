@@ -219,6 +219,7 @@ interface PropertyHeaderProps {
   googleMapsApiKey?: string;
   geocodedLat?: number | null;
   geocodedLon?: number | null;
+  geocodeReady?: boolean;
   onEnrichment: () => void;
   onShowAddToList: () => void;
   onSetAssignDialogTrigger: (fn: (prev: number) => number) => void;
@@ -249,11 +250,12 @@ export default function PropertyHeader({
   onSetIsCurrentCustomer,
   onExpandStreetView,
   onPipelineChange,
+  geocodeReady,
 }: PropertyHeaderProps) {
   const router = useRouter();
   const { getEnrichmentStatus } = useEnrichmentQueue();
 
-  const hasStreetView = googleMapsApiKey && ((geocodedLat && geocodedLon) || (property.lat && property.lon));
+  const hasStreetView = googleMapsApiKey && (property.lat && property.lon);
 
   return (
     <>
@@ -269,7 +271,10 @@ export default function PropertyHeader({
       </div>
 
       <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-        {hasStreetView && (
+        {hasStreetView && !geocodeReady && (
+          <div className="w-full h-[220px] bg-gray-100 animate-pulse" data-testid="banner-streetview-loading" />
+        )}
+        {hasStreetView && geocodeReady && (
           <div className="relative w-full h-[220px]" data-testid="banner-streetview">
             <StreetViewStatic
               property={property}
