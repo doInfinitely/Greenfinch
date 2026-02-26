@@ -6,6 +6,8 @@ interface StreetViewProps {
   apiKey: string;
   lat: number;
   lon: number;
+  geocodedLat?: number | null;
+  geocodedLon?: number | null;
   heading?: number;
   pitch?: number;
 }
@@ -66,7 +68,7 @@ function loadGoogleMapsApi(apiKey: string): Promise<void> {
   });
 }
 
-export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }: StreetViewProps) {
+export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon, heading = 0, pitch = 10 }: StreetViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const miniMapRef = useRef<HTMLDivElement>(null);
   const panoramaRef = useRef<unknown>(null);
@@ -102,10 +104,12 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }
         if (!mounted || !containerRef.current) return;
 
         const sv = new google.maps.StreetViewService();
-        const propertyLocation = new google.maps.LatLng(lat, lon);
+        const useLat = geocodedLat || lat;
+        const useLon = geocodedLon || lon;
+        const propertyLocation = new google.maps.LatLng(useLat, useLon);
         const desktop = window.innerWidth >= 1024;
 
-        const radiusAttempts = [50, 150, 500];
+        const radiusAttempts = [100, 300, 800];
 
         const tryRadius = (index: number) => {
           if (!mounted || !containerRef.current) return;
@@ -119,7 +123,7 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }
               location: propertyLocation,
               radius: radiusAttempts[index],
               source: google.maps.StreetViewSource.OUTDOOR,
-              preference: google.maps.StreetViewPreference.NEAREST,
+              preference: google.maps.StreetViewPreference.BEST,
             },
             (data, panoStatus) => {
               if (!mounted || !containerRef.current) return;
@@ -210,7 +214,7 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }
         miniMapInstanceRef.current = null;
       }
     };
-  }, [apiKey, lat, lon, heading, pitch]);
+  }, [apiKey, lat, lon, geocodedLat, geocodedLon, heading, pitch]);
 
   if (status === 'unavailable') {
     return (

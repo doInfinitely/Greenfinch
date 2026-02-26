@@ -196,6 +196,8 @@ export default function PropertyDetailPage() {
           county: prop.county || '',
           lat: Number(prop.lat ?? prop.latitude) || 0,
           lon: Number(prop.lon ?? prop.longitude) || 0,
+          geocodedLat: prop.geocodedLat ? Number(prop.geocodedLat) : null,
+          geocodedLon: prop.geocodedLon ? Number(prop.geocodedLon) : null,
           lotAcres: Number(prop.lotAcres) || 0,
           yearBuilt: prop.yearBuilt || null,
           numFloors: prop.numFloors || null,
@@ -876,6 +878,8 @@ export default function PropertyDetailPage() {
                   apiKey={googleMapsApiKey}
                   lat={property.lat}
                   lon={property.lon}
+                  geocodedLat={property.geocodedLat}
+                  geocodedLon={property.geocodedLon}
                 />
               ) : null}
             </div>

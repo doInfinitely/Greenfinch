@@ -60,6 +60,8 @@ export const properties = pgTable('properties', {
   lat: real('lat'),
   lon: real('lon'),
   geocodeConfidence: real('geocode_confidence'),
+  geocodedLat: real('geocoded_lat'),
+  geocodedLon: real('geocoded_lon'),
   
   // Physical characteristics
   lotSqft: integer('lot_sqft'),

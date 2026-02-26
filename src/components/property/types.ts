@@ -10,6 +10,8 @@ export interface Property {
   county: string;
   lat: number;
   lon: number;
+  geocodedLat?: number | null;
+  geocodedLon?: number | null;
   lotAcres: number;
   yearBuilt: number | null;
   numFloors: number | null;

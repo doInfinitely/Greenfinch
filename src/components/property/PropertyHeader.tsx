@@ -82,6 +82,25 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
     let mounted = true;
 
     const init = async () => {
+      let svLat = property.geocodedLat;
+      let svLon = property.geocodedLon;
+
+      if (!svLat || !svLon) {
+        try {
+          const geocodeRes = await fetch(`/api/properties/${property.propertyKey}/geocode`, { method: 'POST' });
+          if (geocodeRes.ok) {
+            const geocodeData = await geocodeRes.json();
+            if (geocodeData.success && geocodeData.data) {
+              svLat = geocodeData.data.geocodedLat;
+              svLon = geocodeData.data.geocodedLon;
+            }
+          }
+        } catch {}
+      }
+
+      const useLat = svLat || property.lat;
+      const useLon = svLon || property.lon;
+
       try {
         await loadGoogleMapsIfNeeded(googleMapsApiKey);
       } catch {
@@ -95,9 +114,9 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
       }
 
       const sv = new google.maps.StreetViewService();
-      const location = new google.maps.LatLng(property.lat!, property.lon!);
+      const location = new google.maps.LatLng(useLat, useLon);
 
-      const radiusAttempts = [300, 800, 1500];
+      const radiusAttempts = [100, 300, 800];
 
       const tryRadius = (index: number) => {
         if (!mounted || !containerRef.current) return;
@@ -111,7 +130,7 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
             location,
             radius: radiusAttempts[index],
             source: google.maps.StreetViewSource.OUTDOOR,
-            preference: google.maps.StreetViewPreference.NEAREST,
+            preference: google.maps.StreetViewPreference.BEST,
           },
           (data, panoStatus) => {
             if (!mounted || !containerRef.current) return;
@@ -150,7 +169,7 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
 
     init();
     return () => { mounted = false; };
-  }, [property.lat, property.lon, googleMapsApiKey]);
+  }, [property.lat, property.lon, property.geocodedLat, property.geocodedLon, property.propertyKey, googleMapsApiKey]);
 
   if (status === 'unavailable') return null;
 
