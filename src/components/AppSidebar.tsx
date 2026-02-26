@@ -135,6 +135,21 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         </Link>
       </div>
 
+      {isSignedIn && !collapsed && (
+        <div className="px-3 py-3 border-b border-gray-100 lg:hidden">
+          <p className="text-xs font-semibold text-muted-foreground tracking-wider mb-2 px-1">ORGANIZATION</p>
+          <OrganizationSwitcher
+            hidePersonal
+            appearance={{
+              elements: {
+                rootBox: 'w-full',
+                organizationSwitcherTrigger: 'w-full px-2 py-2 text-sm rounded-md hover:bg-gray-50 justify-start',
+              },
+            }}
+          />
+        </div>
+      )}
+
       <nav className="flex-1 overflow-y-auto py-4">
         {filteredGroups.map((group) => (
           <div key={group.label} className="mb-6">
