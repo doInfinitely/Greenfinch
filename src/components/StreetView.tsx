@@ -8,6 +8,7 @@ interface StreetViewProps {
   lon: number;
   geocodedLat?: number | null;
   geocodedLon?: number | null;
+  panoId?: string | null;
   heading?: number;
   pitch?: number;
 }
@@ -68,7 +69,7 @@ function loadGoogleMapsApi(apiKey: string): Promise<void> {
   });
 }
 
-export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon, heading = 0, pitch = 10 }: StreetViewProps) {
+export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon, panoId: initialPanoId, heading = 0, pitch = 10 }: StreetViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const miniMapRef = useRef<HTMLDivElement>(null);
   const panoramaRef = useRef<unknown>(null);
@@ -109,6 +110,74 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
         const propertyLocation = new google.maps.LatLng(useLat, useLon);
         const desktop = window.innerWidth >= 1024;
 
+        const initPanorama = (panoIdToUse: string, panoLocation: google.maps.LatLng) => {
+          if (!mounted || !containerRef.current) return;
+          const computedHeading = google.maps.geometry?.spherical?.computeHeading(
+            panoLocation,
+            propertyLocation
+          ) ?? heading;
+
+          const panorama = new google.maps.StreetViewPanorama(containerRef.current!, {
+            pano: panoIdToUse,
+            pov: { heading: computedHeading, pitch },
+            zoom: 0,
+            clickToGo: desktop,
+            linksControl: desktop,
+            motionTracking: false,
+            motionTrackingControl: false,
+            addressControl: true,
+            fullscreenControl: true,
+            panControl: true,
+            enableCloseButton: false,
+          });
+
+          panoramaRef.current = panorama;
+
+          if (desktop && miniMapRef.current) {
+            const miniMap = new google.maps.Map(miniMapRef.current, {
+              center: panoLocation,
+              zoom: 15,
+              disableDefaultUI: true,
+              zoomControl: true,
+              mapTypeId: google.maps.MapTypeId.ROADMAP,
+              streetViewControl: true,
+              gestureHandling: 'greedy',
+            });
+
+            miniMap.setStreetView(panorama);
+            miniMapInstanceRef.current = miniMap;
+
+            const propertyMarker = new google.maps.Marker({
+              position: propertyLocation,
+              map: miniMap,
+              title: 'Property Location',
+              icon: {
+                path: google.maps.SymbolPath.CIRCLE,
+                scale: 6,
+                fillColor: '#16a34a',
+                fillOpacity: 1,
+                strokeColor: '#ffffff',
+                strokeWeight: 2,
+              },
+            });
+            void propertyMarker;
+          }
+
+          setStatus('ready');
+        };
+
+        if (initialPanoId) {
+          sv.getPanorama({ pano: initialPanoId }, (data, panoStatus) => {
+            if (!mounted || !containerRef.current) return;
+            if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
+              initPanorama(initialPanoId!, data.location.latLng);
+            } else {
+              setStatus('unavailable');
+            }
+          });
+          return;
+        }
+
         const radiusAttempts = [100, 300, 800];
 
         const tryRadius = (index: number) => {
@@ -128,64 +197,8 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
             (data, panoStatus) => {
               if (!mounted || !containerRef.current) return;
 
-              if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
-                const panoLocation = data.location.latLng;
-
-                const computedHeading = google.maps.geometry?.spherical?.computeHeading(
-                  panoLocation,
-                  propertyLocation
-                ) ?? heading;
-
-                const panorama = new google.maps.StreetViewPanorama(containerRef.current!, {
-                  pano: data.location.pano!,
-                  pov: {
-                    heading: computedHeading,
-                    pitch,
-                  },
-                  zoom: 0,
-                  clickToGo: desktop,
-                  linksControl: desktop,
-                  motionTracking: false,
-                  motionTrackingControl: false,
-                  addressControl: true,
-                  fullscreenControl: true,
-                  panControl: true,
-                  enableCloseButton: false,
-                });
-
-                panoramaRef.current = panorama;
-
-                if (desktop && miniMapRef.current) {
-                  const miniMap = new google.maps.Map(miniMapRef.current, {
-                    center: panoLocation,
-                    zoom: 15,
-                    disableDefaultUI: true,
-                    zoomControl: true,
-                    mapTypeId: google.maps.MapTypeId.ROADMAP,
-                    streetViewControl: true,
-                    gestureHandling: 'greedy',
-                  });
-
-                  miniMap.setStreetView(panorama);
-                  miniMapInstanceRef.current = miniMap;
-
-                  const propertyMarker = new google.maps.Marker({
-                    position: propertyLocation,
-                    map: miniMap,
-                    title: 'Property Location',
-                    icon: {
-                      path: google.maps.SymbolPath.CIRCLE,
-                      scale: 6,
-                      fillColor: '#16a34a',
-                      fillOpacity: 1,
-                      strokeColor: '#ffffff',
-                      strokeWeight: 2,
-                    },
-                  });
-                  void propertyMarker;
-                }
-
-                setStatus('ready');
+              if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng && data.location.pano) {
+                initPanorama(data.location.pano, data.location.latLng);
               } else {
                 tryRadius(index + 1);
               }
@@ -214,7 +227,7 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
         miniMapInstanceRef.current = null;
       }
     };
-  }, [apiKey, lat, lon, geocodedLat, geocodedLon, heading, pitch]);
+  }, [apiKey, lat, lon, geocodedLat, geocodedLon, initialPanoId, heading, pitch]);
 
   if (status === 'unavailable') {
     return (

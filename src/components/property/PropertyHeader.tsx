@@ -82,25 +82,6 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
     let mounted = true;
 
     const init = async () => {
-      let svLat = property.geocodedLat;
-      let svLon = property.geocodedLon;
-
-      if (!svLat || !svLon) {
-        try {
-          const geocodeRes = await fetch(`/api/properties/${property.propertyKey}/geocode`, { method: 'POST' });
-          if (geocodeRes.ok) {
-            const geocodeData = await geocodeRes.json();
-            if (geocodeData.success && geocodeData.data) {
-              svLat = geocodeData.data.geocodedLat;
-              svLon = geocodeData.data.geocodedLon;
-            }
-          }
-        } catch {}
-      }
-
-      const useLat = svLat || property.lat;
-      const useLon = svLon || property.lon;
-
       try {
         await loadGoogleMapsIfNeeded(googleMapsApiKey);
       } catch {
@@ -113,9 +94,64 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
         return;
       }
 
-      const sv = new google.maps.StreetViewService();
-      const location = new google.maps.LatLng(useLat, useLon);
+      let panoId = property.streetviewPanoId;
+      let panoLat: number | null = null;
+      let panoLon: number | null = null;
 
+      if (!panoId) {
+        try {
+          const svRes = await fetch(`/api/properties/${property.propertyKey}/streetview`);
+          if (svRes.ok) {
+            const svData = await svRes.json();
+            if (svData.success && svData.data?.panoId) {
+              panoId = svData.data.panoId;
+              panoLat = svData.data.lat;
+              panoLon = svData.data.lon;
+            }
+          }
+        } catch {}
+      }
+
+      if (!mounted || !containerRef.current) return;
+
+      const propertyLocation = new google.maps.LatLng(
+        property.geocodedLat || property.lat,
+        property.geocodedLon || property.lon
+      );
+
+      if (panoId) {
+        const sv = new google.maps.StreetViewService();
+        sv.getPanorama({ pano: panoId }, (data, panoStatus) => {
+          if (!mounted || !containerRef.current) return;
+          if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
+            const panoLocation = data.location.latLng;
+            const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, propertyLocation) ?? 0;
+
+            new google.maps.StreetViewPanorama(containerRef.current!, {
+              pano: panoId!,
+              pov: { heading: computedHeading, pitch: 5 },
+              zoom: 0,
+              addressControl: false,
+              showRoadLabels: false,
+              linksControl: false,
+              panControl: false,
+              zoomControl: false,
+              enableCloseButton: false,
+              motionTracking: false,
+              motionTrackingControl: false,
+              fullscreenControl: false,
+              clickToGo: false,
+              disableDefaultUI: true,
+            });
+            setStatus('ready');
+          } else {
+            setStatus('unavailable');
+          }
+        });
+        return;
+      }
+
+      const sv = new google.maps.StreetViewService();
       const radiusAttempts = [100, 300, 800];
 
       const tryRadius = (index: number) => {
@@ -127,7 +163,7 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
 
         sv.getPanorama(
           {
-            location,
+            location: propertyLocation,
             radius: radiusAttempts[index],
             source: google.maps.StreetViewSource.OUTDOOR,
             preference: google.maps.StreetViewPreference.BEST,
@@ -137,7 +173,7 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
 
             if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
               const panoLocation = data.location.latLng;
-              const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, location) ?? 0;
+              const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, propertyLocation) ?? 0;
 
               new google.maps.StreetViewPanorama(containerRef.current!, {
                 position: panoLocation,
@@ -169,7 +205,7 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
 
     init();
     return () => { mounted = false; };
-  }, [property.lat, property.lon, property.geocodedLat, property.geocodedLon, property.propertyKey, googleMapsApiKey]);
+  }, [property.lat, property.lon, property.geocodedLat, property.geocodedLon, property.streetviewPanoId, property.propertyKey, googleMapsApiKey]);
 
   if (status === 'unavailable') return null;
 

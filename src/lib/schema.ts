@@ -62,6 +62,7 @@ export const properties = pgTable('properties', {
   geocodeConfidence: real('geocode_confidence'),
   geocodedLat: real('geocoded_lat'),
   geocodedLon: real('geocoded_lon'),
+  streetviewPanoId: text('streetview_pano_id'),
   
   // Physical characteristics
   lotSqft: integer('lot_sqft'),

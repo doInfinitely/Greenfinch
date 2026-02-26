@@ -12,6 +12,7 @@ export interface Property {
   lon: number;
   geocodedLat?: number | null;
   geocodedLon?: number | null;
+  streetviewPanoId?: string | null;
   lotAcres: number;
   yearBuilt: number | null;
   numFloors: number | null;

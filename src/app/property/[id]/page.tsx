@@ -198,6 +198,7 @@ export default function PropertyDetailPage() {
           lon: Number(prop.lon ?? prop.longitude) || 0,
           geocodedLat: prop.geocodedLat ? Number(prop.geocodedLat) : null,
           geocodedLon: prop.geocodedLon ? Number(prop.geocodedLon) : null,
+          streetviewPanoId: prop.streetviewPanoId || null,
           lotAcres: Number(prop.lotAcres) || 0,
           yearBuilt: prop.yearBuilt || null,
           numFloors: prop.numFloors || null,
@@ -880,6 +881,7 @@ export default function PropertyDetailPage() {
                   lon={property.lon}
                   geocodedLat={property.geocodedLat}
                   geocodedLon={property.geocodedLon}
+                  panoId={property.streetviewPanoId}
                 />
               ) : null}
             </div>
