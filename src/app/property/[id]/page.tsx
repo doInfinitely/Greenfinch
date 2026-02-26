@@ -63,6 +63,7 @@ export default function PropertyDetailPage() {
   const [showConstituents, setShowConstituents] = useState(false);
   const [parentProperty, setParentProperty] = useState<{ propertyKey: string; commonName: string | null } | null>(null);
   const [expandedMapType, setExpandedMapType] = useState<'satellite' | 'street' | null>(null);
+  const [geocodedCoords, setGeocodedCoords] = useState<{ lat: number; lon: number } | null>(null);
   
   const [showFlagDialog, setShowFlagDialog] = useState(false);
   const [flagType, setFlagType] = useState<'management_company' | 'owner' | 'property_info' | 'other'>('management_company');
@@ -196,6 +197,8 @@ export default function PropertyDetailPage() {
           county: prop.county || '',
           lat: Number(prop.lat ?? prop.latitude) || 0,
           lon: Number(prop.lon ?? prop.longitude) || 0,
+          geocodedLat: prop.geocodedLat ?? null,
+          geocodedLon: prop.geocodedLon ?? null,
           lotAcres: Number(prop.lotAcres) || 0,
           yearBuilt: prop.yearBuilt || null,
           numFloors: prop.numFloors || null,
@@ -406,6 +409,24 @@ export default function PropertyDetailPage() {
   }, [fetchProperty]);
 
   useEffect(() => {
+    if (!propertyDbId) return;
+    if (property?.geocodedLat != null && property?.geocodedLon != null) {
+      setGeocodedCoords({ lat: property.geocodedLat, lon: property.geocodedLon });
+      return;
+    }
+    const controller = new AbortController();
+    fetch(`/api/properties/${propertyDbId}/geocode`, { signal: controller.signal })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.geocodedLat != null && data?.geocodedLon != null) {
+          setGeocodedCoords({ lat: data.geocodedLat, lon: data.geocodedLon });
+        }
+      })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [property?.geocodedLat, property?.geocodedLon, propertyDbId]);
+
+  useEffect(() => {
     if (!propertyId) return;
     
     const fetchPipelineData = async () => {
@@ -597,6 +618,8 @@ export default function PropertyDetailPage() {
         pipelineLoaded={pipelineLoaded}
         customerLoaded={customerLoaded}
         googleMapsApiKey={googleMapsApiKey}
+        geocodedLat={geocodedCoords?.lat}
+        geocodedLon={geocodedCoords?.lon}
         onEnrichment={handleEnrichment}
         onShowAddToList={() => setShowAddToListModal(true)}
         onSetAssignDialogTrigger={setAssignDialogTrigger}
@@ -874,8 +897,8 @@ export default function PropertyDetailPage() {
               ) : expandedMapType === 'street' && googleMapsApiKey ? (
                 <StreetView
                   apiKey={googleMapsApiKey}
-                  lat={property.lat}
-                  lon={property.lon}
+                  lat={geocodedCoords?.lat ?? property.lat}
+                  lon={geocodedCoords?.lon ?? property.lon}
                 />
               ) : null}
             </div>

@@ -72,12 +72,15 @@ function loadGoogleMapsIfNeeded(apiKey: string): Promise<void> {
   });
 }
 
-function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: Property; googleMapsApiKey: string; onExpand?: () => void }) {
+function StreetViewStatic({ property, googleMapsApiKey, onExpand, geocodedLat, geocodedLon }: { property: Property; googleMapsApiKey: string; onExpand?: () => void; geocodedLat?: number | null; geocodedLon?: number | null }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'unavailable'>('loading');
 
+  const svLat = geocodedLat ?? property.lat;
+  const svLon = geocodedLon ?? property.lon;
+
   useEffect(() => {
-    if (!property.lat || !property.lon || !googleMapsApiKey || !containerRef.current) return;
+    if (!svLat || !svLon || !googleMapsApiKey || !containerRef.current) return;
 
     let mounted = true;
 
@@ -95,7 +98,8 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
       }
 
       const sv = new google.maps.StreetViewService();
-      const location = new google.maps.LatLng(property.lat!, property.lon!);
+      const location = new google.maps.LatLng(svLat!, svLon!);
+      const parcelLocation = new google.maps.LatLng(property.lat!, property.lon!);
 
       const radiusAttempts = [300, 800, 1500];
 
@@ -118,7 +122,7 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
 
             if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
               const panoLocation = data.location.latLng;
-              const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, location) ?? 0;
+              const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, parcelLocation) ?? 0;
 
               new google.maps.StreetViewPanorama(containerRef.current!, {
                 position: panoLocation,
@@ -150,7 +154,7 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
 
     init();
     return () => { mounted = false; };
-  }, [property.lat, property.lon, googleMapsApiKey]);
+  }, [svLat, svLon, property.lat, property.lon, googleMapsApiKey]);
 
   if (status === 'unavailable') return null;
 
@@ -213,6 +217,8 @@ interface PropertyHeaderProps {
   pipelineLoaded?: boolean;
   customerLoaded?: boolean;
   googleMapsApiKey?: string;
+  geocodedLat?: number | null;
+  geocodedLon?: number | null;
   onEnrichment: () => void;
   onShowAddToList: () => void;
   onSetAssignDialogTrigger: (fn: (prev: number) => number) => void;
@@ -235,6 +241,8 @@ export default function PropertyHeader({
   pipelineLoaded,
   customerLoaded,
   googleMapsApiKey,
+  geocodedLat,
+  geocodedLon,
   onEnrichment,
   onShowAddToList,
   onSetAssignDialogTrigger,
@@ -245,7 +253,7 @@ export default function PropertyHeader({
   const router = useRouter();
   const { getEnrichmentStatus } = useEnrichmentQueue();
 
-  const hasStreetView = googleMapsApiKey && property.lat && property.lon;
+  const hasStreetView = googleMapsApiKey && ((geocodedLat && geocodedLon) || (property.lat && property.lon));
 
   return (
     <>
@@ -267,6 +275,8 @@ export default function PropertyHeader({
               property={property}
               googleMapsApiKey={googleMapsApiKey!}
               onExpand={onExpandStreetView}
+              geocodedLat={geocodedLat}
+              geocodedLon={geocodedLon}
             />
           </div>
         )}

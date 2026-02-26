@@ -43,6 +43,7 @@ greenfinch.ai is an AI-native commercial real estate prospecting CRM designed fo
 - **Domain Validation**: Utilizes an in-memory cache with a 5-minute TTL to prevent redundant HTTP fetches.
 - **Deduplication**: Automatic merging of contacts during enrichment, managed with distributed Redis locking.
 - **Authentication & Authorization**: Implemented with Clerk Auth, supporting organization-scoped sessions and role-based access control.
+- **StreetView Geocoding**: Property pages geocode the address via Google Maps Geocoding API on first visit, storing the result in `geocoded_lat`/`geocoded_lon` columns. These road-interpolated coordinates are used for StreetView instead of the parcel centroid (`lat`/`lon`), improving panorama angle. The heading still targets the parcel centroid. Cached after first geocode — no repeat API calls.
 
 ## External Dependencies
 - **Snowflake**: For Regrid parcel data ingestion.
