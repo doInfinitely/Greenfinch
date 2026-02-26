@@ -409,6 +409,14 @@ export default function PropertyDetailPage() {
   }, [fetchProperty]);
 
   useEffect(() => {
+    if (enrichmentStatus === 'enriched' || enrichmentStatus === 'not_enriched') {
+      if (enrichmentMessage === 'AI research in progress...' || enrichmentMessage === 'Starting AI research...') {
+        setEnrichmentMessage('');
+      }
+    }
+  }, [enrichmentStatus]);
+
+  useEffect(() => {
     if (!propertyDbId) return;
     if (property?.geocodedLat != null && property?.geocodedLon != null) {
       setGeocodedCoords({ lat: property.geocodedLat, lon: property.geocodedLon });
