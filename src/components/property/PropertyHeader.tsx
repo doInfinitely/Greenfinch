@@ -114,17 +114,18 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
 
       if (!mounted || !containerRef.current) return;
 
-      const propertyLocation = new google.maps.LatLng(
+      const searchLocation = new google.maps.LatLng(
         property.geocodedLat || property.lat,
         property.geocodedLon || property.lon
       );
+      const parcelCentroid = new google.maps.LatLng(property.lat, property.lon);
 
       const sv = new google.maps.StreetViewService();
       const radiusAttempts = [100, 300, 800];
 
       const createPanorama = (panoLocation: google.maps.LatLng, panoOptions: { pano?: string; position?: google.maps.LatLng }) => {
         if (!mounted || !containerRef.current) return;
-        const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, propertyLocation) ?? 0;
+        const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, parcelCentroid) ?? 0;
 
         new google.maps.StreetViewPanorama(containerRef.current!, {
           ...panoOptions,
@@ -154,10 +155,10 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
 
         sv.getPanorama(
           {
-            location: propertyLocation,
+            location: searchLocation,
             radius: radiusAttempts[index],
             source: google.maps.StreetViewSource.OUTDOOR,
-            preference: google.maps.StreetViewPreference.BEST,
+            preference: google.maps.StreetViewPreference.NEAREST,
           },
           (data, panoStatus) => {
             if (!mounted || !containerRef.current) return;

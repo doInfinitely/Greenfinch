@@ -620,12 +620,15 @@ export async function enrichContactCascade(
       console.log(`[Contact] PDL found: ${pdlResult.fullName} at ${pdlResult.companyName} (${pdlResult.companyDomain})`);
       pdlData = pdlResult;
       
-      if (!foundLinkedin && pdlResult.linkedinUrl) {
+      if (pdlResult.linkedinUrl) {
         const slugCheck = validateLinkedInSlug(pdlResult.linkedinUrl, firstName, lastName);
         if (slugCheck.valid) {
+          if (foundLinkedin && foundLinkedin !== pdlResult.linkedinUrl) {
+            console.log(`[Contact] PDL LinkedIn overrides previous: ${foundLinkedin} → ${pdlResult.linkedinUrl}`);
+          }
           foundLinkedin = pdlResult.linkedinUrl;
           console.log(`[Contact] PDL provided LinkedIn: ${foundLinkedin}`);
-        } else {
+        } else if (!foundLinkedin) {
           rejectedLinkedinUrl = pdlResult.linkedinUrl;
           rejectedLinkedinSource = 'pdl';
           console.warn(`[Contact] LinkedIn slug mismatch — expected "${firstName} ${lastName}", got "${slugCheck.slug}" from pdl — discarding`);

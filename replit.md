@@ -40,7 +40,7 @@ greenfinch.ai is an AI-native commercial real estate prospecting CRM designed fo
 ### Technical Implementations
 - **AI Enrichment Pipeline**: A 3-stage Gemini pipeline (classify → ownership → contacts) with configurable models, temperatures, timeouts, and retries per stage. Includes replacement search with exponential backoff for retries.
 - **Contact Enrichment Cascade**: A 5-stage cascade using multiple external providers (PDL → Crustdata → Findymail/Hunter → SERP → Email validation) for comprehensive contact information.
-- **Street View**: Address-based panorama lookup via Google Street View Metadata API (`streetview_pano_id` cached per property). Uses the same panorama Google Maps shows for an address. Falls back to lat/lon radius search if metadata API fails. Properties geocoded via Google Maps Geocoding API (`geocoded_lat`/`geocoded_lon`).
+- **Street View**: Address-based panorama lookup via Google Street View Metadata API (`streetview_pano_id` cached per property). Uses the same panorama Google Maps shows for an address. Falls back to lat/lon radius search if metadata API fails. Properties geocoded via Google Maps Geocoding API (`geocoded_lat`/`geocoded_lon`). Heading computed from panorama position toward parcel centroid (not geocoded point). Uses `NEAREST` preference and `OUTDOOR` source.
 - **Domain Validation**: Utilizes an in-memory cache with a 5-minute TTL to prevent redundant HTTP fetches.
 - **Deduplication**: Automatic merging of contacts during enrichment, managed with distributed Redis locking.
 - **Authentication & Authorization**: Implemented with Clerk Auth, supporting organization-scoped sessions and role-based access control.

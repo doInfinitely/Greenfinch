@@ -49,19 +49,24 @@ export async function GET(
       });
     }
 
-    const address = property.validatedAddress || property.regridAddress;
-    if (!address) {
-      console.log(`[StreetView] No address for property: ${id}`);
-      return NextResponse.json({ success: false, error: 'No address available' }, { status: 400 });
-    }
-
     const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
     if (!googleApiKey) {
       console.log(`[StreetView] GOOGLE_MAPS_API_KEY not configured`);
       return NextResponse.json({ success: false, error: 'Not configured' }, { status: 500 });
     }
 
-    const fullAddress = [address, property.city, property.state, property.zip].filter(Boolean).join(', ');
+    const validatedAddr = property.validatedAddress;
+    const regridAddr = property.regridAddress;
+
+    let fullAddress: string;
+    if (validatedAddr) {
+      fullAddress = validatedAddr;
+    } else if (regridAddr) {
+      fullAddress = [regridAddr, property.city, property.state, property.zip].filter(Boolean).join(', ');
+    } else {
+      console.log(`[StreetView] No address for property: ${id}`);
+      return NextResponse.json({ success: false, error: 'No address available' }, { status: 400 });
+    }
 
     const metadataUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${encodeURIComponent(fullAddress)}&preference=nearest&source=outdoor&key=${googleApiKey}`;
     const response = await fetch(metadataUrl);

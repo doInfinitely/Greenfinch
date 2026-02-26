@@ -1,0 +1,91 @@
+The key issues and fixes:
+
+**1. Use the address, not the centroid coordinates**
+
+The Street View API accepts a `location` parameter as either lat/lng or a street address string. Passing the street address (e.g. `"4500 Mockingbird Ln, Dallas, TX 75206"`) will snap to the nearest road-facing panorama to that address, which is almost always the front of the building.
+
+**2. Use `source: outdoor`** to avoid getting indoor panoramas.
+
+**3. Set `heading` to face the property**
+
+If you still need to use coordinates (or want to ensure the camera faces the building), you can pass the panorama location separately from a `heading` that points toward the parcel centroid. The workflow:
+
+- Request the panorama using the **street address**
+- Calculate the heading from the panorama's returned location **toward** the parcel centroid
+- Use that heading in the final image request
+
+Here's a rough implementation:
+
+```typescript
+import { Client } from "@googlemaps/google-maps-services-js";
+
+const client = new Client({});
+
+async function getStreetView(
+  streetAddress: string,
+  parcelLat: number,
+  parcelLon: number
+) {
+  // Step 1: Get the nearest panorama metadata using the street address
+  const metadataRes = await client.streetViewMetadata({
+    params: {
+      location: streetAddress,
+      source: "outdoor",
+      key: process.env.GOOGLE_MAPS_API_KEY!,
+    },
+  });
+
+  if (metadataRes.data.status !== "OK") {
+    throw new Error(`No street view available: ${metadataRes.data.status}`);
+  }
+
+  const panoLocation = metadataRes.data.location;
+
+  // Step 2: Calculate heading from panorama location toward the parcel
+  const heading = computeHeading(
+    panoLocation.lat,
+    panoLocation.lng,
+    parcelLat,
+    parcelLon
+  );
+
+  // Step 3: Get the actual image
+  const imageRes = await client.streetViewImage({
+    params: {
+      location: streetAddress,
+      source: "outdoor",
+      heading,
+      pitch: 10, // slight upward tilt to capture building
+      fov: 90,
+      size: "640x480",
+      key: process.env.GOOGLE_MAPS_API_KEY!,
+    },
+    responseType: "arraybuffer",
+  });
+
+  return Buffer.from(imageRes.data as ArrayBuffer);
+}
+
+function computeHeading(
+  fromLat: number,
+  fromLng: number,
+  toLat: number,
+  toLng: number
+): number {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const toDeg = (rad: number) => (rad * 180) / Math.PI;
+
+  const dLng = toRad(toLng - fromLng);
+  const lat1 = toRad(fromLat);
+  const lat2 = toRad(toLat);
+
+  const x = Math.sin(dLng) * Math.cos(lat2);
+  const y =
+    Math.cos(lat1) * Math.sin(lat2) -
+    Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng);
+
+  return (toDeg(Math.atan2(x, y)) + 360) % 360;
+}
+```
+
+The biggest win will be switching from centroid coords to the street address string — that alone should fix most of the alley/train track issues. The heading calculation is the cherry on top to make sure the camera is actually pointed at the building.

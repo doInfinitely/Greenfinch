@@ -105,16 +105,15 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
         if (!mounted || !containerRef.current) return;
 
         const sv = new google.maps.StreetViewService();
-        const useLat = geocodedLat || lat;
-        const useLon = geocodedLon || lon;
-        const propertyLocation = new google.maps.LatLng(useLat, useLon);
+        const searchLocation = new google.maps.LatLng(geocodedLat || lat, geocodedLon || lon);
+        const parcelCentroid = new google.maps.LatLng(lat, lon);
         const desktop = window.innerWidth >= 1024;
 
         const initPanorama = (panoIdToUse: string, panoLocation: google.maps.LatLng) => {
           if (!mounted || !containerRef.current) return;
           const computedHeading = google.maps.geometry?.spherical?.computeHeading(
             panoLocation,
-            propertyLocation
+            parcelCentroid
           ) ?? heading;
 
           const panorama = new google.maps.StreetViewPanorama(containerRef.current!, {
@@ -148,7 +147,7 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
             miniMapInstanceRef.current = miniMap;
 
             const propertyMarker = new google.maps.Marker({
-              position: propertyLocation,
+              position: parcelCentroid,
               map: miniMap,
               title: 'Property Location',
               icon: {
@@ -177,10 +176,10 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
 
           sv.getPanorama(
             {
-              location: propertyLocation,
+              location: searchLocation,
               radius: radiusAttempts[index],
               source: google.maps.StreetViewSource.OUTDOOR,
-              preference: google.maps.StreetViewPreference.BEST,
+              preference: google.maps.StreetViewPreference.NEAREST,
             },
             (data, panoStatus) => {
               if (!mounted || !containerRef.current) return;
