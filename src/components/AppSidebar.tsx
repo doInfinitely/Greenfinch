@@ -106,7 +106,8 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
     if (href === '/dashboard/map') {
       return pathname === '/dashboard/map' || pathname === '/dashboard' || pathname === '/dashboard/list';
     }
-    return pathname?.startsWith(href);
+    if (pathname === href) return true;
+    return pathname?.startsWith(href + '/') ?? false;
   };
 
   const filteredGroups = navGroups.filter(group => {
