@@ -115,7 +115,7 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand, geocodedLat, g
             location,
             radius: radiusAttempts[index],
             source: google.maps.StreetViewSource.OUTDOOR,
-            preference: google.maps.StreetViewPreference.NEAREST,
+            preference: google.maps.StreetViewPreference.BEST,
           },
           (data, panoStatus) => {
             if (!mounted || !containerRef.current) return;
