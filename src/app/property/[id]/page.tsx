@@ -64,7 +64,6 @@ export default function PropertyDetailPage() {
   const [parentProperty, setParentProperty] = useState<{ propertyKey: string; commonName: string | null } | null>(null);
   const [expandedMapType, setExpandedMapType] = useState<'satellite' | 'street' | null>(null);
   const [geocodedCoords, setGeocodedCoords] = useState<{ lat: number; lon: number } | null>(null);
-  const [geocodeReady, setGeocodeReady] = useState(false);
   
   const [showFlagDialog, setShowFlagDialog] = useState(false);
   const [flagType, setFlagType] = useState<'management_company' | 'owner' | 'property_info' | 'other'>('management_company');
@@ -418,11 +417,9 @@ export default function PropertyDetailPage() {
   }, [enrichmentStatus]);
 
   useEffect(() => {
-    setGeocodeReady(false);
     if (!propertyDbId) return;
     if (property?.geocodedLat != null && property?.geocodedLon != null) {
       setGeocodedCoords({ lat: property.geocodedLat, lon: property.geocodedLon });
-      setGeocodeReady(true);
       return;
     }
     const controller = new AbortController();
@@ -432,11 +429,8 @@ export default function PropertyDetailPage() {
         if (data?.geocodedLat != null && data?.geocodedLon != null) {
           setGeocodedCoords({ lat: data.geocodedLat, lon: data.geocodedLon });
         }
-        setGeocodeReady(true);
       })
-      .catch(() => {
-        setGeocodeReady(true);
-      });
+      .catch(() => {});
     return () => controller.abort();
   }, [property?.geocodedLat, property?.geocodedLon, propertyDbId]);
 
@@ -634,7 +628,6 @@ export default function PropertyDetailPage() {
         googleMapsApiKey={googleMapsApiKey}
         geocodedLat={geocodedCoords?.lat}
         geocodedLon={geocodedCoords?.lon}
-        geocodeReady={geocodeReady}
         onEnrichment={handleEnrichment}
         onShowAddToList={() => setShowAddToListModal(true)}
         onSetAssignDialogTrigger={setAssignDialogTrigger}

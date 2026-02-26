@@ -119,7 +119,7 @@ export default function StreetView({ apiKey, lat, lon, heading = 0, pitch = 10 }
               location: propertyLocation,
               radius: radiusAttempts[index],
               source: google.maps.StreetViewSource.OUTDOOR,
-              preference: google.maps.StreetViewPreference.BEST,
+              preference: google.maps.StreetViewPreference.NEAREST,
             },
             (data, panoStatus) => {
               if (!mounted || !containerRef.current) return;
