@@ -33,6 +33,7 @@ export async function GET(
       .limit(1);
 
     if (!property) {
+      console.log(`[StreetView] Property not found: ${id}`);
       return NextResponse.json({ success: false, error: 'Property not found' }, { status: 404 });
     }
 
@@ -50,21 +51,24 @@ export async function GET(
 
     const address = property.validatedAddress || property.regridAddress;
     if (!address) {
+      console.log(`[StreetView] No address for property: ${id}`);
       return NextResponse.json({ success: false, error: 'No address available' }, { status: 400 });
     }
 
     const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
     if (!googleApiKey) {
+      console.log(`[StreetView] GOOGLE_MAPS_API_KEY not configured`);
       return NextResponse.json({ success: false, error: 'Not configured' }, { status: 500 });
     }
 
     const fullAddress = [address, property.city, property.state, property.zip].filter(Boolean).join(', ');
 
-    const metadataUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${encodeURIComponent(fullAddress)}&radius=100&source=outdoor&key=${googleApiKey}`;
+    const metadataUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${encodeURIComponent(fullAddress)}&preference=nearest&source=outdoor&key=${googleApiKey}`;
     const response = await fetch(metadataUrl);
     const data = await response.json();
 
     if (data.status !== 'OK' || !data.pano_id) {
+      console.log(`[StreetView] No panorama for "${fullAddress}": status=${data.status}`);
       return NextResponse.json({ success: false, error: 'No street view available' }, { status: 404 });
     }
 
