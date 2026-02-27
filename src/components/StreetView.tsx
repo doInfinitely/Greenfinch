@@ -9,6 +9,7 @@ interface StreetViewProps {
   geocodedLat?: number | null;
   geocodedLon?: number | null;
   address?: string | null;
+  propertyKey?: string | null;
   panoId?: string | null;
   heading?: number;
   pitch?: number;
@@ -70,7 +71,7 @@ function loadGoogleMapsApi(apiKey: string): Promise<void> {
   });
 }
 
-export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon, address, panoId: initialPanoId, heading = 0, pitch = 10 }: StreetViewProps) {
+export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon, address, propertyKey, panoId: initialPanoId, heading = 0, pitch = 10 }: StreetViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const miniMapRef = useRef<HTMLDivElement>(null);
   const panoramaRef = useRef<unknown>(null);
@@ -165,42 +166,38 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
           setStatus('ready');
         };
 
-        const tryAddressLookup = () => {
-          if (!mounted || !containerRef.current || !address) {
-            if (mounted) setStatus('unavailable');
-            return;
-          }
-          sv.getPanorama(
-            {
-              address,
-              preference: google.maps.StreetViewPreference.BEST,
-              source: google.maps.StreetViewSource.OUTDOOR,
-              radius: 100,
-            },
-            (data, panoStatus) => {
-              if (!mounted || !containerRef.current) return;
-              if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng && data.location.pano) {
-                initPanorama(data.location.pano, data.location.latLng);
-              } else {
-                setStatus('unavailable');
-              }
-            }
-          );
-        };
-
-        if (initialPanoId) {
-          sv.getPanorama({ pano: initialPanoId }, (data, panoStatus) => {
+        const usePanoId = (panoId: string) => {
+          sv.getPanorama({ pano: panoId }, (data, panoStatus) => {
             if (!mounted || !containerRef.current) return;
             if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
-              initPanorama(initialPanoId!, data.location.latLng);
+              initPanorama(panoId, data.location.latLng);
             } else {
-              tryAddressLookup();
+              if (mounted) setStatus('unavailable');
             }
           });
-          return;
+        };
+
+        let panoIdToUse = initialPanoId;
+
+        if (!panoIdToUse && propertyKey) {
+          try {
+            const svRes = await fetch(`/api/properties/${propertyKey}/streetview`);
+            if (svRes.ok) {
+              const svData = await svRes.json();
+              if (svData.success && svData.data?.panoId) {
+                panoIdToUse = svData.data.panoId;
+              }
+            }
+          } catch {}
         }
 
-        tryAddressLookup();
+        if (!mounted || !containerRef.current) return;
+
+        if (panoIdToUse) {
+          usePanoId(panoIdToUse);
+        } else {
+          setStatus('unavailable');
+        }
       } catch (err) {
         if (mounted) {
           setError(err instanceof Error ? err.message : 'Failed to load Street View');
@@ -221,7 +218,7 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
         miniMapInstanceRef.current = null;
       }
     };
-  }, [apiKey, lat, lon, geocodedLat, geocodedLon, address, initialPanoId, heading, pitch]);
+  }, [apiKey, lat, lon, geocodedLat, geocodedLon, address, propertyKey, initialPanoId, heading, pitch]);
 
   if (status === 'unavailable') {
     return (

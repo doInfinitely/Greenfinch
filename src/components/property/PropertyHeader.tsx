@@ -117,9 +117,6 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
       const parcelCentroid = new google.maps.LatLng(property.lat, property.lon);
       const sv = new google.maps.StreetViewService();
 
-      const streetAddress = property.validatedAddress
-        || `${property.address}, ${property.city}, ${property.state} ${property.zip}`;
-
       const createPanorama = (panoLocation: google.maps.LatLng, panoIdToUse: string) => {
         if (!mounted || !containerRef.current) return;
         const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, parcelCentroid) ?? 0;
@@ -143,26 +140,6 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
         setStatus('ready');
       };
 
-      const tryAddressLookup = () => {
-        if (!mounted || !containerRef.current) return;
-        sv.getPanorama(
-          {
-            address: streetAddress,
-            preference: google.maps.StreetViewPreference.BEST,
-            source: google.maps.StreetViewSource.OUTDOOR,
-            radius: 100,
-          },
-          (data, panoStatus) => {
-            if (!mounted || !containerRef.current) return;
-            if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng && data.location.pano) {
-              createPanorama(data.location.latLng, data.location.pano);
-            } else {
-              setStatus('unavailable');
-            }
-          }
-        );
-      };
-
       if (panoId) {
         sv.getPanorama({ pano: panoId }, (data, panoStatus) => {
           if (!mounted || !containerRef.current) return;
@@ -170,13 +147,13 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
             createPanorama(data.location.latLng, panoId!);
           } else {
             fetch(`/api/properties/${property.propertyKey}/streetview`, { method: 'DELETE' }).catch(() => {});
-            tryAddressLookup();
+            setStatus('unavailable');
           }
         });
         return;
       }
 
-      tryAddressLookup();
+      setStatus('unavailable');
     };
 
     init();
