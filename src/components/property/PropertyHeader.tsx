@@ -114,22 +114,19 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
 
       if (!mounted || !containerRef.current) return;
 
-      const searchLocation = new google.maps.LatLng(
-        property.geocodedLat || property.lat,
-        property.geocodedLon || property.lon
-      );
       const parcelCentroid = new google.maps.LatLng(property.lat, property.lon);
-
       const sv = new google.maps.StreetViewService();
-      const radiusAttempts = [100, 300, 800];
 
-      const createPanorama = (panoLocation: google.maps.LatLng, panoOptions: { pano?: string; position?: google.maps.LatLng }) => {
+      const streetAddress = property.validatedAddress
+        || `${property.address}, ${property.city}, ${property.state} ${property.zip}`;
+
+      const createPanorama = (panoLocation: google.maps.LatLng, panoIdToUse: string) => {
         if (!mounted || !containerRef.current) return;
         const computedHeading = google.maps.geometry?.spherical?.computeHeading(panoLocation, parcelCentroid) ?? 0;
 
         new google.maps.StreetViewPanorama(containerRef.current!, {
-          ...panoOptions,
-          pov: { heading: computedHeading, pitch: 5 },
+          pano: panoIdToUse,
+          pov: { heading: computedHeading, pitch: 10 },
           zoom: 0,
           addressControl: false,
           showRoadLabels: false,
@@ -146,27 +143,21 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
         setStatus('ready');
       };
 
-      const tryRadius = (index: number) => {
+      const tryAddressLookup = () => {
         if (!mounted || !containerRef.current) return;
-        if (index >= radiusAttempts.length) {
-          setStatus('unavailable');
-          return;
-        }
-
         sv.getPanorama(
           {
-            location: searchLocation,
-            radius: radiusAttempts[index],
+            address: streetAddress,
+            preference: google.maps.StreetViewPreference.BEST,
             source: google.maps.StreetViewSource.OUTDOOR,
-            preference: google.maps.StreetViewPreference.NEAREST,
+            radius: 100,
           },
           (data, panoStatus) => {
             if (!mounted || !containerRef.current) return;
-
-            if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
-              createPanorama(data.location.latLng, { position: data.location.latLng });
+            if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng && data.location.pano) {
+              createPanorama(data.location.latLng, data.location.pano);
             } else {
-              tryRadius(index + 1);
+              setStatus('unavailable');
             }
           }
         );
@@ -176,16 +167,16 @@ function StreetViewStatic({ property, googleMapsApiKey, onExpand }: { property: 
         sv.getPanorama({ pano: panoId }, (data, panoStatus) => {
           if (!mounted || !containerRef.current) return;
           if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
-            createPanorama(data.location.latLng, { pano: panoId! });
+            createPanorama(data.location.latLng, panoId!);
           } else {
             fetch(`/api/properties/${property.propertyKey}/streetview`, { method: 'DELETE' }).catch(() => {});
-            tryRadius(0);
+            tryAddressLookup();
           }
         });
         return;
       }
 
-      tryRadius(0);
+      tryAddressLookup();
     };
 
     init();

@@ -881,6 +881,7 @@ export default function PropertyDetailPage() {
                   lon={property.lon}
                   geocodedLat={property.geocodedLat}
                   geocodedLon={property.geocodedLon}
+                  address={property.validatedAddress || `${property.address}, ${property.city}, ${property.state} ${property.zip}`}
                   panoId={property.streetviewPanoId}
                 />
               ) : null}

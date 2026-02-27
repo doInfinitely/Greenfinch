@@ -68,7 +68,7 @@ export async function GET(
       return NextResponse.json({ success: false, error: 'No address available' }, { status: 400 });
     }
 
-    const metadataUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${encodeURIComponent(fullAddress)}&preference=nearest&source=outdoor&key=${googleApiKey}`;
+    const metadataUrl = `https://maps.googleapis.com/maps/api/streetview/metadata?location=${encodeURIComponent(fullAddress)}&source=outdoor&key=${googleApiKey}`;
     const response = await fetch(metadataUrl);
     const data = await response.json();
 

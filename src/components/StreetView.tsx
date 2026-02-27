@@ -8,6 +8,7 @@ interface StreetViewProps {
   lon: number;
   geocodedLat?: number | null;
   geocodedLon?: number | null;
+  address?: string | null;
   panoId?: string | null;
   heading?: number;
   pitch?: number;
@@ -69,7 +70,7 @@ function loadGoogleMapsApi(apiKey: string): Promise<void> {
   });
 }
 
-export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon, panoId: initialPanoId, heading = 0, pitch = 10 }: StreetViewProps) {
+export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon, address, panoId: initialPanoId, heading = 0, pitch = 10 }: StreetViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const miniMapRef = useRef<HTMLDivElement>(null);
   const panoramaRef = useRef<unknown>(null);
@@ -105,7 +106,6 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
         if (!mounted || !containerRef.current) return;
 
         const sv = new google.maps.StreetViewService();
-        const searchLocation = new google.maps.LatLng(geocodedLat || lat, geocodedLon || lon);
         const parcelCentroid = new google.maps.LatLng(lat, lon);
         const desktop = window.innerWidth >= 1024;
 
@@ -165,29 +165,24 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
           setStatus('ready');
         };
 
-        const radiusAttempts = [100, 300, 800];
-
-        const tryRadius = (index: number) => {
-          if (!mounted || !containerRef.current) return;
-          if (index >= radiusAttempts.length) {
-            setStatus('unavailable');
+        const tryAddressLookup = () => {
+          if (!mounted || !containerRef.current || !address) {
+            if (mounted) setStatus('unavailable');
             return;
           }
-
           sv.getPanorama(
             {
-              location: searchLocation,
-              radius: radiusAttempts[index],
+              address,
+              preference: google.maps.StreetViewPreference.BEST,
               source: google.maps.StreetViewSource.OUTDOOR,
-              preference: google.maps.StreetViewPreference.NEAREST,
+              radius: 100,
             },
             (data, panoStatus) => {
               if (!mounted || !containerRef.current) return;
-
               if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng && data.location.pano) {
                 initPanorama(data.location.pano, data.location.latLng);
               } else {
-                tryRadius(index + 1);
+                setStatus('unavailable');
               }
             }
           );
@@ -199,13 +194,13 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
             if (panoStatus === google.maps.StreetViewStatus.OK && data?.location?.latLng) {
               initPanorama(initialPanoId!, data.location.latLng);
             } else {
-              tryRadius(0);
+              tryAddressLookup();
             }
           });
           return;
         }
 
-        tryRadius(0);
+        tryAddressLookup();
       } catch (err) {
         if (mounted) {
           setError(err instanceof Error ? err.message : 'Failed to load Street View');
@@ -226,7 +221,7 @@ export default function StreetView({ apiKey, lat, lon, geocodedLat, geocodedLon,
         miniMapInstanceRef.current = null;
       }
     };
-  }, [apiKey, lat, lon, geocodedLat, geocodedLon, initialPanoId, heading, pitch]);
+  }, [apiKey, lat, lon, geocodedLat, geocodedLon, address, initialPanoId, heading, pitch]);
 
   if (status === 'unavailable') {
     return (
