@@ -341,7 +341,10 @@ export async function enrichPersonPDL(
 
     const person = result.data.data || result.data;
 
-    const latestExp = person.experience?.[0] || {};
+    const safeArray = (val: unknown): any[] => Array.isArray(val) ? val : [];
+
+    const experienceArray = safeArray(person.experience);
+    const latestExp = experienceArray[0] || {};
     const expTitle = latestExp.title?.name || latestExp.job_title || null;
     const expCompanyName = latestExp.company?.name || latestExp.job_company_name || null;
     const expCompanyWebsite = latestExp.company?.website || latestExp.job_company_website || null;
@@ -355,9 +358,14 @@ export async function enrichPersonPDL(
     const personCompanyName = person.job_company_name || expCompanyName || null;
     const personCompanyWebsite = person.job_company_website || expCompanyWebsite || null;
 
-    const emailsArray = Array.isArray(person.emails) ? person.emails : [];
+    const emailsArray = safeArray(person.emails);
     const professionalEmail = emailsArray.find((e: any) => e.type === 'professional')?.address || null;
     const resolvedWorkEmail = person.work_email || professionalEmail || null;
+
+    const personalEmailsArray = safeArray(person.personal_emails);
+    const profilesArray = safeArray(person.profiles);
+    const phoneNumbersArray = safeArray(person.phone_numbers);
+    const streetAddressesArray = safeArray(person.street_addresses);
 
     if (!personFullName) {
       console.log('[PDL] Incomplete match - no full_name in response');
@@ -371,7 +379,7 @@ export async function enrichPersonPDL(
         job_company_name: !!personCompanyName,
         job_company_website: !!personCompanyWebsite,
         usedExperienceFallback: !person.job_company_name && !!expCompanyName,
-        experienceCount: person.experience?.length || 0,
+        experienceCount: experienceArray.length,
       });
     }
     
@@ -386,7 +394,7 @@ export async function enrichPersonPDL(
       resultData
     ) : false;
 
-    const linkedinProfiles = person.profiles?.filter((p: any) => p.network === 'linkedin') || [];
+    const linkedinProfiles = profilesArray.filter((p: any) => p.network === 'linkedin');
     let linkedinUrl = linkedinProfiles[0]?.url || person.linkedin_url || null;
     if (linkedinUrl && !linkedinUrl.startsWith('http')) {
       linkedinUrl = `https://${linkedinUrl}`;
@@ -407,11 +415,11 @@ export async function enrichPersonPDL(
       firstName: person.first_name || null,
       lastName: person.last_name || null,
       fullName: personFullName,
-      email: resolvedWorkEmail || person.personal_emails?.[0] || null,
+      email: resolvedWorkEmail || personalEmailsArray[0] || null,
       workEmail: resolvedWorkEmail,
-      personalEmails: person.personal_emails || null,
-      emailsJson: person.emails || null,
-      phonesJson: person.phone_numbers || null,
+      personalEmails: personalEmailsArray.length > 0 ? personalEmailsArray : null,
+      emailsJson: emailsArray.length > 0 ? emailsArray : null,
+      phonesJson: phoneNumbersArray.length > 0 ? phoneNumbersArray : null,
       mobilePhone: person.mobile_phone || null,
       linkedinUrl,
       title: personTitle,
@@ -425,7 +433,7 @@ export async function enrichPersonPDL(
       location: person.location_name || null,
       city: person.location_locality || null,
       state: person.location_region || null,
-      addressesJson: person.street_addresses || null,
+      addressesJson: streetAddressesArray.length > 0 ? streetAddressesArray : null,
       industry: person.industry || null,
       gender: person.sex || null,
       photoUrl: person.profile_pic_url || null,
