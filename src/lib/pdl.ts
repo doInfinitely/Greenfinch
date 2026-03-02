@@ -355,7 +355,8 @@ export async function enrichPersonPDL(
     const personCompanyName = person.job_company_name || expCompanyName || null;
     const personCompanyWebsite = person.job_company_website || expCompanyWebsite || null;
 
-    const professionalEmail = person.emails?.find((e: any) => e.type === 'professional')?.address || null;
+    const emailsArray = Array.isArray(person.emails) ? person.emails : [];
+    const professionalEmail = emailsArray.find((e: any) => e.type === 'professional')?.address || null;
     const resolvedWorkEmail = person.work_email || professionalEmail || null;
 
     if (!personFullName) {
