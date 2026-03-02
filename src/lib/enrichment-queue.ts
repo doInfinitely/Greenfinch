@@ -232,120 +232,83 @@ export async function saveEnrichmentResults(
 
   console.log(`[SaveEnrichment] Updated property ${propertyKey} with enrichment data`);
 
-  interface DerivedOrg { name: string; domain: string | null; orgType: string; roles: string[]; }
+  interface DerivedOrg { name: string; domain: string | null; orgType: string; role: string; }
   const allOrgs: DerivedOrg[] = [];
-  const existingDomains = new Set<string>();
-  const existingNames = new Set<string>();
+  const seenNameRoles = new Set<string>();
+
+  const addOrg = (name: string, domain: string | null, orgType: string, role: string) => {
+    const key = `${name.trim().toLowerCase()}::${role}`;
+    if (seenNameRoles.has(key)) return;
+    seenNameRoles.add(key);
+    allOrgs.push({ name, domain, orgType, role });
+  };
 
   if (ownership.managementCompany?.name && ownership.managementCompany.confidence > 0) {
-    const mgmtDomain = ownership.managementCompany.domain?.trim().toLowerCase() || null;
-    const mgmtName = ownership.managementCompany.name.trim().toLowerCase();
     console.log(`[SaveEnrichment] Adding org from ownership mgmt: ${ownership.managementCompany.name}`);
-    allOrgs.push({
-      name: ownership.managementCompany.name,
-      domain: ownership.managementCompany.domain || null,
-      orgType: 'management',
-      roles: ['property_manager'],
-    });
-    if (mgmtDomain) existingDomains.add(mgmtDomain);
-    existingNames.add(mgmtName);
+    addOrg(ownership.managementCompany.name, ownership.managementCompany.domain || null, 'management', 'property_manager');
   }
 
   if (ownership.beneficialOwner?.name && ownership.beneficialOwner.confidence > 0) {
-    const ownerName = ownership.beneficialOwner.name.trim().toLowerCase();
-    if (!existingNames.has(ownerName)) {
-      const ownerDomain: string | null = ownership.beneficialOwner.domain || null;
-      if (ownerDomain) {
-        console.log(`[SaveEnrichment] Owner "${ownership.beneficialOwner.name}" has PDL-validated domain: ${ownerDomain}`);
-      } else {
-        console.log(`[SaveEnrichment] Owner "${ownership.beneficialOwner.name}" has no domain — will be resolved via PDL during org resolution`);
-      }
-      console.log(`[SaveEnrichment] Adding org from ownership owner: ${ownership.beneficialOwner.name} (domain: ${ownerDomain || 'none'})`);
-      allOrgs.push({
-        name: ownership.beneficialOwner.name,
-        domain: ownerDomain,
-        orgType: ownership.beneficialOwner.type || 'owner',
-        roles: ['owner'],
-      });
-      if (ownerDomain) existingDomains.add(ownerDomain);
-      existingNames.add(ownerName);
-    }
+    const ownerDomain = ownership.beneficialOwner.domain || null;
+    console.log(`[SaveEnrichment] Adding org from ownership owner: ${ownership.beneficialOwner.name} (domain: ${ownerDomain || 'none'})`);
+    addOrg(ownership.beneficialOwner.name, ownerDomain, ownership.beneficialOwner.type || 'owner', 'owner');
   }
 
   for (const addlMgmt of ownership.additionalManagementCompanies || []) {
     if (!addlMgmt?.name || addlMgmt.confidence <= 0) continue;
-    const addlMgmtName = addlMgmt.name.trim().toLowerCase();
-    const addlMgmtDomain = addlMgmt.domain?.trim().toLowerCase() || null;
-    if (existingNames.has(addlMgmtName) || (addlMgmtDomain && existingDomains.has(addlMgmtDomain))) continue;
     console.log(`[SaveEnrichment] Adding org from additional mgmt: ${addlMgmt.name}`);
-    allOrgs.push({
-      name: addlMgmt.name,
-      domain: addlMgmt.domain || null,
-      orgType: 'management',
-      roles: ['property_manager'],
-    });
-    if (addlMgmtDomain) existingDomains.add(addlMgmtDomain);
-    existingNames.add(addlMgmtName);
+    addOrg(addlMgmt.name, addlMgmt.domain || null, 'management', 'property_manager');
   }
 
   for (const addlOwner of ownership.additionalOwners || []) {
     if (!addlOwner?.name || addlOwner.confidence <= 0) continue;
-    const addlOwnerName = addlOwner.name.trim().toLowerCase();
-    const addlOwnerDomain = addlOwner.domain?.trim().toLowerCase() || null;
-    if (existingNames.has(addlOwnerName) || (addlOwnerDomain && existingDomains.has(addlOwnerDomain))) continue;
     console.log(`[SaveEnrichment] Adding org from additional owner: ${addlOwner.name}`);
-    allOrgs.push({
-      name: addlOwner.name,
-      domain: addlOwner.domain || null,
-      orgType: addlOwner.type || 'owner',
-      roles: ['owner'],
-    });
-    if (addlOwnerDomain) existingDomains.add(addlOwnerDomain);
-    existingNames.add(addlOwnerName);
+    addOrg(addlOwner.name, addlOwner.domain || null, addlOwner.type || 'owner', 'owner');
   }
 
   for (const contact of discoveredContacts) {
     if (!contact.company) continue;
-    const cName = contact.company.trim().toLowerCase();
-    const cDomain = contact.companyDomain?.trim().toLowerCase() || null;
-    if (existingNames.has(cName) || (cDomain && existingDomains.has(cDomain))) continue;
-    console.log(`[SaveEnrichment] Deriving org from contact ${contact.name}: ${contact.company}`);
-    allOrgs.push({
-      name: contact.company,
-      domain: contact.companyDomain || null,
-      orgType: 'related',
-      roles: [contact.role || 'related'],
-    });
-    existingNames.add(cName);
-    if (cDomain) existingDomains.add(cDomain);
+    const contactRole = contact.role || 'related';
+    console.log(`[SaveEnrichment] Deriving org from contact ${contact.name}: ${contact.company} (role: ${contactRole})`);
+    addOrg(contact.company, contact.companyDomain || null, 'related', contactRole);
   }
 
   const orgIds: string[] = [];
-  const resolvedOrgIds = new Set<string>();
+  const resolvedCache = new Map<string, string>();
+
+  const makeResolveKey = (name: string, domain: string | null) => {
+    const normName = name.trim().toLowerCase();
+    const normDomain = domain?.trim().toLowerCase() || '';
+    return `${normName}::${normDomain}`;
+  };
 
   for (const org of allOrgs) {
     try {
-      const result = await resolveOrganization({
-        name: org.name,
-        domain: org.domain,
-        locality: dbProperty.city || undefined,
-        region: dbProperty.state || undefined,
-        postalCode: dbProperty.zip || undefined,
-      });
-      const orgId = result.orgId;
-      console.log(`[SaveEnrichment] Resolved ${org.orgType || 'related'} org "${org.name}" → ${orgId} (${result.matchedBy}, new=${result.isNew}, pdl=${result.pdlEnriched})`);
+      const cacheKey = makeResolveKey(org.name, org.domain);
+      let orgId = resolvedCache.get(cacheKey);
 
-      if (resolvedOrgIds.has(orgId)) {
-        console.log(`[SaveEnrichment] Org ${orgId} already processed, adding role only`);
+      if (!orgId) {
+        const result = await resolveOrganization({
+          name: org.name,
+          domain: org.domain,
+          locality: dbProperty.city || undefined,
+          region: dbProperty.state || undefined,
+          postalCode: dbProperty.zip || undefined,
+        });
+        orgId = result.orgId;
+        resolvedCache.set(cacheKey, orgId);
+        console.log(`[SaveEnrichment] Resolved ${org.orgType || 'related'} org "${org.name}" → ${orgId} (${result.matchedBy}, new=${result.isNew}, pdl=${result.pdlEnriched})`);
+      } else {
+        console.log(`[SaveEnrichment] Reusing resolved org "${org.name}" → ${orgId} for role "${org.role}"`);
       }
-      resolvedOrgIds.add(orgId);
-      orgIds.push(orgId);
+
+      if (!orgIds.includes(orgId)) orgIds.push(orgId);
 
       await db.insert(propertyOrganizations)
         .values({
           propertyId,
           orgId,
-          role: org.roles?.[0] || org.orgType || 'related',
+          role: org.role,
         })
         .onConflictDoNothing();
     } catch (err) {

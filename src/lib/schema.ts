@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, boolean, integer, real, json, index, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, integer, real, json, index, uniqueIndex, unique } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Users table for authentication (Clerk)
@@ -446,6 +446,7 @@ export const propertyOrganizations = pgTable('property_organizations', {
   role: text('role'),
 }, (table) => ({
   propertyOrgIdx: index('idx_property_organizations').on(table.propertyId, table.orgId),
+  propertyOrgRoleUnique: unique('uq_property_org_role').on(table.propertyId, table.orgId, table.role),
 }));
 
 // Junction: Contact <-> Organization

@@ -93,6 +93,8 @@ ONLY return people CURRENTLY verifiably connected to THIS property at THIS addre
 
 SOURCE REQUIREMENT: For each contact, provide the "src" field with the URL where you found them (LinkedIn profile, company team page, property listing, etc.). Only return contacts you can cite a source for.
 
+COMPANY: Return exactly ONE company name per contact — the company most directly relevant to their role at this property. Do NOT combine multiple companies with "/" or "&" (e.g. do NOT return "Company A / Company B"). If a person is associated with multiple entities, pick the one most relevant to their property role.
+
 EMAIL: If you find an email address for a contact in search results, include it. Only include emails you actually found on a web page — do NOT construct emails from name patterns (e.g. firstname@company.com). If no email was found, set email to null.
 
 Return JSON:
