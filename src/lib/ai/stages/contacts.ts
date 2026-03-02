@@ -66,7 +66,7 @@ async function identifyDecisionMakers(
     }
   }
   if (companyLines.length === 0) {
-    const fallbackOwner = property.bizName || property.ownerName1 || 'Unknown';
+    const fallbackOwner = property.ownerName1 || property.bizName || 'Unknown';
     companyLines.push(`- OWNER: ${fallbackOwner} | domain: unknown`);
   }
   const companiesBlock = companyLines.join('\n');
@@ -357,8 +357,8 @@ export async function discoverContacts(
     ownership.beneficialOwner?.name,
     ...(ownership.additionalManagementCompanies || []).map(m => m.name),
     ...(ownership.additionalOwners || []).map(o => o.name),
-    property.bizName,
     property.ownerName1,
+    property.bizName,
   ].filter(Boolean).map(n => n!.toLowerCase().replace(/[^a-z0-9]/g, ''));
 
   if (knownCompanies.length > 0) {

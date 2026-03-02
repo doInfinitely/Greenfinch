@@ -37,8 +37,9 @@ export async function identifyOwnership(
   classification: PropertyClassification
 ): Promise<StageResult<OwnershipInfo>> {
   const client = getGeminiClient();
-  const deedOwner = property.bizName || property.ownerName1 || 'Unknown';
+  const deedOwner = property.ownerName1 || 'Unknown';
   const secondaryOwner = property.ownerName2 || null;
+  const bizName = property.bizName || null;
   const deedDate = property.deedTxfrDate || 'date unknown';
   const legalInfo = extractUsefulLegalInfo(property);
   const sqft = property.totalGrossBldgArea?.toLocaleString() || 'unknown';
@@ -49,7 +50,8 @@ export async function identifyOwnership(
 PROPERTY: ${classification.propertyName} at ${classification.canonicalAddress}
 TYPE: ${classification.category} - ${classification.subcategory}, ${sqft} sqft
 DCAD DEED OWNER: ${deedOwner} (transferred ${deedDate})
-${secondaryOwner ? `DCAD SECONDARY: ${secondaryOwner}` : ''}
+${secondaryOwner ? `DCAD SECONDARY OWNER: ${secondaryOwner}` : ''}
+${bizName ? `DCAD BUSINESS NAME: ${bizName}` : ''}
 ${legalInfo ? `LEGAL: ${legalInfo}` : ''}
 
 SEARCH SEQUENCE:

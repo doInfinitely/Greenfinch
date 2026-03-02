@@ -31,7 +31,8 @@ import { withTimeout } from '../client';
  */
 export async function classifyAndVerifyProperty(property: CommercialProperty): Promise<StageResult<PropertyDataAndClassification>> {
   const client = getGeminiClient();
-  const primaryOwner = property.bizName || property.ownerName1 || 'Unknown';
+  const deedOwner = property.ownerName1 || 'Unknown';
+  const bizName = property.bizName || null;
   const totalSqft = property.totalGrossBldgArea || null;
   const lotAcres = property.lotAcres || (property.lotSqft ? property.lotSqft / 43560 : null);
   const lotAcresStr = lotAcres ? `${lotAcres.toFixed(1)} acres` : 'unknown';
@@ -56,7 +57,7 @@ export async function classifyAndVerifyProperty(property: CommercialProperty): P
 
 ADDRESS: ${property.address}, ${property.city}, TX ${property.zip}
 DCAD: ${property.sptdCode || '?'} ${sptdDescription} | ${property.buildingCount || 0} bldgs, ${totalSqft?.toLocaleString() || 'unknown'} sqft | ${valStr} | ${lotAcresStr} | Quality: ${dcadQualityGrade || 'Unknown'}
-OWNER: ${primaryOwner} | ZONING: ${property.usedesc || 'Unknown'}
+DEED OWNER: ${deedOwner}${bizName ? ` | BUSINESS NAME: ${bizName}` : ''} | ZONING: ${property.usedesc || 'Unknown'}
 Note: DCAD may show one parcel of a multi-parcel property. Confirm or correct with canonical totals.${buildingInfo}${classLine}
 
 CATEGORIES: ${formatCompactCategories()}
