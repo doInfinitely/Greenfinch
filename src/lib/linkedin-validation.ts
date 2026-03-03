@@ -34,7 +34,7 @@ export function validateLinkedInSlug(
   const rawSlug = decodeURIComponent(match[1]);
 
   if (/^ACw/i.test(rawSlug)) {
-    return { valid: true, reason: 'hashed_id', slug: rawSlug };
+    return { valid: false, reason: 'hashed_id', slug: rawSlug };
   }
 
   const slug = rawSlug

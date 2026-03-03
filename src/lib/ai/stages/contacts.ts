@@ -191,9 +191,16 @@ Return JSON:
         email: c.email && c.email !== 'null' ? c.email : null,
       }));
 
+      const PLACEHOLDER_PATTERNS = /\b(open position|tbd|to be determined|hiring|vacant|currently hiring|position open|unfilled|seeking)\b/i;
+
       const contacts: IdentifiedDecisionMaker[] = [];
       for (const contact of rawContactsParsed) {
         if (!contact.name) continue;
+
+        if (PLACEHOLDER_PATTERNS.test(contact.name)) {
+          console.warn(`[FocusedEnrichment] Stage 3: Skipping placeholder contact "${contact.name}"`);
+          continue;
+        }
 
         if (!contact.sourceUrl) {
           console.warn(`[FocusedEnrichment] Stage 3: Contact "${contact.name}" has no source URL — downgrading confidence`);

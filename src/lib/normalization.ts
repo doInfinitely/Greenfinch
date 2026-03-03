@@ -69,10 +69,15 @@ export function normalizeAddress(address: string | null | undefined): string {
   return result.join(' ');
 }
 
+export function stripEditorialCommentary(name: string): string {
+  return name.replace(/\s*\((?:as per|likely|per |note:|i\.e\.|this is|appears to be|possibly|seems|may be|according to|based on|formerly known|also known|aka |dba |d\/b\/a ).*$/i, '').trim();
+}
+
 export function normalizeOwnerName(name: string | null | undefined): string {
   if (!name) return '';
   
-  const words = name.trim().split(/\s+/);
+  const stripped = stripEditorialCommentary(name);
+  const words = (stripped || name).trim().split(/\s+/);
   const result: string[] = [];
   
   for (const word of words) {
