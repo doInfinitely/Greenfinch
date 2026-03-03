@@ -24,6 +24,7 @@ import { validatePropertyWebsite, validateAndCleanDomain } from '../../domain-va
 import {
   THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, STAGE_TEMPERATURES, STAGE_TIMEOUTS, getSearchGroundingTools,
 } from '../config';
+import { normalizeOwnerName } from '../../normalization';
 
 /**
  * Run Stage 2 of the AI enrichment pipeline.
@@ -206,7 +207,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
       const allMgmt: ManagementCompanyEntry[] = rawMgmtArr
         .filter((m: any) => m && typeof m === 'object' && m.name && m.name !== 'null')
         .map((m: any) => ({
-          name: m.name ?? null,
+          name: m.name ? normalizeOwnerName(m.name) || m.name : null,
           domain: cleanDomain(m.domain),
           confidence: m.c ?? 0,
         }));
@@ -215,7 +216,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
       const allOwners: BeneficialOwnerEntry[] = rawOwnerArr
         .filter((o: any) => o && typeof o === 'object' && o.name && o.name !== 'null')
         .map((o: any) => ({
-          name: o.name ?? null,
+          name: o.name ? normalizeOwnerName(o.name) || o.name : null,
           type: o.type ? (OWNER_TYPE_MAP[o.type] ?? null) : null,
           domain: cleanDomain(o.domain),
           confidence: o.c ?? 0,
@@ -263,7 +264,8 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
         const websiteResult = await validatePropertyWebsite(
           validated.propertyWebsite,
           classification.propertyName,
-          mgmtName
+          mgmtName,
+          `${classification.canonicalAddress}, ${propCity}, TX`
         );
         if (!websiteResult.validatedUrl) {
           console.warn(`[FocusedEnrichment] Stage 2: Property website "${validated.propertyWebsite}" failed validation, clearing`);
@@ -505,7 +507,7 @@ Return JSON:
     });
 
     if (url) {
-      const websiteResult = await validatePropertyWebsite(url, propertyName, mgmtCompany || undefined);
+      const websiteResult = await validatePropertyWebsite(url, propertyName, mgmtCompany || undefined, `${address}, ${city}, TX`);
       if (websiteResult.validatedUrl) {
         console.log(`[FocusedEnrichment] Domain retry: found valid property website: ${websiteResult.validatedUrl}`);
         return { url: websiteResult.validatedUrl, domain: websiteResult.extractedDomain };

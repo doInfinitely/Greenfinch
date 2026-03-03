@@ -266,13 +266,6 @@ export async function saveEnrichmentResults(
     addOrg(addlOwner.name, addlOwner.domain || null, addlOwner.type || 'owner', 'owner');
   }
 
-  for (const contact of discoveredContacts) {
-    if (!contact.company) continue;
-    const contactRole = contact.role || 'related';
-    console.log(`[SaveEnrichment] Deriving org from contact ${contact.name}: ${contact.company} (role: ${contactRole})`);
-    addOrg(contact.company, contact.companyDomain || null, 'related', contactRole);
-  }
-
   const orgIds: string[] = [];
   const resolvedCache = new Map<string, string>();
 

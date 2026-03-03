@@ -92,6 +92,7 @@ interface DomainValidationResult {
   reason: string;
   finalUrl?: string;
   finalDomain?: string;
+  bodyText?: string;
 }
 
 interface DomainCacheEntry {
@@ -297,6 +298,7 @@ async function _fetchAndValidateDomain(
       reason: 'Domain resolves and content appears legitimate',
       finalUrl,
       finalDomain,
+      bodyText: strippedText,
     });
 
   } catch (error) {
@@ -372,10 +374,76 @@ export async function validateAndCleanDomain(
   }
 }
 
+function normalizeForComparison(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[.,#\-'"/\\()]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function extractPropertyIdentifiers(
+  propertyName?: string,
+  propertyAddress?: string
+): string[] {
+  const identifiers: string[] = [];
+
+  if (propertyAddress) {
+    const normalized = normalizeForComparison(propertyAddress);
+    const parts = normalized.split(/[,]+/).map(p => p.trim()).filter(Boolean);
+
+    if (parts[0]) {
+      const streetParts = parts[0].split(' ').filter(w => w.length > 2);
+      const streetWithoutNumber = streetParts.filter(w => !/^\d+$/.test(w));
+      if (streetWithoutNumber.length > 0) {
+        identifiers.push(streetWithoutNumber.join(' '));
+      }
+    }
+
+    for (const part of parts.slice(1)) {
+      const trimmed = part.trim();
+      if (trimmed.length > 2 && !/^\d{5}/.test(trimmed) && !/^[a-z]{2}$/i.test(trimmed)) {
+        identifiers.push(trimmed);
+      }
+    }
+  }
+
+  if (propertyName) {
+    const normalized = normalizeForComparison(propertyName);
+    if (normalized.length > 2) {
+      identifiers.push(normalized);
+    }
+  }
+
+  return identifiers.filter(id => id.length > 2);
+}
+
+function contentMatchesProperty(
+  bodyText: string,
+  propertyName?: string,
+  propertyAddress?: string
+): { matches: boolean; matchedIdentifier?: string } {
+  if (!bodyText) return { matches: true };
+
+  const identifiers = extractPropertyIdentifiers(propertyName, propertyAddress);
+  if (identifiers.length === 0) return { matches: true };
+
+  const normalizedBody = normalizeForComparison(bodyText);
+
+  for (const identifier of identifiers) {
+    if (normalizedBody.includes(identifier)) {
+      return { matches: true, matchedIdentifier: identifier };
+    }
+  }
+
+  return { matches: false };
+}
+
 export async function validatePropertyWebsite(
   websiteUrl: string | null | undefined,
   propertyName?: string,
-  managementCompanyName?: string
+  managementCompanyName?: string,
+  propertyAddress?: string
 ): Promise<{ validatedUrl: string | null; extractedDomain: string | null }> {
   if (!websiteUrl) return { validatedUrl: null, extractedDomain: null };
 
@@ -385,6 +453,17 @@ export async function validatePropertyWebsite(
     const result = await validateDomain(fullUrl, managementCompanyName || propertyName);
 
     if (result.isValid) {
+      if (result.bodyText && (propertyName || propertyAddress)) {
+        const contentCheck = contentMatchesProperty(result.bodyText, propertyName, propertyAddress);
+        if (!contentCheck.matches) {
+          console.warn(`[DomainValidator] Property website "${websiteUrl}" REJECTED: page content does not mention property name "${propertyName || ''}" or address "${propertyAddress || ''}" — likely irrelevant listing`);
+          return { validatedUrl: null, extractedDomain: null };
+        }
+        if (contentCheck.matchedIdentifier) {
+          console.log(`[DomainValidator] Property website "${websiteUrl}" content relevance confirmed via "${contentCheck.matchedIdentifier}"`);
+        }
+      }
+
       const validDomain = result.finalDomain || extractDomain(fullUrl);
       console.log(`[DomainValidator] Property website "${websiteUrl}" validated: ${result.reason}`);
       return {
