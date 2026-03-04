@@ -91,6 +91,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         { href: '/admin/linkedin-overrides', label: 'LinkedIn Overrides', icon: <Link2 className="w-4 h-4" /> },
         { href: '/admin/merge-contacts', label: 'Merge Contacts', icon: <Merge className="w-4 h-4" /> },
         { href: '/admin/merge-properties', label: 'Merge Properties', icon: <Merge className="w-4 h-4" /> },
+        { href: '/admin/merge-orgs', label: 'Merge Organizations', icon: <Merge className="w-4 h-4" /> },
       ],
     },
     {

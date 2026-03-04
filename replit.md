@@ -45,7 +45,7 @@ greenfinch.ai is an AI-native commercial real estate prospecting CRM designed fo
 - **Org Linking**: Only ownership-stage entities (owner, PM) create `property_organizations` links. Contact employer companies are enriched and linked to the contact but don't create property-org relationships without substantiation.
 - **Name Normalization**: Owner/mgmt names from AI enrichment are normalized via `normalizeOwnerName()` (title-case with corporate suffix preservation, AI editorial commentary stripping) to prevent raw DCAD all-caps names or verbose AI annotations from being stored.
 - **Contact Quality Filters**: Placeholder contacts (e.g. "General Manager (Open Position)") are rejected during Stage 3 parsing. Hashed LinkedIn member IDs (ACw... URLs) are rejected by `validateLinkedInSlug()` so the cascade tries to find real profile URLs instead.
-- **Deduplication**: Automatic merging of contacts during enrichment, managed with distributed Redis locking.
+- **Deduplication**: Automatic merging of contacts during enrichment, managed with distributed Redis locking. Manual org merge tool at `/admin/merge-orgs` with fuzzy name match suggestions (Jaccard similarity on tokenized names) and manual search+merge. `mergeOrganizationPair()` runs in a DB transaction, safely handles `uq_property_org_role` constraint conflicts by detecting and deleting duplicate links before reassignment.
 - **Authentication & Authorization**: Implemented with Clerk Auth, supporting organization-scoped sessions and role-based access control.
 
 ## External Dependencies

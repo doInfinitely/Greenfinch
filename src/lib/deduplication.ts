@@ -268,6 +268,86 @@ function sortContactsByPriority(a: typeof contacts.$inferSelect, b: typeof conta
  * Merge duplicate organizations
  * Updates all foreign key references and deletes duplicates
  */
+export async function mergeOrganizationPair(keepOrgId: string, deleteOrgId: string): Promise<{ success: boolean; error?: string; stats: { propertyLinksReassigned: number; propertyLinksRemoved: number; contactLinksReassigned: number; contactLinksRemoved: number; listItemsReassigned: number; } }> {
+  const stats = { propertyLinksReassigned: 0, propertyLinksRemoved: 0, contactLinksReassigned: 0, contactLinksRemoved: 0, listItemsReassigned: 0 };
+
+  try {
+    const [keepOrg] = await db.select().from(organizations).where(eq(organizations.id, keepOrgId));
+    const [deleteOrg] = await db.select().from(organizations).where(eq(organizations.id, deleteOrgId));
+    if (!keepOrg || !deleteOrg) return { success: false, error: 'One or both organizations not found', stats };
+    if (keepOrgId === deleteOrgId) return { success: false, error: 'Cannot merge an organization with itself', stats };
+
+    console.log(`[Dedup] Merging org "${deleteOrg.name}" (${deleteOrgId}) into "${keepOrg.name}" (${keepOrgId})`);
+
+    await db.transaction(async (tx) => {
+      const keepPropLinks = await tx.select().from(propertyOrganizations).where(eq(propertyOrganizations.orgId, keepOrgId));
+      const keepPropKeys = new Set(keepPropLinks.map(l => `${l.propertyId}::${l.role}`));
+
+      const deletePropLinks = await tx.select().from(propertyOrganizations).where(eq(propertyOrganizations.orgId, deleteOrgId));
+      for (const link of deletePropLinks) {
+        const key = `${link.propertyId}::${link.role}`;
+        if (keepPropKeys.has(key)) {
+          await tx.delete(propertyOrganizations).where(eq(propertyOrganizations.id, link.id));
+          stats.propertyLinksRemoved++;
+        } else {
+          await tx.update(propertyOrganizations).set({ orgId: keepOrgId }).where(eq(propertyOrganizations.id, link.id));
+          keepPropKeys.add(key);
+          stats.propertyLinksReassigned++;
+        }
+      }
+
+      const keepContactLinks = await tx.select().from(contactOrganizations).where(eq(contactOrganizations.orgId, keepOrgId));
+      const keepContactKeys = new Set(keepContactLinks.map(l => l.contactId));
+
+      const deleteContactLinks = await tx.select().from(contactOrganizations).where(eq(contactOrganizations.orgId, deleteOrgId));
+      for (const link of deleteContactLinks) {
+        if (keepContactKeys.has(link.contactId)) {
+          await tx.delete(contactOrganizations).where(eq(contactOrganizations.id, link.id));
+          stats.contactLinksRemoved++;
+        } else {
+          await tx.update(contactOrganizations).set({ orgId: keepOrgId }).where(eq(contactOrganizations.id, link.id));
+          keepContactKeys.add(link.contactId);
+          stats.contactLinksReassigned++;
+        }
+      }
+
+      await tx.update(organizations).set({ parentOrgId: keepOrgId }).where(eq(organizations.parentOrgId, deleteOrgId));
+      await tx.update(organizations).set({ ultimateParentOrgId: keepOrgId }).where(eq(organizations.ultimateParentOrgId, deleteOrgId));
+
+      const listItemUpdated = await tx.update(listItems).set({ itemId: keepOrgId }).where(eq(listItems.itemId, deleteOrgId)).returning();
+      stats.listItemsReassigned = listItemUpdated.length;
+
+      const fieldsToMerge = [
+        'legalName', 'description', 'foundedYear', 'sector', 'industryGroup', 'industry',
+        'subIndustry', 'employees', 'employeesRange', 'location', 'city', 'state',
+        'linkedinHandle', 'twitterHandle', 'logoUrl', 'phoneNumbers', 'emailAddresses',
+      ] as const;
+      const updates: Record<string, unknown> = {};
+      for (const field of fieldsToMerge) {
+        if (!keepOrg[field] && deleteOrg[field]) {
+          updates[field] = deleteOrg[field];
+        }
+      }
+      if (!keepOrg.domain && deleteOrg.domain) {
+        updates.domain = deleteOrg.domain;
+      }
+      if (Object.keys(updates).length > 0) {
+        updates.updatedAt = new Date();
+        await tx.update(organizations).set(updates).where(eq(organizations.id, keepOrgId));
+      }
+
+      await tx.delete(organizations).where(eq(organizations.id, deleteOrgId));
+    });
+
+    console.log(`[Dedup] Org merge complete: ${JSON.stringify(stats)}`);
+    return { success: true, stats };
+  } catch (error) {
+    const errMsg = `Failed to merge orgs: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    console.error(`[Dedup] ${errMsg}`);
+    return { success: false, error: errMsg, stats };
+  }
+}
+
 async function mergeOrganizations(duplicates: DuplicateGroup<typeof organizations.$inferSelect>[]): Promise<{ merged: number; errors: string[] }> {
   let merged = 0;
   const errors: string[] = [];
@@ -277,30 +357,12 @@ async function mergeOrganizations(duplicates: DuplicateGroup<typeof organization
       console.log(`[Dedup] Merging ${group.deleteIds.length} duplicate orgs into ${group.keepId} (domain: ${group.key})`);
       
       for (const deleteId of group.deleteIds) {
-        // Update property_organizations references
-        await db.update(propertyOrganizations)
-          .set({ orgId: group.keepId })
-          .where(eq(propertyOrganizations.orgId, deleteId));
-        
-        // Update contact_organizations references
-        await db.update(contactOrganizations)
-          .set({ orgId: group.keepId })
-          .where(eq(contactOrganizations.orgId, deleteId));
-        
-        // Update parent_org_id references in other organizations
-        await db.update(organizations)
-          .set({ parentOrgId: group.keepId })
-          .where(eq(organizations.parentOrgId, deleteId));
-        
-        // Update ultimate_parent_org_id references
-        await db.update(organizations)
-          .set({ ultimateParentOrgId: group.keepId })
-          .where(eq(organizations.ultimateParentOrgId, deleteId));
-        
-        // Delete the duplicate org
-        await db.delete(organizations).where(eq(organizations.id, deleteId));
-        
-        merged++;
+        const result = await mergeOrganizationPair(group.keepId, deleteId);
+        if (result.success) {
+          merged++;
+        } else {
+          errors.push(result.error || 'Unknown error');
+        }
       }
     } catch (error) {
       const errMsg = `Failed to merge org ${group.key}: ${error instanceof Error ? error.message : 'Unknown error'}`;
