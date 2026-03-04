@@ -22,7 +22,7 @@ import type {
   IdentifiedDecisionMaker, DiscoveredContact
 } from '../types';
 import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout, withTimeout } from '../client';
-import { extractGroundedSources, parseJsonResponse, validateStage3aSchema } from '../parsers';
+import { extractGroundedSources, extractGroundingQuality, parseJsonResponse, validateStage3aSchema } from '../parsers';
 import { propertyLatLng, isLikelyConstructedEmail, deduplicateContacts } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validateAndCleanDomain } from '../../domain-validator';
@@ -97,6 +97,12 @@ COMPANY: Return exactly ONE company name per contact — the company most direct
 
 EMAIL: If you find an email address for a contact in search results, include it. Only include emails you actually found on a web page — do NOT construct emails from name patterns (e.g. firstname@company.com). If no email was found, set email to null.
 
+CONFIDENCE (rc): Rate how confident you are that each person is genuinely connected to THIS specific property. Use this scale:
+- 0.8–1.0: Found on a specific source (LinkedIn, company page, property listing) with clear, direct connection to this property address
+- 0.5–0.7: Found via search with strong circumstantial evidence (right company + right city/region + relevant title) but not explicitly listed for this exact address
+- 0.2–0.4: Reasonable match based on company and title, but limited direct evidence linking them to this property
+- 0.0–0.1: Purely speculative with no supporting evidence at all
+
 Return JSON:
 {
   "contacts": [
@@ -106,7 +112,7 @@ Return JSON:
       "company": "Company Name",
       "domain": "company.com",
       "role": "property_manager | facilities_manager | owner | other",
-      "rc": 0.0,
+      "rc": 0.85,
       "evidence": "1 sentence linking them to this property",
       "src": "https://source-url-where-found",
       "type": "individual | general",
@@ -163,6 +169,7 @@ Return JSON:
       }
 
       const sources = extractGroundedSources(response);
+      const groundingQuality = extractGroundingQuality(response);
       const parsed = parseJsonResponse(text);
 
       try {
@@ -193,6 +200,15 @@ Return JSON:
 
       const PLACEHOLDER_PATTERNS = /\b(open position|tbd|to be determined|hiring|vacant|currently hiring|position open|unfilled|seeking)\b/i;
 
+      const knownCompanyNames = [
+        ownership.managementCompany?.name,
+        ownership.beneficialOwner?.name,
+        ...(ownership.additionalManagementCompanies || []).map(m => m.name),
+        ...(ownership.additionalOwners || []).map(o => o.name),
+        property.ownerName1,
+        property.bizName,
+      ].filter(Boolean).map(n => n!.toLowerCase().replace(/[^a-z0-9]/g, ''));
+
       const contacts: IdentifiedDecisionMaker[] = [];
       for (const contact of rawContactsParsed) {
         if (!contact.name) continue;
@@ -200,11 +216,6 @@ Return JSON:
         if (PLACEHOLDER_PATTERNS.test(contact.name)) {
           console.warn(`[FocusedEnrichment] Stage 3: Skipping placeholder contact "${contact.name}"`);
           continue;
-        }
-
-        if (!contact.sourceUrl) {
-          console.warn(`[FocusedEnrichment] Stage 3: Contact "${contact.name}" has no source URL — downgrading confidence`);
-          contact.roleConfidence = Math.min(contact.roleConfidence, CONFIDENCE.NO_SOURCE_URL_CAP);
         }
 
         if (contact.companyDomain) {
@@ -239,6 +250,42 @@ Return JSON:
             }
           }
         }
+
+        const geminiRc = contact.roleConfidence;
+        const hasSrc = !!contact.sourceUrl;
+        const hasEmail = !!contact.email;
+        let companyMatch = false;
+        if (contact.company && knownCompanyNames.length > 0) {
+          const contactCompanyNorm = contact.company.toLowerCase().replace(/[^a-z0-9]/g, '');
+          companyMatch = knownCompanyNames.some(known =>
+            contactCompanyNorm.includes(known) || known.includes(contactCompanyNorm)
+          );
+        }
+
+        let composite = geminiRc * 0.3;
+        if (hasSrc) composite += 0.2;
+        if (groundingQuality.hasGrounding) {
+          composite += 0.1 + Math.min(groundingQuality.avgConfidence * 0.1, 0.1);
+        }
+        if (companyMatch) composite += 0.15;
+        if (hasEmail) composite += 0.1;
+
+        composite = Math.min(composite, 1.0);
+        composite = Math.max(composite, 0.05);
+
+        if (!hasSrc) {
+          composite = Math.min(composite, CONFIDENCE.NO_SOURCE_URL_CAP);
+        }
+        if (!companyMatch && knownCompanyNames.length > 0 && contact.company) {
+          const contactCompanyNorm = contact.company.toLowerCase().replace(/[^a-z0-9]/g, '');
+          if (contactCompanyNorm.length > 3) {
+            composite = Math.min(composite, CONFIDENCE.COMPANY_MISMATCH_CAP);
+          }
+        }
+
+        contact.roleConfidence = Math.round(composite * 100) / 100;
+
+        console.log(`[FocusedEnrichment] Confidence for "${contact.name}": geminiRc=${geminiRc} → composite=${contact.roleConfidence} (src=${hasSrc}, grounding=${groundingQuality.hasGrounding}/${groundingQuality.avgConfidence.toFixed(2)}, companyMatch=${companyMatch}, hasEmail=${hasEmail})`);
 
         contacts.push(contact);
       }
@@ -359,30 +406,6 @@ export async function discoverContacts(
 
   if (contacts.length < rawContacts.length) {
     console.log(`[FocusedEnrichment] Deduplicated ${rawContacts.length} → ${contacts.length} contacts`);
-  }
-
-  const knownCompanies = [
-    ownership.managementCompany?.name,
-    ownership.beneficialOwner?.name,
-    ...(ownership.additionalManagementCompanies || []).map(m => m.name),
-    ...(ownership.additionalOwners || []).map(o => o.name),
-    property.ownerName1,
-    property.bizName,
-  ].filter(Boolean).map(n => n!.toLowerCase().replace(/[^a-z0-9]/g, ''));
-
-  if (knownCompanies.length > 0) {
-    for (const c of contacts) {
-      if (c.company) {
-        const contactCompanyNorm = c.company.toLowerCase().replace(/[^a-z0-9]/g, '');
-        const matchesKnown = knownCompanies.some(known =>
-          contactCompanyNorm.includes(known) || known.includes(contactCompanyNorm)
-        );
-        if (!matchesKnown && contactCompanyNorm.length > 3) {
-          console.warn(`[FocusedEnrichment] Cross-stage validation: ${c.name}'s company "${c.company}" doesn't match known companies [${knownCompanies.join(', ')}] — downgrading roleConfidence`);
-          c.roleConfidence = Math.min(c.roleConfidence, CONFIDENCE.COMPANY_MISMATCH_CAP);
-        }
-      }
-    }
   }
 
   const uniqueSources = allSources.filter((s, i, arr) =>

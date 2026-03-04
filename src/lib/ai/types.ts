@@ -112,6 +112,15 @@ export interface DiscoveredContact {
   contactType: 'individual' | 'general';
 }
 
+/** Summary of grounding quality extracted from Gemini's groundingSupports metadata. */
+export interface GroundingQuality {
+  hasGrounding: boolean;
+  avgConfidence: number;
+  highConfidenceCount: number;
+  totalSupports: number;
+  searchQueryCount: number;
+}
+
 /** A grounded source annotated with a trust tier for downstream ranking. */
 export interface ScoredSource extends GroundedSource {
   trustTier: 'high' | 'medium' | 'low';

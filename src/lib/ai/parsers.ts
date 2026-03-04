@@ -9,7 +9,7 @@
 //      filter out AI-generated links, and score sources by trust tier
 // ============================================================================
 
-import type { GroundedSource, ScoredSource, OwnershipInfo } from './types';
+import type { GroundedSource, GroundingQuality, ScoredSource, OwnershipInfo } from './types';
 import { SchemaValidationError } from './errors';
 import { AI_GENERATED_DOMAINS, MEDIUM_TRUST_DOMAINS, MAX_GROUNDED_SOURCES } from './config';
 
@@ -126,6 +126,52 @@ export function extractGroundedSources(response: any): GroundedSource[] {
   } catch (error) {
     console.warn('[GroundedSources] Error extracting grounding sources:', error);
     return [];
+  }
+}
+
+/**
+ * Extract grounding quality metadata from a Gemini response.
+ * Captures per-claim confidence scores from groundingSupports, query counts,
+ * and overall grounding signal strength.
+ */
+export function extractGroundingQuality(response: any): GroundingQuality {
+  const none: GroundingQuality = { hasGrounding: false, avgConfidence: 0, highConfidenceCount: 0, totalSupports: 0, searchQueryCount: 0 };
+  try {
+    const candidates = response?.candidates || response?.response?.candidates || response?.data?.candidates;
+    if (!candidates?.[0]) return none;
+
+    const gm = candidates[0].groundingMetadata || candidates[0].grounding_metadata;
+    if (!gm) return none;
+
+    const webSearchQueries = gm.webSearchQueries || gm.web_search_queries || [];
+    const searchQueryCount = Array.isArray(webSearchQueries) ? webSearchQueries.length : 0;
+    const chunks = gm.groundingChunks || gm.grounding_chunks || [];
+    const supports = gm.groundingSupports || gm.grounding_supports || [];
+
+    if (chunks.length === 0 && supports.length === 0 && searchQueryCount === 0) return none;
+
+    let totalConfidence = 0;
+    let confidenceCount = 0;
+    let highConfidenceCount = 0;
+
+    for (const support of supports) {
+      const scores = support.confidenceScores || support.confidence_scores || [];
+      for (const score of scores) {
+        if (typeof score === 'number') {
+          totalConfidence += score;
+          confidenceCount++;
+          if (score > 0.5) highConfidenceCount++;
+        }
+      }
+    }
+
+    const avgConfidence = confidenceCount > 0 ? totalConfidence / confidenceCount : 0;
+    const hasGrounding = chunks.length > 0 || highConfidenceCount > 0;
+
+    return { hasGrounding, avgConfidence, highConfidenceCount, totalSupports: supports.length, searchQueryCount };
+  } catch (error) {
+    console.warn('[GroundingQuality] Error extracting grounding quality:', error);
+    return none;
   }
 }
 
