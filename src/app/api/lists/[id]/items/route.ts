@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { userLists, listItems, properties, contacts } from '@/lib/schema';
+import { userLists, listItems, properties, contacts, propertyPipeline } from '@/lib/schema';
 import { eq, and, inArray } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
+import { auth } from '@clerk/nextjs/server';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -61,7 +62,6 @@ export async function GET(
     // Try to fetch from the expected table based on list type
     // Also check the other table for any mismatched items (legacy data)
     if (list.listType === 'properties') {
-      // Batch fetch all properties
       const propertyRecords = await db
         .select({
           id: properties.id,
@@ -74,14 +74,37 @@ export async function GET(
           assetSubcategory: properties.assetSubcategory,
           commonName: properties.commonName,
           enrichmentStatus: properties.enrichmentStatus,
+          lastEnrichedAt: properties.lastEnrichedAt,
+          isCurrentCustomer: properties.isCurrentCustomer,
         })
         .from(properties)
         .where(inArray(properties.id, itemIds));
+
+      let pipelineMap: Record<string, string> = {};
+      try {
+        const { orgId } = await auth();
+        if (orgId && itemIds.length > 0) {
+          const pipelineResults = await db
+            .select({
+              propertyId: propertyPipeline.propertyId,
+              status: propertyPipeline.status,
+            })
+            .from(propertyPipeline)
+            .where(and(
+              eq(propertyPipeline.clerkOrgId, orgId),
+              inArray(propertyPipeline.propertyId, itemIds)
+            ));
+          pipelineMap = Object.fromEntries(
+            pipelineResults.map(p => [p.propertyId, p.status])
+          );
+        }
+      } catch {}
 
       for (const prop of propertyRecords) {
         details[prop.id] = {
           ...prop,
           address: prop.validatedAddress || prop.regridAddress,
+          pipelineStatus: pipelineMap[prop.id] || null,
           _type: 'property',
         };
       }

@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { BulkActionBar } from '@/components/BulkActionBar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Trash2, Mail, Phone, MoreHorizontal, ChevronRight, Loader2 } from 'lucide-react';
+import { Trash2, Mail, Phone, MoreHorizontal, ChevronRight, Loader2, Sparkles } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -55,6 +55,9 @@ interface PropertyInfo {
   assetSubcategory?: string;
   commonName?: string;
   enrichmentStatus?: string;
+  lastEnrichedAt?: string | null;
+  isCurrentCustomer?: boolean;
+  pipelineStatus?: string | null;
   contactCount?: number;
 }
 
@@ -73,6 +76,53 @@ interface ContactInfo {
   aiPhone?: string;
   aiPhoneLabel?: string;
   linkedinUrl?: string;
+}
+
+const PIPELINE_BADGE_CONFIG: Record<string, { label: string; className: string }> = {
+  new: { label: 'New', className: 'bg-blue-100 text-blue-700' },
+  qualified: { label: 'Qualified', className: 'bg-green-100 text-green-700' },
+  attempted_contact: { label: 'Attempted Outreach', className: 'bg-amber-100 text-amber-700' },
+  active_opportunity: { label: 'Active Opportunity', className: 'bg-indigo-100 text-indigo-700' },
+  won: { label: 'Won', className: 'bg-purple-100 text-purple-700' },
+  lost: { label: 'Lost', className: 'bg-red-100 text-red-600' },
+  disqualified: { label: 'Disqualified', className: 'bg-gray-200 text-gray-500' },
+};
+
+function PropertyStatusBadges({ prop }: { prop: PropertyInfo }) {
+  const badges: { label: string; className: string; key: string }[] = [];
+
+  if (prop.pipelineStatus && PIPELINE_BADGE_CONFIG[prop.pipelineStatus]) {
+    const cfg = PIPELINE_BADGE_CONFIG[prop.pipelineStatus];
+    badges.push({ label: cfg.label, className: cfg.className, key: 'pipeline' });
+  } else if (prop.isCurrentCustomer) {
+    badges.push({ label: 'Customer', className: 'bg-purple-100 text-purple-700', key: 'customer' });
+  }
+
+  const isResearched = !!(prop.lastEnrichedAt || prop.enrichmentStatus === 'enriched' || prop.enrichmentStatus === 'complete');
+  const isInProgress = prop.enrichmentStatus === 'in_progress';
+
+  if (isResearched) {
+    badges.push({ label: 'Researched', className: 'bg-violet-100 text-violet-700', key: 'researched' });
+  } else if (isInProgress) {
+    badges.push({ label: 'Researching', className: 'bg-violet-100 text-violet-600', key: 'researching' });
+  }
+
+  if (badges.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1" data-testid={`badges-property-${prop.id}`}>
+      {badges.map(b => (
+        <span
+          key={b.key}
+          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${b.className}`}
+        >
+          {b.key === 'researched' && <Sparkles className="w-3 h-3" />}
+          {b.key === 'researching' && <Sparkles className="w-3 h-3 animate-pulse" />}
+          {b.label}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 export default function ListDetailPage() {
@@ -946,6 +996,9 @@ export default function ListDetailPage() {
                                   <span className="text-green-600 group-hover:text-green-700 group-hover:underline font-medium truncate">
                                     {propDetail.address || propDetail.validatedAddress || propDetail.regridAddress || 'Unknown Address'}
                                   </span>
+                                  <div className="lg:hidden mt-1">
+                                    <PropertyStatusBadges prop={propDetail} />
+                                  </div>
                                 </div>
                                 <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
                               </Link>
@@ -963,17 +1016,11 @@ export default function ListDetailPage() {
                             )}
                           </td>
                           <td className="px-4 py-3 hidden lg:table-cell">
-                            {propDetail?.enrichmentStatus === 'complete' ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">
-                                Researched
-                              </span>
-                            ) : propDetail?.enrichmentStatus === 'in_progress' ? (
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-amber-100 text-amber-700">
-                                In Progress
-                              </span>
+                            {propDetail ? (
+                              <PropertyStatusBadges prop={propDetail} />
                             ) : (
                               <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">
-                                Not Researched
+                                —
                               </span>
                             )}
                           </td>

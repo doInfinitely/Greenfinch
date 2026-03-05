@@ -41,12 +41,15 @@ interface Property {
 }
 
 const PIPELINE_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
+  new: { label: 'New', className: 'bg-blue-100 text-blue-700' },
   qualified: { label: 'Qualified', className: 'bg-green-100 text-green-700' },
-  disqualified: { label: 'Disqualified', className: 'bg-gray-100 text-gray-500' },
+  attempted_contact: { label: 'Attempted Outreach', className: 'bg-amber-100 text-amber-700' },
+  active_opportunity: { label: 'Active Opportunity', className: 'bg-indigo-100 text-indigo-700' },
+  disqualified: { label: 'Disqualified', className: 'bg-gray-200 text-gray-500' },
   proposal: { label: 'Proposal', className: 'bg-blue-100 text-blue-700' },
   negotiation: { label: 'Negotiation', className: 'bg-yellow-100 text-yellow-700' },
   won: { label: 'Won', className: 'bg-purple-100 text-purple-700' },
-  lost: { label: 'Lost', className: 'bg-red-100 text-red-700' },
+  lost: { label: 'Lost', className: 'bg-red-100 text-red-600' },
 };
 
 const getStatusDisplay = (p: Property): { label: string; className: string } => {
@@ -494,14 +497,27 @@ export default function ListPage() {
                         })()}
                       </td>
                       <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
-                        {(() => {
-                          const status = getStatusDisplay(p);
-                          return (
-                            <span className={`inline-block px-2 py-1 text-xs rounded-md font-medium ${status.className}`}>
-                              {status.label}
+                        <div className="flex flex-wrap gap-1">
+                          {(() => {
+                            const status = getStatusDisplay(p);
+                            return (
+                              <span className={`inline-block px-2 py-1 text-xs rounded-md font-medium ${status.className}`}>
+                                {status.label}
+                              </span>
+                            );
+                          })()}
+                          {p.enriched ? (
+                            <span className="inline-flex items-center gap-0.5 px-2 py-1 text-xs rounded-md font-medium bg-violet-100 text-violet-700">
+                              <Sparkles className="w-3 h-3" />
+                              Researched
                             </span>
-                          );
-                        })()}
+                          ) : p.enrichmentStatus === 'in_progress' ? (
+                            <span className="inline-flex items-center gap-0.5 px-2 py-1 text-xs rounded-md font-medium bg-violet-100 text-violet-600">
+                              <Sparkles className="w-3 h-3 animate-pulse" />
+                              Researching
+                            </span>
+                          ) : null}
+                        </div>
                       </td>
                       <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
                         {p.contactCount > 0 ? p.contactCount : '-'}
@@ -572,14 +588,27 @@ export default function ListPage() {
                         </div>
                       </div>
                       <div className="flex flex-col items-end gap-1 shrink-0">
-                        {(() => {
-                          const status = getStatusDisplay(p);
-                          return (
-                            <span className={`inline-block px-2 py-0.5 text-xs rounded ${status.className}`}>
-                              {status.label}
+                        <div className="flex flex-wrap justify-end gap-1">
+                          {(() => {
+                            const status = getStatusDisplay(p);
+                            return (
+                              <span className={`inline-block px-2 py-0.5 text-xs rounded font-medium ${status.className}`}>
+                                {status.label}
+                              </span>
+                            );
+                          })()}
+                          {p.enriched ? (
+                            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 text-xs rounded font-medium bg-violet-100 text-violet-700">
+                              <Sparkles className="w-3 h-3" />
+                              Researched
                             </span>
-                          );
-                        })()}
+                          ) : p.enrichmentStatus === 'in_progress' ? (
+                            <span className="inline-flex items-center gap-0.5 px-2 py-0.5 text-xs rounded font-medium bg-violet-100 text-violet-600">
+                              <Sparkles className="w-3 h-3 animate-pulse" />
+                              Researching
+                            </span>
+                          ) : null}
+                        </div>
                         <span className="text-xs text-gray-500">{formatLotSize(p.lotSqft)}</span>
                       </div>
                     </div>
