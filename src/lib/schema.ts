@@ -1,4 +1,4 @@
-import { pgTable, uuid, text, timestamp, boolean, integer, real, json, index, uniqueIndex, unique } from 'drizzle-orm/pg-core';
+import { pgTable, uuid, text, timestamp, boolean, integer, real, json, jsonb, index, uniqueIndex, unique } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Users table for authentication (Clerk)
@@ -88,6 +88,7 @@ export const properties = pgTable('properties', {
   categoryConfidence: real('category_confidence'),
   categoryRationale: text('category_rationale'),
   propertyClass: text('property_class'),
+  propertyClassConfidence: real('property_class_confidence'),
   propertyClassRationale: text('property_class_rationale'),
   
   // Names
@@ -102,6 +103,7 @@ export const properties = pgTable('properties', {
   beneficialOwner: text('beneficial_owner'),
   beneficialOwnerConfidence: real('beneficial_owner_confidence'),
   beneficialOwnerType: text('beneficial_owner_type'),
+  beneficialOwnerDomain: text('beneficial_owner_domain'),
   
   // Management
   managementType: text('management_type'),
@@ -433,6 +435,7 @@ export const propertyContacts = pgTable('property_contacts', {
   relationshipStatusReason: text('relationship_status_reason'),
   relationshipVerifiedAt: timestamp('relationship_verified_at'),
   discoveredAt: timestamp('discovered_at').defaultNow(),
+  aiGrounding: jsonb('ai_grounding'),
 }, (table) => ({
   propertyContactIdx: index('idx_property_contacts').on(table.propertyId, table.contactId),
   propertyContactUnique: uniqueIndex('property_contacts_property_id_contact_id_unique').on(table.propertyId, table.contactId),
@@ -444,6 +447,7 @@ export const propertyOrganizations = pgTable('property_organizations', {
   propertyId: uuid('property_id').references(() => properties.id),
   orgId: uuid('org_id').references(() => organizations.id),
   role: text('role'),
+  aiGrounding: jsonb('ai_grounding'),
 }, (table) => ({
   propertyOrgIdx: index('idx_property_organizations').on(table.propertyId, table.orgId),
   propertyOrgRoleUnique: unique('uq_property_org_role').on(table.propertyId, table.orgId, table.role),

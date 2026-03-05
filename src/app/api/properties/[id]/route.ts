@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations } from '@/lib/schema';
 import { eq, or } from 'drizzle-orm';
+import { auth } from '@clerk/nextjs/server';
+import { INTERNAL_ORG_SLUG } from '@/lib/permissions';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DCAD_KEY_REGEX = /^[0-9A-Z]{17,20}$/i;
@@ -32,6 +34,12 @@ export async function GET(
       return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     }
 
+    let isInternalAdmin = false;
+    try {
+      const { orgSlug, orgRole } = await auth();
+      isInternalAdmin = orgSlug === INTERNAL_ORG_SLUG && orgRole === 'org:admin';
+    } catch {}
+
     // Get associated contacts
     const propertyContactRows = await db
       .select({
@@ -39,6 +47,7 @@ export async function GET(
         role: propertyContacts.role,
         relationshipStatus: propertyContacts.relationshipStatus,
         relationshipStatusReason: propertyContacts.relationshipStatusReason,
+        aiGrounding: propertyContacts.aiGrounding,
       })
       .from(propertyContacts)
       .innerJoin(contacts, eq(contacts.id, propertyContacts.contactId))
@@ -46,11 +55,11 @@ export async function GET(
     
     console.log(`[PropertyAPI] Property ${dbProperty.id} (${dbProperty.commonName || 'unnamed'}) has ${propertyContactRows.length} raw contact rows`);
     
-    const uniqueContacts = new Map<string, { contact: typeof contacts.$inferSelect; role: string | null; relationshipStatus: string | null; relationshipStatusReason: string | null }>();
+    const uniqueContacts = new Map<string, { contact: typeof contacts.$inferSelect; role: string | null; relationshipStatus: string | null; relationshipStatusReason: string | null; aiGrounding: any }>();
     for (const row of propertyContactRows) {
       const contactId = row.contact.id;
       if (!uniqueContacts.has(contactId)) {
-        uniqueContacts.set(contactId, { contact: row.contact, role: row.role, relationshipStatus: row.relationshipStatus, relationshipStatusReason: row.relationshipStatusReason });
+        uniqueContacts.set(contactId, { contact: row.contact, role: row.role, relationshipStatus: row.relationshipStatus, relationshipStatusReason: row.relationshipStatusReason, aiGrounding: row.aiGrounding });
       }
     }
     const dedupedContactRows = Array.from(uniqueContacts.values());
@@ -61,6 +70,7 @@ export async function GET(
       .select({
         organization: organizations,
         role: propertyOrganizations.role,
+        aiGrounding: propertyOrganizations.aiGrounding,
       })
       .from(propertyOrganizations)
       .innerJoin(organizations, eq(organizations.id, propertyOrganizations.orgId))
@@ -108,6 +118,8 @@ export async function GET(
         beneficialOwner: dbProperty.beneficialOwner,
         beneficialOwnerConfidence: dbProperty.beneficialOwnerConfidence,
         beneficialOwnerType: dbProperty.beneficialOwnerType,
+        beneficialOwnerDomain: dbProperty.beneficialOwnerDomain,
+        propertyClassConfidence: dbProperty.propertyClassConfidence,
         managementType: dbProperty.managementType,
         managementCompany: dbProperty.managementCompany,
         managementCompanyDomain: dbProperty.managementCompanyDomain,
@@ -145,26 +157,28 @@ export async function GET(
         role: row.role,
         relationshipStatus: row.relationshipStatus || 'active',
         relationshipStatusReason: row.relationshipStatusReason || null,
+        ...(isInternalAdmin && row.aiGrounding ? { aiGrounding: row.aiGrounding } : {}),
       })),
       organizations: (() => {
-        // Aggregate organizations with multiple roles into a single entry with roles array
-        const orgMap = new Map<string, { organization: typeof propertyOrgRows[0]['organization']; roles: string[] }>();
+        const orgMap = new Map<string, { organization: typeof propertyOrgRows[0]['organization']; roles: string[]; aiGroundings: any[] }>();
         for (const row of propertyOrgRows) {
           const orgId = row.organization.id;
           if (!orgMap.has(orgId)) {
-            orgMap.set(orgId, { organization: row.organization, roles: [] });
+            orgMap.set(orgId, { organization: row.organization, roles: [], aiGroundings: [] });
           }
-          if (row.role) {
-            const entry = orgMap.get(orgId)!;
-            if (!entry.roles.includes(row.role)) {
-              entry.roles.push(row.role);
-            }
+          const entry = orgMap.get(orgId)!;
+          if (row.role && !entry.roles.includes(row.role)) {
+            entry.roles.push(row.role);
+          }
+          if (row.aiGrounding) {
+            entry.aiGroundings.push(row.aiGrounding);
           }
         }
-        return Array.from(orgMap.values()).map(({ organization, roles }) => ({
+        return Array.from(orgMap.values()).map(({ organization, roles, aiGroundings }) => ({
           ...organization,
-          roles, // Array of roles (e.g., ['owner', 'property_manager'])
-          role: roles[0] || null, // Keep for backward compatibility
+          roles,
+          role: roles[0] || null,
+          ...(isInternalAdmin && aiGroundings.length > 0 ? { aiGrounding: aiGroundings[0] } : {}),
         }));
       })(),
       source: 'postgres',

@@ -23,6 +23,12 @@ export type {
   FocusedEnrichmentResult,
   EnrichmentStage,
   EnrichmentStageCheckpoint,
+  GroundingQuality,
+  GroundingSupport,
+  CitationMetadata,
+  CitationEntry,
+  RelationshipGrounding,
+  StageMetadata,
 } from './types';
 
 export { isRetryableGeminiError, EnrichmentStageError, SchemaValidationError } from './errors';

@@ -15,9 +15,9 @@
 // ============================================================================
 
 import type { CommercialProperty } from "../../snowflake";
-import type { StageResult, OwnershipInfo, PropertyClassification, BeneficialOwnerEntry, ManagementCompanyEntry } from '../types';
+import type { StageResult, OwnershipInfo, PropertyClassification, BeneficialOwnerEntry, ManagementCompanyEntry, StageMetadata } from '../types';
 import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout, withTimeout } from '../client';
-import { extractGroundedSources, parseJsonResponse, validateStage2Schema } from '../parsers';
+import { extractGroundedSources, extractGroundingQuality, extractCitationMetadata, parseJsonResponse, validateStage2Schema } from '../parsers';
 import { propertyLatLng, extractUsefulLegalInfo, crossValidateOwnership, OWNER_TYPE_MAP } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validatePropertyWebsite, validateAndCleanDomain } from '../../domain-validator';
@@ -164,6 +164,8 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
 
       // -- Parse and validate JSON --------------------------------------------
       const sources = extractGroundedSources(response);
+      const groundingQuality = extractGroundingQuality(response);
+      const citationMetadata = extractCitationMetadata(response);
       const parsed = parseJsonResponse(text);
 
       try {
@@ -385,10 +387,25 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
       console.log(`[FocusedEnrichment] Stage 2 complete with ${sources.length} grounded sources`);
       console.log(`[FocusedEnrichment] Stage 2 extracted - website: ${validated.propertyWebsite || 'none'}, phone: ${validated.propertyPhone || 'none'}, mgmt: [${allMgmtNames || 'none'}], owners: [${allOwnerNames || 'none'}]`);
 
+      const ownershipStageMetadata: StageMetadata = {
+        finishReason: response.finishReason,
+        tokens: response.tokenUsage ? {
+          prompt: response.tokenUsage.promptTokens,
+          response: response.tokenUsage.responseTokens,
+          thinking: response.tokenUsage.thinkingTokens,
+          total: response.tokenUsage.totalTokens,
+        } : undefined,
+        searchQueries: groundingQuality.webSearchQueries.length > 0 ? groundingQuality.webSearchQueries : undefined,
+      };
+
+      (validated as any)._groundingQuality = groundingQuality;
+      (validated as any)._citationMetadata = citationMetadata;
+
       return {
         data: validated,
         summary: parsed.summary || '',
         sources,
+        metadata: ownershipStageMetadata,
       };
     } catch (error) {
       trackCostFireAndForget({

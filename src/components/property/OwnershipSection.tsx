@@ -6,6 +6,8 @@ import { Flag, Globe, Phone, Mail } from 'lucide-react';
 import { SiLinkedin, SiX, SiFacebook } from 'react-icons/si';
 import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
 import { toTitleCase, capitalizeSentences } from '@/lib/normalization';
+import { AdminOnly } from '@/components/PermissionGate';
+import { GroundingDetail } from './GroundingDetail';
 import type { Property, EnrichedPropertyData, Organization } from './types';
 
 function ExpandableDescription({ text }: { text: string }) {
@@ -221,6 +223,12 @@ export default function OwnershipSection({
 
                     {org.description && (
                       <ExpandableDescription text={capitalizeSentences(org.description)} />
+                    )}
+
+                    {org.aiGrounding && (
+                      <AdminOnly>
+                        <GroundingDetail grounding={org.aiGrounding} />
+                      </AdminOnly>
                     )}
 
                   </div>

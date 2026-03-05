@@ -19,10 +19,10 @@
 import type { CommercialProperty } from "../../snowflake";
 import type {
   StageResult, OwnershipInfo, PropertyClassification,
-  IdentifiedDecisionMaker, DiscoveredContact
+  IdentifiedDecisionMaker, DiscoveredContact, RelationshipGrounding, StageMetadata
 } from '../types';
 import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout, withTimeout } from '../client';
-import { extractGroundedSources, extractGroundingQuality, parseJsonResponse, validateStage3aSchema } from '../parsers';
+import { extractGroundedSources, extractGroundingQuality, extractCitationMetadata, parseJsonResponse, validateStage3aSchema } from '../parsers';
 import { propertyLatLng, isLikelyConstructedEmail, deduplicateContacts } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validateAndCleanDomain } from '../../domain-validator';
@@ -170,6 +170,7 @@ Return JSON:
 
       const sources = extractGroundedSources(response);
       const groundingQuality = extractGroundingQuality(response);
+      const citationMetadata = extractCitationMetadata(response);
       const parsed = parseJsonResponse(text);
 
       try {
@@ -287,6 +288,20 @@ Return JSON:
 
         console.log(`[FocusedEnrichment] Confidence for "${contact.name}": geminiRc=${geminiRc} → composite=${contact.roleConfidence} (src=${hasSrc}, grounding=${groundingQuality.hasGrounding}/${groundingQuality.avgConfidence.toFixed(2)}, companyMatch=${companyMatch}, hasEmail=${hasEmail})`);
 
+        const contactNameLower = contact.name.toLowerCase();
+        const contactRelevantSupports = groundingQuality.supports.filter(s =>
+          s.segment.toLowerCase().includes(contactNameLower) ||
+          (contact.company && s.segment.toLowerCase().includes(contact.company.toLowerCase()))
+        );
+
+        (contact as any)._groundingData = {
+          sourceUrl: contact.sourceUrl,
+          evidence: contact.connectionEvidence,
+          groundingSupports: contactRelevantSupports,
+          webSearchQueries: groundingQuality.webSearchQueries,
+          citations: citationMetadata.citations,
+        } as RelationshipGrounding;
+
         contacts.push(contact);
       }
 
@@ -306,10 +321,22 @@ Return JSON:
         metadata: { contactsCount: contacts.length, sourcesCount: sources.length, attempt },
       });
 
+      const stageMetadata: StageMetadata = {
+        finishReason: response.finishReason,
+        tokens: response.tokenUsage ? {
+          prompt: response.tokenUsage.promptTokens,
+          response: response.tokenUsage.responseTokens,
+          thinking: response.tokenUsage.thinkingTokens,
+          total: response.tokenUsage.totalTokens,
+        } : undefined,
+        searchQueries: groundingQuality.webSearchQueries.length > 0 ? groundingQuality.webSearchQueries : undefined,
+      };
+
       return {
         data: { contacts },
         summary: parsed.summary || '',
         sources,
+        metadata: stageMetadata,
       };
     } catch (error) {
       trackCostFireAndForget({
@@ -369,6 +396,9 @@ export async function discoverContacts(
     roleConfidence: dm.roleConfidence,
     priorityRank: idx + 1,
     contactType: dm.contactType,
+    sourceUrl: dm.sourceUrl,
+    connectionEvidence: dm.connectionEvidence,
+    groundingData: (dm as any)._groundingData || null,
   }));
 
   for (const c of rawContacts) {
@@ -416,6 +446,7 @@ export async function discoverContacts(
     data: { contacts },
     summary: identifyResult.summary,
     sources: uniqueSources,
+    metadata: identifyResult.metadata,
     contactIdentificationMs,
     contactEnrichmentMs: 0,
   };

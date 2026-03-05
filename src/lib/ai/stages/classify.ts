@@ -11,10 +11,10 @@
 // ============================================================================
 
 import type { CommercialProperty } from "../../snowflake";
-import type { StageResult, PropertyDataAndClassification } from '../types';
+import type { StageResult, PropertyDataAndClassification, StageMetadata } from '../types';
 import { getGeminiClient, streamGeminiResponse } from '../client';
 import { isRetryableGeminiError } from '../errors';
-import { extractGroundedSources, parseJsonResponse, validateStage1Schema } from '../parsers';
+import { extractGroundedSources, extractGroundingQuality, parseJsonResponse, validateStage1Schema } from '../parsers';
 import { formatBuildingsSummary, formatCompactCategories, mapQualityGradeToClass, propertyLatLng } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { rateLimiters } from '../../rate-limiter';
@@ -173,6 +173,7 @@ Return JSON:
 
   // -- Parse response and extract sources ------------------------------------
   const sources = extractGroundedSources(response);
+  const groundingQuality = extractGroundingQuality(response);
   const parsed = parseJsonResponse(text);
 
   try {
@@ -199,6 +200,17 @@ Return JSON:
   const finalClass = aiClass || classEstimate.propertyClass;
   const finalClassConfidence = aiClass ? (aiClassConfidence ?? 0.7) : classEstimate.confidence;
 
+  const classifyMetadata: StageMetadata = {
+    finishReason: response.finishReason,
+    tokens: response.tokenUsage ? {
+      prompt: response.tokenUsage.promptTokens,
+      response: response.tokenUsage.responseTokens,
+      thinking: response.tokenUsage.thinkingTokens,
+      total: response.tokenUsage.totalTokens,
+    } : undefined,
+    searchQueries: groundingQuality.webSearchQueries.length > 0 ? groundingQuality.webSearchQueries : undefined,
+  };
+
   return {
     data: {
       physical: {
@@ -219,5 +231,6 @@ Return JSON:
     },
     summary: parsed.summary || '',
     sources,
+    metadata: classifyMetadata,
   };
 }

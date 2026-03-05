@@ -22,6 +22,7 @@ export interface StreamedGeminiResponse {
   text: string;
   candidates?: any[];
   tokenUsage?: GeminiTokenUsage;
+  finishReason?: string;
 }
 
 /** A single web source cited by Gemini's search grounding metadata. */
@@ -35,6 +36,7 @@ export interface StageResult<T> {
   data: T;
   summary: string;
   sources: GroundedSource[];
+  metadata?: StageMetadata;
 }
 
 /** Physical measurements extracted or confirmed during Stage 1. */
@@ -110,6 +112,17 @@ export interface DiscoveredContact {
   roleConfidence: number;
   priorityRank: number;
   contactType: 'individual' | 'general';
+  sourceUrl?: string | null;
+  connectionEvidence?: string | null;
+  groundingData?: RelationshipGrounding | null;
+}
+
+/** A single grounding support claim from Gemini's response — maps a text segment to source URLs. */
+export interface GroundingSupport {
+  segment: string;
+  confidenceScores: number[];
+  sourceIndices: number[];
+  sourceUrls: string[];
 }
 
 /** Summary of grounding quality extracted from Gemini's groundingSupports metadata. */
@@ -119,6 +132,32 @@ export interface GroundingQuality {
   highConfidenceCount: number;
   totalSupports: number;
   searchQueryCount: number;
+  webSearchQueries: string[];
+  supports: GroundingSupport[];
+}
+
+/** Citation from Gemini's training data (separate from web grounding). */
+export interface CitationEntry {
+  startIndex?: number;
+  endIndex?: number;
+  uri?: string;
+  title?: string;
+  license?: string;
+  publicationDate?: string;
+}
+
+/** Citation metadata extracted from a Gemini response. */
+export interface CitationMetadata {
+  citations: CitationEntry[];
+}
+
+/** Per-relationship grounding data stored on junction tables. */
+export interface RelationshipGrounding {
+  sourceUrl?: string | null;
+  evidence?: string | null;
+  groundingSupports: GroundingSupport[];
+  webSearchQueries: string[];
+  citations: CitationEntry[];
 }
 
 /** A grounded source annotated with a trust tier for downstream ranking. */
@@ -140,6 +179,13 @@ export interface IdentifiedDecisionMaker {
   email: string | null;
 }
 
+/** Per-stage Gemini response metadata captured for persistence. */
+export interface StageMetadata {
+  finishReason?: string;
+  tokens?: { prompt: number; response: number; thinking: number; total: number };
+  searchQueries?: string[];
+}
+
 /** Full pipeline output returned by runFocusedEnrichment. */
 export interface FocusedEnrichmentResult {
   propertyKey: string;
@@ -155,6 +201,11 @@ export interface FocusedEnrichmentResult {
     contactIdentificationMs: number;
     contactEnrichmentMs: number;
     totalMs: number;
+  };
+  stageMetadata?: {
+    classify?: StageMetadata;
+    ownership?: StageMetadata;
+    contacts?: StageMetadata;
   };
 }
 

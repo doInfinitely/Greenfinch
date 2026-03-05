@@ -15,7 +15,7 @@ import type { CommercialProperty } from "../snowflake";
 import type {
   StageResult, PropertyPhysicalData, PropertyClassification,
   OwnershipInfo, DiscoveredContact, FocusedEnrichmentResult,
-  EnrichmentStageCheckpoint
+  EnrichmentStageCheckpoint, StageMetadata
 } from './types';
 import { EnrichmentStageError } from './errors';
 import { classifyAndVerifyProperty } from './stages/classify';
@@ -44,6 +44,7 @@ export async function runFocusedEnrichment(
     let contacts: StageResult<{ contacts: DiscoveredContact[] }>;
     let contactIdentificationMs = 0;
     let contactEnrichmentMs = 0;
+    const stageMetadata: { classify?: StageMetadata; ownership?: StageMetadata; contacts?: StageMetadata } = {};
 
     // ---- Stage 1: Classification & Physical Verification ----------------------
     if (checkpoint?.classification && checkpoint?.physical) {
@@ -69,6 +70,8 @@ export async function runFocusedEnrichment(
           summary: stage1Result.summary,
           sources: stage1Result.sources,
         };
+
+        if (stage1Result.metadata) stageMetadata.classify = stage1Result.metadata;
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
         logCostSummary(property);
@@ -91,6 +94,7 @@ export async function runFocusedEnrichment(
         ownership = await identifyOwnership(property, classification.data);
         const ownershipMs = Date.now() - startOwnership;
         timing.ownershipMs = ownershipMs;
+        if (ownership.metadata) stageMetadata.ownership = ownership.metadata;
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
         logCostSummary(property);
@@ -125,6 +129,8 @@ export async function runFocusedEnrichment(
           summary: contactsResult.summary,
           sources: contactsResult.sources,
         };
+
+        if (contactsResult.metadata) stageMetadata.contacts = contactsResult.metadata;
       } catch (error) {
         const errMsg = error instanceof Error ? error.message : String(error);
         logCostSummary(property);
@@ -163,6 +169,7 @@ export async function runFocusedEnrichment(
         contactEnrichmentMs,
         totalMs,
       },
+      stageMetadata: Object.keys(stageMetadata).length > 0 ? stageMetadata : undefined,
       checkpoint: {
         lastCompletedStage: 'contacts',
         classification,

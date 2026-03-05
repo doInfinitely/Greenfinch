@@ -9,7 +9,7 @@
 //      filter out AI-generated links, and score sources by trust tier
 // ============================================================================
 
-import type { GroundedSource, GroundingQuality, ScoredSource, OwnershipInfo } from './types';
+import type { GroundedSource, GroundingQuality, GroundingSupport, ScoredSource, OwnershipInfo, CitationMetadata, CitationEntry } from './types';
 import { SchemaValidationError } from './errors';
 import { AI_GENERATED_DOMAINS, MEDIUM_TRUST_DOMAINS, MAX_GROUNDED_SOURCES } from './config';
 
@@ -135,7 +135,7 @@ export function extractGroundedSources(response: any): GroundedSource[] {
  * and overall grounding signal strength.
  */
 export function extractGroundingQuality(response: any): GroundingQuality {
-  const none: GroundingQuality = { hasGrounding: false, avgConfidence: 0, highConfidenceCount: 0, totalSupports: 0, searchQueryCount: 0 };
+  const none: GroundingQuality = { hasGrounding: false, avgConfidence: 0, highConfidenceCount: 0, totalSupports: 0, searchQueryCount: 0, webSearchQueries: [], supports: [] };
   try {
     const candidates = response?.candidates || response?.response?.candidates || response?.data?.candidates;
     if (!candidates?.[0]) return none;
@@ -143,19 +143,37 @@ export function extractGroundingQuality(response: any): GroundingQuality {
     const gm = candidates[0].groundingMetadata || candidates[0].grounding_metadata;
     if (!gm) return none;
 
-    const webSearchQueries = gm.webSearchQueries || gm.web_search_queries || [];
-    const searchQueryCount = Array.isArray(webSearchQueries) ? webSearchQueries.length : 0;
+    const rawSearchQueries = gm.webSearchQueries || gm.web_search_queries || [];
+    const webSearchQueries: string[] = Array.isArray(rawSearchQueries) ? rawSearchQueries.filter((q: any) => typeof q === 'string') : [];
+    const searchQueryCount = webSearchQueries.length;
     const chunks = gm.groundingChunks || gm.grounding_chunks || [];
-    const supports = gm.groundingSupports || gm.grounding_supports || [];
+    const rawSupports = gm.groundingSupports || gm.grounding_supports || [];
 
-    if (chunks.length === 0 && supports.length === 0 && searchQueryCount === 0) return none;
+    if (chunks.length === 0 && rawSupports.length === 0 && searchQueryCount === 0) return none;
 
     let totalConfidence = 0;
     let confidenceCount = 0;
     let highConfidenceCount = 0;
+    const parsedSupports: GroundingSupport[] = [];
 
-    for (const support of supports) {
+    for (const support of rawSupports) {
       const scores = support.confidenceScores || support.confidence_scores || [];
+      const segment = support.segment?.text || support.segment || '';
+      const chunkIndices = support.groundingChunkIndices || support.grounding_chunk_indices || [];
+      const sourceUrls: string[] = [];
+
+      for (const idx of chunkIndices) {
+        const chunk = chunks[idx];
+        if (chunk?.web?.uri) sourceUrls.push(chunk.web.uri);
+      }
+
+      parsedSupports.push({
+        segment: typeof segment === 'string' ? segment : '',
+        confidenceScores: scores.filter((s: any) => typeof s === 'number'),
+        sourceIndices: chunkIndices,
+        sourceUrls,
+      });
+
       for (const score of scores) {
         if (typeof score === 'number') {
           totalConfidence += score;
@@ -168,10 +186,40 @@ export function extractGroundingQuality(response: any): GroundingQuality {
     const avgConfidence = confidenceCount > 0 ? totalConfidence / confidenceCount : 0;
     const hasGrounding = chunks.length > 0 || highConfidenceCount > 0;
 
-    return { hasGrounding, avgConfidence, highConfidenceCount, totalSupports: supports.length, searchQueryCount };
+    return { hasGrounding, avgConfidence, highConfidenceCount, totalSupports: rawSupports.length, searchQueryCount, webSearchQueries, supports: parsedSupports };
   } catch (error) {
     console.warn('[GroundingQuality] Error extracting grounding quality:', error);
     return none;
+  }
+}
+
+/**
+ * Extract citation metadata from a Gemini response.
+ * Citations are from Gemini's training data (separate from web grounding).
+ */
+export function extractCitationMetadata(response: any): CitationMetadata {
+  try {
+    const candidates = response?.candidates || response?.response?.candidates || response?.data?.candidates;
+    if (!candidates?.[0]) return { citations: [] };
+
+    const candidate = candidates[0];
+    const citationMeta = candidate.citationMetadata || candidate.citation_metadata;
+    if (!citationMeta) return { citations: [] };
+
+    const rawCitations = citationMeta.citationSources || citationMeta.citation_sources || citationMeta.citations || [];
+    const citations: CitationEntry[] = rawCitations.map((c: any) => ({
+      startIndex: c.startIndex ?? c.start_index,
+      endIndex: c.endIndex ?? c.end_index,
+      uri: c.uri || c.url,
+      title: c.title,
+      license: c.license,
+      publicationDate: c.publicationDate || c.publication_date,
+    })).filter((c: CitationEntry) => c.uri || c.title);
+
+    return { citations };
+  } catch (error) {
+    console.warn('[Citations] Error extracting citation metadata:', error);
+    return { citations: [] };
   }
 }
 

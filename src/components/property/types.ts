@@ -100,6 +100,7 @@ export interface Contact {
   photoUrl?: string | null;
   relationshipStatus?: 'active' | 'former' | 'job_change_detected' | null;
   relationshipStatusReason?: string | null;
+  aiGrounding?: AIGroundingData | null;
 }
 
 export interface Organization {
@@ -126,6 +127,28 @@ export interface Organization {
   emailAddresses?: string[] | null;
   logoUrl?: string | null;
   pdlEnriched?: boolean;
+  aiGrounding?: AIGroundingData | null;
+}
+
+export interface AIGroundingSupport {
+  segment: string;
+  confidenceScores: number[];
+  sourceIndices: number[];
+}
+
+export interface AIGroundingCitation {
+  title?: string;
+  uri?: string;
+  startIndex?: number;
+  endIndex?: number;
+}
+
+export interface AIGroundingData {
+  sourceUrl?: string;
+  evidence?: string;
+  groundingSupports?: AIGroundingSupport[];
+  webSearchQueries?: string[];
+  citations?: AIGroundingCitation[];
 }
 
 export type EnrichmentStatusType = 'not_enriched' | 'pending' | 'completed' | 'enriched' | 'failed';

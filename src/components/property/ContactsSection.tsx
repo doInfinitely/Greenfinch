@@ -11,6 +11,7 @@ import { ROLE_LABELS, ROLE_COLORS } from '@/lib/constants';
 import { AdminOnly } from '@/components/PermissionGate';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { formatPhoneNumber } from '@/lib/phone-format';
+import { GroundingDetail } from './GroundingDetail';
 import type { Contact } from './types';
 
 const ROLE_PRIORITY: Record<string, number> = {
@@ -252,6 +253,11 @@ export default function ContactsSection({
                         </span>
                       )}
                     </div>
+                    {contact.aiGrounding && (
+                      <AdminOnly>
+                        <GroundingDetail grounding={contact.aiGrounding} />
+                      </AdminOnly>
+                    )}
                   </div>
                   <button
                     onClick={(e) => {

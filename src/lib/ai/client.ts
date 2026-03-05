@@ -323,6 +323,7 @@ export async function streamGeminiResponse(
 
   if (lastCandidate) {
     response.candidates = [lastCandidate];
+    response.finishReason = lastCandidate.finishReason || undefined;
   }
 
   let parsedUsage: GeminiTokenUsage | null = null;

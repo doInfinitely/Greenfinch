@@ -4,7 +4,7 @@ import { db } from './db';
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from './schema';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
 import { runFocusedEnrichment, cleanupAISummary, EnrichmentStageError } from './ai';
-import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpoint } from './ai';
+import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpoint, RelationshipGrounding, GroundingQuality, CitationMetadata } from './ai';
 import { isCircuitBreakerError, rateLimiters } from './rate-limiter';
 import type { CircuitBreakerOpenError } from './rate-limiter';
 import { enrichContactCascade } from './cascade-enrichment';
@@ -204,6 +204,8 @@ export async function saveEnrichmentResults(
       beneficialOwner: ownership.beneficialOwner?.name || undefined,
       beneficialOwnerType: ownership.beneficialOwner?.type || undefined,
       beneficialOwnerConfidence: ownership.beneficialOwner?.confidence || undefined,
+      beneficialOwnerDomain: ownership.beneficialOwner?.domain || undefined,
+      propertyClassConfidence: classification.propertyClassConfidence ?? undefined,
       managementCompany: ownership.managementCompany?.name || undefined,
       managementCompanyDomain: ownership.managementCompany?.domain || undefined,
       managementConfidence: ownership.managementCompany?.confidence || undefined,
@@ -225,6 +227,7 @@ export async function saveEnrichmentResults(
         noContactsReason: discoveredContacts.length === 0 ? (result.contacts.summary || 'No verifiable contacts found') : undefined,
         timing: result.timing,
         sources: allSources,
+        stageMetadata: result.stageMetadata || undefined,
       },
       updatedAt: new Date(),
     })
@@ -232,7 +235,23 @@ export async function saveEnrichmentResults(
 
   console.log(`[SaveEnrichment] Updated property ${propertyKey} with enrichment data`);
 
-  interface DerivedOrg { name: string; domain: string | null; orgType: string; role: string; }
+  const ownershipGroundingQuality = (ownership as any)._groundingQuality as GroundingQuality | undefined;
+  const ownershipCitations = (ownership as any)._citationMetadata as CitationMetadata | undefined;
+
+  function buildOrgGrounding(orgName: string): RelationshipGrounding | undefined {
+    if (!ownershipGroundingQuality?.supports?.length && !ownershipCitations?.citations?.length) return undefined;
+    const nameLower = orgName.toLowerCase();
+    const relevantSupports = (ownershipGroundingQuality?.supports || []).filter(s =>
+      s.segment.toLowerCase().includes(nameLower)
+    );
+    return {
+      groundingSupports: relevantSupports,
+      webSearchQueries: ownershipGroundingQuality?.webSearchQueries || [],
+      citations: ownershipCitations?.citations || [],
+    };
+  }
+
+  interface DerivedOrg { name: string; domain: string | null; orgType: string; role: string; grounding?: RelationshipGrounding; }
   const allOrgs: DerivedOrg[] = [];
   const seenNameRoles = new Set<string>();
 
@@ -240,7 +259,7 @@ export async function saveEnrichmentResults(
     const key = `${name.trim().toLowerCase()}::${role}`;
     if (seenNameRoles.has(key)) return;
     seenNameRoles.add(key);
-    allOrgs.push({ name, domain, orgType, role });
+    allOrgs.push({ name, domain, orgType, role, grounding: buildOrgGrounding(name) });
   };
 
   if (ownership.managementCompany?.name && ownership.managementCompany.confidence > 0) {
@@ -302,6 +321,7 @@ export async function saveEnrichmentResults(
           propertyId,
           orgId,
           role: org.role,
+          aiGrounding: org.grounding || undefined,
         })
         .onConflictDoNothing();
     } catch (err) {
@@ -434,6 +454,7 @@ export async function saveEnrichmentResults(
             role: contact.role,
             confidenceScore: contact.roleConfidence,
             discoveredAt: new Date(),
+            aiGrounding: contact.groundingData || undefined,
           })
           .onConflictDoNothing();
 
