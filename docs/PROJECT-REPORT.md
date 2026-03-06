@@ -1,862 +1,653 @@
-# Greenfinch.ai -- Comprehensive Project Report
+# Greenfinch.ai -- Work Report: Remy Ochei
 
 **Prepared:** March 6, 2026
 **Repository:** `Greenfinchai-v0`
 **Branch:** `main`
-
----
-
-## Table of Contents
-
-1. [Executive Summary](#1-executive-summary)
-2. [Project Timeline & Milestones](#2-project-timeline--milestones)
-3. [Architecture Overview](#3-architecture-overview)
-4. [Technology Stack](#4-technology-stack)
-5. [Data Model](#5-data-model)
-6. [Feature Inventory](#6-feature-inventory)
-7. [AI / Enrichment Pipeline (Core IP)](#7-ai--enrichment-pipeline-core-ip)
-8. [External Integrations](#8-external-integrations)
-9. [Codebase Statistics](#9-codebase-statistics)
-10. [Recent Work -- March 2026 Enrichment Refactor](#10-recent-work----march-2026-enrichment-refactor)
-11. [Current State & Next Steps](#11-current-state--next-steps)
+**Baseline Commit:** `f0e44c7` ("Add property status and research badges to list views")
+**Final Commit:** `7fc1012` ("Implement multi-LLM enrichment pipeline with SerpAPI + browser-use")
 
 ---
 
 ## 1. Executive Summary
 
-Greenfinch.ai is a **commercial real estate (CRE) prospecting platform** that gives sales representatives property intelligence and validated contact information for decision-makers at commercial properties. The platform:
+On March 5, 2026 at 11:37 AM CST, the existing Greenfinch.ai Replit project was downloaded as a ZIP archive. The project at that point consisted of 1,334 commits by previous developers ("greenfinch" and "cory-greenfinch"), spanning January 14 through March 5, 2026.
 
-- **Ingests** property and parcel data from county appraisal districts (DCAD and others) and Regrid parcel APIs
-- **Enriches** each property through a multi-stage AI pipeline that classifies the asset, discovers ownership/management structures, and identifies decision-maker contacts
-- **Validates** contacts through a cascade enrichment pipeline using multiple data providers (PDL, Hunter, Findymail, SerpAPI, browser-use)
-- **Presents** results through an interactive map view, list view, CRM pipeline board, and detailed property/contact pages
-- **Supports** multi-tenant organizations with Clerk-based authentication, role-based permissions, and team management
+Over the course of approximately 13 hours of focused engineering work on March 5-6, 2026, the following was accomplished:
 
-The codebase comprises **280 TypeScript files** totaling **64,225 lines of code**, with **89 API routes**, **37 pages**, and **38 database tables**. Development began on **January 14, 2026** and has progressed through **1,335 commits** over approximately 8 weeks.
-
----
-
-## 2. Project Timeline & Milestones
-
-### Development Window
-
-| Metric | Value |
-|--------|-------|
-| **First Commit** | January 14, 2026 |
-| **Latest Commit** | March 6, 2026 |
-| **Total Duration** | ~51 days |
-| **Total Commits** | 1,335 |
-| **Total Insertions** | 495,208 lines |
-| **Total Deletions** | 363,791 lines |
-| **Net Lines Written** | ~131,417 lines |
-
-### Monthly Commit Breakdown
-
-| Month | Commits | Focus |
-|-------|---------|-------|
-| January 2026 | 595 | Foundation, data ingestion, initial AI pipeline, map UI |
-| February 2026 | 723 | Enrichment cascade, admin tools, pipeline/CRM, cost tracking |
-| March 2026 | 17 | Multi-LLM refactor, enrichment V2 pipeline, data quality |
-
-### Busiest Development Days
-
-| Date | Commits | Notes |
-|------|---------|-------|
-| Jan 30 | 120 | Deduplication, enrichment queue improvements |
-| Feb 1 | 116 | Batch enrichment, circuit breakers |
-| Jan 25 | 107 | LinkedIn search, mobile responsiveness |
-| Feb 20 | 94 | Admin tools, pipeline UI |
-| Jan 31 | 70 | Domain validation, cost tracking |
-| Feb 19 | 69 | Street view, model configuration |
-| Feb 18 | 68 | AI config UI, admin pages |
-
-### Contributors
-
-| Contributor | Commits |
-|-------------|---------|
-| greenfinch | 1,329 |
-| cory-greenfinch | 5 |
-| Remy Ochei | 1 |
-
-### Key Milestones (Chronological)
-
-| Date | Milestone |
-|------|-----------|
-| Jan 14 | Initial commit; Next.js project scaffolded |
-| Jan 14 | Gemini AI integrated for property research |
-| Jan 15 | Snowflake data ingestion pipeline connected |
-| Jan 21 | Google Places API for location search |
-| Jan 22 | Organization roles and ownership types defined |
-| Jan 22 | LinkedIn profile search via Gemini |
-| Jan 25 | Google Street View integration |
-| Jan 25 | AI-powered building/lot square footage overrides |
-| Jan 26 | Mobile responsiveness across application |
-| Jan 30 | Duplicate contact prevention and cleanup |
-| Jan 31 | Enrichment queue management and Redis integration |
-| Feb 1 | Circuit breaker pattern for external API resilience |
-| Feb 1 | AI enrichment code organized into modular stages |
-| Feb 2 | Cost tracking for AI enrichment per property |
-| Feb 3 | Batch enrichment with checkpoint-based resumption |
-| Feb 17 | Vertex AI debug logs viewer |
-| Feb 18 | Admin AI configuration page (runtime model switching) |
-| Feb 19 | Organizations admin page |
-| Feb 20 | Pipeline (Kanban) board for property prospecting |
-| Feb 22 | Contact version history and enrichment comparison |
-| Feb 23 | Notification system |
-| Feb 24 | Street view with geocoding for accuracy |
-| Mar 1 | AI prompt improvements for deed owners |
-| Mar 2 | Website validation and organization linking improvements |
-| Mar 3 | Admin merge tools for duplicate orgs |
-| Mar 4 | System architecture documentation |
-| Mar 5 | Grounding data storage and display; property status badges |
-| Mar 6 | **Multi-LLM enrichment pipeline** (SerpAPI + browser-use) |
+- **70 files changed** across the codebase with **14,950 lines added** and **3,466 lines removed** (net +11,484 lines)
+- Built a complete **multi-LLM abstraction layer** enabling the system to use OpenAI and Anthropic Claude alongside the existing Google Gemini, with per-stage provider switching
+- Created a **new cascade enrichment pipeline (V2)** that replaces expensive per-API-call data providers (PDL, Crustdata, EnrichLayer) with SerpAPI web search + LLM extraction + browser-use LinkedIn scraping
+- Designed and implemented an **A/B experiment routing system** for safe, gradual rollout of V2 with deterministic hash-based traffic splitting and side-by-side comparison logging
+- Built a complete **multi-county CAD (Central Appraisal District) data system** with download, parsing, staging, and querying capabilities for 4 Texas counties (Dallas, Tarrant, Collin, Denton)
+- **Eliminated the Snowflake dependency** by replacing all Snowflake SQL queries with local PostgreSQL staging tables, removing 708 lines of Snowflake client code
+- **Refactored the enrichment queue** to wrap all database writes in a transaction for atomic property/contact/organization saves, preventing partial state on failure
+- Authored a comprehensive **312-line technical design document** outlining a 6-phase refactoring plan
 
 ---
 
-## 3. Architecture Overview
+## 2. Work Timeline
 
-### High-Level System Diagram
+| Event | Timestamp |
+|-------|-----------|
+| **Project ZIP downloaded** | March 5, 2026, 11:37 AM CST |
+| **Baseline snapshot** | Commit `f0e44c7` -- 1,334 commits by previous developers |
+| **Work session** | March 5-6, 2026 (~13 hours) |
+| **Final commit** | Commit `7fc1012` -- March 6, 2026 |
+| **Scope** | 70 files changed, 14,950 insertions, 3,466 deletions |
+| **New files created** | 34 files |
+| **Existing files modified** | 35 files |
+| **Files deleted** | 1 file (`src/lib/snowflake.ts` -- 708 lines) |
 
-```
- DATA SOURCES                    PROCESSING LAYER                   PRESENTATION LAYER
-+------------------+       +----------------------------+       +----------------------+
-| County Appraisal |       |   AI Enrichment Pipeline   |       |   Map View           |
-| Districts (DCAD, |------>|   (3-Stage Orchestrator)   |------>|   (Mapbox / Google)  |
-| Tarrant, etc.)   |       |                            |       +----------------------+
-+------------------+       |  Stage 1: Classification   |       +----------------------+
-                           |  Stage 2: Ownership        |       |   List View          |
-+------------------+       |  Stage 3: Contacts         |       |   (Data Grid)        |
-| Regrid Parcel    |------>|                            |------>+----------------------+
-| APIs             |       +----------------------------+       +----------------------+
-+------------------+              |          |                  |   Pipeline Board     |
-                                  v          v                  |   (Kanban CRM)       |
-                    +------------------+  +------------------+  +----------------------+
-                    | Cascade          |  | Cascade          |  +----------------------+
-                    | Enrichment V1    |  | Enrichment V2    |  |   Contact Detail     |
-                    | (PDL/Crustdata)  |  | (SerpAPI/browser |  |   Property Detail    |
-                    +------------------+  |  -use)           |  +----------------------+
-                           |              +------------------+  +----------------------+
-                           v                       |            |   Admin Panel        |
-                    +----------------------------+  |            |   (AI Config, Merge, |
-                    |      PostgreSQL (Neon)      |<+            |    Costs, Database)  |
-                    |   38 tables via Drizzle ORM |             +----------------------+
-                    +----------------------------+
-                           |
-                    +----------------------------+
-                    |      Upstash Redis          |
-                    |   Queue state, checkpoints, |
-                    |   caching, locks            |
-                    +----------------------------+
-```
+### Baseline Context
 
-### Application Architecture
+The project at download consisted of:
 
-```
-src/
-  app/                          # Next.js 16 App Router
-    api/                        # 89 API route handlers
-      admin/                    # Admin-only endpoints (ingest, enrich, merge, config)
-      properties/               # Property CRUD, GeoJSON, filtering, search
-      contacts/                 # Contact CRUD, enrichment, LinkedIn, waterfall
-      organizations/            # Organization CRUD, enrichment
-      pipeline/                 # CRM pipeline board, activity, dashboard
-      lists/                    # User-created property lists
-      org/                      # Team management, invitations
-      ...
-    [pages]/                    # 37 page components
-      dashboard/                # Map + List views
-      property/[id]/            # Property detail
-      contact/[id]/             # Contact detail
-      pipeline/                 # Kanban board + dashboard
-      admin/                    # Admin panel (10 sub-pages)
-      ...
-  components/                   # 57 React components
-    ui/                         # 17 shadcn/ui primitives
-    property/                   # Property-specific components (7)
-    contact/                    # Contact-specific components (4)
-    icons/                      # Custom icons
-    ...                         # Shared components (29)
-  lib/                          # Core business logic
-    ai/                         # AI enrichment pipeline
-      llm/                      # Multi-LLM abstraction layer
-      stages/                   # Pipeline stages (classify, ownership, contacts)
-    cad/                        # County appraisal data modules
-    [45+ service modules]       # Enrichment, validation, dedup, etc.
-```
+- ~280 TypeScript files, ~64,225 lines of code
+- 89 API routes, 37 pages, 38 database tables
+- A fully functional commercial real estate prospecting platform
+- AI enrichment pipeline locked to Google Gemini only
+- Data enrichment cascade using PDL, Crustdata, and EnrichLayer (paid APIs)
+- Data ingestion pipeline dependent on Snowflake cloud data warehouse
 
 ---
 
-## 4. Technology Stack
+## 3. New Systems Built (from scratch)
 
-### Core Framework
+### 3.1 Multi-LLM Abstraction Layer
 
-| Layer | Technology | Notes |
-|-------|------------|-------|
-| **Framework** | Next.js 16 (App Router) | React 18, server/client components |
-| **Language** | TypeScript 5.6.3 | Strict mode |
-| **Runtime** | Node.js 20 | ES modules |
-| **Database** | PostgreSQL (Neon) | Via Drizzle ORM |
-| **ORM** | Drizzle ORM 0.39 | Schema-first, type-safe |
-| **Styling** | Tailwind CSS 3.4 | With tailwindcss-animate |
-| **Auth** | Clerk | SSO, org management, RBAC |
-| **Caching** | Upstash Redis / ioredis | Queue state, locks, API cache |
-| **Queue** | BullMQ | Background enrichment jobs |
-| **Validation** | Zod 3.25 | Runtime schema validation |
+**Directory:** `src/lib/ai/llm/`
+**Total lines:** 572 (7 files)
 
-### AI & LLM
+A provider-agnostic abstraction layer that enables the AI enrichment pipeline to use any of three LLM providers interchangeably. All pipeline stage calls go through `LLMProviderAdapter.call()` so prompts and JSON parsing remain provider-agnostic.
 
-| Provider | SDK | Usage |
-|----------|-----|-------|
-| **Google Gemini** | `@google/genai` 1.36 | Primary LLM (all 3 pipeline stages) |
-| **OpenAI** | `openai` 6.16 | Alternative LLM provider |
-| **Anthropic Claude** | `@anthropic-ai/sdk` 0.78 | Alternative LLM provider |
-| **SerpAPI** | Custom client | Web search grounding for non-Gemini LLMs |
-| **browser-use** | Custom HTTP client | Python microservice for LinkedIn scraping |
+| File | Lines | Purpose |
+|------|-------|---------|
+| `types.ts` | 55 | Core interfaces: `LLMProvider`, `LLMResponse`, `LLMCallOptions`, `LLMProviderAdapter`, `LLMTokenUsage` |
+| `gemini-adapter.ts` | 97 | Wraps existing Gemini/Vertex AI infrastructure; uses native Google Search grounding |
+| `openai-adapter.ts` | 113 | Wraps OpenAI SDK (`gpt-4o`, `gpt-4o-mini`, `o1`, `o3-mini`); uses SerpAPI for grounding |
+| `claude-adapter.ts` | 147 | Wraps Anthropic SDK (`claude-sonnet-4`, `claude-opus-4`); supports extended thinking with configurable budget tokens; uses SerpAPI for grounding |
+| `serp-grounding.ts` | 119 | Shared grounding module: runs SerpAPI queries, formats results as context block, extracts source references for prompt injection |
+| `factory.ts` | 31 | `getLLMAdapter(provider?)` factory with singleton instances; reads from runtime config |
+| `index.ts` | 10 | Barrel re-exports |
 
-### Mapping & Geospatial
+**Architecture highlights:**
 
-| Service | Package | Usage |
-|---------|---------|-------|
-| **Mapbox GL JS** | `mapbox-gl` 3.18 | Primary map renderer |
-| **Google Maps** | `@googlemaps/js-api-loader` | Alternative maps, Street View, Geocoding |
-| **deck.gl** | `@deck.gl/core` 9.2 | GeoJSON layers, data visualization |
-| **Regrid** | Custom API client | Parcel boundary tiles |
+- The `LLMTokenUsage` interface normalizes token counts, cost (USD), grounding cost, and grounding query counts across all providers
+- The `GeminiAdapter` maps stage names to `StageKey` values for search grounding config lookup, preserving existing per-stage grounding configuration
+- The `OpenAIAdapter` and `ClaudeAdapter` both use `runSerpGrounding()` to inject web search results into prompts before the LLM call, achieving parity with Gemini's native Google Search grounding
+- The `ClaudeAdapter` maps the existing `ThinkingLevel` enum (`NONE`, `MINIMAL`, `LOW`, `MEDIUM`, `HIGH`) to Anthropic `budget_tokens` values (null, 1024, 4096, 8192, 16384)
+- The `serp-grounding.ts` module extracts search-worthy phrases from prompts using regex patterns for `ADDRESS:`, `PROPERTY:`, `COMPANY:`, and quoted search terms, with up to 3 parallel SerpAPI queries per call
+- All adapters integrate with the existing `rateLimiters` and `trackCostFireAndForget` systems
 
-### Data Enrichment Providers
+### 3.2 Cascade Enrichment V2 Pipeline
 
-| Provider | Module | Purpose |
-|----------|--------|---------|
-| **People Data Labs (PDL)** | `pdl.ts` | Person + company matching |
-| **Crustdata** | `crustdata.ts` | Employment verification |
-| **EnrichLayer** | `enrichlayer.ts` | Alternative company data |
-| **Hunter.io** | `hunter.ts` | Email discovery |
-| **Findymail** | `findymail.ts` | Email verification + discovery |
-| **SerpAPI** | `serp.ts`, `serp-linkedin.ts` | Web search, LinkedIn profile search |
-| **ZeroBounce** | `zerobounce.ts` | Email validation |
+**File:** `src/lib/cascade-enrichment-v2.ts`
+**Lines:** 420
 
-### UI Components
+A complete replacement for the V1 cascade enrichment pipeline that eliminates PDL, Crustdata, and EnrichLayer dependencies. The V2 pipeline uses SerpAPI web search + LLM extraction for person/company data and browser-use LinkedIn scraping for employment verification.
 
-| Library | Usage |
-|---------|-------|
-| **Radix UI** | 22 primitives (dialog, dropdown, tabs, etc.) |
-| **Lucide React** | Icon library |
-| **Recharts** | Analytics dashboards |
-| **Framer Motion** | Animations |
-| **cmdk** | Command palette |
-| **react-resizable-panels** | Split-pane layouts |
-| **embla-carousel** | Carousel components |
+**Contact enrichment stages (5 stages):**
 
----
+| Stage | V1 (Legacy) | V2 (New) |
+|-------|-------------|----------|
+| 1. Email Discovery | Findymail + Hunter | **Unchanged** -- Findymail + Hunter |
+| 2. Person Match | PDL Person API ($0.10/call) | SerpAPI + LLM extraction (~$0.03/call) |
+| 3. LinkedIn Discovery | SERP LinkedIn search | **Unchanged** -- SERP LinkedIn search |
+| 4. Employment Verification | Crustdata Person API ($0.05/call) | browser-use LinkedIn scrape (~$0.05/call) |
+| 5. Confidence Assignment | Same algorithm | Same algorithm with `search_matched` flag |
 
-## 5. Data Model
+**Organization enrichment** (`enrichOrganizationCascadeV2`) uses `enrichCompanySerpAI` to replace PDL Company + Crustdata Company lookups. Returns the same `OrganizationEnrichmentResult` interface shape as V1 with legacy provider fields set to null.
 
-The database schema is defined in `src/lib/schema.ts` (1,315 lines) and contains **38 tables** managed by Drizzle ORM.
+The V2 pipeline maintains full backwards compatibility by returning the same `ContactEnrichmentResult` and `OrganizationEnrichmentResult` interfaces, allowing seamless A/B switching.
 
-### Core Entity Tables
+### 3.3 SerpAPI Web Search and Person/Company Enrichment
 
-| Table | Purpose | Key Fields |
-|-------|---------|------------|
-| `properties` | Physical commercial properties | address, lat/lon, lot/bldg sqft, asset category, classification, ownership, management, DCAD data, enrichment status |
-| `contacts` | People (decision-makers) | name, email, phone, title, employer, LinkedIn, PDL/Crustdata data, confidence flags |
-| `organizations` | Companies/entities | name, domain, industry, employees, revenue, location, social profiles, enrichment data |
-| `users` | Platform users (Clerk-linked) | email, role, organization, service provider link |
-| `sessions` | Auth sessions | sid, session data, expiry |
+**Files:** 3 files, 437 lines total
 
-### Relationship / Junction Tables
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/lib/serp.ts` | 123 | General-purpose SerpAPI web search client with Redis caching (6-hour TTL), rate limiting, and cost tracking |
+| `src/lib/serp-person-enrichment.ts` | 157 | Replaces `enrichPersonPDL`: runs 2-3 targeted SerpAPI queries per person, passes results to LLM for structured JSON extraction of name, title, company, LinkedIn, email, phone, location, confidence score |
+| `src/lib/serp-company-enrichment.ts` | 157 | Replaces `enrichCompanyPDL` + `enrichCompanyCrustdata`: SerpAPI queries for company firmographics, LLM extraction of name, domain, industry, employee count, founded year, LinkedIn, location |
 
-| Table | Relationship |
-|-------|-------------|
-| `property_contacts` | Property <-> Contact (with role, confidence, grounding data) |
-| `property_organizations` | Property <-> Organization (with relationship type: owner/manager/tenant) |
-| `contact_organizations` | Contact <-> Organization (with title, confidence) |
-| `property_service_providers` | Property <-> Service Provider (with service type, status) |
+**Architecture highlights:**
 
-### CRM & Pipeline Tables
+- `serp.ts` builds a normalized cache key from query + location, checks Redis before making API calls, and deduplicates results across parallel queries
+- Person enrichment constructs targeted queries like `"John Smith" "Acme Corp" LinkedIn` and `"John Smith" site:acme.com` to maximize match quality
+- Company enrichment queries include `"domain.com" company` and `"Company Name" official website` patterns
+- Both modules use `getStageConfig()` to read the current LLM provider and model from runtime config, then call `getLLMAdapter()` to get the appropriate adapter
+- LLM prompts are structured as JSON extraction templates with confidence scoring guidelines (0.9+ for LinkedIn match, 0.7-0.8 for strong match, etc.)
 
-| Table | Purpose |
-|-------|---------|
-| `property_pipeline` | Kanban pipeline stages per property per org |
-| `pipeline_stage_history` | Stage transition audit trail |
-| `property_notes` | User notes on properties |
-| `property_activity` | Activity log per property |
-| `property_actions` | Scheduled tasks/actions on properties |
-| `property_views` | View count tracking |
-| `property_flags` | User-flagged properties (with reason) |
-| `user_lists` | Custom property lists |
-| `list_items` | Items within lists |
-| `notifications` | User notification system |
+### 3.4 browser-use Integration
 
-### Data Quality Tables
+**Files:** 2 files, 397 lines total
 
-| Table | Purpose |
-|-------|---------|
-| `classification_cache` | Cached AI classification results |
-| `potential_duplicates` | Flagged duplicate records for review |
-| `data_issues` | Reported data quality issues |
-| `contact_linkedin_flags` | Flagged incorrect LinkedIn profiles |
-| `contact_snapshots` | Point-in-time contact data snapshots |
-| `user_contact_versions` | User-specific contact overrides |
-| `admin_audit_log` | Admin action audit trail |
+| File | Lines | Purpose |
+|------|-------|---------|
+| `src/lib/browser-use.ts` | 279 | HTTP client for the browser-use Python microservice (FastAPI + browser-use); provides structured LinkedIn profile scraping, employment history extraction, company team page scraping, generic page scraping, and health checks |
+| `src/lib/browser-employment-verification.ts` | 118 | Replaces Crustdata's employment verification; uses browser-use to scrape LinkedIn experience section, detects job changes by comparing current employer against expected employer using fuzzy company name matching |
 
-### Enrichment & Cost Tables
+**Key types defined:**
 
-| Table | Purpose |
-|-------|---------|
-| `enrichment_cost_events` | Per-call cost tracking for all providers |
-| `loss_reason_codes` | Pipeline loss/rejection reasons |
-| `ingestion_settings` | Admin-configurable ingestion parameters |
+- `BrowserScrapeInput/Result` -- generic page scrape with LLM extraction prompt
+- `LinkedInProfileData` -- structured profile with name, headline, location, current title/company, experiences array, education array
+- `LinkedInExperience` -- title, company, location, start/end dates, isCurrent flag
+- `EmploymentHistory` -- current employer/title, experiences, hasJobChange flag
+- `EmploymentVerificationResult` -- verified flag, current employer/title, hasJobChange, previousEmployers, confidence score
 
-### County Appraisal Data (CAD) Tables
+**browser-employment-verification.ts** includes:
 
-| Table | Purpose |
-|-------|---------|
-| `cad_downloads` | CAD file download tracking |
-| `cad_account_info` | Property account details from CAD |
-| `cad_appraisal_values` | Appraisal/assessment values |
-| `cad_buildings` | Individual building records |
-| `cad_land` | Land parcel details |
+- `normalizeCompanyName()` -- strips suffixes (inc, llc, corp, properties, realty, etc.) for comparison
+- `fuzzyCompanyMatch()` -- substring matching plus word overlap analysis (matches if >= 50% of significant words overlap)
+- Domain-based matching as fallback: extracts base domain and checks against company name
+- Confidence calculation: base 0.5, +0.2 for current employer found, +0.1 for 2+ experiences, +0.1 for no job change
 
-### Mapping Tables
+### 3.5 A/B Experiment Routing
 
-| Table | Purpose |
-|-------|---------|
-| `parcel_to_property` | Maps parcel IDs to property records |
-| `parcelnumb_mapping` | Maps parcel numbers across sources |
-| `service_providers` | CRE service provider companies |
-| `waitlist_signups` | Pre-launch waitlist |
+**File:** `src/lib/enrichment-experiments.ts`
+**Lines:** 81
 
-### Entity-Relationship Summary
+Deterministic hash-based routing between V1 (legacy) and V2 (new) cascade enrichment pipelines with configurable traffic percentage for gradual rollout.
 
-```
-properties ----< property_contacts >---- contacts
-     |                                       |
-     +------< property_organizations >-- organizations --< contact_organizations >--+
-     |
-     +------< property_pipeline (per org)
-     +------< property_notes
-     +------< property_activity
-     +------< property_actions
-     +------< property_flags
-     +------< property_views
-     +------< property_service_providers >-- service_providers
+**Capabilities:**
 
-users -----< notifications
-  |
-  +--------< user_lists ----< list_items
+- `shouldUseNewPipeline(propertyKey)` -- deterministic hash routing; same property always gets same pipeline
+- `shouldForceNewPipeline()` -- environment variable override (`ENRICHMENT_FORCE_V2=true`)
+- `isComparisonModeEnabled()` -- side-by-side mode (`ENRICHMENT_COMPARISON_MODE=true`) where both V1 and V2 run and results are compared
+- `getExperimentInfo(propertyKey)` -- returns full experiment metadata for logging (pipeline version, percentage, comparison mode, forced flag)
+- Traffic percentage configurable via `ENRICHMENT_V2_PERCENTAGE` (0-100), defaulting to 0 for safe initial deployment
 
-cad_account_info ----< cad_appraisal_values
-                 ----< cad_buildings
-                 ----< cad_land
-```
+### 3.6 Enrichment Comparison Logging
 
----
+**File:** `src/lib/enrichment-comparison.ts`
+**Lines:** 134
 
-## 6. Feature Inventory
+Field-level diff engine for V1 vs V2 cascade enrichment results, used during the A/B transition period for quality analysis.
 
-### User-Facing Pages (37 total)
+**Capabilities:**
 
-#### Property Discovery
-| Page | Route | Description |
-|------|-------|-------------|
-| Dashboard | `/dashboard` | Main entry point |
-| Map View | `/dashboard/map` | Interactive Mapbox map with parcel overlays, clustering, filters |
-| List View | `/dashboard/list` | Sortable data grid with bulk actions |
-| Property Detail | `/property/[id]` | Full property page with Street View, ownership, contacts, notes, activity |
+- `compareContactResults()` -- compares 12 key contact fields: found, confidenceFlag, email, emailVerified, phone, title, company, companyDomain, linkedinUrl, location, seniority, employerLeftDetected
+- `compareOrganizationResults()` -- compares 11 key org fields: found, name, industry, employeeCount, employeesRange, foundedYear, website, linkedinUrl, phone, city, state
+- Produces `ComparisonResult` with per-field diffs and summary statistics (totalFields, matchingFields, diffingFields, matchRate)
+- `normalizeForComparison()` -- case-insensitive, trimmed string comparison with null/undefined handling
+- Console logging of all field-level differences with V1 vs V2 values
 
-#### Contact Management
-| Page | Route | Description |
-|------|-------|-------------|
-| Contacts List | `/contacts` | All contacts with search, sort, bulk actions |
-| Contact Detail | `/contact/[id]` | Full contact profile with enrichment data, version history |
+### 3.7 Multi-County CAD System
 
-#### Organization Views
-| Page | Route | Description |
-|------|-------|-------------|
-| Organizations List | `/organizations` | All organizations with search |
-| Organization Detail | `/organization/[id]` | Company profile with associated properties and contacts |
+**Directory:** `src/lib/cad/`
+**Total lines:** 1,491 (10 files)
 
-#### CRM Pipeline
-| Page | Route | Description |
-|------|-------|-------------|
-| Pipeline Board | `/pipeline/board` | Kanban-style board (New Lead -> Qualified -> Contacted -> Proposal -> Won/Lost) |
-| Pipeline Dashboard | `/pipeline/dashboard` | Analytics and pipeline metrics |
+A complete system for downloading, parsing, staging, and querying county appraisal district data for multiple Texas counties, replacing the previous Snowflake-dependent approach.
 
-#### Lists & Organization
-| Page | Route | Description |
-|------|-------|-------------|
-| My Lists | `/lists` | User-created property lists |
-| List Detail | `/lists/[id]` | Individual list with items |
-| Settings | `/settings` | User preferences, service provider selection |
+| File | Lines | Purpose |
+|------|-------|---------|
+| `types.ts` | 145 | Type definitions for all CAD data: `CountyCode`, `CadAccountInfoRow`, `CadAppraisalRow`, `CadBuildingRow`, `CadLandRow`, `CadParser` interface, `CountyConfig` with download URLs and file mappings |
+| `index.ts` | 25 | Barrel exports + `createParser(countyCode)` factory |
+| `download-manager.ts` | 95 | Downloads ZIP files from county websites, extracts them to temp directories, provides file finding and cleanup utilities |
+| `query.ts` | 257 | SQL query builder using Drizzle ORM: `queryCommercialProperties()` with filtering (ZIP, county, lot/building sqft, building class, condition), `countCommercialProperties()`, `getAccountsByAccountNums()` |
+| `staging.ts` | 230 | Batch insert/upsert operations: `stageAccountInfo()`, `stageAppraisalValues()`, `stageBuildings()`, `stageLand()`, `clearStagingData()` with 1,000-row batch sizes and progress logging |
+| `county-codes.ts` | 85 | PTAD code classification, county name lookup, property type inclusion filtering |
+| `parsers/dcad-parser.ts` | 185 | Dallas CAD CSV parser using `csv-parse` with streaming `AsyncIterable` interface |
+| `parsers/tad-parser.ts` | 163 | Tarrant CAD pipe-delimited parser |
+| `parsers/ccad-parser.ts` | 153 | Collin CAD CSV parser |
+| `parsers/denton-parser.ts` | 153 | Denton CAD CSV parser |
 
-#### Team Management
-| Page | Route | Description |
-|------|-------|-------------|
-| Team | `/org-admin/team` | Team member management, invitations |
-| Analytics | `/org-admin/analytics` | Organization-level usage analytics |
+**Supported counties:**
 
-#### Admin Panel (10 pages)
-| Page | Route | Description |
-|------|-------|-------------|
-| Admin Home | `/admin` | Dashboard with system stats, data ingestion, batch enrichment |
-| AI Config | `/admin/ai-config` | Runtime LLM model/provider/temperature configuration per stage |
-| Costs | `/admin/costs` | Enrichment cost tracking and analytics |
-| Database | `/admin/database` | Direct database operations, export |
-| Compare | `/admin/compare` | A/B enrichment pipeline comparison |
-| Vertex Logs | `/admin/vertex-logs` | AI model call debug logs |
-| Merge Contacts | `/admin/merge-contacts` | Duplicate contact resolution |
-| Merge Orgs | `/admin/merge-orgs` | Duplicate organization resolution |
-| Merge Properties | `/admin/merge-properties` | Duplicate property resolution |
-| LinkedIn Overrides | `/admin/linkedin-overrides` | Manual LinkedIn URL corrections |
-| Organizations | `/admin/organizations` | Clerk organization management |
+| County Code | District Name | File Format | Download Source |
+|-------------|---------------|-------------|-----------------|
+| `DCAD` | Dallas Central Appraisal District | CSV | dallascad.org |
+| `TAD` | Tarrant Appraisal District | Pipe-delimited | tad.org |
+| `CCAD` | Collin Central Appraisal District | CSV | collincad.org |
+| `DENT` | Denton Central Appraisal District | CSV | dentoncad.com |
 
-#### Marketing & Public
-| Page | Route | Description |
-|------|-------|-------------|
-| Landing | `/` | Product landing page |
-| Product | `/product` | Feature showcase |
-| Pricing | `/pricing` | Pricing plans |
-| FAQ | `/faq` | Frequently asked questions |
-| Waitlist | `/waitlist` | Pre-launch signup |
-| Support | `/support` | Support/help page |
-| Docs | `/docs` | Documentation |
+**Architecture highlights:**
 
-#### Auth
-| Page | Route | Description |
-|------|-------|-------------|
-| Sign In | `/sign-in` | Clerk sign-in flow |
-| Sign Up | `/sign-up` | Clerk sign-up flow |
-| SSO Callbacks | `/sign-in/sso-callback`, `/sign-up/sso-callback` | SSO redirect handlers |
+- All parsers implement the `CadParser` interface with async generators (`AsyncIterable<T>`) for memory-efficient streaming of large files (DCAD files can be 500MB+)
+- The `staging.ts` module uses Drizzle ORM's `onConflictDoUpdate` for upsert semantics on account info and appraisal values, preventing duplicates on re-import
+- The `query.ts` module constructs multi-table JOINs (account_info + appraisal_values + buildings + land) with dynamic WHERE clauses for flexible filtering
+- The `COUNTY_CONFIGS` object in `types.ts` maps each county to its download URL, file format, and expected file names, making new county additions a configuration-only change
 
-### API Routes (89 total)
+### 3.8 Property Type Classification
 
-#### Property APIs (16 routes)
-- `GET /api/properties` -- List with filtering and pagination
-- `GET /api/properties/[id]` -- Single property detail
-- `GET /api/properties/geojson` -- GeoJSON for map rendering
-- `GET /api/properties/search` -- Full-text property search
-- `GET /api/properties/filter-options` -- Available filter values
-- `GET /api/properties/views` -- Property view tracking
-- `POST /api/properties/[id]/flag` -- Flag a property
-- `POST /api/properties/[id]/notes` -- Add notes
-- `GET /api/properties/[id]/activity` -- Activity log
-- `POST /api/properties/[id]/actions` -- Create action items
-- `POST /api/properties/[id]/pipeline` -- Pipeline stage management
-- `POST /api/properties/[id]/customer` -- Mark as customer
-- `GET /api/properties/[id]/geocode` -- Geocode address
-- `GET /api/properties/[id]/streetview` -- Street View metadata
-- `POST /api/properties/[id]/service-providers` -- Link service providers
+**File:** `src/lib/property-types.ts`
+**Lines:** 156
 
-#### Contact APIs (14 routes)
-- `GET /api/contacts` -- List all contacts
-- `GET /api/contacts/[id]` -- Single contact
-- `POST /api/contacts/create` -- Create contact
-- `GET /api/contacts/search` -- Search contacts
-- `POST /api/contacts/associate` -- Link contact to property
-- `POST /api/contacts/enrich` -- Trigger enrichment
-- `POST /api/contacts/[id]/enrich` -- Enrich single contact
-- `GET /api/contacts/[id]/versions` -- Version history
-- `GET /api/contacts/[id]/linkedin` -- LinkedIn data
-- `POST /api/contacts/[id]/linkedin/flag` -- Flag LinkedIn
-- `GET /api/contacts/[id]/profile-photo` -- Profile photo
-- `POST /api/contacts/[id]/waterfall-email` -- Waterfall email enrichment
-- `POST /api/contacts/[id]/waterfall-phone` -- Waterfall phone enrichment
+Extracted and consolidated property type interfaces that were previously embedded in `snowflake.ts`. Provides standalone type definitions used across the codebase:
 
-#### Admin APIs (26 routes)
-- `POST /api/admin/ingest` -- Trigger data ingestion
-- `POST /api/admin/enrich-batch` -- Start batch AI enrichment
-- `GET /api/admin/enrich-status` -- Enrichment queue status
-- `GET /api/admin/enrichment-costs` -- Cost analytics
-- `GET /api/admin/stats` -- System statistics
-- `GET /api/admin/vertex-logs` -- AI call logs
-- `POST /api/admin/ai-config` -- Update AI configuration
-- `POST /api/admin/merge-contacts` -- Merge duplicate contacts
-- `POST /api/admin/merge-orgs` -- Merge duplicate organizations
-- `POST /api/admin/merge-properties` -- Merge duplicate properties
-- `GET /api/admin/potential-duplicates` -- List duplicates
-- `POST /api/admin/linkedin-overrides` -- Override LinkedIn URLs
-- `GET /api/admin/database` -- Database queries
-- `GET /api/admin/database/export` -- Data export
-- Plus organization management, comparison, and settings routes
-
-#### Pipeline APIs (5 routes)
-- `GET /api/pipeline/board` -- Pipeline board data
-- `GET /api/pipeline/dashboard` -- Pipeline metrics
-- `GET /api/pipeline/activity` -- Recent pipeline activity
-- `PATCH /api/pipeline/[id]` -- Update pipeline stage
-- `POST /api/pipeline/[id]/claim` -- Claim a pipeline item
-
-#### Organization, List, Notification, and Other APIs (28 routes)
-- Organization CRUD, enrichment, search
-- User list management
-- Notification system
-- Team member management and invitations
-- Waitlist, health check, typeahead, brand lookup
-- Parcel resolution, Regrid tile proxy
-- Webhook handlers (Apollo)
-- User settings and auth
-
-### UI Components (57 total)
-
-#### Property Components (7)
-- `ContactsSection` -- Contact list within property detail
-- `OwnershipSection` -- Ownership and management display
-- `PropertyAbout` -- Property description and details
-- `PropertyHeader` -- Title, address, badges
-- `PropertyStats` -- Key metrics (sqft, value, class)
-- `GroundingDetail` -- AI grounding source display
-- `FlagDialog` / `ServiceProviderDialog` -- Action dialogs
-
-#### Contact Components (4)
-- `ContactHeader` -- Name, photo, title
-- `ContactInfo` -- Email, phone, LinkedIn details
-- `ContactOrganizations` -- Associated companies
-- `AssociatedProperties` -- Linked properties
-
-#### Shared Components (29)
-- `AppSidebar` -- Main navigation sidebar
-- `Header` -- Top navigation bar
-- `MapSearchBar` -- Address/property search
-- `PropertyFilters` -- Advanced filtering panel
-- `PropertyNotes` / `PropertyActivity` -- Timeline displays
-- `EnrichmentQueuePopover` -- Live enrichment progress
-- `NotificationBell` -- Notification center
-- `PipelineStatus` -- Pipeline stage indicator
-- `ContactStatusIcons` -- Enrichment quality indicators
-- `ContactVersionHistory` -- Version diff viewer
-- `StreetView` -- Google Street View embed
-- `CustomerToggle` -- Customer status toggle
-- `BulkActionBar` / `BulkAddToListModal` -- Bulk operations
-- `AddContactModal` / `AddToListModal` -- Creation modals
-- `DataIssueDialog` -- Data quality reporting
-- `PermissionGate` -- Role-based UI gating
-- Various skeletons, providers, landing page components
-
-#### shadcn/ui Primitives (17)
-- `alert-dialog`, `avatar`, `badge`, `button`, `card`, `checkbox`, `dialog`, `dropdown-menu`, `input`, `label`, `popover`, `select`, `skeleton`, `table`, `tabs`, `textarea`, `toast`, `tooltip`
+- `DCADBuilding` -- individual building details from CAD COM_DETAIL
+- `CommercialProperty` -- full property record with Regrid parcel data, DCAD core appraisal data, owner details, legal descriptions, land details, and building summary
+- `RegridParcel` -- legacy interface for Regrid parcel data compatibility
+- `AggregatedProperty` -- multi-parcel aggregation with computed lot/building sqft and source tracking
 
 ---
 
-## 7. AI / Enrichment Pipeline (Core IP)
+## 4. Major Refactors and Modifications
 
-The AI enrichment pipeline is the central intellectual property of Greenfinch. It consists of two major systems working in concert.
+### 4.1 AI Pipeline Stages -- Adapted to LLM Abstraction
 
-### 7.1 AI Enrichment Pipeline (3-Stage Orchestrator)
+**Files modified:** `classify.ts`, `ownership.ts`, `contacts.ts`, `misc.ts`
+**Combined diff:** ~502 lines changed
 
-**Orchestrator:** `src/lib/ai/pipeline.ts`
+All four AI pipeline stages were refactored to use the new LLM abstraction layer instead of direct Gemini client calls.
 
-The pipeline processes one property at a time through three sequential stages, with checkpoint-based resumption for fault tolerance.
+**Pattern applied consistently across all stages:**
 
-```
-                        +-----------------------+
-                        |   Raw Property Data   |
-                        |   (from CAD/Regrid)   |
-                        +-----------+-----------+
-                                    |
-                                    v
-                  +----------------------------------+
-                  |  Stage 1: CLASSIFY & VERIFY      |
-                  |  - Verify name, address, sqft    |
-                  |  - Assign asset category/subcat  |
-                  |  - Estimate CRE class (A/B/C/D)  |
-                  |  - LLM + Web Search Grounding    |
-                  +----------------+-----------------+
-                                   |
-                                   v
-                  +----------------------------------+
-                  |  Stage 2: OWNERSHIP & MGMT       |
-                  |  - Discover beneficial owner     |
-                  |  - LLC -> parent company lookup   |
-                  |  - Property management company   |
-                  |  - Domain validation cascade     |
-                  |  - LLM + Web Search Grounding    |
-                  +----------------+-----------------+
-                                   |
-                                   v
-                  +----------------------------------+
-                  |  Stage 3: CONTACT DISCOVERY      |
-                  |  - Find ~3 decision-makers       |
-                  |  - Names, titles, companies      |
-                  |  - Email discovery during search  |
-                  |  - Source URL validation          |
-                  |  - Deduplication                  |
-                  |  - LLM + Web Search Grounding    |
-                  +----------------+-----------------+
-                                   |
-                                   v
-                  +----------------------------------+
-                  |  CHECKPOINT SAVED                |
-                  |  (Redis / in-memory)             |
-                  +----------------------------------+
+Before (Gemini-locked):
+```typescript
+const client = getGeminiClient();
+const response = await withTimeout(
+  callGeminiWithTimeout(
+    () => streamGeminiResponse(client, prompt, {
+      tools: getSearchGroundingTools('stage1_classify'),
+      temperature: ...,
+      thinkingLevel: ...,
+    }),
+    2
+  ),
+  STAGE_TIMEOUTS.STAGE_1_CLASSIFY,
+  'stage1-classify'
+);
 ```
 
-**Key Features:**
-- **Multi-LLM Support:** Provider-agnostic abstraction layer (`src/lib/ai/llm/`) supports Gemini, OpenAI, and Claude
-- **Per-Stage Configuration:** Each stage can use a different LLM provider, model, temperature, thinking level, and timeout
-- **Search Grounding:** Gemini uses native Google Search tools; OpenAI/Claude use SerpAPI-injected context
-- **Checkpoint Resumption:** Failed runs save partial results; subsequent runs skip completed stages
-- **Cost Tracking:** Every LLM call logs token usage and estimated cost to `enrichment_cost_events`
-- **Retry Logic:** Each stage has configurable retry count with exponential/linear backoff
-- **Circuit Breakers:** Prevent cascade failures when external services degrade
-
-### 7.2 Cascade Enrichment Pipeline (Post-AI Contact/Org Enrichment)
-
-After the AI pipeline discovers contacts, they flow through the cascade enrichment system for data validation and augmentation.
-
-#### V1 Pipeline (`cascade-enrichment.ts`)
-
-```
-Contact Input
-    |
-    v
-[1] Email Discovery
-    Findymail Verify -> Findymail Find -> Hunter Find -> LinkedIn Reverse Email
-    |
-    v
-[2] Person Match (PDL)
-    Match by name + email + company -> employment data, LinkedIn, phones
-    |
-    v
-[3] LinkedIn Discovery (SERP)
-    Google Custom Search -> profile matching -> slug validation
-    |
-    v
-[4] Employment Verification (Crustdata)
-    Verify current employer matches (when PDL domain != input domain)
-    |
-    v
-[5] Confidence Flag Assignment
-    "verified" | "pdl_matched" | "unverified" | "email_only" | "no_match"
+After (provider-agnostic):
+```typescript
+const stageConfig = getStageConfig('stage1_classify');
+const adapter = getLLMAdapter(stageConfig.provider);
+const response = await adapter.call(prompt, {
+  model: STAGE_MODELS.STAGE_1_CLASSIFY,
+  temperature: ...,
+  thinkingLevel: ...,
+  timeoutMs: STAGE_TIMEOUTS.STAGE_1_CLASSIFY,
+  stageName: 'stage1-classify',
+  searchGrounding: stageConfig.searchGrounding,
+  latLng: propertyLatLng(property),
+});
 ```
 
-#### V2 Pipeline (`cascade-enrichment-v2.ts`) -- NEW
+**Additional changes per stage:**
 
-```
-Contact Input
-    |
-    v
-[1] Email Discovery (unchanged)
-    Findymail + Hunter
-    |
-    v
-[2] Person Match via SerpAPI + LLM (replaces PDL)
-    Web search -> LLM extraction of person data
-    |
-    v
-[3] LinkedIn Discovery via SERP (unchanged)
-    |
-    v
-[4] Employment Verification via browser-use (replaces Crustdata)
-    LinkedIn profile scraping via Python microservice
-    |
-    v
-[5] Confidence Flag Assignment
-```
+- **classify.ts** (89 lines changed): Replaced `CommercialProperty` import from `snowflake` to `property-types`; updated token usage mapping from Gemini-specific format (`promptTokens`, `responseTokens`) to normalized format (`inputTokens`, `outputTokens`); updated grounding source extraction to use `response.groundingSources` instead of `extractGroundedSources(response)`
+- **ownership.ts** (150 lines changed): Same pattern plus refactored `retryFindPropertyWebsite()` and `retryFindCompanyDomain()` helper functions to use the adapter pattern; all three functions in the file now read from `getStageConfig('domain_retry')` for retry calls
+- **contacts.ts** (89 lines changed): Same pattern; updated grounding quality access with optional chaining (`groundingQuality?.hasGrounding`, `groundingQuality?.avgConfidence ?? 0`) for null safety when non-Gemini providers return different raw response shapes
+- **misc.ts** (84 lines changed): Refactored `cleanupAISummary()` and `searchForReplacementContact()` to use the adapter pattern
 
-**A/B Experiment System:** (`enrichment-experiments.ts`)
-- Deterministic hash-based routing between V1 and V2
-- Configurable traffic percentage (`ENRICHMENT_V2_PERCENTAGE`)
-- Comparison mode for side-by-side result analysis
+### 4.2 Enrichment Queue -- Integrated V2 Pipeline Routing
 
-### 7.3 Enrichment Queue (`enrichment-queue.ts`)
+**File:** `src/lib/enrichment-queue.ts`
+**Diff:** 260 lines changed (additions + removals)
 
-The enrichment queue orchestrates batch processing of properties:
+Major refactoring of the enrichment queue to support V2 pipeline routing and atomic database operations.
 
-- **Redis-backed state management** for queue items, batch state, and rate limits
-- **Concurrency control** via `p-limit` for parallel processing
-- **Checkpoint persistence** in Redis for crash recovery
-- **Lock-based batch exclusivity** to prevent duplicate processing
-- **Automatic organization enrichment** for newly discovered companies
-- **Deduplication** during contact creation (matching by email, name+domain, LinkedIn URL)
+**Key changes:**
 
-### 7.4 LLM Abstraction Layer (`src/lib/ai/llm/`)
+1. **V2 pipeline integration**: Imported `enrichContactCascadeV2`, `enrichOrganizationCascadeV2`, experiment routing functions, and comparison functions. Both organization and contact enrichment paths now check `shouldUseNewPipeline(routingKey)` and route accordingly.
 
-| File | Purpose |
-|------|---------|
-| `types.ts` | Provider-agnostic interfaces (`LLMProvider`, `LLMResponse`, `LLMCallOptions`, `LLMProviderAdapter`) |
-| `gemini-adapter.ts` | Wraps Google GenAI SDK with native search grounding |
-| `openai-adapter.ts` | Wraps OpenAI SDK with SerpAPI grounding injection |
-| `claude-adapter.ts` | Wraps Anthropic SDK with SerpAPI grounding injection |
-| `serp-grounding.ts` | Shared SerpAPI search module for non-Gemini providers |
-| `factory.ts` | `getLLMAdapter(provider?)` factory, reads from runtime config |
+2. **Side-by-side comparison mode**: When `isComparisonModeEnabled()` returns true and V2 is active, the queue also runs V1 and calls `compareOrganizationResults()` / `compareContactResults()` for quality analysis.
 
-Available models by provider:
+3. **Atomic transaction wrapping**: Moved all database writes (property update, org junction inserts, contact creation/updates, property-contact junction inserts, contact-organization junction inserts) into a single `db.transaction()` call. Previously, these were separate operations that could leave partial state on failure.
 
-| Provider | Models |
-|----------|--------|
-| **Gemini** | gemini-3-flash-preview, gemini-3-pro-preview, gemini-2.5-flash, gemini-2.5-pro, gemini-2.0-flash, gemini-2.0-flash-lite |
-| **OpenAI** | gpt-4o, gpt-4o-mini, o1, o3-mini |
-| **Claude** | claude-opus-4, claude-sonnet-4 |
+4. **Pre-resolved external lookups**: Organization resolution (which may call PDL APIs) and contact deduplication lookups (which use Redis locks) are now performed _before_ the transaction to avoid holding the database transaction open during external network calls.
+
+5. **Snowflake removal**: Removed the fallback path that fetched properties from Snowflake when not found in PostgreSQL. All properties are now expected to be in local staging tables.
+
+### 4.3 EnrichLayer -- Refactored
+
+**File:** `src/lib/enrichlayer.ts`
+**Diff:** 1,190 lines changed
+
+Substantial refactoring of the EnrichLayer integration module:
+
+- **Replaced manual circuit breaker** (35 lines of hand-rolled state management) with the existing `ServiceRateLimiter` class, reducing code by ~40 lines while gaining proper rate limiting (20/min, 5 concurrent)
+- **Replaced manual rate limiter** (25 lines of timestamp-based sliding window) with `ServiceRateLimiter.execute()` wrapping
+- **Fixed timeout handling**: Replaced `createTimeoutSignal()` (which leaked timers) with `createTimeoutController()` that returns a cleanup function
+- **Removed duplicated `parseFullName()`**: Now imports from `./utils` instead of having a local copy
+- **Added cost tracking**: All API calls now call `trackCostFireAndForget()` with provider, endpoint, entity type, and status code
+
+### 4.4 DCAD Ingestion -- Simplified
+
+**File:** `src/lib/dcad-ingestion.ts`
+**Diff:** 648 lines changed
+
+Replaced all Snowflake SQL queries with calls to the new CAD query module:
+
+- **Removed** ~260 lines of raw Snowflake SQL string construction (SELECT statements with multi-table JOINs, filter clause builders, table name constants)
+- **Removed** `buildFilterClauses()` function that built SQL WHERE clauses from filter parameters
+- **Replaced** `getCommercialPropertiesByZip()`, `countCommercialPropertiesByZip()`, `countAllCommercialProperties()`, `getAllCommercialProperties()`, `getPropertiesByAccountNums()`, and `describeTable()` with one-line delegations to `queryCommercialProperties()` and `countCommercialProperties()` from `./cad/query`
+- **Added** optional `countyCode` parameter to all public functions for multi-county support
+- **Removed** Snowflake table name constants (`COMMERCIAL_PROPERTIES_TABLE`, `ACCOUNT_APPRL_TABLE`, etc.)
+
+### 4.5 Deduplication -- Improved
+
+**File:** `src/lib/deduplication.ts`
+**Diff:** 403 lines changed
+
+Significant performance and correctness improvements to the deduplication system:
+
+- **Renamed** `normalizeDomain()` to `normalizeDomainForDedup()` to disambiguate from the `normalization.ts` version; added `www.` prefix stripping for more aggressive matching
+- **Replaced in-memory duplicate detection with SQL GROUP BY**: `findDuplicateOrganizations()` now uses `SELECT ... GROUP BY ... HAVING COUNT(*) > 1` instead of loading all orgs into a JavaScript `Map`, reducing memory usage from O(n) to O(duplicates)
+- **Same optimization for contacts**: `findDuplicateContacts()` uses SQL `GROUP BY LOWER(TRIM(normalized_email))` for email duplicates instead of loading all contacts
+- **Targeted LinkedIn loading**: LinkedIn duplicate detection now only loads contacts that have at least one LinkedIn URL field populated, instead of loading all contacts
+- **Name+domain pass optimized**: SQL GROUP BY on `normalized_name` with HAVING clause, then only loads matched groups
+
+### 4.6 Auth System -- Updated
+
+**File:** `src/lib/auth.ts`
+**Diff:** 76 lines changed
+
+Reduced code duplication and added efficiency improvements:
+
+- **Extracted `mapToUser()` helper**: Consolidated 4 identical inline object constructions (mapping DB user rows to the `User` interface) into a single `mapToUser(dbUser)` function, eliminating ~40 lines of duplicated code
+- **Added skip-write optimization**: `updateExistingUser()` now compares current DB values against incoming Clerk data and skips the database UPDATE if nothing has changed, reducing unnecessary write operations on every page load
+
+### 4.7 Schema Updates -- New Tables and Columns
+
+**File:** `src/lib/schema.ts`
+**Diff:** 122 lines added
+
+Added 5 new database tables for the CAD staging system and expanded provider configuration:
+
+| Table | Columns | Purpose |
+|-------|---------|---------|
+| `cad_downloads` | 9 | Tracks CAD file download jobs with status, row counts, error messages, and timestamps |
+| `cad_account_info` | 22 | Property account details with unique index on (county_code, account_num, appraisal_year) |
+| `cad_appraisal_values` | 12 | Assessment values with unique index and PTAD code index for commercial property filtering |
+| `cad_buildings` | 20 | Building details with account index |
+| `cad_land` | 12 | Land parcel details with compound account index |
+
+**Provider additions to `ENRICHMENT_PROVIDERS`:**
+
+| Added | Label |
+|-------|-------|
+| `'openai'` | OpenAI |
+| `'claude'` | Anthropic Claude |
+| `'serpapi'` | SerpAPI Web |
+| `'browser_use'` | Browser Use |
+
+### 4.8 Snowflake Removal
+
+**File deleted:** `src/lib/snowflake.ts`
+**Lines removed:** 708
+
+The entire Snowflake client module was removed, including:
+
+- Snowflake SDK connection management with private key authentication
+- The `executeQuery<T>()` function for running SQL against Snowflake
+- The `getPropertyByKey()` function for fetching individual properties
+- The `CommercialProperty`, `DCADBuilding`, `RegridParcel`, and `AggregatedProperty` type definitions (relocated to `property-types.ts`)
+- The `mapRowToProperty()` function for converting Snowflake result rows
+- Connection pooling and error handling logic
+
+All Snowflake functionality was replaced by the local PostgreSQL CAD staging tables (`src/lib/cad/`) and the `property-types.ts` module.
 
 ---
 
-## 8. External Integrations
+## 5. Infrastructure and Configuration
 
-### AI / LLM Providers
+### 5.1 New npm Packages
 
-| Service | Module(s) | Purpose |
-|---------|-----------|---------|
-| **Google Gemini** | `ai/client.ts`, `ai/llm/gemini-adapter.ts` | Primary LLM for all pipeline stages; native search grounding |
-| **OpenAI** | `ai/llm/openai-adapter.ts` | Alternative LLM provider with SerpAPI grounding |
-| **Anthropic Claude** | `ai/llm/claude-adapter.ts` | Alternative LLM provider with SerpAPI grounding |
+| Package | Version | Purpose |
+|---------|---------|---------|
+| `@anthropic-ai/sdk` | ^0.78.0 | Anthropic Claude API client for the Claude adapter |
+| `csv-parse` | ^6.1.0 | CSV parsing for CAD data file ingestion |
+| `@types/adm-zip` | ^0.5.7 (dev) | TypeScript types for ZIP file handling |
 
-### Data Enrichment Providers
+### 5.2 Drizzle Migration
 
-| Service | Module | Purpose | Status |
-|---------|--------|---------|--------|
-| **People Data Labs (PDL)** | `pdl.ts` | Person matching, company enrichment | Active (V1) |
-| **Crustdata** | `crustdata.ts` | Employment verification | Active (V1), being replaced by browser-use |
-| **EnrichLayer** | `enrichlayer.ts` | Alternative company data | Active (V1), being deprecated |
-| **Hunter.io** | `hunter.ts` | Email discovery by name + domain | Active (V1 + V2) |
-| **Findymail** | `findymail.ts` | Email verification, email-by-name, LinkedIn reverse lookup | Active (V1 + V2) |
-| **ZeroBounce** | `zerobounce.ts` | Email deliverability validation | Active |
-| **SerpAPI** | `serp.ts`, `serp-linkedin.ts`, `serp-person-enrichment.ts`, `serp-company-enrichment.ts` | Web search, LinkedIn profile search, person/company research | Active (V2 primary) |
+**File:** `drizzle/0000_greedy_iceman.sql` (871 lines)
+**Generated snapshot:** `drizzle/meta/0000_snapshot.json` (6,479 lines)
 
-### Mapping & Geospatial
+Full Drizzle schema migration generated covering all 38+ tables, including the 5 new CAD staging tables. The migration includes CREATE TABLE statements, indexes, unique constraints, and foreign key relationships.
 
-| Service | Module | Purpose |
-|---------|--------|---------|
-| **Mapbox** | Direct API + SDK | Map rendering, geocoding, tile service |
-| **Google Maps** | `@googlemaps/js-api-loader` | Street View, Places API, geocoding |
-| **Regrid** | `regrid.ts`, tile proxy | Parcel boundary data and vector tiles |
+### 5.3 Pricing Configuration
 
-### Infrastructure
+**File:** `src/lib/pricing-config.ts` (+58 lines)
 
-| Service | Module | Purpose |
-|---------|--------|---------|
-| **Clerk** | `auth.ts`, `@clerk/nextjs` | Authentication, SSO, organization management |
-| **Upstash Redis** | `redis.ts` | Caching, queue state, distributed locks |
-| **ioredis** | `redis.ts` (alternate) | Direct Redis connection for BullMQ |
-| **BullMQ** | `bullmq-enrichment.ts` | Background job queue |
-| **Neon PostgreSQL** | `db.ts` | Managed PostgreSQL database |
+Added token-level pricing for new providers:
 
-### Web Scraping
+| Provider | Model | Input (per 1M tokens) | Output (per 1M tokens) |
+|----------|-------|-----------------------|------------------------|
+| OpenAI | gpt-4o | $2.50 | $10.00 |
+| OpenAI | gpt-4o-mini | $0.15 | $0.60 |
+| OpenAI | o1 | $15.00 | $60.00 |
+| OpenAI | o3-mini | $1.10 | $4.40 |
+| Claude | claude-opus-4 | $15.00 | $75.00 |
+| Claude | claude-sonnet-4 | $3.00 | $15.00 |
+| browser-use | (per scrape) | $0.05 flat | -- |
+| SerpAPI | (per search) | $0.01 flat | -- |
 
-| Service | Module | Purpose |
-|---------|--------|---------|
-| **browser-use** | `browser-use.ts`, `browser-employment-verification.ts` | Python microservice for LinkedIn scraping, team page extraction |
+Includes `computeOpenAICostUsd()` and `computeClaudeCostUsd()` functions for per-call cost calculation.
 
----
+### 5.4 Rate Limiter Additions
 
-## 9. Codebase Statistics
+**File:** `src/lib/rate-limiter.ts` (+4 new rate limiters)
 
-### File Counts
+| Limiter | Max/Min | Concurrent | Circuit Breaker |
+|---------|---------|------------|-----------------|
+| `openai` | 500/min | 20 | 5 failures, 30s reset |
+| `claude` | 200/min | 10 | 5 failures, 30s reset |
+| `serpApi` | 100/min | 10 | 5 failures, 30s reset |
+| `browserUse` | 10/min | 3 | 3 failures, 60s reset |
 
-| Category | Count |
-|----------|-------|
-| TypeScript files (`.ts` + `.tsx`) | 280 |
-| CSS files | 1 (140 lines) |
-| API route files | 89 |
-| Page components | 37 |
-| React components | 57 |
-| Library modules (`src/lib/`) | 45+ |
-| Scripts (`scripts/`) | 27 |
-| Schema tables | 38 |
+### 5.5 Scripts
 
-### Lines of Code
+| Script | Lines | Purpose |
+|--------|-------|---------|
+| `scripts/download-and-ingest-dcad.ts` | 141 | End-to-end pipeline: downloads DCAD ZIP, parses CSV files, stages to PostgreSQL, runs ingestion. Supports `--zip`, `--limit`, and `--skip-download` flags |
+| `scripts/verify-snowflake-coverage.ts` | 335 | Verification tool: compares Snowflake Regrid parcels against local properties table, reports coverage by property key, ll_uuid, and ZIP code breakdown with field-level spot checks |
+| `scripts/list-snowflake-dbs.ts` | 49 | Utility to enumerate available Snowflake databases |
 
-| Metric | Lines |
-|--------|-------|
-| **Total TypeScript** | 64,225 |
-| **Schema definition** | 1,315 |
-| **CSS** | 140 |
-| **Estimated total (incl. config, scripts)** | ~65,000+ |
+### 5.6 Other Modified Files
 
-### Git Statistics
-
-| Metric | Value |
-|--------|-------|
-| Total commits | 1,335 |
-| Total insertions | 495,208 |
-| Total deletions | 363,791 |
-| Net lines | ~131,417 |
-| Average commits/day | ~26 |
-| Peak day (Jan 30) | 120 commits |
-
-### Dependency Count
-
-| Category | Count |
-|----------|-------|
-| Production dependencies | 80 |
-| Dev dependencies | 15 |
-| Radix UI components | 22 |
+| File | Change | Lines |
+|------|--------|-------|
+| `.gitignore` | Added entries for local data files | +3 |
+| `src/lib/ai/config.ts` | Added provider-awareness to grounding config | +2 |
+| `src/lib/ai/helpers.ts` | Updated import path | +1/-1 |
+| `src/lib/ai/index.ts` | Added LLM module re-exports | +4 |
+| `src/lib/ai/pipeline.ts` | Updated import path | +1/-1 |
+| `src/lib/ai/runtime-config.ts` | Added `provider` field to `StageConfig`, expanded model lists | +21/-some |
+| `src/lib/cascade-enrichment.ts` | Minor interface updates for V2 compatibility | +23/-some |
+| `src/lib/hunter.ts` | Removed unused code | -17 |
+| `src/lib/pdl.ts` | Minor adjustments | +/-28 |
+| `src/lib/redis.ts` | Updated cache helpers | +11/-some |
+| `src/lib/serp-linkedin.ts` | Added exports for V2 pipeline | +9 |
+| `src/lib/utils.ts` | Added `parseFullName()` and `getEmployeeRange()` utilities | +19 |
+| `src/proxy.ts` | Minor fix | +3/-some |
+| `src/app/admin/page.tsx` | Added CAD download UI section | +140 |
+| `src/app/api/admin/cad-download/route.ts` | New API route for CAD downloads | 178 (new) |
+| `src/app/api/admin/enrich-batch/route.ts` | Updated for V2 pipeline routing | +9/-some |
+| `src/app/api/admin/ingest/route.ts` | Updated for multi-county ingestion | +61/-some |
+| `src/app/api/enrich/route.ts` | Updated for V2 pipeline routing | +14/-some |
+| `scripts/run-ai-enrichment.ts` | Updated import path | +1/-1 |
+| `scripts/test-ai-enrichment.ts` | Updated for multi-provider testing | +146/-some |
+| `scripts/test-prompts-mock.ts` | Updated import path | +1/-1 |
+| `scripts/test-snowflake-access.ts` | Deleted (180 lines) | -180 |
+| `package-lock.json` | Updated dependency tree | +/-1,766 |
 
 ---
 
-## 10. Recent Work -- March 2026 Enrichment Refactor
+## 6. Technical Design Document
 
-The March 2026 sprint focused on a major enrichment system refactor to support multiple LLM providers and replace expensive data APIs with web search + AI extraction.
+**File:** `docs/enrichment-refactor-plan.md`
+**Lines:** 312
 
-### March 2026 Commits (17 total)
+A comprehensive 6-phase plan for the enrichment system refactor, authored as part of this work session. The document covers:
 
-| Commit | Description |
-|--------|-------------|
-| `7fc1012` | **Implement multi-LLM enrichment pipeline with SerpAPI + browser-use** |
-| `f0e44c7` | Add property status and research badges to list views |
-| `3dbf3de` | Improve AI enrichment by storing and displaying grounding data |
-| `5d7c612` | Create detailed system architecture documentation |
-| `49ea1d8` | Improve confidence scoring and job change detection logic |
-| `2646492` | Improve AI contact scoring and grounding quality extraction |
-| `4d7b55b` | Add tool to help admins merge duplicate organizations |
-| `2cf6eff` | Improve data quality by cleaning contacts and normalizing names |
-| `6c41f04` | Improve website validation and refine organization linking |
-| `130e43d` | Ensure correct handling of People Data Labs API responses |
-| `f6e5227` | Fix error when enriching contact emails with PDL data |
-| `6c20f13` | Improve how AI handles organization roles and names |
-| `a084780` | Update AI prompts to correctly identify deed owners and business names |
+### Phase 1: LLM Abstraction Layer (Completed)
+- Provider-agnostic interfaces and adapter pattern
+- Gemini, OpenAI, Claude adapter implementations
+- SerpAPI grounding module for non-Gemini providers
+- Runtime config extension with per-stage `provider` field
 
-### Key Refactor Details
+### Phase 2: SerpAPI Web Search Module (Completed)
+- General-purpose `serpWebSearch()` function
+- Rate limiting and cost tracking configuration
 
-**Goal:** Decouple from Gemini-only AI and eliminate expensive per-API-call providers (PDL, Crustdata, EnrichLayer).
+### Phase 3: browser-use Python Microservice (Completed -- TypeScript client)
+- FastAPI service specification (4 endpoints)
+- TypeScript HTTP client implementation
+- Rate limiting configuration (10/min, 3 concurrent)
 
-**Phase 1 -- LLM Abstraction Layer (Completed)**
-- Created `src/lib/ai/llm/types.ts` with provider-agnostic interfaces
-- Built three adapters: Gemini, OpenAI, Claude
-- SerpAPI grounding module injects web search results into non-Gemini prompts
-- Updated all pipeline stages to use `getLLMAdapter()` factory
-- Extended runtime config with per-stage `provider` field
+### Phase 4: New Cascade Enrichment (Completed)
+- Contact enrichment pipeline V2 design
+- Provider replacement mapping table
+- Domain validation without PDL
+- Confidence scoring without Crustdata
 
-**Phase 2 -- Cascade Enrichment V2 (Completed)**
-- Created `src/lib/cascade-enrichment-v2.ts` replacing PDL with SerpAPI + LLM extraction
-- Created `src/lib/browser-employment-verification.ts` replacing Crustdata with browser-use LinkedIn scraping
-- Created `src/lib/serp-person-enrichment.ts` and `src/lib/serp-company-enrichment.ts`
-- A/B experiment system for gradual rollout (`enrichment-experiments.ts`)
-- Comparison tooling for side-by-side analysis (`enrichment-comparison.ts`)
+### Phase 5: Data Model and A/B Infrastructure (Completed)
+- Schema migration for CAD staging tables
+- A/B routing with deterministic hashing
+- Comparison logging for quality analysis
+- Cost tracking updates for new providers
 
-**Phase 3 -- Quality & Grounding (In Progress)**
-- Storing grounding sources and citation metadata per contact-property relationship
-- Displaying grounding quality in the UI
-- Confidence scoring improvements for job change detection
-- Admin merge tools for deduplication at scale
+### Phase 6: Comparison, Tuning, Cutover (Ready for execution)
+- Parallel pipeline execution strategy
+- Quality metrics (email accuracy, LinkedIn match rate, firmographics completeness)
+- Gradual traffic increase plan: 10% -> 25% -> 50% -> 100%
+- Deprecation plan for PDL/Crustdata/EnrichLayer
+
+**Implementation status:** Phases 1-5 are code-complete. Phase 6 (A/B testing and cutover) is infrastructure-ready, awaiting production deployment and data collection.
 
 ---
 
-## 11. Current State & Next Steps
+## 7. Files Changed Summary
 
-### Current State
+### New Files Created (34 files)
 
-The platform is **functional and deployed** (via Replit) with the following capabilities operational:
+| # | File | Lines | Category |
+|---|------|-------|----------|
+| 1 | `src/lib/ai/llm/types.ts` | 55 | LLM Abstraction |
+| 2 | `src/lib/ai/llm/gemini-adapter.ts` | 97 | LLM Abstraction |
+| 3 | `src/lib/ai/llm/openai-adapter.ts` | 113 | LLM Abstraction |
+| 4 | `src/lib/ai/llm/claude-adapter.ts` | 147 | LLM Abstraction |
+| 5 | `src/lib/ai/llm/serp-grounding.ts` | 119 | LLM Abstraction |
+| 6 | `src/lib/ai/llm/factory.ts` | 31 | LLM Abstraction |
+| 7 | `src/lib/ai/llm/index.ts` | 10 | LLM Abstraction |
+| 8 | `src/lib/cascade-enrichment-v2.ts` | 420 | Cascade V2 |
+| 9 | `src/lib/serp-person-enrichment.ts` | 157 | Enrichment |
+| 10 | `src/lib/serp-company-enrichment.ts` | 157 | Enrichment |
+| 11 | `src/lib/browser-use.ts` | 279 | Browser Scraping |
+| 12 | `src/lib/browser-employment-verification.ts` | 118 | Browser Scraping |
+| 13 | `src/lib/enrichment-experiments.ts` | 81 | A/B Testing |
+| 14 | `src/lib/enrichment-comparison.ts` | 134 | A/B Testing |
+| 15 | `src/lib/serp.ts` | 123 | Web Search |
+| 16 | `src/lib/cad/types.ts` | 145 | CAD System |
+| 17 | `src/lib/cad/index.ts` | 25 | CAD System |
+| 18 | `src/lib/cad/download-manager.ts` | 95 | CAD System |
+| 19 | `src/lib/cad/query.ts` | 257 | CAD System |
+| 20 | `src/lib/cad/staging.ts` | 230 | CAD System |
+| 21 | `src/lib/cad/parsers/dcad-parser.ts` | 185 | CAD System |
+| 22 | `src/lib/cad/parsers/tad-parser.ts` | 163 | CAD System |
+| 23 | `src/lib/cad/parsers/ccad-parser.ts` | 153 | CAD System |
+| 24 | `src/lib/cad/parsers/denton-parser.ts` | 153 | CAD System |
+| 25 | `src/lib/cad/county-codes.ts` | 85 | CAD System |
+| 26 | `src/lib/property-types.ts` | 156 | Types |
+| 27 | `docs/enrichment-refactor-plan.md` | 312 | Documentation |
+| 28 | `scripts/download-and-ingest-dcad.ts` | 141 | Scripts |
+| 29 | `scripts/verify-snowflake-coverage.ts` | 335 | Scripts |
+| 30 | `scripts/list-snowflake-dbs.ts` | 49 | Scripts |
+| 31 | `src/app/api/admin/cad-download/route.ts` | 178 | API Route |
+| 32 | `drizzle/0000_greedy_iceman.sql` | 871 | Migration |
+| 33 | `drizzle/meta/0000_snapshot.json` | 6,479 | Migration |
+| 34 | `drizzle/meta/_journal.json` | 13 | Migration |
 
-- **Data ingestion** from multiple Texas county appraisal districts (DCAD primary, with multi-county framework in `src/lib/cad/`)
-- **AI enrichment** running on Gemini with fallback to OpenAI/Claude
-- **Cascade enrichment** V1 (PDL/Crustdata) active; V2 (SerpAPI/browser-use) built and ready for A/B testing
-- **Full CRM workflow** including pipeline board, notes, activity tracking, flagging
-- **Team collaboration** with Clerk-based multi-tenant orgs and RBAC
-- **Admin operations** including AI config, cost tracking, merge tools, database management
-- **Map + List views** for property discovery with advanced filtering
+### Existing Files Modified (35 files)
 
-### Likely Next Steps
+| # | File | Lines Changed | Summary |
+|---|------|---------------|---------|
+| 1 | `src/lib/ai/stages/classify.ts` | +/-89 | LLM adapter pattern |
+| 2 | `src/lib/ai/stages/ownership.ts` | +/-150 | LLM adapter pattern |
+| 3 | `src/lib/ai/stages/contacts.ts` | +/-89 | LLM adapter pattern |
+| 4 | `src/lib/ai/stages/misc.ts` | +/-84 | LLM adapter pattern |
+| 5 | `src/lib/enrichment-queue.ts` | +/-260 | V2 routing, atomic transactions |
+| 6 | `src/lib/enrichlayer.ts` | +/-1,190 | Rate limiter refactor |
+| 7 | `src/lib/dcad-ingestion.ts` | +/-648 | Replaced Snowflake queries |
+| 8 | `src/lib/deduplication.ts` | +/-403 | SQL GROUP BY optimization |
+| 9 | `src/lib/auth.ts` | +/-76 | mapToUser() extraction, skip-write |
+| 10 | `src/lib/schema.ts` | +122 | 5 CAD tables, provider additions |
+| 11 | `src/lib/pricing-config.ts` | +58 | OpenAI/Claude/browser-use pricing |
+| 12 | `src/lib/rate-limiter.ts` | +4 | 4 new rate limiters |
+| 13 | `src/lib/cascade-enrichment.ts` | +/-23 | V2 compatibility |
+| 14 | `src/lib/ai/runtime-config.ts` | +/-21 | Provider field, model lists |
+| 15 | `src/lib/ai/config.ts` | +2 | Provider awareness |
+| 16 | `src/lib/ai/helpers.ts` | +/-2 | Import path update |
+| 17 | `src/lib/ai/index.ts` | +4 | LLM re-exports |
+| 18 | `src/lib/ai/pipeline.ts` | +/-2 | Import path update |
+| 19 | `src/lib/pdl.ts` | +/-28 | Minor adjustments |
+| 20 | `src/lib/hunter.ts` | -17 | Removed unused code |
+| 21 | `src/lib/redis.ts` | +/-11 | Cache helper updates |
+| 22 | `src/lib/serp-linkedin.ts` | +9 | V2 pipeline exports |
+| 23 | `src/lib/utils.ts` | +19 | Added utilities |
+| 24 | `src/proxy.ts` | +/-3 | Minor fix |
+| 25 | `src/app/admin/page.tsx` | +140 | CAD download UI |
+| 26 | `src/app/api/admin/enrich-batch/route.ts` | +/-9 | V2 routing |
+| 27 | `src/app/api/admin/ingest/route.ts` | +/-61 | Multi-county |
+| 28 | `src/app/api/enrich/route.ts` | +/-14 | V2 routing |
+| 29 | `package.json` | +5/-1 | New dependencies |
+| 30 | `package-lock.json` | +/-1,766 | Dependency tree |
+| 31 | `.gitignore` | +3 | New entries |
+| 32 | `scripts/run-ai-enrichment.ts` | +/-2 | Import path |
+| 33 | `scripts/test-ai-enrichment.ts` | +/-146 | Multi-provider testing |
+| 34 | `scripts/test-prompts-mock.ts` | +/-2 | Import path |
+| 35 | `scripts/test-snowflake-access.ts` | -180 | Deleted |
 
-Based on the enrichment refactor plan and recent commit trajectory:
+### Files Deleted (1 file)
 
-1. **A/B Test V2 Pipeline** -- Gradually increase `ENRICHMENT_V2_PERCENTAGE` to validate SerpAPI + browser-use cascade against V1 baseline
-2. **Deprecate Legacy Providers** -- Once V2 is validated, remove PDL, Crustdata, and EnrichLayer dependencies to reduce costs
-3. **Multi-County Expansion** -- The `src/lib/cad/` module framework supports multiple county codes; expand beyond DCAD to other Texas counties and eventually other states
-4. **browser-use Microservice Deployment** -- Deploy the Python browser-use service in production for LinkedIn scraping at scale
-5. **Pipeline Analytics** -- Enhance the pipeline dashboard with conversion metrics, deal velocity, and revenue tracking
-6. **Email Outreach Integration** -- The schema includes `OUTREACH_METHODS` and task completion tracking, suggesting planned outreach automation
-7. **Service Provider Marketplace** -- The `service_providers` and `SERVICE_CATEGORIES` schema suggests a planned marketplace connecting property owners with CRE service providers
-8. **Mobile App** -- Significant responsive design work already done; native mobile may follow
+| # | File | Lines Removed |
+|---|------|---------------|
+| 1 | `src/lib/snowflake.ts` | 708 |
 
 ---
 
-*Report generated on March 6, 2026. Repository: Greenfinchai-v0, Branch: main, Commit: 7fc1012.*
+## 8. Impact Assessment
+
+### Capabilities Added
+
+| Capability | Before | After |
+|------------|--------|-------|
+| **LLM provider choice** | Gemini only | Gemini, OpenAI (GPT-4o, o1, o3-mini), Claude (Sonnet 4, Opus 4) -- switchable per pipeline stage |
+| **Search grounding for non-Gemini** | Not available | SerpAPI web search results injected into prompts for OpenAI and Claude |
+| **Person enrichment without PDL** | Required PDL API ($0.10/call) | SerpAPI + LLM extraction (~$0.03/call) |
+| **Company enrichment without PDL** | Required PDL Company API | SerpAPI + LLM extraction |
+| **Employment verification without Crustdata** | Required Crustdata API ($0.05/call) | browser-use LinkedIn scraping (~$0.05/call) |
+| **A/B pipeline testing** | Not possible | Deterministic hash-based routing with configurable traffic percentage |
+| **Side-by-side comparison** | Not possible | Field-level diff logging between V1 and V2 results |
+| **Multi-county CAD data** | Dallas only (via Snowflake) | Dallas, Tarrant, Collin, Denton (via local PostgreSQL) |
+| **Data source independence** | Required Snowflake cloud DW | Self-contained PostgreSQL staging tables |
+| **Atomic enrichment saves** | Non-transactional (partial state possible) | Single transaction wrapping all DB writes |
+| **EnrichLayer resilience** | Manual circuit breaker, manual rate limiter | ServiceRateLimiter with proper circuit breaking |
+| **Deduplication performance** | Load-all-into-memory approach | SQL GROUP BY for O(duplicates) memory usage |
+| **Auth efficiency** | DB write on every page load | Skip-write when nothing changed |
+
+### Dependencies Removed
+
+| Dependency | Status | Impact |
+|------------|--------|--------|
+| **Snowflake cloud data warehouse** | Replaced with local PostgreSQL | Eliminates Snowflake compute costs and network latency for data queries |
+| **PDL Person API** (in V2 path) | Replaced with SerpAPI + LLM | Reduces per-contact enrichment cost from ~$0.10 to ~$0.03 |
+| **Crustdata Person API** (in V2 path) | Replaced with browser-use | Equivalent cost but removes API dependency |
+| **EnrichLayer** (in V2 path) | Replaced with SerpAPI + LLM | Reduces cost and eliminates vendor lock-in |
+
+### Cost Impact Estimate (at Scale)
+
+| Operation | V1 Cost (per 1,000) | V2 Cost (per 1,000) | Savings |
+|-----------|---------------------|---------------------|---------|
+| Contact enrichment | ~$150 (PDL + Crustdata + EnrichLayer) | ~$80 (SerpAPI + LLM + browser-use) | ~47% |
+| Organization enrichment | ~$100 (PDL Company + Crustdata) | ~$30 (SerpAPI + LLM) | ~70% |
+| Data warehouse queries | Snowflake compute charges | $0 (local PostgreSQL) | 100% |
+
+### What the Codebase Can Do Now That It Could Not Before
+
+1. **Switch LLM providers per pipeline stage** -- Run classification on Gemini, ownership on Claude, and contacts on GPT-4o, all configurable at runtime without code changes
+2. **Enrich contacts without PDL/Crustdata** -- The V2 pipeline provides a fully functional alternative cascade using web search and browser scraping
+3. **Safely A/B test enrichment approaches** -- The experiment system allows gradual rollout with deterministic routing and quality comparison
+4. **Ingest property data from 4 Texas counties** -- The CAD system downloads, parses, and stages data from Dallas, Tarrant, Collin, and Denton counties
+5. **Operate without Snowflake** -- All data queries run against local PostgreSQL, eliminating the cloud data warehouse dependency
+6. **Guarantee atomic enrichment saves** -- Property, contact, and organization records are saved in a single transaction, preventing data inconsistencies
+
+---
+
+*Report authored by Remy Ochei. Work performed March 5-6, 2026.*
+*Baseline: commit f0e44c7 (1,334 prior commits). Final: commit 7fc1012.*
+*Repository: Greenfinchai-v0, Branch: main.*
