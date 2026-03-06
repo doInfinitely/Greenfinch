@@ -1053,10 +1053,14 @@ export const ENRICHMENT_PROVIDERS = [
   'crustdata',
   'zerobounce',
   'gemini',
+  'openai',
+  'claude',
   'mapbox',
   'serp',
+  'serpapi',
   'leadmagic',
   'enrichlayer',
+  'browser_use',
 ] as const;
 
 export type EnrichmentProvider = typeof ENRICHMENT_PROVIDERS[number];
@@ -1069,10 +1073,14 @@ export const ENRICHMENT_PROVIDER_LABELS: Record<EnrichmentProvider, string> = {
   crustdata: 'Crustdata',
   zerobounce: 'ZeroBounce',
   gemini: 'Google Gemini',
+  openai: 'OpenAI',
+  claude: 'Anthropic Claude',
   mapbox: 'Mapbox',
   serp: 'SerpAPI',
+  serpapi: 'SerpAPI Web',
   leadmagic: 'LeadMagic',
   enrichlayer: 'EnrichLayer',
+  browser_use: 'Browser Use',
 };
 
 export const enrichmentCostEvents = pgTable('enrichment_cost_events', {
@@ -1191,3 +1199,117 @@ export const TASK_COMPLETION_STATUSES = [
 ] as const;
 
 export type TaskCompletionStatus = typeof TASK_COMPLETION_STATUSES[number];
+
+// ============================================================================
+// CAD (Central Appraisal District) Staging Tables
+// ============================================================================
+
+// Tracks download jobs for admin visibility
+export const cadDownloads = pgTable('cad_downloads', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  countyCode: text('county_code').notNull(), // DCAD, TAD, CCAD, DENT
+  appraisalYear: integer('appraisal_year').notNull(),
+  status: text('status').notNull().default('pending'), // pending, downloading, parsing, complete, error
+  rowsImported: integer('rows_imported').default(0),
+  errorMessage: text('error_message'),
+  startedAt: timestamp('started_at'),
+  completedAt: timestamp('completed_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  countyYearIdx: index('cad_downloads_county_year_idx').on(table.countyCode, table.appraisalYear),
+}));
+
+// Replaces DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO
+export const cadAccountInfo = pgTable('cad_account_info', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  countyCode: text('county_code').notNull(),
+  accountNum: text('account_num').notNull(),
+  appraisalYear: integer('appraisal_year').notNull(),
+  gisParcelId: text('gis_parcel_id'),
+  divisionCd: text('division_cd'),
+  bizName: text('biz_name'),
+  ownerName1: text('owner_name1'),
+  ownerName2: text('owner_name2'),
+  ownerAddressLine1: text('owner_address_line1'),
+  ownerCity: text('owner_city'),
+  ownerState: text('owner_state'),
+  ownerZipcode: text('owner_zipcode'),
+  phoneNum: text('phone_num'),
+  deedTxfrDate: text('deed_txfr_date'),
+  legal1: text('legal_1'),
+  legal2: text('legal_2'),
+  legal3: text('legal_3'),
+  legal4: text('legal_4'),
+  propertyAddress: text('property_address'),
+  propertyCity: text('property_city'),
+  propertyZipcode: text('property_zipcode'),
+  downloadId: uuid('download_id'),
+}, (table) => ({
+  accountUniq: uniqueIndex('cad_account_info_uniq').on(table.countyCode, table.accountNum, table.appraisalYear),
+  zipIdx: index('cad_account_info_zip_idx').on(table.propertyZipcode),
+  gisParcelIdx: index('cad_account_info_gis_parcel_idx').on(table.gisParcelId),
+}));
+
+// Replaces DCAD_LAND_2025.PUBLIC.ACCOUNT_APPRL_YEAR
+export const cadAppraisalValues = pgTable('cad_appraisal_values', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  countyCode: text('county_code').notNull(),
+  accountNum: text('account_num').notNull(),
+  appraisalYear: integer('appraisal_year').notNull(),
+  sptdCode: text('sptd_code'),
+  ptadCode: text('ptad_code'),
+  improvVal: real('improv_val'),
+  landVal: real('land_val'),
+  totalVal: real('total_val'),
+  cityJurisDesc: text('city_juris_desc'),
+  isdJurisDesc: text('isd_juris_desc'),
+  downloadId: uuid('download_id'),
+}, (table) => ({
+  appraisalUniq: uniqueIndex('cad_appraisal_values_uniq').on(table.countyCode, table.accountNum, table.appraisalYear),
+  ptadCodeIdx: index('cad_appraisal_values_ptad_idx').on(table.ptadCode),
+}));
+
+// Replaces DCAD_LAND_2025.PUBLIC.COM_DETAIL + TAXABLE_OBJECT join
+export const cadBuildings = pgTable('cad_buildings', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  countyCode: text('county_code').notNull(),
+  accountNum: text('account_num').notNull(),
+  taxObjId: text('tax_obj_id'),
+  appraisalYear: integer('appraisal_year').notNull(),
+  propertyName: text('property_name'),
+  bldgClassDesc: text('bldg_class_desc'),
+  bldgClassCd: text('bldg_class_cd'),
+  yearBuilt: integer('year_built'),
+  remodelYear: integer('remodel_year'),
+  grossBldgArea: real('gross_bldg_area'),
+  numStories: real('num_stories'),
+  numUnits: integer('num_units'),
+  netLeaseArea: real('net_lease_area'),
+  constructionType: text('construction_type'),
+  foundationType: text('foundation_type'),
+  heatingType: text('heating_type'),
+  acType: text('ac_type'),
+  qualityGrade: text('quality_grade'),
+  conditionGrade: text('condition_grade'),
+  downloadId: uuid('download_id'),
+}, (table) => ({
+  buildingAccountIdx: index('cad_buildings_account_idx').on(table.countyCode, table.accountNum),
+}));
+
+// Replaces DCAD_LAND_2025.PUBLIC.LAND
+export const cadLand = pgTable('cad_land', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  countyCode: text('county_code').notNull(),
+  accountNum: text('account_num').notNull(),
+  appraisalYear: integer('appraisal_year').notNull(),
+  landTypeCd: text('land_type_cd'),
+  zoningDesc: text('zoning_desc'),
+  frontDim: real('front_dim'),
+  depthDim: real('depth_dim'),
+  landArea: real('land_area'),
+  landAreaUom: text('land_area_uom'),
+  costPerUom: real('cost_per_uom'),
+  downloadId: uuid('download_id'),
+}, (table) => ({
+  landAccountIdx: index('cad_land_account_idx').on(table.countyCode, table.accountNum, table.appraisalYear),
+}));

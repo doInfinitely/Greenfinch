@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getPropertyByKey } from '@/lib/snowflake';
+// Snowflake fallback removed — all properties are now in local PostgreSQL staging tables
 import { runFocusedEnrichment } from '@/lib/ai';
 import { isBatchRunning, checkRateLimitForIndividual, updateLastRequestTime, saveEnrichmentResults, runCascadeEnrichmentOnSavedRecords } from '@/lib/enrichment-queue';
 import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
-import type { AggregatedProperty } from '@/lib/snowflake';
+import type { AggregatedProperty } from '@/lib/property-types';
 import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
 
 const checkRateLimit = rateLimitMiddleware(20, 60);
@@ -158,15 +158,7 @@ export async function POST(request: NextRequest) {
     await updateLastRequestTime();
     console.log(`[API] Enrichment request for property: ${propertyKey}`);
 
-    // Try PostgreSQL first (already ingested data), fall back to Snowflake
     let property = await getPropertyFromPostgres(propertyKey);
-    let source = 'postgres';
-    
-    if (!property) {
-      console.log(`[API] Property not in PostgreSQL, checking Snowflake...`);
-      property = await getPropertyByKey(propertyKey);
-      source = 'snowflake';
-    }
 
     if (!property) {
       return NextResponse.json(
@@ -175,7 +167,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`[API] Found property from ${source}: ${property.address}, ${property.city}`);
+    console.log(`[API] Found property: ${property.address}, ${property.city}`);
 
     // Get rate limit info for headers
     const identifier = getIdentifier(request);

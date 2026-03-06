@@ -6,7 +6,7 @@
 // None of these call external APIs — they operate entirely on in-memory data.
 // ============================================================================
 
-import type { CommercialProperty, DCADBuilding } from "../snowflake";
+import type { CommercialProperty, DCADBuilding } from "../property-types";
 import type { DiscoveredContact, OwnershipInfo } from './types';
 import { ASSET_CATEGORIES } from "../constants";
 import { QUALITY_GRADE_MAP, OWNER_TYPE_MAP } from './config';

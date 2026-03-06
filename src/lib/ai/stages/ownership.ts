@@ -14,17 +14,19 @@
 // Retry policy: up to RETRIES.STAGE_2 attempts with linear back-off.
 // ============================================================================
 
-import type { CommercialProperty } from "../../snowflake";
+import type { CommercialProperty } from "../../property-types";
 import type { StageResult, OwnershipInfo, PropertyClassification, BeneficialOwnerEntry, ManagementCompanyEntry, StageMetadata } from '../types';
-import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout, withTimeout } from '../client';
-import { extractGroundedSources, extractGroundingQuality, extractCitationMetadata, parseJsonResponse, validateStage2Schema } from '../parsers';
+import { extractGroundingQuality, extractCitationMetadata, parseJsonResponse, validateStage2Schema } from '../parsers';
 import { propertyLatLng, extractUsefulLegalInfo, crossValidateOwnership, OWNER_TYPE_MAP } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validatePropertyWebsite, validateAndCleanDomain } from '../../domain-validator';
 import {
-  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, STAGE_TEMPERATURES, STAGE_TIMEOUTS, getSearchGroundingTools,
+  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, STAGE_TEMPERATURES, STAGE_TIMEOUTS,
 } from '../config';
 import { normalizeOwnerName } from '../../normalization';
+import { getStageConfig } from '../runtime-config';
+import { getLLMAdapter } from '../llm';
+import type { LLMResponse } from '../llm';
 
 /**
  * Run Stage 2 of the AI enrichment pipeline.
@@ -37,7 +39,8 @@ export async function identifyOwnership(
   property: CommercialProperty,
   classification: PropertyClassification
 ): Promise<StageResult<OwnershipInfo>> {
-  const client = getGeminiClient();
+  const stageConfig = getStageConfig('stage2_ownership');
+  const adapter = getLLMAdapter(stageConfig.provider);
   const deedOwner = property.ownerName1 || 'Unknown';
   const secondaryOwner = property.ownerName2 || null;
   const bizName = property.bizName || null;
@@ -108,36 +111,37 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
   // -- Retry loop -------------------------------------------------------------
   for (let attempt = 1; attempt <= RETRIES.STAGE_2; attempt++) {
     try {
-      console.log(`[FocusedEnrichment] Stage 2 attempt ${attempt}/${RETRIES.STAGE_2}...`);
+      console.log(`[FocusedEnrichment] Stage 2 attempt ${attempt}/${RETRIES.STAGE_2} (provider: ${stageConfig.provider})...`);
 
-      // Call Gemini with search grounding and LOW thinking for multi-step reasoning
-      const response = await withTimeout(
-        callGeminiWithTimeout(
-          () => streamGeminiResponse(client, prompt, {
-            tools: getSearchGroundingTools('stage2_ownership'),
-            temperature: STAGE_TEMPERATURES.STAGE_2_OWNERSHIP,
-            thinkingLevel: THINKING_LEVELS.STAGE_2_OWNERSHIP,
-            latLng: propertyLatLng(property),
-            stageName: 'stage2-ownership',
-            model: STAGE_MODELS.STAGE_2_OWNERSHIP,
-          }),
-          2
-        ),
-        STAGE_TIMEOUTS.STAGE_2_OWNERSHIP,
-        'stage2-ownership'
-      );
+      const response: LLMResponse = await adapter.call(prompt, {
+        model: STAGE_MODELS.STAGE_2_OWNERSHIP,
+        temperature: STAGE_TEMPERATURES.STAGE_2_OWNERSHIP,
+        thinkingLevel: THINKING_LEVELS.STAGE_2_OWNERSHIP,
+        timeoutMs: STAGE_TIMEOUTS.STAGE_2_OWNERSHIP,
+        stageName: 'stage2-ownership',
+        searchGrounding: stageConfig.searchGrounding,
+        latLng: propertyLatLng(property),
+      });
 
       const text = response.text?.trim() || '';
       console.log(`[FocusedEnrichment] Stage 2 attempt ${attempt} response length: ${text.length} chars`);
 
       // Handle empty response — retry if attempts remain
       if (!text) {
-        console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 2 (attempt ${attempt}/${RETRIES.STAGE_2})`);
+        console.warn(`[FocusedEnrichment] Empty response in Stage 2 (attempt ${attempt}/${RETRIES.STAGE_2})`);
         trackCostFireAndForget({
-          provider: 'gemini',
+          provider: stageConfig.provider,
           endpoint: 'identify-ownership',
           entityType: 'property',
-          tokenUsage: response.tokenUsage,
+          tokenUsage: response.tokenUsage ? {
+            promptTokens: response.tokenUsage.inputTokens,
+            responseTokens: response.tokenUsage.outputTokens,
+            thinkingTokens: response.tokenUsage.thinkingTokens,
+            totalTokens: response.tokenUsage.totalTokens,
+            searchGroundingUsed: response.tokenUsage.groundingQueriesUsed > 0,
+            searchGroundingQueryCount: response.tokenUsage.groundingQueriesUsed,
+            searchGroundingCostUsd: response.tokenUsage.groundingCostUsd,
+          } : undefined,
           success: false,
           errorMessage: `Empty response attempt ${attempt}`,
         });
@@ -163,9 +167,9 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
       }
 
       // -- Parse and validate JSON --------------------------------------------
-      const sources = extractGroundedSources(response);
-      const groundingQuality = extractGroundingQuality(response);
-      const citationMetadata = extractCitationMetadata(response);
+      const sources = response.groundingSources;
+      const groundingQuality = response.raw?.groundingQuality || extractGroundingQuality(response.raw);
+      const citationMetadata = extractCitationMetadata(response.raw);
       const parsed = parseJsonResponse(text);
 
       try {
@@ -181,10 +185,18 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
       }
 
       trackCostFireAndForget({
-        provider: 'gemini',
+        provider: stageConfig.provider,
         endpoint: 'identify-ownership',
         entityType: 'property',
-        tokenUsage: response.tokenUsage,
+        tokenUsage: response.tokenUsage ? {
+          promptTokens: response.tokenUsage.inputTokens,
+          responseTokens: response.tokenUsage.outputTokens,
+          thinkingTokens: response.tokenUsage.thinkingTokens,
+          totalTokens: response.tokenUsage.totalTokens,
+          searchGroundingUsed: response.tokenUsage.groundingQueriesUsed > 0,
+          searchGroundingQueryCount: response.tokenUsage.groundingQueriesUsed,
+          searchGroundingCostUsd: response.tokenUsage.groundingCostUsd,
+        } : undefined,
         success: true,
         metadata: { sourcesCount: sources.length, attempt },
       });
@@ -390,12 +402,12 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
       const ownershipStageMetadata: StageMetadata = {
         finishReason: response.finishReason,
         tokens: response.tokenUsage ? {
-          prompt: response.tokenUsage.promptTokens,
-          response: response.tokenUsage.responseTokens,
+          prompt: response.tokenUsage.inputTokens,
+          response: response.tokenUsage.outputTokens,
           thinking: response.tokenUsage.thinkingTokens,
           total: response.tokenUsage.totalTokens,
         } : undefined,
-        searchQueries: groundingQuality.webSearchQueries.length > 0 ? groundingQuality.webSearchQueries : undefined,
+        searchQueries: groundingQuality?.webSearchQueries?.length > 0 ? groundingQuality.webSearchQueries : undefined,
       };
 
       (validated as any)._groundingQuality = groundingQuality;
@@ -409,7 +421,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
       };
     } catch (error) {
       trackCostFireAndForget({
-        provider: 'gemini',
+        provider: stageConfig.provider,
         endpoint: 'identify-ownership',
         entityType: 'property',
         success: false,
@@ -472,7 +484,8 @@ async function retryFindPropertyWebsite(
   city: string,
   latLng?: { latitude: number; longitude: number }
 ): Promise<{ url: string | null; domain: string | null }> {
-  const client = getGeminiClient();
+  const retryConfig = getStageConfig('domain_retry');
+  const retryAdapter = getLLMAdapter(retryConfig.provider);
   const context = [
     mgmtCompany ? `Management company: ${mgmtCompany}` : '',
     ownerName ? `Owner: ${ownerName}` : '',
@@ -492,22 +505,16 @@ Return JSON:
 }`;
 
   try {
-    console.log(`[FocusedEnrichment] Domain retry: searching for property website for "${propertyName}"...`);
-    const response = await withTimeout(
-      callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, {
-          tools: getSearchGroundingTools('domain_retry'),
-          temperature: STAGE_TEMPERATURES.DOMAIN_RETRY,
-          thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
-          latLng,
-          stageName: 'stage2-retry-property-website',
-          model: STAGE_MODELS.DOMAIN_RETRY,
-        }),
-        1
-      ),
-      STAGE_TIMEOUTS.DOMAIN_RETRY,
-      'stage2-retry-property-website'
-    );
+    console.log(`[FocusedEnrichment] Domain retry: searching for property website for "${propertyName}" (provider: ${retryConfig.provider})...`);
+    const response = await retryAdapter.call(prompt, {
+      model: STAGE_MODELS.DOMAIN_RETRY,
+      temperature: STAGE_TEMPERATURES.DOMAIN_RETRY,
+      thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
+      timeoutMs: STAGE_TIMEOUTS.DOMAIN_RETRY,
+      stageName: 'stage2-retry-property-website',
+      searchGrounding: retryConfig.searchGrounding,
+      latLng,
+    });
     const text = response.text?.trim() || '';
     if (!text) return { url: null, domain: null };
 
@@ -516,10 +523,9 @@ Return JSON:
     const domain = parsed.domain && parsed.domain !== 'null' ? parsed.domain : null;
 
     trackCostFireAndForget({
-      provider: 'gemini',
+      provider: retryConfig.provider,
       endpoint: 'retry-property-website',
       entityType: 'property',
-      tokenUsage: response.tokenUsage,
       success: true,
     });
 
@@ -534,7 +540,7 @@ Return JSON:
     return { url: null, domain: null };
   } catch (error) {
     trackCostFireAndForget({
-      provider: 'gemini',
+      provider: retryConfig.provider,
       endpoint: 'retry-property-website',
       entityType: 'property',
       success: false,
@@ -556,7 +562,8 @@ export async function retryFindCompanyDomain(
   city: string,
   latLng?: { latitude: number; longitude: number }
 ): Promise<string | null> {
-  const client = getGeminiClient();
+  const retryConfig = getStageConfig('domain_retry');
+  const retryAdapter = getLLMAdapter(retryConfig.provider);
 
   const prompt = `Find the official website for this company. Return ONLY valid JSON.
 
@@ -572,22 +579,16 @@ Return JSON:
 }`;
 
   try {
-    console.log(`[FocusedEnrichment] Domain retry: searching for company domain for "${companyName}"...`);
-    const response = await withTimeout(
-      callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, {
-          tools: getSearchGroundingTools('domain_retry'),
-          temperature: STAGE_TEMPERATURES.DOMAIN_RETRY,
-          thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
-          latLng,
-          stageName: 'stage2-retry-company-domain',
-          model: STAGE_MODELS.DOMAIN_RETRY,
-        }),
-        1
-      ),
-      STAGE_TIMEOUTS.DOMAIN_RETRY,
-      'stage2-retry-company-domain'
-    );
+    console.log(`[FocusedEnrichment] Domain retry: searching for company domain for "${companyName}" (provider: ${retryConfig.provider})...`);
+    const response = await retryAdapter.call(prompt, {
+      model: STAGE_MODELS.DOMAIN_RETRY,
+      temperature: STAGE_TEMPERATURES.DOMAIN_RETRY,
+      thinkingLevel: THINKING_LEVELS.DOMAIN_RETRY,
+      timeoutMs: STAGE_TIMEOUTS.DOMAIN_RETRY,
+      stageName: 'stage2-retry-company-domain',
+      searchGrounding: retryConfig.searchGrounding,
+      latLng,
+    });
     const text = response.text?.trim() || '';
     if (!text) return null;
 
@@ -595,10 +596,9 @@ Return JSON:
     const domain = parsed.domain && parsed.domain !== 'null' ? parsed.domain : null;
 
     trackCostFireAndForget({
-      provider: 'gemini',
+      provider: retryConfig.provider,
       endpoint: 'retry-company-domain',
       entityType: 'organization',
-      tokenUsage: response.tokenUsage,
       success: true,
     });
 
@@ -613,7 +613,7 @@ Return JSON:
     return null;
   } catch (error) {
     trackCostFireAndForget({
-      provider: 'gemini',
+      provider: retryConfig.provider,
       endpoint: 'retry-company-domain',
       entityType: 'organization',
       success: false,

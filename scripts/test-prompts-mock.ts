@@ -1,5 +1,5 @@
 import { classifyProperty, identifyOwnership, discoverContacts, type PropertyClassification } from '../src/lib/focused-enrichment';
-import type { CommercialProperty, DCADBuilding } from '../src/lib/snowflake';
+import type { CommercialProperty, DCADBuilding } from '../src/lib/property-types';
 
 const mockBuildings: DCADBuilding[] = [
   {

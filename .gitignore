@@ -36,3 +36,6 @@ Thumbs.db
 # clerk configuration (can include secrets)
 /.clerk/
 ai-stage-config.json
+.keys/
+.config/
+.local/

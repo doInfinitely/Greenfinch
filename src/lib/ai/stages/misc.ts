@@ -1,7 +1,7 @@
 // ============================================================================
 // AI Enrichment — Utility AI Functions
 //
-// Two standalone Gemini calls that don't fit into the main 3-stage pipeline:
+// Two standalone LLM calls that don't fit into the main 3-stage pipeline:
 //
 //   cleanupAISummary          – Polishes raw enrichment summaries into
 //                               readable prose (lower temperature for
@@ -10,31 +10,33 @@
 //                               a contact's job_change_detected flag fires.
 // ============================================================================
 
-import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout, withTimeout } from '../client';
 import { stripInternalMessages } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import {
-  THINKING_LEVELS, STAGE_MODELS, getSearchGroundingTools, STAGE_TEMPERATURES, STAGE_TIMEOUTS, RETRIES,
+  THINKING_LEVELS, STAGE_MODELS, STAGE_TEMPERATURES, STAGE_TIMEOUTS, RETRIES,
 } from '../config';
+import { getStageConfig } from '../runtime-config';
+import { getLLMAdapter } from '../llm';
 
 /**
  * Rewrite a raw enrichment summary into a polished, user-facing paragraph.
  *
  * Uses a lower temperature (CLEANUP_TEMPERATURE = 0.1) for consistent,
- * deterministic output.  Falls back to regex-based cleanup if Gemini fails.
+ * deterministic output.  Falls back to regex-based cleanup if the LLM fails.
  */
 export async function cleanupAISummary(rawSummary: string): Promise<string> {
   if (!rawSummary || rawSummary.trim().length === 0) {
     return '';
   }
-  
+
   const preCleaned = stripInternalMessages(rawSummary);
   if (!preCleaned || preCleaned.length < 10) {
     return '';
   }
-  
-  const client = getGeminiClient();
-  
+
+  const stageConfig = getStageConfig('summary_cleanup');
+  const adapter = getLLMAdapter(stageConfig.provider);
+
   const prompt = `You are an editor polishing a research summary for greenfinch.ai, a commercial real estate prospecting tool.
 
 Edit the following research summary into a flowing, natural paragraph:
@@ -51,33 +53,27 @@ Raw summary to polish:
 ${preCleaned}`;
 
   try {
-    const response = await withTimeout(
-      callGeminiWithTimeout(
-        () => streamGeminiResponse(client, prompt, {
-          temperature: STAGE_TEMPERATURES.SUMMARY_CLEANUP,
-          thinkingLevel: THINKING_LEVELS.SUMMARY_CLEANUP,
-          stageName: 'summary-cleanup',
-          model: STAGE_MODELS.SUMMARY_CLEANUP,
-        }),
-        1
-      ),
-      STAGE_TIMEOUTS.SUMMARY_CLEANUP,
-      'summary-cleanup'
-    );
-    
+    const response = await adapter.call(prompt, {
+      model: STAGE_MODELS.SUMMARY_CLEANUP,
+      temperature: STAGE_TEMPERATURES.SUMMARY_CLEANUP,
+      thinkingLevel: THINKING_LEVELS.SUMMARY_CLEANUP,
+      timeoutMs: STAGE_TIMEOUTS.SUMMARY_CLEANUP,
+      stageName: 'summary-cleanup',
+      searchGrounding: false,
+    });
+
     const cleaned = response.text?.trim() || preCleaned;
     console.log(`[FocusedEnrichment] Summary cleaned: ${rawSummary.length} chars -> ${cleaned.length} chars`);
     trackCostFireAndForget({
-      provider: 'gemini',
+      provider: stageConfig.provider,
       endpoint: 'cleanup-summary',
       entityType: 'property',
-      tokenUsage: response.tokenUsage,
       success: true,
     });
     return cleaned;
   } catch (error) {
     trackCostFireAndForget({
-      provider: 'gemini',
+      provider: stageConfig.provider,
       endpoint: 'cleanup-summary',
       entityType: 'property',
       success: false,
@@ -113,7 +109,8 @@ export async function searchForReplacementContact(
   company: string,
   propertyAddress?: string
 ): Promise<{ name: string | null; title: string | null; email: string | null; company: string } | null> {
-  const client = getGeminiClient();
+  const stageConfig = getStageConfig('replacement_search');
+  const adapter = getLLMAdapter(stageConfig.provider);
   const maxAttempts = RETRIES.REPLACEMENT_SEARCH + 1;
 
   const addressContext = propertyAddress ? ` at ${propertyAddress}` : '';
@@ -130,28 +127,21 @@ If you cannot find a replacement, return {"name": null}`;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      const response = await withTimeout(
-        callGeminiWithTimeout(
-          () => streamGeminiResponse(client, prompt, {
-            tools: getSearchGroundingTools('replacement_search'),
-            temperature: STAGE_TEMPERATURES.REPLACEMENT_SEARCH,
-            thinkingLevel: THINKING_LEVELS.REPLACEMENT_SEARCH,
-            stageName: 'replacement-search',
-            model: STAGE_MODELS.REPLACEMENT_SEARCH,
-          }),
-          1
-        ),
-        STAGE_TIMEOUTS.REPLACEMENT_SEARCH,
-        'replacement-search'
-      );
+      const response = await adapter.call(prompt, {
+        model: STAGE_MODELS.REPLACEMENT_SEARCH,
+        temperature: STAGE_TEMPERATURES.REPLACEMENT_SEARCH,
+        thinkingLevel: THINKING_LEVELS.REPLACEMENT_SEARCH,
+        timeoutMs: STAGE_TIMEOUTS.REPLACEMENT_SEARCH,
+        stageName: 'replacement-search',
+        searchGrounding: stageConfig.searchGrounding,
+      });
 
       const text = response.text?.trim() || '';
       if (!text) {
         trackCostFireAndForget({
-          provider: 'gemini',
+          provider: stageConfig.provider,
           endpoint: 'replacement-search',
           entityType: 'contact',
-          tokenUsage: response.tokenUsage,
           success: false,
           errorMessage: 'Empty response',
         });
@@ -164,10 +154,9 @@ If you cannot find a replacement, return {"name": null}`;
         parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
       } catch {
         trackCostFireAndForget({
-          provider: 'gemini',
+          provider: stageConfig.provider,
           endpoint: 'replacement-search',
           entityType: 'contact',
-          tokenUsage: response.tokenUsage,
           success: false,
           errorMessage: 'Parse error',
         });
@@ -175,10 +164,9 @@ If you cannot find a replacement, return {"name": null}`;
       }
 
       trackCostFireAndForget({
-        provider: 'gemini',
+        provider: stageConfig.provider,
         endpoint: 'replacement-search',
         entityType: 'contact',
-        tokenUsage: response.tokenUsage,
         success: true,
         metadata: { found: !!parsed?.name, role: roleDesc, company },
       });
@@ -192,13 +180,13 @@ If you cannot find a replacement, return {"name": null}`;
 
       if (!retryable || attempt >= maxAttempts) {
         trackCostFireAndForget({
-          provider: 'gemini',
+          provider: stageConfig.provider,
           endpoint: 'replacement-search',
           entityType: 'contact',
           success: false,
           errorMessage: errMsg,
         });
-        console.error(`[ReplacementSearch] Gemini error (attempt ${attempt}/${maxAttempts}, giving up): ${errMsg}`);
+        console.error(`[ReplacementSearch] LLM error (attempt ${attempt}/${maxAttempts}, giving up): ${errMsg}`);
         return null;
       }
 

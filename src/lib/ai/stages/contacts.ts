@@ -16,20 +16,22 @@
 //   - Cross-validates companies against Stage 2 ownership data
 // ============================================================================
 
-import type { CommercialProperty } from "../../snowflake";
+import type { CommercialProperty } from "../../property-types";
 import type {
   StageResult, OwnershipInfo, PropertyClassification,
   IdentifiedDecisionMaker, DiscoveredContact, RelationshipGrounding, StageMetadata
 } from '../types';
-import { getGeminiClient, streamGeminiResponse, callGeminiWithTimeout, withTimeout } from '../client';
-import { extractGroundedSources, extractGroundingQuality, extractCitationMetadata, parseJsonResponse, validateStage3aSchema } from '../parsers';
+import { extractGroundingQuality, extractCitationMetadata, parseJsonResponse, validateStage3aSchema } from '../parsers';
 import { propertyLatLng, isLikelyConstructedEmail, deduplicateContacts } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { validateAndCleanDomain } from '../../domain-validator';
 import {
   THINKING_LEVELS, RETRIES, BACKOFF, CONFIDENCE,
-  FREE_EMAIL_DOMAINS, STAGE_MODELS, STAGE_TEMPERATURES, STAGE_TIMEOUTS, getSearchGroundingTools,
+  FREE_EMAIL_DOMAINS, STAGE_MODELS, STAGE_TEMPERATURES, STAGE_TIMEOUTS,
 } from '../config';
+import { getStageConfig } from '../runtime-config';
+import { getLLMAdapter } from '../llm';
+import type { LLMResponse } from '../llm';
 
 // =============================================================================
 // Stage 3 — Decision-Maker Identification (with email discovery)
@@ -40,7 +42,8 @@ async function identifyDecisionMakers(
   classification: PropertyClassification,
   ownership: OwnershipInfo
 ): Promise<StageResult<{ contacts: IdentifiedDecisionMaker[] }>> {
-  const client = getGeminiClient();
+  const stageConfig = getStageConfig('stage3_contacts');
+  const adapter = getLLMAdapter(stageConfig.provider);
 
   const propertySite = ownership.propertyWebsite || 'none';
   const city = property.city || 'Dallas';
@@ -127,34 +130,36 @@ Return JSON:
 
   for (let attempt = 1; attempt <= RETRIES.STAGE_3A; attempt++) {
     try {
-      console.log(`[FocusedEnrichment] Stage 3 attempt ${attempt}/${RETRIES.STAGE_3A}...`);
+      console.log(`[FocusedEnrichment] Stage 3 attempt ${attempt}/${RETRIES.STAGE_3A} (provider: ${stageConfig.provider})...`);
 
-      const response = await withTimeout(
-        callGeminiWithTimeout(
-          () => streamGeminiResponse(client, prompt, {
-            tools: getSearchGroundingTools('stage3_contacts'),
-            temperature: STAGE_TEMPERATURES.STAGE_3_CONTACTS,
-            thinkingLevel: THINKING_LEVELS.STAGE_3A_CONTACTS,
-            latLng: propertyLatLng(property),
-            stageName: 'stage3-contacts',
-            model: STAGE_MODELS.STAGE_3_CONTACTS,
-          }),
-          2
-        ),
-        STAGE_TIMEOUTS.STAGE_3_CONTACTS,
-        'stage3-contacts'
-      );
+      const response: LLMResponse = await adapter.call(prompt, {
+        model: STAGE_MODELS.STAGE_3_CONTACTS,
+        temperature: STAGE_TEMPERATURES.STAGE_3_CONTACTS,
+        thinkingLevel: THINKING_LEVELS.STAGE_3A_CONTACTS,
+        timeoutMs: STAGE_TIMEOUTS.STAGE_3_CONTACTS,
+        stageName: 'stage3-contacts',
+        searchGrounding: stageConfig.searchGrounding,
+        latLng: propertyLatLng(property),
+      });
 
       const text = response.text?.trim() || '';
       console.log(`[FocusedEnrichment] Stage 3 attempt ${attempt} response length: ${text.length} chars`);
 
       if (!text) {
-        console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 3 (attempt ${attempt}/${RETRIES.STAGE_3A})`);
+        console.warn(`[FocusedEnrichment] Empty response in Stage 3 (attempt ${attempt}/${RETRIES.STAGE_3A})`);
         trackCostFireAndForget({
-          provider: 'gemini',
+          provider: stageConfig.provider,
           endpoint: 'identify-decision-makers',
           entityType: 'property',
-          tokenUsage: response.tokenUsage,
+          tokenUsage: response.tokenUsage ? {
+            promptTokens: response.tokenUsage.inputTokens,
+            responseTokens: response.tokenUsage.outputTokens,
+            thinkingTokens: response.tokenUsage.thinkingTokens,
+            totalTokens: response.tokenUsage.totalTokens,
+            searchGroundingUsed: response.tokenUsage.groundingQueriesUsed > 0,
+            searchGroundingQueryCount: response.tokenUsage.groundingQueriesUsed,
+            searchGroundingCostUsd: response.tokenUsage.groundingCostUsd,
+          } : undefined,
           success: false,
           errorMessage: `Empty response attempt ${attempt}`,
         });
@@ -168,9 +173,9 @@ Return JSON:
         return { data: { contacts: [] }, summary: '', sources: [] };
       }
 
-      const sources = extractGroundedSources(response);
-      const groundingQuality = extractGroundingQuality(response);
-      const citationMetadata = extractCitationMetadata(response);
+      const sources = response.groundingSources;
+      const groundingQuality = response.raw?.groundingQuality || extractGroundingQuality(response.raw);
+      const citationMetadata = extractCitationMetadata(response.raw);
       const parsed = parseJsonResponse(text);
 
       try {
@@ -265,8 +270,8 @@ Return JSON:
 
         let composite = geminiRc * 0.3;
         if (hasSrc) composite += 0.2;
-        if (groundingQuality.hasGrounding) {
-          composite += 0.1 + Math.min(groundingQuality.avgConfidence * 0.1, 0.1);
+        if (groundingQuality?.hasGrounding) {
+          composite += 0.1 + Math.min((groundingQuality?.avgConfidence ?? 0) * 0.1, 0.1);
         }
         if (companyMatch) composite += 0.15;
         if (hasEmail) composite += 0.1;
@@ -286,10 +291,10 @@ Return JSON:
 
         contact.roleConfidence = Math.round(composite * 100) / 100;
 
-        console.log(`[FocusedEnrichment] Confidence for "${contact.name}": geminiRc=${geminiRc} → composite=${contact.roleConfidence} (src=${hasSrc}, grounding=${groundingQuality.hasGrounding}/${groundingQuality.avgConfidence.toFixed(2)}, companyMatch=${companyMatch}, hasEmail=${hasEmail})`);
+        console.log(`[FocusedEnrichment] Confidence for "${contact.name}": geminiRc=${geminiRc} → composite=${contact.roleConfidence} (src=${hasSrc}, grounding=${groundingQuality?.hasGrounding}/${(groundingQuality?.avgConfidence ?? 0).toFixed(2)}, companyMatch=${companyMatch}, hasEmail=${hasEmail})`);
 
         const contactNameLower = contact.name.toLowerCase();
-        const contactRelevantSupports = groundingQuality.supports.filter(s =>
+        const contactRelevantSupports = (groundingQuality?.supports || []).filter((s: any) =>
           s.segment.toLowerCase().includes(contactNameLower) ||
           (contact.company && s.segment.toLowerCase().includes(contact.company.toLowerCase()))
         );
@@ -313,10 +318,18 @@ Return JSON:
       }
 
       trackCostFireAndForget({
-        provider: 'gemini',
+        provider: stageConfig.provider,
         endpoint: 'identify-decision-makers',
         entityType: 'property',
-        tokenUsage: response.tokenUsage,
+        tokenUsage: response.tokenUsage ? {
+          promptTokens: response.tokenUsage.inputTokens,
+          responseTokens: response.tokenUsage.outputTokens,
+          thinkingTokens: response.tokenUsage.thinkingTokens,
+          totalTokens: response.tokenUsage.totalTokens,
+          searchGroundingUsed: response.tokenUsage.groundingQueriesUsed > 0,
+          searchGroundingQueryCount: response.tokenUsage.groundingQueriesUsed,
+          searchGroundingCostUsd: response.tokenUsage.groundingCostUsd,
+        } : undefined,
         success: true,
         metadata: { contactsCount: contacts.length, sourcesCount: sources.length, attempt },
       });
@@ -324,12 +337,12 @@ Return JSON:
       const stageMetadata: StageMetadata = {
         finishReason: response.finishReason,
         tokens: response.tokenUsage ? {
-          prompt: response.tokenUsage.promptTokens,
-          response: response.tokenUsage.responseTokens,
+          prompt: response.tokenUsage.inputTokens,
+          response: response.tokenUsage.outputTokens,
           thinking: response.tokenUsage.thinkingTokens,
           total: response.tokenUsage.totalTokens,
         } : undefined,
-        searchQueries: groundingQuality.webSearchQueries.length > 0 ? groundingQuality.webSearchQueries : undefined,
+        searchQueries: groundingQuality?.webSearchQueries?.length > 0 ? groundingQuality.webSearchQueries : undefined,
       };
 
       return {
@@ -340,7 +353,7 @@ Return JSON:
       };
     } catch (error) {
       trackCostFireAndForget({
-        provider: 'gemini',
+        provider: stageConfig.provider,
         endpoint: 'identify-decision-makers',
         entityType: 'property',
         success: false,

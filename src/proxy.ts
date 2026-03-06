@@ -1,7 +1,6 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
 import { NextResponse } from 'next/server';
-
-const INTERNAL_ORG_SLUG = 'greenfinch';
+import { INTERNAL_ORG_SLUG } from '@/lib/permissions';
 
 const isPublicRoute = createRouteMatcher([
   '/',

@@ -1,4 +1,5 @@
 import { cacheGet, cacheSet } from './redis';
+import { trackCostFireAndForget } from '@/lib/cost-tracker';
 
 const SERPAPI_BASE = 'https://serpapi.com/search';
 
@@ -85,6 +86,14 @@ export async function searchLinkedInProfile(
     console.log(`[SERP LinkedIn] Got ${organicResults.length} results for "${fullName}"`);
 
     const linkedinMatch = findBestLinkedInMatch(organicResults, firstName, lastName, company, location);
+
+    trackCostFireAndForget({
+      provider: 'serp',
+      endpoint: 'google-search',
+      entityType: 'contact',
+      success: true,
+      metadata: { found: !!linkedinMatch },
+    });
 
     if (linkedinMatch) {
       console.log(`[SERP LinkedIn] Found LinkedIn for "${fullName}": ${linkedinMatch.linkedinUrl} (confidence: ${linkedinMatch.confidence})`);

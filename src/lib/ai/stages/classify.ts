@@ -10,18 +10,18 @@
 // Retry policy: up to RETRIES.STAGE_1 attempts with exponential back-off.
 // ============================================================================
 
-import type { CommercialProperty } from "../../snowflake";
+import type { CommercialProperty } from "../../property-types";
 import type { StageResult, PropertyDataAndClassification, StageMetadata } from '../types';
-import { getGeminiClient, streamGeminiResponse } from '../client';
 import { isRetryableGeminiError } from '../errors';
-import { extractGroundedSources, extractGroundingQuality, parseJsonResponse, validateStage1Schema } from '../parsers';
+import { extractGroundingQuality, parseJsonResponse, validateStage1Schema } from '../parsers';
 import { formatBuildingsSummary, formatCompactCategories, mapQualityGradeToClass, propertyLatLng } from '../helpers';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
-import { rateLimiters } from '../../rate-limiter';
 import {
-  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, STAGE_TEMPERATURES, STAGE_TIMEOUTS, getSearchGroundingTools,
+  THINKING_LEVELS, RETRIES, BACKOFF, STAGE_MODELS, STAGE_TEMPERATURES, STAGE_TIMEOUTS,
 } from '../config';
-import { withTimeout } from '../client';
+import { getStageConfig } from '../runtime-config';
+import { getLLMAdapter } from '../llm';
+import type { LLMResponse } from '../llm';
 
 /**
  * Run Stage 1 of the AI enrichment pipeline.
@@ -30,7 +30,6 @@ import { withTimeout } from '../client';
  * to verify details and returns structured classification + physical data.
  */
 export async function classifyAndVerifyProperty(property: CommercialProperty): Promise<StageResult<PropertyDataAndClassification>> {
-  const client = getGeminiClient();
   const deedOwner = property.ownerName1 || 'Unknown';
   const bizName = property.bizName || null;
   const totalSqft = property.totalGrossBldgArea || null;
@@ -83,27 +82,24 @@ Return JSON:
   console.log('[FocusedEnrichment] Stage 1: Classification and physical verification...');
 
   // -- Retry loop -------------------------------------------------------------
-  let response: any;
+  const stageConfig = getStageConfig('stage1_classify');
+  const adapter = getLLMAdapter(stageConfig.provider);
+  let response: LLMResponse | undefined;
   let text = '';
 
   for (let attempt = 1; attempt <= RETRIES.STAGE_1; attempt++) {
-    console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${RETRIES.STAGE_1}...`);
+    console.log(`[FocusedEnrichment] Stage 1 API call attempt ${attempt}/${RETRIES.STAGE_1} (provider: ${stageConfig.provider})...`);
 
     try {
-      response = await withTimeout(
-        rateLimiters.gemini.execute(() =>
-          streamGeminiResponse(client, prompt, {
-            tools: getSearchGroundingTools('stage1_classify'),
-            temperature: STAGE_TEMPERATURES.STAGE_1_CLASSIFY,
-            thinkingLevel: THINKING_LEVELS.STAGE_1_CLASSIFY,
-            latLng: propertyLatLng(property),
-            stageName: 'stage1-classify',
-            model: STAGE_MODELS.STAGE_1_CLASSIFY,
-          })
-        ),
-        STAGE_TIMEOUTS.STAGE_1_CLASSIFY,
-        'stage1-classify'
-      );
+      response = await adapter.call(prompt, {
+        model: STAGE_MODELS.STAGE_1_CLASSIFY,
+        temperature: STAGE_TEMPERATURES.STAGE_1_CLASSIFY,
+        thinkingLevel: THINKING_LEVELS.STAGE_1_CLASSIFY,
+        timeoutMs: STAGE_TIMEOUTS.STAGE_1_CLASSIFY,
+        stageName: 'stage1-classify',
+        searchGrounding: stageConfig.searchGrounding,
+        latLng: propertyLatLng(property),
+      });
 
       text = response.text?.trim() || '';
       console.log('[FocusedEnrichment] Stage 1 response length:', text.length, 'chars');
@@ -112,10 +108,7 @@ Return JSON:
         break;
       }
 
-      console.warn(`[FocusedEnrichment] Empty response from Gemini in Stage 1 (attempt ${attempt})`);
-      if (response.candidates) {
-        console.warn('[FocusedEnrichment] Candidates:', JSON.stringify(response.candidates, null, 2).substring(0, 500));
-      }
+      console.warn(`[FocusedEnrichment] Empty response in Stage 1 (attempt ${attempt})`);
     } catch (apiError) {
       const errMsg = apiError instanceof Error ? apiError.message : String(apiError);
       const { retryable, isDeadline, isStreamDisconnect } = isRetryableGeminiError(errMsg);
@@ -141,10 +134,18 @@ Return JSON:
   if (!text) {
     console.error('[FocusedEnrichment] Stage 1 failed after all retries - returning empty result');
     trackCostFireAndForget({
-      provider: 'gemini',
+      provider: stageConfig.provider,
       endpoint: 'classify-property',
       entityType: 'property',
-      tokenUsage: response?.tokenUsage,
+      tokenUsage: response?.tokenUsage ? {
+        promptTokens: response.tokenUsage.inputTokens,
+        responseTokens: response.tokenUsage.outputTokens,
+        thinkingTokens: response.tokenUsage.thinkingTokens,
+        totalTokens: response.tokenUsage.totalTokens,
+        searchGroundingUsed: response.tokenUsage.groundingQueriesUsed > 0,
+        searchGroundingQueryCount: response.tokenUsage.groundingQueriesUsed,
+        searchGroundingCostUsd: response.tokenUsage.groundingCostUsd,
+      } : undefined,
       success: false,
       errorMessage: 'Empty response after all retries',
     });
@@ -172,8 +173,8 @@ Return JSON:
   }
 
   // -- Parse response and extract sources ------------------------------------
-  const sources = extractGroundedSources(response);
-  const groundingQuality = extractGroundingQuality(response);
+  const sources = response!.groundingSources;
+  const groundingQuality = response!.raw?.groundingQuality || extractGroundingQuality(response!.raw);
   const parsed = parseJsonResponse(text);
 
   try {
@@ -184,10 +185,18 @@ Return JSON:
   }
 
   trackCostFireAndForget({
-    provider: 'gemini',
+    provider: stageConfig.provider,
     endpoint: 'classify-property',
     entityType: 'property',
-    tokenUsage: response?.tokenUsage,
+    tokenUsage: response?.tokenUsage ? {
+      promptTokens: response.tokenUsage.inputTokens,
+      responseTokens: response.tokenUsage.outputTokens,
+      thinkingTokens: response.tokenUsage.thinkingTokens,
+      totalTokens: response.tokenUsage.totalTokens,
+      searchGroundingUsed: response.tokenUsage.groundingQueriesUsed > 0,
+      searchGroundingQueryCount: response.tokenUsage.groundingQueriesUsed,
+      searchGroundingCostUsd: response.tokenUsage.groundingCostUsd,
+    } : undefined,
     success: true,
     metadata: { sourcesCount: sources.length },
   });
@@ -201,14 +210,14 @@ Return JSON:
   const finalClassConfidence = aiClass ? (aiClassConfidence ?? 0.7) : classEstimate.confidence;
 
   const classifyMetadata: StageMetadata = {
-    finishReason: response.finishReason,
-    tokens: response.tokenUsage ? {
-      prompt: response.tokenUsage.promptTokens,
-      response: response.tokenUsage.responseTokens,
-      thinking: response.tokenUsage.thinkingTokens,
-      total: response.tokenUsage.totalTokens,
+    finishReason: response!.finishReason,
+    tokens: response!.tokenUsage ? {
+      prompt: response!.tokenUsage.inputTokens,
+      response: response!.tokenUsage.outputTokens,
+      thinking: response!.tokenUsage.thinkingTokens,
+      total: response!.tokenUsage.totalTokens,
     } : undefined,
-    searchQueries: groundingQuality.webSearchQueries.length > 0 ? groundingQuality.webSearchQueries : undefined,
+    searchQueries: groundingQuality?.webSearchQueries?.length > 0 ? groundingQuality.webSearchQueries : undefined,
   };
 
   return {

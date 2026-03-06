@@ -42,3 +42,7 @@ export { identifyOwnership } from './stages/ownership';
 export { discoverContacts } from './stages/contacts';
 export { cleanupAISummary, searchForReplacementContact } from './stages/misc';
 export { runFocusedEnrichment } from './pipeline';
+
+// LLM Abstraction Layer
+export type { LLMProvider, LLMTokenUsage, LLMResponse, LLMCallOptions, LLMProviderAdapter } from './llm';
+export { getLLMAdapter } from './llm';

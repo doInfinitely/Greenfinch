@@ -3,7 +3,7 @@ import { properties, contacts, organizations, propertyOrganizations, propertyCon
 import { eq, and, isNull, or, sql } from 'drizzle-orm';
 import { runFocusedEnrichment } from '../src/lib/ai';
 import type { FocusedEnrichmentResult } from '../src/lib/ai';
-import type { CommercialProperty, DCADBuilding } from '../src/lib/snowflake';
+import type { CommercialProperty, DCADBuilding } from '../src/lib/property-types';
 
 async function getPropertiesToEnrich(limit: number = 10) {
   return db

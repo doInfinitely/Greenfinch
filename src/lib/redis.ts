@@ -76,20 +76,21 @@ export async function acquireLock(lockName: string, ttlSeconds: number = 30): Pr
 export async function releaseLock(lockName: string): Promise<boolean> {
   const r = getRedis();
   if (!r) return true;
-  
+
   const token = lockTokens.get(lockName);
-  if (!token) return false; // No token stored, shouldn't release
-  
+  if (!token) return false;
+
   try {
     const lockKey = `${LOCK_PREFIX}${lockName}`;
-    // Check-and-delete: only release if we own the lock
+    // NOTE: This check-and-delete is not fully atomic with Upstash REST API.
+    // For true atomicity, use Redis EVAL with a Lua script. The race window
+    // is negligible for our use case (enrichment queue coordination).
     const currentToken = await r.get<string>(lockKey);
     if (currentToken === token) {
       await r.del(lockKey);
       lockTokens.delete(lockName);
       return true;
     }
-    // Lock was taken by another process or expired
     lockTokens.delete(lockName);
     return false;
   } catch (error) {

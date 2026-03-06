@@ -339,6 +339,8 @@ export default function AdminPage() {
           />
         </div>
 
+        <DataSourcesSection />
+
         <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
           <button
             onClick={() => {
@@ -734,6 +736,144 @@ function DuplicateCard({
         >
           {isProcessing ? 'Processing...' : `Keep "${duplicate.contactB.fullName}"`}
         </button>
+      </div>
+    </div>
+  );
+}
+
+interface CadDownloadRecord {
+  id: string;
+  countyCode: string;
+  appraisalYear: number;
+  status: string;
+  rowsImported: number | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+const COUNTIES = [
+  { code: 'DCAD', name: 'Dallas' },
+  { code: 'TAD', name: 'Tarrant' },
+  { code: 'CCAD', name: 'Collin' },
+  { code: 'DENT', name: 'Denton' },
+] as const;
+
+function DataSourcesSection() {
+  const { toast } = useToast();
+  const [downloads, setDownloads] = useState<CadDownloadRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [downloadingCounty, setDownloadingCounty] = useState<string | null>(null);
+
+  const fetchDownloads = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/cad-download', { credentials: 'include' });
+      if (response.ok) {
+        const data = await response.json();
+        setDownloads(data.downloads || []);
+      }
+    } catch (error) {
+      console.error('Failed to fetch CAD downloads:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDownloads();
+    const interval = setInterval(fetchDownloads, 5000);
+    return () => clearInterval(interval);
+  }, [fetchDownloads]);
+
+  const handleDownload = async (countyCode: string) => {
+    setDownloadingCounty(countyCode);
+    try {
+      const response = await fetch('/api/admin/cad-download', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ countyCode, year: 2025 }),
+      });
+      const data = await response.json();
+      if (data.downloadId) {
+        toast({ title: 'Download Started', description: `Downloading ${countyCode} data...` });
+        fetchDownloads();
+      } else {
+        toast({ title: 'Error', description: data.error || 'Failed to start download', variant: 'destructive' });
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'Failed to start download', variant: 'destructive' });
+    } finally {
+      setDownloadingCounty(null);
+    }
+  };
+
+  const getLatestDownload = (countyCode: string) => {
+    return downloads.find(d => d.countyCode === countyCode);
+  };
+
+  const statusColors: Record<string, string> = {
+    pending: 'bg-gray-100 text-gray-700',
+    downloading: 'bg-blue-100 text-blue-700',
+    parsing: 'bg-yellow-100 text-yellow-700',
+    complete: 'bg-green-100 text-green-700',
+    error: 'bg-red-100 text-red-700',
+  };
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">Data Sources (CAD Downloads)</h2>
+      <p className="text-sm text-gray-600 mb-4">
+        Download and stage property data from Texas Central Appraisal Districts.
+      </p>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {COUNTIES.map(county => {
+          const latest = getLatestDownload(county.code);
+          const isActive = latest && (latest.status === 'downloading' || latest.status === 'parsing');
+
+          return (
+            <div key={county.code} className="border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center justify-between mb-2">
+                <h3 className="text-sm font-semibold text-gray-900">{county.name} ({county.code})</h3>
+                {latest && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[latest.status] || 'bg-gray-100 text-gray-700'}`}>
+                    {latest.status}
+                  </span>
+                )}
+              </div>
+
+              {latest ? (
+                <div className="text-xs text-gray-500 space-y-1 mb-3">
+                  {latest.rowsImported != null && latest.rowsImported > 0 && (
+                    <p>{latest.rowsImported.toLocaleString()} rows imported</p>
+                  )}
+                  {latest.completedAt && (
+                    <p>Last: {new Date(latest.completedAt).toLocaleDateString()}</p>
+                  )}
+                  {latest.errorMessage && (
+                    <p className="text-red-600 truncate" title={latest.errorMessage}>{latest.errorMessage}</p>
+                  )}
+                  {isActive && (
+                    <div className="w-full bg-gray-200 rounded-full h-1.5 mt-1">
+                      <div className="bg-blue-500 h-1.5 rounded-full animate-pulse" style={{ width: latest.status === 'downloading' ? '30%' : '70%' }}></div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-gray-400 mb-3">No data downloaded yet</p>
+              )}
+
+              <button
+                onClick={() => handleDownload(county.code)}
+                disabled={!!isActive || downloadingCounty === county.code}
+                className="w-full text-xs px-3 py-1.5 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                {downloadingCounty === county.code ? 'Starting...' : isActive ? 'In Progress...' : 'Download Latest'}
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

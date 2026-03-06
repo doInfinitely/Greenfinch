@@ -337,6 +337,10 @@ function defaultIsRateLimitError(error: any): boolean {
 
 export const rateLimiters = {
   gemini: new ServiceRateLimiter({ name: 'Gemini', maxPerMinute: 200, maxConcurrent: 15, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
+  openai: new ServiceRateLimiter({ name: 'OpenAI', maxPerMinute: 500, maxConcurrent: 20, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
+  claude: new ServiceRateLimiter({ name: 'Claude', maxPerMinute: 200, maxConcurrent: 10, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
+  serpApi: new ServiceRateLimiter({ name: 'SerpAPI', maxPerMinute: 100, maxConcurrent: 10, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
+  browserUse: new ServiceRateLimiter({ name: 'BrowserUse', maxPerMinute: 10, maxConcurrent: 3, circuitBreaker: { failureThreshold: 3, resetTimeoutMs: 60000 } }),
   findymail: new ServiceRateLimiter({ name: 'Findymail', maxConcurrent: 250, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
   crustdata: new ServiceRateLimiter({ name: 'Crustdata', maxPerMinute: 14, maxConcurrent: 5, circuitBreaker: { failureThreshold: 3, resetTimeoutMs: 60000 } }),
   pdlPerson: new ServiceRateLimiter({ name: 'PDL Person', maxPerMinute: 90, maxConcurrent: 30, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { isBullMQConfigured } from '@/lib/bullmq-connection';
 import { startBullMQBatch, isBullMQBatchRunning, cancelBullMQBatch } from '@/lib/bullmq-enrichment';
 import { startBatch, isBatchRunning, getMaxBatchSize, cancelBatch } from '@/lib/enrichment-queue';
-import { requireSession, isAdmin } from '@/lib/auth';
+import { requireSession } from '@/lib/auth';
+import { auth } from '@clerk/nextjs/server';
+import { INTERNAL_ORG_SLUG } from '@/lib/permissions';
 import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
 
 const NON_ADMIN_BATCH_LIMIT = 100;
@@ -14,8 +16,9 @@ export async function POST(request: NextRequest) {
     const rateResponse = await checkRateLimit(request);
     if (rateResponse) return rateResponse;
 
-    const { user } = await requireSession();
-    userIsAdmin = isAdmin(user);
+    await requireSession();
+    const authData = await auth();
+    userIsAdmin = authData.orgSlug === INTERNAL_ORG_SLUG && authData.orgRole === 'org:admin';
   } catch (error) {
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Authentication required' }, { status: 401 });

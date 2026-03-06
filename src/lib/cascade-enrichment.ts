@@ -27,6 +27,7 @@ import { findEmail as findEmailHunter } from './hunter';
 import { searchLinkedInProfile } from './serp-linkedin';
 import { normalizeDomain } from './normalization';
 import { validateLinkedInSlug } from './linkedin-validation';
+import { parseFullName, getEmployeeRange } from './utils';
 
 export type ConfidenceFlag = 'verified' | 'pdl_matched' | 'unverified' | 'email_only' | 'insufficient_input' | 'no_match';
 export type EmailSource = 'input_verified' | 'input_invalid' | 'findymail_finder' | 'hunter_finder' | null;
@@ -200,26 +201,6 @@ function companiesMatch(a: string | null | undefined, b: string | null | undefin
   return false;
 }
 
-function parseFullName(fullName: string): { firstName: string; lastName: string } {
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length === 1) {
-    return { firstName: parts[0], lastName: '' };
-  }
-  const firstName = parts[0];
-  const lastName = parts.slice(1).join(' ');
-  return { firstName, lastName };
-}
-
-function getEmployeeRange(count: number): string {
-  if (count <= 10) return '1-10';
-  if (count <= 50) return '11-50';
-  if (count <= 200) return '51-200';
-  if (count <= 500) return '201-500';
-  if (count <= 1000) return '501-1000';
-  if (count <= 5000) return '1001-5000';
-  if (count <= 10000) return '5001-10000';
-  return '10001+';
-}
 
 /**
  * Enrich an organization using PDL Company Enrichment API (primary),
@@ -431,7 +412,7 @@ export async function enrichContactCascade(
           result.enrichmentSource = 'pdl';
           result.enrichedAt = new Date();
           result.email = pdlResult.workEmail || email || null;
-          result.emailSource = pdlResult.workEmail ? 'findymail_finder' : (email ? 'input_verified' : null);
+          result.emailSource = email ? 'input_verified' : null;
           result.phone = pdlResult.mobilePhone || null;
           result.mobilePhone = pdlResult.mobilePhone || null;
           result.title = pdlResult.title || title || null;

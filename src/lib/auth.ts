@@ -65,8 +65,17 @@ export async function requireSession(): Promise<{ user: User }> {
   return session;
 }
 
-export function isAdmin(user: User): boolean {
-  return user.role === 'system_admin' || user.role === 'account_admin';
+function mapToUser(dbUser: typeof users.$inferSelect): User {
+  return {
+    id: dbUser.id,
+    clerkId: dbUser.clerkId || '',
+    email: dbUser.email,
+    firstName: dbUser.firstName,
+    lastName: dbUser.lastName,
+    profileImageUrl: dbUser.profileImageUrl,
+    role: (dbUser.role as UserRole) || 'standard_user',
+    isActive: dbUser.isActive ?? true,
+  };
 }
 
 interface ClerkUser {
@@ -116,17 +125,8 @@ async function getOrCreateUser(clerkUser: ClerkUser): Promise<User | null> {
         })
         .where(eq(users.id, existingUser.id))
         .returning();
-      
-      return {
-        id: updated.id,
-        clerkId: updated.clerkId || '',
-        email: updated.email,
-        firstName: updated.firstName,
-        lastName: updated.lastName,
-        profileImageUrl: updated.profileImageUrl,
-        role: (updated.role as UserRole) || 'standard_user',
-        isActive: updated.isActive ?? true,
-      };
+
+      return mapToUser(updated);
     }
   }
   
@@ -152,17 +152,8 @@ async function getOrCreateUser(clerkUser: ClerkUser): Promise<User | null> {
   if (matchingProvider) {
     console.log(`[Auth] New user ${clerkUser.id} auto-linked to service provider: ${matchingProvider.name}`);
   }
-  
-  return {
-    id: newUser.id,
-    clerkId: newUser.clerkId || '',
-    email: newUser.email,
-    firstName: newUser.firstName,
-    lastName: newUser.lastName,
-    profileImageUrl: newUser.profileImageUrl,
-    role: (newUser.role as UserRole) || 'standard_user',
-    isActive: newUser.isActive ?? true,
-  };
+
+  return mapToUser(newUser);
 }
 
 async function updateExistingUser(
@@ -190,20 +181,22 @@ async function updateExistingUser(
         })
         .where(eq(users.id, existingUser.id))
         .returning();
-      
-      return {
-        id: updated.id,
-        clerkId: updated.clerkId || '',
-        email: updated.email,
-        firstName: updated.firstName,
-        lastName: updated.lastName,
-        profileImageUrl: updated.profileImageUrl,
-        role: (updated.role as UserRole) || 'standard_user',
-        isActive: updated.isActive ?? true,
-      };
+
+      return mapToUser(updated);
     }
   }
   
+  // Skip DB write if nothing has changed
+  const needsUpdate =
+    existingUser.email !== primaryEmail ||
+    existingUser.firstName !== (clerkUser.firstName || existingUser.firstName) ||
+    existingUser.lastName !== (clerkUser.lastName || existingUser.lastName) ||
+    existingUser.profileImageUrl !== (clerkUser.imageUrl || existingUser.profileImageUrl);
+
+  if (!needsUpdate) {
+    return mapToUser(existingUser);
+  }
+
   // Standard update
   const [updated] = await db
     .update(users)
@@ -216,17 +209,8 @@ async function updateExistingUser(
     })
     .where(eq(users.id, existingUser.id))
     .returning();
-  
-  return {
-    id: updated.id,
-    clerkId: updated.clerkId || '',
-    email: updated.email,
-    firstName: updated.firstName,
-    lastName: updated.lastName,
-    profileImageUrl: updated.profileImageUrl,
-    role: (updated.role as UserRole) || 'standard_user',
-    isActive: updated.isActive ?? true,
-  };
+
+  return mapToUser(updated);
 }
 
 export async function getUserId(): Promise<string | null> {

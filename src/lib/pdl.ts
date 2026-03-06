@@ -1,6 +1,7 @@
 import { trackCostFireAndForget, PDL_COST } from '@/lib/cost-tracker';
 import { rateLimiters, withRetry } from './rate-limiter';
 import { normalizeDomain } from './normalization';
+import { getEmployeeRange } from './utils';
 
 const PDL_API_BASE = 'https://api.peopledatalabs.com/v5';
 
@@ -65,11 +66,7 @@ export interface PDLCompanyResult {
   raw?: any;
 }
 
-function normalizeFirstName(name: string): string {
-  return name.toLowerCase().trim().replace(/[^a-z]/g, '');
-}
-
-function normalizeLastName(name: string): string {
+function normalizeNameForMatch(name: string): string {
   return name.toLowerCase().trim().replace(/[^a-z]/g, '');
 }
 
@@ -81,12 +78,12 @@ function strictMatch(
     return false;
   }
   
-  const inputFirst = normalizeFirstName(input.firstName);
-  const inputLast = normalizeLastName(input.lastName);
+  const inputFirst = normalizeNameForMatch(input.firstName);
+  const inputLast = normalizeNameForMatch(input.lastName);
   const inputDomain = normalizeDomain(input.domain);
-  
-  const resultFirst = normalizeFirstName(result.firstName);
-  const resultLast = normalizeLastName(result.lastName);
+
+  const resultFirst = normalizeNameForMatch(result.firstName);
+  const resultLast = normalizeNameForMatch(result.lastName);
   const resultDomain = normalizeDomain(result.companyDomain);
   
   const firstMatch = inputFirst === resultFirst;
@@ -637,17 +634,6 @@ export async function enrichCompanyPDL(
     console.error('[PDL] Company enrichment failed:', error);
     return emptyCompanyResult();
   }
-}
-
-function getEmployeeRange(count: number): string {
-  if (count <= 10) return '1-10';
-  if (count <= 50) return '11-50';
-  if (count <= 200) return '51-200';
-  if (count <= 500) return '201-500';
-  if (count <= 1000) return '501-1000';
-  if (count <= 5000) return '1001-5000';
-  if (count <= 10000) return '5001-10000';
-  return '10001+';
 }
 
 export async function checkExistingContact(

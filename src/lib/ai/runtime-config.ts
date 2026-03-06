@@ -1,12 +1,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { GEMINI_MODEL } from '../constants';
+import type { LLMProvider } from './llm/types';
 
 const CONFIG_FILE = path.join(process.cwd(), 'ai-stage-config.json');
 
 export type ThinkingLevel = 'NONE' | 'MINIMAL' | 'LOW' | 'MEDIUM' | 'HIGH';
 
 export interface StageConfig {
+  provider: LLMProvider;
   model: string;
   searchGrounding: boolean;
   thinkingLevel: ThinkingLevel;
@@ -41,6 +43,12 @@ export const AVAILABLE_MODELS = [
   'gemini-2.0-flash',
   'gemini-2.0-flash-lite',
 ] as const;
+
+export const AVAILABLE_MODELS_BY_PROVIDER: Record<LLMProvider, readonly string[]> = {
+  gemini: AVAILABLE_MODELS,
+  openai: ['gpt-4o', 'gpt-4o-mini', 'o1', 'o3-mini'],
+  claude: ['claude-opus-4-20250514', 'claude-sonnet-4-20250514'],
+} as const;
 
 /**
  * Thinking levels supported by each model, based on official Vertex AI docs.
@@ -82,6 +90,7 @@ export type RuntimeConfig = Record<StageKey, StageConfig>;
 
 function defaultStageConfig(overrides?: Partial<StageConfig>): StageConfig {
   return {
+    provider: 'gemini',
     model: GEMINI_MODEL,
     searchGrounding: true,
     thinkingLevel: 'MINIMAL',
@@ -115,13 +124,21 @@ function loadConfig(): RuntimeConfig {
       const raw = fs.readFileSync(CONFIG_FILE, 'utf-8');
       const parsed = JSON.parse(raw) as Partial<RuntimeConfig>;
       const config = structuredClone(FACTORY_DEFAULTS);
-      const validModels: readonly string[] = AVAILABLE_MODELS;
       for (const key of Object.keys(FACTORY_DEFAULTS) as StageKey[]) {
         if (parsed[key]) {
           const merged = { ...FACTORY_DEFAULTS[key], ...parsed[key] };
+          // Validate provider
+          const validProviders: LLMProvider[] = ['gemini', 'openai', 'claude'];
+          if (!validProviders.includes(merged.provider)) {
+            console.warn(`[AIConfig] Stage ${key} has invalid provider "${merged.provider}", falling back to "gemini"`);
+            merged.provider = 'gemini';
+          }
+          // Validate model against provider's available models
+          const validModels = AVAILABLE_MODELS_BY_PROVIDER[merged.provider] || AVAILABLE_MODELS;
           if (!validModels.includes(merged.model)) {
-            console.warn(`[AIConfig] Stage ${key} has unavailable model "${merged.model}", falling back to default "${FACTORY_DEFAULTS[key].model}"`);
+            console.warn(`[AIConfig] Stage ${key} has unavailable model "${merged.model}" for provider "${merged.provider}", falling back to default "${FACTORY_DEFAULTS[key].model}"`);
             merged.model = FACTORY_DEFAULTS[key].model;
+            merged.provider = FACTORY_DEFAULTS[key].provider;
           }
           config[key] = merged;
         }

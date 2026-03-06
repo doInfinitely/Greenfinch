@@ -28,15 +28,16 @@ import {
   adminAuditLog,
   properties,
 } from './schema';
-import { eq, sql, and, or, isNotNull } from 'drizzle-orm';
+import { eq, sql, and, or, isNotNull, isNull } from 'drizzle-orm';
 
 /**
- * Normalize domain for comparison
- * Strips hyphens, converts to lowercase, trims whitespace
+ * Normalize domain for dedup comparison.
+ * Strips hyphens AND www prefix, lowercases.
+ * More aggressive than normalization.ts version — used only for duplicate matching.
  */
-export function normalizeDomain(domain: string | null | undefined): string {
+export function normalizeDomainForDedup(domain: string | null | undefined): string {
   if (!domain) return '';
-  return domain.toLowerCase().trim().replace(/-/g, '');
+  return domain.toLowerCase().trim().replace(/^www\./, '').replace(/-/g, '');
 }
 
 /**
@@ -61,47 +62,42 @@ interface DeduplicationResult {
 }
 
 /**
- * Find duplicate organizations by normalized domain
+ * Find duplicate organizations by normalized domain.
+ * Uses SQL GROUP BY to identify duplicates without loading all rows.
  */
 export async function findDuplicateOrganizations(): Promise<DuplicateGroup<typeof organizations.$inferSelect>[]> {
-  const allOrgs = await db.select().from(organizations).where(isNotNull(organizations.domain));
-  
-  const domainMap = new Map<string, (typeof organizations.$inferSelect)[]>();
-  
-  for (const org of allOrgs) {
-    const normalizedDomain = normalizeDomain(org.domain);
-    if (!normalizedDomain) continue;
-    
-    if (!domainMap.has(normalizedDomain)) {
-      domainMap.set(normalizedDomain, []);
-    }
-    domainMap.get(normalizedDomain)!.push(org);
-  }
-  
+  // Find domains that have more than one org
+  const duplicateDomains = await db
+    .select({
+      normalizedDomain: sql<string>`LOWER(REPLACE(REPLACE(${organizations.domain}, 'www.', ''), '-', ''))`.as('normalized_domain'),
+      count: sql<number>`COUNT(*)`.as('count')
+    })
+    .from(organizations)
+    .where(isNotNull(organizations.domain))
+    .groupBy(sql`LOWER(REPLACE(REPLACE(${organizations.domain}, 'www.', ''), '-', ''))`)
+    .having(sql`COUNT(*) > 1`);
+
   const duplicates: DuplicateGroup<typeof organizations.$inferSelect>[] = [];
-  
-  for (const [domain, orgs] of domainMap) {
+
+  for (const { normalizedDomain } of duplicateDomains) {
+    if (!normalizedDomain) continue;
+
+    const orgs = await db
+      .select()
+      .from(organizations)
+      .where(sql`LOWER(REPLACE(REPLACE(${organizations.domain}, 'www.', ''), '-', '')) = ${normalizedDomain}`)
+      .orderBy(sql`CASE WHEN ${organizations.providerId} IS NOT NULL THEN 0 ELSE 1 END`, sql`${organizations.lastEnrichedAt} DESC NULLS LAST`);
+
     if (orgs.length > 1) {
-      // Sort by: has provider_id first, then by last_enriched_at desc
-      orgs.sort((a, b) => {
-        // Prefer records with Apollo providerId
-        if (a.providerId && !b.providerId) return -1;
-        if (!a.providerId && b.providerId) return 1;
-        // Then by most recent enrichment
-        const aDate = a.lastEnrichedAt?.getTime() || 0;
-        const bDate = b.lastEnrichedAt?.getTime() || 0;
-        return bDate - aDate;
-      });
-      
       duplicates.push({
-        key: domain,
+        key: normalizedDomain,
         items: orgs,
         keepId: orgs[0].id,
         deleteIds: orgs.slice(1).map(o => o.id),
       });
     }
   }
-  
+
   return duplicates;
 }
 
@@ -119,27 +115,32 @@ interface FindDuplicatesResult {
  * Returns auto-merge groups and potential duplicates separately.
  */
 export async function findDuplicateContacts(): Promise<FindDuplicatesResult> {
-  const allContacts = await db.select().from(contacts);
   const processedIds = new Set<string>();
   const autoMerge: DuplicateGroup<typeof contacts.$inferSelect>[] = [];
   const potentialDuplicates: { contactIdA: string; contactIdB: string; matchType: string; matchKey: string }[] = [];
-  
-  const emailMap = new Map<string, (typeof contacts.$inferSelect)[]>();
-  for (const contact of allContacts) {
-    if (contact.normalizedEmail) {
-      const normalizedEmail = contact.normalizedEmail.toLowerCase().trim();
-      if (!emailMap.has(normalizedEmail)) {
-        emailMap.set(normalizedEmail, []);
-      }
-      emailMap.get(normalizedEmail)!.push(contact);
-    }
-  }
-  
-  for (const [email, contactList] of emailMap) {
+
+  // --- Pass 1: Email duplicates (SQL GROUP BY) ---
+  const duplicateEmails = await db
+    .select({
+      normalizedEmail: sql<string>`LOWER(TRIM(${contacts.normalizedEmail}))`.as('norm_email'),
+      count: sql<number>`COUNT(*)`.as('count')
+    })
+    .from(contacts)
+    .where(isNotNull(contacts.normalizedEmail))
+    .groupBy(sql`LOWER(TRIM(${contacts.normalizedEmail}))`)
+    .having(sql`COUNT(*) > 1`);
+
+  for (const { normalizedEmail } of duplicateEmails) {
+    if (!normalizedEmail) continue;
+    const contactList = await db
+      .select()
+      .from(contacts)
+      .where(sql`LOWER(TRIM(${contacts.normalizedEmail})) = ${normalizedEmail}`);
+
     if (contactList.length > 1) {
       contactList.sort(sortContactsByPriority);
       autoMerge.push({
-        key: `email::${email}`,
+        key: `email::${normalizedEmail}`,
         items: contactList,
         keepId: contactList[0].id,
         deleteIds: contactList.slice(1).map(c => c.id),
@@ -147,9 +148,20 @@ export async function findDuplicateContacts(): Promise<FindDuplicatesResult> {
       contactList.forEach(c => processedIds.add(c.id));
     }
   }
-  
+
+  // --- Pass 2: LinkedIn duplicates ---
+  // LinkedIn slugs require regex extraction, so we still need to load contacts with LinkedIn URLs
+  // but only those that have at least one LinkedIn URL and weren't already processed
+  const linkedinContacts = await db.select().from(contacts).where(
+    or(
+      isNotNull(contacts.linkedinUrl),
+      isNotNull(contacts.pdlLinkedinUrl),
+      isNotNull(contacts.crustdataLinkedinUrl)
+    )
+  );
+
   const linkedinMap = new Map<string, (typeof contacts.$inferSelect)[]>();
-  for (const contact of allContacts) {
+  for (const contact of linkedinContacts) {
     if (processedIds.has(contact.id)) continue;
     const slugs = [
       normalizeLinkedinSlug(contact.linkedinUrl),
@@ -166,7 +178,7 @@ export async function findDuplicateContacts(): Promise<FindDuplicatesResult> {
       existing.push(contact);
     }
   }
-  
+
   for (const [slug, contactList] of linkedinMap) {
     if (contactList.length > 1) {
       contactList.sort(sortContactsByPriority);
@@ -179,71 +191,85 @@ export async function findDuplicateContacts(): Promise<FindDuplicatesResult> {
       contactList.forEach(c => processedIds.add(c.id));
     }
   }
-  
-  const nameMap = new Map<string, (typeof contacts.$inferSelect)[]>();
-  for (const contact of allContacts) {
-    if (processedIds.has(contact.id)) continue;
-    
-    const normalizedName = normalizeName(contact.fullName);
-    const normalizedDomain = normalizeDomain(contact.companyDomain);
-    
+
+  // --- Pass 3: Name+domain potential duplicates (SQL GROUP BY on normalized_name) ---
+  const duplicateNames = await db
+    .select({
+      normalizedName: contacts.normalizedName,
+      count: sql<number>`COUNT(*)`.as('count')
+    })
+    .from(contacts)
+    .where(isNotNull(contacts.normalizedName))
+    .groupBy(contacts.normalizedName)
+    .having(sql`COUNT(*) > 1`);
+
+  for (const { normalizedName } of duplicateNames) {
     if (!normalizedName) continue;
-    
-    const key = `${normalizedName}::${normalizedDomain}`;
-    if (!nameMap.has(key)) {
-      nameMap.set(key, []);
-    }
-    nameMap.get(key)!.push(contact);
-  }
-  
-  for (const [key, contactList] of nameMap) {
-    if (contactList.length > 1) {
-      contactList.sort(sortContactsByPriority);
-      const primary = contactList[0];
-      for (const dup of contactList.slice(1)) {
-        potentialDuplicates.push({
-          contactIdA: primary.id,
-          contactIdB: dup.id,
-          matchType: 'name_domain',
-          matchKey: key,
-        });
-        processedIds.add(dup.id);
+    const nameContacts = await db
+      .select()
+      .from(contacts)
+      .where(eq(contacts.normalizedName, normalizedName));
+
+    // Sub-group by normalized domain for name+domain pass
+    const domainSubMap = new Map<string, (typeof contacts.$inferSelect)[]>();
+    // Sub-group by employer for name+employer pass
+    const employerSubMap = new Map<string, (typeof contacts.$inferSelect)[]>();
+
+    for (const contact of nameContacts) {
+      if (processedIds.has(contact.id)) continue;
+
+      const normalizedDomain = normalizeDomainForDedup(contact.companyDomain);
+      const domainKey = `${normalizedName}::${normalizedDomain}`;
+      if (!domainSubMap.has(domainKey)) {
+        domainSubMap.set(domainKey, []);
       }
-      processedIds.add(primary.id);
+      domainSubMap.get(domainKey)!.push(contact);
     }
-  }
-  
-  const employerMap = new Map<string, (typeof contacts.$inferSelect)[]>();
-  for (const contact of allContacts) {
-    if (processedIds.has(contact.id)) continue;
-    
-    const normalizedName = normalizeName(contact.fullName);
-    const employer = contact.employerName?.toLowerCase().trim();
-    
-    if (!normalizedName || !employer) continue;
-    
-    const key = `${normalizedName}::${employer}`;
-    if (!employerMap.has(key)) {
-      employerMap.set(key, []);
-    }
-    employerMap.get(key)!.push(contact);
-  }
-  
-  for (const [key, contactList] of employerMap) {
-    if (contactList.length > 1) {
-      contactList.sort(sortContactsByPriority);
-      const primary = contactList[0];
-      for (const dup of contactList.slice(1)) {
-        potentialDuplicates.push({
-          contactIdA: primary.id,
-          contactIdB: dup.id,
-          matchType: 'name_employer',
-          matchKey: key,
-        });
+
+    for (const [key, contactList] of domainSubMap) {
+      if (contactList.length > 1) {
+        contactList.sort(sortContactsByPriority);
+        const primary = contactList[0];
+        for (const dup of contactList.slice(1)) {
+          potentialDuplicates.push({
+            contactIdA: primary.id,
+            contactIdB: dup.id,
+            matchType: 'name_domain',
+            matchKey: key,
+          });
+          processedIds.add(dup.id);
+        }
+        processedIds.add(primary.id);
       }
     }
+
+    for (const contact of nameContacts) {
+      if (processedIds.has(contact.id)) continue;
+      const employer = contact.employerName?.toLowerCase().trim();
+      if (!employer) continue;
+      const empKey = `${normalizedName}::${employer}`;
+      if (!employerSubMap.has(empKey)) {
+        employerSubMap.set(empKey, []);
+      }
+      employerSubMap.get(empKey)!.push(contact);
+    }
+
+    for (const [key, contactList] of employerSubMap) {
+      if (contactList.length > 1) {
+        contactList.sort(sortContactsByPriority);
+        const primary = contactList[0];
+        for (const dup of contactList.slice(1)) {
+          potentialDuplicates.push({
+            contactIdA: primary.id,
+            contactIdB: dup.id,
+            matchType: 'name_employer',
+            matchKey: key,
+          });
+        }
+      }
+    }
   }
-  
+
   return { autoMerge, potentialDuplicates };
 }
 
@@ -381,63 +407,65 @@ async function mergeOrganizations(duplicates: DuplicateGroup<typeof organization
 export async function mergeContacts(duplicates: DuplicateGroup<typeof contacts.$inferSelect>[]): Promise<{ merged: number; errors: string[] }> {
   let merged = 0;
   const errors: string[] = [];
-  
+
   for (const group of duplicates) {
     try {
       console.log(`[Dedup] Merging ${group.deleteIds.length} duplicate contacts into ${group.keepId} (key: ${group.key})`);
-      
-      const keepLinks = await db.select().from(propertyContacts).where(eq(propertyContacts.contactId, group.keepId));
-      const keepPropertyIds = new Set(keepLinks.map(l => l.propertyId));
 
-      for (const deleteId of group.deleteIds) {
-        const dupeLinks = await db.select().from(propertyContacts).where(eq(propertyContacts.contactId, deleteId));
-        for (const link of dupeLinks) {
-          if (keepPropertyIds.has(link.propertyId)) {
-            await db.delete(propertyContacts).where(eq(propertyContacts.id, link.id));
-          } else {
-            await db.update(propertyContacts)
-              .set({ contactId: group.keepId })
-              .where(eq(propertyContacts.id, link.id));
-            keepPropertyIds.add(link.propertyId);
+      await db.transaction(async (tx) => {
+        const keepLinks = await tx.select().from(propertyContacts).where(eq(propertyContacts.contactId, group.keepId));
+        const keepPropertyIds = new Set(keepLinks.map(l => l.propertyId));
+
+        for (const deleteId of group.deleteIds) {
+          const dupeLinks = await tx.select().from(propertyContacts).where(eq(propertyContacts.contactId, deleteId));
+          for (const link of dupeLinks) {
+            if (keepPropertyIds.has(link.propertyId)) {
+              await tx.delete(propertyContacts).where(eq(propertyContacts.id, link.id));
+            } else {
+              await tx.update(propertyContacts)
+                .set({ contactId: group.keepId })
+                .where(eq(propertyContacts.id, link.id));
+              keepPropertyIds.add(link.propertyId);
+            }
           }
-        }
-        
-        const dupeOrgLinks = await db.select().from(contactOrganizations).where(eq(contactOrganizations.contactId, deleteId));
-        const keepOrgLinks = await db.select().from(contactOrganizations).where(eq(contactOrganizations.contactId, group.keepId));
-        const keepOrgIds = new Set(keepOrgLinks.map(l => l.orgId));
-        for (const link of dupeOrgLinks) {
-          if (keepOrgIds.has(link.orgId)) {
-            await db.delete(contactOrganizations).where(eq(contactOrganizations.id, link.id));
-          } else {
-            await db.update(contactOrganizations)
-              .set({ contactId: group.keepId })
-              .where(eq(contactOrganizations.id, link.id));
+
+          const dupeOrgLinks = await tx.select().from(contactOrganizations).where(eq(contactOrganizations.contactId, deleteId));
+          const keepOrgLinks = await tx.select().from(contactOrganizations).where(eq(contactOrganizations.contactId, group.keepId));
+          const keepOrgIds = new Set(keepOrgLinks.map(l => l.orgId));
+          for (const link of dupeOrgLinks) {
+            if (keepOrgIds.has(link.orgId)) {
+              await tx.delete(contactOrganizations).where(eq(contactOrganizations.id, link.id));
+            } else {
+              await tx.update(contactOrganizations)
+                .set({ contactId: group.keepId })
+                .where(eq(contactOrganizations.id, link.id));
+            }
           }
+
+          await tx.update(listItems)
+            .set({ itemId: group.keepId })
+            .where(eq(listItems.itemId, deleteId));
+
+          await tx.update(contactLinkedinFlags)
+            .set({ contactId: group.keepId })
+            .where(eq(contactLinkedinFlags.contactId, deleteId));
+
+          await tx.update(dataIssues)
+            .set({ contactId: group.keepId })
+            .where(eq(dataIssues.contactId, deleteId));
+
+          await tx.delete(contacts).where(eq(contacts.id, deleteId));
         }
-        
-        await db.update(listItems)
-          .set({ itemId: group.keepId })
-          .where(eq(listItems.itemId, deleteId));
-        
-        await db.update(contactLinkedinFlags)
-          .set({ contactId: group.keepId })
-          .where(eq(contactLinkedinFlags.contactId, deleteId));
-        
-        await db.update(dataIssues)
-          .set({ contactId: group.keepId })
-          .where(eq(dataIssues.contactId, deleteId));
-        
-        await db.delete(contacts).where(eq(contacts.id, deleteId));
-        
-        merged++;
-      }
+      });
+
+      merged += group.deleteIds.length;
     } catch (error) {
       const errMsg = `Failed to merge contact ${group.key}: ${error instanceof Error ? error.message : 'Unknown error'}`;
       console.error(`[Dedup] ${errMsg}`);
       errors.push(errMsg);
     }
   }
-  
+
   return { merged, errors };
 }
 
@@ -493,47 +521,54 @@ export async function runDeduplication(): Promise<DeduplicationResult & { potent
 }
 
 /**
- * Find existing organization by normalized domain
+ * Find existing organization by normalized domain.
+ * Uses SQL WHERE clause instead of loading all orgs.
  */
 async function findExistingOrganization(domain: string): Promise<(typeof organizations.$inferSelect) | null> {
-  const normalizedDomain = normalizeDomain(domain);
+  const normalizedDomain = normalizeDomainForDedup(domain);
   if (!normalizedDomain) return null;
-  
-  const allOrgs = await db.select().from(organizations).where(isNotNull(organizations.domain));
-  
-  for (const org of allOrgs) {
-    if (normalizeDomain(org.domain) === normalizedDomain) {
-      return org;
-    }
-  }
-  
-  return null;
+
+  // Use SQL LOWER + REPLACE to match normalized domains in the DB
+  const results = await db
+    .select()
+    .from(organizations)
+    .where(
+      sql`LOWER(REPLACE(REPLACE(${organizations.domain}, 'www.', ''), '-', '')) = ${normalizedDomain}`
+    )
+    .limit(1);
+
+  return results[0] || null;
 }
 
 /**
- * Find existing contact by name + domain
+ * Find existing contact by name + domain.
+ * Uses SQL WHERE clause instead of loading all contacts.
  */
 async function findExistingContact(
-  fullName: string, 
+  fullName: string,
   companyDomain: string | null
 ): Promise<(typeof contacts.$inferSelect) | null> {
   const normalizedName = normalizeName(fullName);
-  const normalizedDomain = normalizeDomain(companyDomain);
-  
   if (!normalizedName) return null;
-  
-  const allContacts = await db.select().from(contacts);
-  
-  for (const contact of allContacts) {
-    const contactNormalizedName = normalizeName(contact.fullName);
-    const contactNormalizedDomain = normalizeDomain(contact.companyDomain);
-    
-    if (contactNormalizedName === normalizedName && contactNormalizedDomain === normalizedDomain) {
-      return contact;
-    }
+
+  const conditions = [eq(contacts.normalizedName, normalizedName)];
+
+  if (companyDomain) {
+    const normalizedDomain = normalizeDomainForDedup(companyDomain);
+    conditions.push(
+      sql`LOWER(REPLACE(REPLACE(${contacts.companyDomain}, 'www.', ''), '-', '')) = ${normalizedDomain}`
+    );
+  } else {
+    conditions.push(isNull(contacts.companyDomain));
   }
-  
-  return null;
+
+  const results = await db
+    .select()
+    .from(contacts)
+    .where(and(...conditions))
+    .limit(1);
+
+  return results[0] || null;
 }
 
 function normalizeLinkedinSlug(url: string | null | undefined): string | null {
@@ -562,7 +597,7 @@ export async function findExistingContactByIdentifiers(
   const normalizedEmail = identifiers.email?.toLowerCase().trim() || null;
   const linkedinSlug = normalizeLinkedinSlug(identifiers.linkedinUrl);
   const normalizedName = normalizeName(identifiers.name);
-  const normalizedDomain = normalizeDomain(identifiers.companyDomain);
+  const normalizedDomain = normalizeDomainForDedup(identifiers.companyDomain);
 
   if (!normalizedEmail && !linkedinSlug && !normalizedName) return null;
 
@@ -610,7 +645,7 @@ export async function findExistingContactByIdentifiers(
   if (normalizedName && normalizedDomain) {
     const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, normalizedName));
     for (const c of candidates) {
-      if (normalizeDomain(c.companyDomain) === normalizedDomain) {
+      if (normalizeDomainForDedup(c.companyDomain) === normalizedDomain) {
         if (options?.autoMergeNameMatches) {
           console.log(`[Dedup] Name+domain match — auto-merging for enrichment: ${normalizedName}@${normalizedDomain} -> ${c.fullName} (${c.id})`);
           return c;

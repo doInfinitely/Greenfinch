@@ -75,4 +75,62 @@ export const PROVIDER_PRICING = {
 // Used as a fallback when a provider has no specific pricing above.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// OpenAI
+//
+// Model: gpt-4o, gpt-4o-mini, o1, o3-mini
+// Source: https://openai.com/api/pricing/
+// ---------------------------------------------------------------------------
+
+export const OPENAI_PRICING = {
+  'gpt-4o': { INPUT_PER_1M: 2.50, OUTPUT_PER_1M: 10.00 },
+  'gpt-4o-mini': { INPUT_PER_1M: 0.15, OUTPUT_PER_1M: 0.60 },
+  'o1': { INPUT_PER_1M: 15.00, OUTPUT_PER_1M: 60.00 },
+  'o3-mini': { INPUT_PER_1M: 1.10, OUTPUT_PER_1M: 4.40 },
+} as const;
+
+export function computeOpenAICostUsd(model: string, inputTokens: number, outputTokens: number): number {
+  const pricing = OPENAI_PRICING[model as keyof typeof OPENAI_PRICING] || OPENAI_PRICING['gpt-4o'];
+  return (inputTokens * pricing.INPUT_PER_1M / 1_000_000) + (outputTokens * pricing.OUTPUT_PER_1M / 1_000_000);
+}
+
+// ---------------------------------------------------------------------------
+// Claude (Anthropic)
+//
+// Model: claude-opus-4, claude-sonnet-4
+// Source: https://www.anthropic.com/pricing
+// ---------------------------------------------------------------------------
+
+export const CLAUDE_PRICING = {
+  'claude-opus-4': { INPUT_PER_1M: 15.00, OUTPUT_PER_1M: 75.00 },
+  'claude-sonnet-4': { INPUT_PER_1M: 3.00, OUTPUT_PER_1M: 15.00 },
+} as const;
+
+export function computeClaudeCostUsd(model: string, inputTokens: number, outputTokens: number): number {
+  const pricing = CLAUDE_PRICING[model as keyof typeof CLAUDE_PRICING] || CLAUDE_PRICING['claude-sonnet-4'];
+  return (inputTokens * pricing.INPUT_PER_1M / 1_000_000) + (outputTokens * pricing.OUTPUT_PER_1M / 1_000_000);
+}
+
+// ---------------------------------------------------------------------------
+// Browser-use (Python microservice)
+// ---------------------------------------------------------------------------
+
+export const BROWSER_USE_PRICING = {
+  COST_PER_SCRAPE: 0.05,
+} as const;
+
+// ---------------------------------------------------------------------------
+// SerpAPI (additional web search pricing)
+// ---------------------------------------------------------------------------
+
+export const SERPAPI_PRICING = {
+  COST_PER_SEARCH: 0.01,
+} as const;
+
+// ---------------------------------------------------------------------------
+// Default cost per credit
+//
+// Used as a fallback when a provider has no specific pricing above.
+// ---------------------------------------------------------------------------
+
 export const DEFAULT_COST_PER_CREDIT = 0.01;

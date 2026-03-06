@@ -42,6 +42,8 @@ export const STAGE_MODELS = {
 export function getSearchGroundingTools(stageKey: StageKey): any[] | undefined {
   const cfg = getStageConfig(stageKey);
   if (!cfg.searchGrounding) return undefined;
+  // Native Google Search tools only apply to Gemini; other providers use SerpAPI
+  if (cfg.provider && cfg.provider !== 'gemini') return undefined;
   return [{ googleSearch: {} }];
 }
 

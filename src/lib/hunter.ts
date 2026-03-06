@@ -50,16 +50,6 @@ interface HunterEmailFinderResponse {
   };
 }
 
-let totalCreditsUsed = 0;
-
-export function getCreditsUsed(): number {
-  return totalCreditsUsed;
-}
-
-export function resetCreditsTracker(): void {
-  totalCreditsUsed = 0;
-}
-
 async function makeEmailFinderRequest(
   firstName: string, 
   lastName: string, 
@@ -127,8 +117,6 @@ export async function findEmail(
         },
       }
     );
-
-    totalCreditsUsed += 1;
 
     if (!response || !response.data?.email) {
       trackCostFireAndForget({
@@ -222,7 +210,6 @@ export async function findPhoneByName(
 
   try {
     const response = await makeEmailFinderRequest(firstName, lastName, companyDomain, apiKey);
-    totalCreditsUsed += 1;
 
     trackCostFireAndForget({
       provider: 'hunter',
@@ -432,9 +419,6 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnri
       }
     );
     
-    // Cost is 0.2 credits per call (but we track as 1 for simplicity)
-    totalCreditsUsed += 1;
-    
     if (!response || !response.data) {
       trackCostFireAndForget({
         provider: 'hunter',
@@ -579,7 +563,6 @@ export async function verifyEmail(email: string): Promise<{
       timeout: 30000,
     });
 
-    totalCreditsUsed += 1;
     trackCostFireAndForget({
       provider: 'hunter',
       endpoint: 'email-verifier',

@@ -9,10 +9,14 @@ import { isCircuitBreakerError, rateLimiters } from './rate-limiter';
 import type { CircuitBreakerOpenError } from './rate-limiter';
 import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
+import { enrichContactCascadeV2 } from './cascade-enrichment-v2';
+import { enrichOrganizationCascadeV2 } from './cascade-enrichment-v2';
+import { shouldUseNewPipeline, shouldForceNewPipeline, isComparisonModeEnabled, getExperimentInfo } from './enrichment-experiments';
+import { compareContactResults, compareOrganizationResults } from './enrichment-comparison';
 import { areCompaniesAffiliated, ensureEmployerOrgEnriched, enrichOrganizationByDomain, resolveOrganization } from './organization-enrichment';
-import { findExistingContactByIdentifiers, flagPotentialDuplicateById, normalizeName as normalizeNameDedup, normalizeDomain as normalizeDomainDedup } from './deduplication';
-import { getPropertyByKey } from './snowflake';
-import type { AggregatedProperty } from './snowflake';
+import { findExistingContactByIdentifiers, flagPotentialDuplicateById, normalizeName as normalizeNameDedup, normalizeDomainForDedup as normalizeDomainDedup } from './deduplication';
+// Snowflake fallback removed — all properties are now in local PostgreSQL staging tables
+import type { AggregatedProperty } from './property-types';
 import { CONCURRENCY } from './constants';
 import { 
   isRedisConfigured, 
@@ -193,48 +197,6 @@ export async function saveEnrichmentResults(
     ...(result.contacts.sources || []),
   ];
 
-  await db.update(properties)
-    .set({
-      commonName: classification.propertyName || undefined,
-      validatedAddress: classification.canonicalAddress || undefined,
-      assetCategory: classification.category || undefined,
-      assetSubcategory: classification.subcategory || undefined,
-      categoryConfidence: classification.confidence || undefined,
-      propertyClass: classification.propertyClass || undefined,
-      beneficialOwner: ownership.beneficialOwner?.name || undefined,
-      beneficialOwnerType: ownership.beneficialOwner?.type || undefined,
-      beneficialOwnerConfidence: ownership.beneficialOwner?.confidence || undefined,
-      beneficialOwnerDomain: ownership.beneficialOwner?.domain || undefined,
-      propertyClassConfidence: classification.propertyClassConfidence ?? undefined,
-      managementCompany: ownership.managementCompany?.name || undefined,
-      managementCompanyDomain: ownership.managementCompany?.domain || undefined,
-      managementConfidence: ownership.managementCompany?.confidence || undefined,
-      propertyWebsite: ownership.propertyWebsite || undefined,
-      propertyPhone: ownership.propertyPhone || undefined,
-      aiLotAcres: physical.lotAcres || undefined,
-      aiLotAcresConfidence: physical.lotAcresConfidence || undefined,
-      aiNetSqft: physical.netSqft || undefined,
-      aiNetSqftConfidence: physical.netSqftConfidence || undefined,
-      aiRationale: cleanedSummary || undefined,
-      enrichmentSources: allSources.length > 0 ? allSources.map(s => s.url).filter(Boolean) : undefined,
-      enrichmentStatus: 'enriched',
-      lastEnrichedAt: new Date(),
-      enrichmentJson: {
-        classification: result.classification.data,
-        ownership: result.ownership.data,
-        physical: result.physical.data,
-        contacts: discoveredContacts,
-        noContactsReason: discoveredContacts.length === 0 ? (result.contacts.summary || 'No verifiable contacts found') : undefined,
-        timing: result.timing,
-        sources: allSources,
-        stageMetadata: result.stageMetadata || undefined,
-      },
-      updatedAt: new Date(),
-    })
-    .where(eq(properties.id, propertyId));
-
-  console.log(`[SaveEnrichment] Updated property ${propertyKey} with enrichment data`);
-
   const ownershipGroundingQuality = (ownership as any)._groundingQuality as GroundingQuality | undefined;
   const ownershipCitations = (ownership as any)._citationMetadata as CitationMetadata | undefined;
 
@@ -285,8 +247,10 @@ export async function saveEnrichmentResults(
     addOrg(addlOwner.name, addlOwner.domain || null, addlOwner.type || 'owner', 'owner');
   }
 
-  const orgIds: string[] = [];
+  // Resolve organizations before the transaction to avoid holding it open during
+  // external API calls (PDL lookups) and Redis lock acquisition.
   const resolvedCache = new Map<string, string>();
+  const resolvedOrgs: { org: DerivedOrg; orgId: string }[] = [];
 
   const makeResolveKey = (name: string, domain: string | null) => {
     const normName = name.trim().toLowerCase();
@@ -314,27 +278,28 @@ export async function saveEnrichmentResults(
         console.log(`[SaveEnrichment] Reusing resolved org "${org.name}" → ${orgId} for role "${org.role}"`);
       }
 
-      if (!orgIds.includes(orgId)) orgIds.push(orgId);
-
-      await db.insert(propertyOrganizations)
-        .values({
-          propertyId,
-          orgId,
-          role: org.role,
-          aiGrounding: org.grounding || undefined,
-        })
-        .onConflictDoNothing();
+      resolvedOrgs.push({ org, orgId });
     } catch (err) {
-      console.error(`[SaveEnrichment] Error saving org ${org.name}:`, err);
+      console.error(`[SaveEnrichment] Error resolving org ${org.name}:`, err);
     }
   }
 
-  const contactIds: string[] = [];
+  // Pre-resolve contacts before the transaction to avoid holding it open during
+  // Redis lock acquisition and external dedup lookups.
+  interface PreResolvedContact {
+    contact: DiscoveredContact;
+    normalized: string | null;
+    normalizedNameVal: string | null;
+    existingContact: (typeof contacts.$inferSelect) | null;
+  }
+  const preResolvedContacts: PreResolvedContact[] = [];
+
   if (discoveredContacts.length === 0) {
     console.log(`[SaveEnrichment] No contacts to save for ${propertyKey}`);
   } else {
     console.log(`[SaveEnrichment] Saving ${discoveredContacts.length} contacts for ${propertyKey}: ${discoveredContacts.map((c: any) => c.name).join(', ')}`);
   }
+
   for (const contact of discoveredContacts) {
     try {
       const normalized = normalizeEmail(contact.email);
@@ -357,18 +322,100 @@ export async function saveEnrichmentResults(
       }
 
       try {
-        let existingContact = await findExistingContactByIdentifiers({
+        const existingContact = await findExistingContactByIdentifiers({
           email: contact.email,
           name: contact.name,
           companyDomain: contact.companyDomain,
           employerName: contact.company,
         }, { autoMergeNameMatches: true });
 
+        preResolvedContacts.push({ contact, normalized, normalizedNameVal, existingContact });
+      } finally {
+        if (lockAcquired) {
+          try { await releaseLock(contactLockKey); } catch {}
+        }
+      }
+    } catch (err) {
+      console.error(`[SaveEnrichment] Error pre-resolving contact ${contact.name}:`, err);
+    }
+  }
+
+  // Wrap all DB writes in a transaction so they are atomic.
+  // If any operation fails, all changes are rolled back to prevent partial state.
+  const { orgIds, contactIds } = await db.transaction(async (tx) => {
+    // 1. Update the property record with enrichment data
+    await tx.update(properties)
+      .set({
+        commonName: classification.propertyName || undefined,
+        validatedAddress: classification.canonicalAddress || undefined,
+        assetCategory: classification.category || undefined,
+        assetSubcategory: classification.subcategory || undefined,
+        categoryConfidence: classification.confidence || undefined,
+        propertyClass: classification.propertyClass || undefined,
+        beneficialOwner: ownership.beneficialOwner?.name || undefined,
+        beneficialOwnerType: ownership.beneficialOwner?.type || undefined,
+        beneficialOwnerConfidence: ownership.beneficialOwner?.confidence || undefined,
+        beneficialOwnerDomain: ownership.beneficialOwner?.domain || undefined,
+        propertyClassConfidence: classification.propertyClassConfidence ?? undefined,
+        managementCompany: ownership.managementCompany?.name || undefined,
+        managementCompanyDomain: ownership.managementCompany?.domain || undefined,
+        managementConfidence: ownership.managementCompany?.confidence || undefined,
+        propertyWebsite: ownership.propertyWebsite || undefined,
+        propertyPhone: ownership.propertyPhone || undefined,
+        aiLotAcres: physical.lotAcres || undefined,
+        aiLotAcresConfidence: physical.lotAcresConfidence || undefined,
+        aiNetSqft: physical.netSqft || undefined,
+        aiNetSqftConfidence: physical.netSqftConfidence || undefined,
+        aiRationale: cleanedSummary || undefined,
+        enrichmentSources: allSources.length > 0 ? allSources.map(s => s.url).filter(Boolean) : undefined,
+        enrichmentStatus: 'enriched',
+        lastEnrichedAt: new Date(),
+        enrichmentJson: {
+          classification: result.classification.data,
+          ownership: result.ownership.data,
+          physical: result.physical.data,
+          contacts: discoveredContacts,
+          noContactsReason: discoveredContacts.length === 0 ? (result.contacts.summary || 'No verifiable contacts found') : undefined,
+          timing: result.timing,
+          sources: allSources,
+          stageMetadata: result.stageMetadata || undefined,
+        },
+        updatedAt: new Date(),
+      })
+      .where(eq(properties.id, propertyId));
+
+    console.log(`[SaveEnrichment] Updated property ${propertyKey} with enrichment data`);
+
+    // 2. Insert property-organization junction records
+    const orgIds: string[] = [];
+
+    for (const { org, orgId } of resolvedOrgs) {
+      try {
+        if (!orgIds.includes(orgId)) orgIds.push(orgId);
+
+        await tx.insert(propertyOrganizations)
+          .values({
+            propertyId,
+            orgId,
+            role: org.role,
+            aiGrounding: org.grounding || undefined,
+          })
+          .onConflictDoNothing();
+      } catch (err) {
+        console.error(`[SaveEnrichment] Error saving org ${org.name}:`, err);
+      }
+    }
+
+    // 3. Create/update contacts and insert junction records
+    const contactIds: string[] = [];
+
+    for (const { contact, normalized, normalizedNameVal, existingContact } of preResolvedContacts) {
+      try {
         let contactId: string;
 
         if (existingContact) {
           contactId = existingContact.id;
-          await db.update(contacts)
+          await tx.update(contacts)
             .set({
               title: contact.title || existingContact.title,
               companyDomain: contact.companyDomain || existingContact.companyDomain,
@@ -385,7 +432,7 @@ export async function saveEnrichmentResults(
             .where(eq(contacts.id, existingContact.id));
           console.log(`[SaveEnrichment] Updated existing contact: ${contact.name} (${contactId})`);
         } else {
-          const [inserted] = await db.insert(contacts)
+          const [inserted] = await tx.insert(contacts)
             .values({
               fullName: contact.name,
               normalizedName: normalizedNameVal,
@@ -418,7 +465,7 @@ export async function saveEnrichmentResults(
             contactId = inserted.id;
           } else {
             const found = normalized
-              ? await db.query.contacts.findFirst({
+              ? await tx.query.contacts.findFirst({
                   where: eq(contacts.normalizedEmail, normalized),
                 })
               : null;
@@ -433,7 +480,7 @@ export async function saveEnrichmentResults(
           const nnDedup = normalizeNameDedup(contact.name);
           const ndDedup = normalizeDomainDedup(contact.companyDomain);
           if (nnDedup) {
-            const candidates = await db.select().from(contacts).where(eq(contacts.normalizedName, nnDedup));
+            const candidates = await tx.select().from(contacts).where(eq(contacts.normalizedName, nnDedup));
             for (const c of candidates) {
               if (c.id === contactId) continue;
               if (ndDedup && normalizeDomainDedup(c.companyDomain) === ndDedup) {
@@ -447,7 +494,7 @@ export async function saveEnrichmentResults(
 
         contactIds.push(contactId);
 
-        await db.insert(propertyContacts)
+        await tx.insert(propertyContacts)
           .values({
             propertyId,
             contactId,
@@ -459,12 +506,12 @@ export async function saveEnrichmentResults(
           .onConflictDoNothing();
 
         if (contact.companyDomain) {
-          const matchingOrg = await db.query.organizations.findFirst({
+          const matchingOrg = await tx.query.organizations.findFirst({
             where: eq(organizations.domain, contact.companyDomain.trim().toLowerCase()),
           });
 
           if (matchingOrg) {
-            await db.insert(contactOrganizations)
+            await tx.insert(contactOrganizations)
               .values({
                 contactId,
                 orgId: matchingOrg.id,
@@ -474,15 +521,13 @@ export async function saveEnrichmentResults(
               .onConflictDoNothing();
           }
         }
-      } finally {
-        if (lockAcquired) {
-          try { await releaseLock(contactLockKey); } catch {}
-        }
+      } catch (err) {
+        console.error(`[SaveEnrichment] Error saving contact ${contact.name}:`, err);
       }
-    } catch (err) {
-      console.error(`[SaveEnrichment] Error saving contact ${contact.name}:`, err);
     }
-  }
+
+    return { orgIds, contactIds };
+  });
 
   const uniqueContactIds = [...new Set(contactIds)];
   const uniqueOrgIds = [...new Set(orgIds)];
@@ -598,11 +643,37 @@ export async function runCascadeEnrichmentOnSavedRecords(
 
       if (!org.domain) continue;
 
-      console.log(`[CascadeEnrichment] Enriching org: ${org.name} (${org.domain})`);
-      const result = await enrichOrganizationCascade(org.domain, {
-        name: org.name || undefined,
-        linkedinUrl: org.linkedinHandle ? `https://linkedin.com/company/${org.linkedinHandle}` : undefined,
-      });
+      const routingKey = propertyId || orgId;
+      const useV2 = shouldForceNewPipeline() || shouldUseNewPipeline(routingKey);
+      const comparisonMode = isComparisonModeEnabled();
+      console.log(`[CascadeEnrichment] Enriching org: ${org.name} (${org.domain}) [pipeline: ${useV2 ? 'v2' : 'v1'}]`);
+
+      let result;
+      if (useV2) {
+        result = await enrichOrganizationCascadeV2(org.domain, {
+          name: org.name || undefined,
+          locality: org.city || undefined,
+          region: org.state || undefined,
+        });
+
+        // Side-by-side comparison if enabled
+        if (comparisonMode) {
+          try {
+            const v1Result = await enrichOrganizationCascade(org.domain, {
+              name: org.name || undefined,
+              linkedinUrl: org.linkedinHandle ? `https://linkedin.com/company/${org.linkedinHandle}` : undefined,
+            });
+            compareOrganizationResults(org.domain, v1Result, result);
+          } catch (cmpErr) {
+            console.warn(`[CascadeEnrichment] Comparison run failed for org ${org.name}: ${cmpErr instanceof Error ? cmpErr.message : cmpErr}`);
+          }
+        }
+      } else {
+        result = await enrichOrganizationCascade(org.domain, {
+          name: org.name || undefined,
+          linkedinUrl: org.linkedinHandle ? `https://linkedin.com/company/${org.linkedinHandle}` : undefined,
+        });
+      }
 
       if (result.found) {
         const updateData: Record<string, any> = {
@@ -706,9 +777,12 @@ export async function runCascadeEnrichmentOnSavedRecords(
         continue;
       }
 
-      console.log(`[CascadeEnrichment] Enriching contact: ${contact.fullName} (${contact.email || 'no email'})`);
+      const contactRoutingKey = propertyId || contactId;
+      const useV2Contact = shouldForceNewPipeline() || shouldUseNewPipeline(contactRoutingKey);
+      const comparisonModeContact = isComparisonModeEnabled();
+      console.log(`[CascadeEnrichment] Enriching contact: ${contact.fullName} (${contact.email || 'no email'}) [pipeline: ${useV2Contact ? 'v2' : 'v1'}]`);
 
-      const result = await enrichContactCascade({
+      const cascadeInput = {
         fullName: contact.fullName,
         email: contact.email,
         companyDomain: contact.companyDomain,
@@ -716,7 +790,24 @@ export async function runCascadeEnrichmentOnSavedRecords(
         title: contact.title,
         location: contact.location || 'Dallas, TX',
         linkedinUrl: contact.linkedinUrl,
-      });
+      };
+
+      let result;
+      if (useV2Contact) {
+        result = await enrichContactCascadeV2(cascadeInput);
+
+        // Side-by-side comparison if enabled
+        if (comparisonModeContact) {
+          try {
+            const v1Result = await enrichContactCascade(cascadeInput);
+            compareContactResults(contact.fullName, v1Result, result);
+          } catch (cmpErr) {
+            console.warn(`[CascadeEnrichment] Comparison run failed for contact ${contact.fullName}: ${cmpErr instanceof Error ? cmpErr.message : cmpErr}`);
+          }
+        }
+      } else {
+        result = await enrichContactCascade(cascadeInput);
+      }
 
       if (!result.found) {
         console.log(`[CascadeEnrichment] No data found for contact: ${contact.fullName} (${result.confidenceFlag})`);
@@ -1353,12 +1444,7 @@ export async function processPropertyItem(
 ): Promise<{ success: boolean; error?: string; failedStage?: string; isRetryable?: boolean }> {
   try {
     let property = await getPropertyFromPostgres(item.propertyKey);
-    
-    if (!property) {
-      console.log(`[EnrichmentQueue] Property not in Postgres, trying Snowflake: ${item.propertyKey}`);
-      property = await getPropertyByKey(item.propertyKey);
-    }
-    
+
     if (!property) {
       return { success: false, error: 'Property not found in database' };
     }

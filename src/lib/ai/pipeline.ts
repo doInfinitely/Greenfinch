@@ -11,7 +11,7 @@
 // and retry from the point of failure.
 // ============================================================================
 
-import type { CommercialProperty } from "../snowflake";
+import type { CommercialProperty } from "../property-types";
 import type {
   StageResult, PropertyPhysicalData, PropertyClassification,
   OwnershipInfo, DiscoveredContact, FocusedEnrichmentResult,

@@ -1,10 +1,12 @@
 import { db } from './db';
-import { properties, parcelToProperty, parcelnumbMapping } from './schema';
-import { eq, sql, inArray } from 'drizzle-orm';
+import { properties, parcelToProperty, parcelnumbMapping, cadAccountInfo } from './schema';
+import { eq, sql, inArray, and } from 'drizzle-orm';
 import { normalizeAddress, normalizeOwnerName, normalizeCity } from './normalization';
 import { INCLUDED_SPTD_CODES } from './property-classifications';
-import { executeQuery } from './snowflake';
 import { calculateBuildingClass, extractPrimaryHvacTypes, extractPrimaryQualityGrade } from './building-class';
+import { queryCommercialProperties, countCommercialProperties, getAccountsByAccountNums } from './cad/query';
+import type { CountyCode } from './cad/types';
+import { getCountyName } from './cad/county-codes';
 
 export interface IngestionFilters {
   lotSqftMin?: number | null;
@@ -15,39 +17,8 @@ export interface IngestionFilters {
   conditionGrades?: string[];
 }
 
-function buildFilterClauses(filters?: IngestionFilters): string {
-  if (!filters) return '';
-  const clauses: string[] = [];
-  
-  if (filters.lotSqftMin != null && filters.lotSqftMin > 0) {
-    clauses.push(`cp.LOT_SQFT >= ${Number(filters.lotSqftMin)}`);
-  }
-  if (filters.lotSqftMax != null && filters.lotSqftMax > 0) {
-    clauses.push(`cp.LOT_SQFT <= ${Number(filters.lotSqftMax)}`);
-  }
-  if (filters.buildingSqftMin != null && filters.buildingSqftMin > 0) {
-    clauses.push(`cp.GROSS_BLDG_AREA >= ${Number(filters.buildingSqftMin)}`);
-  }
-  if (filters.buildingSqftMax != null && filters.buildingSqftMax > 0) {
-    clauses.push(`cp.GROSS_BLDG_AREA <= ${Number(filters.buildingSqftMax)}`);
-  }
-  if (filters.buildingClassCodes && filters.buildingClassCodes.length > 0) {
-    const escaped = filters.buildingClassCodes.map(c => `'${c.replace(/'/g, "''")}'`).join(', ');
-    clauses.push(`cp.BLDG_CLASS_CD IN (${escaped})`);
-  }
-  if (filters.conditionGrades && filters.conditionGrades.length > 0) {
-    const escaped = filters.conditionGrades.map(c => `'${c.replace(/'/g, "''")}'`).join(', ');
-    clauses.push(`cp.CONDITION_GRADE IN (${escaped})`);
-  }
-  
-  return clauses.length > 0 ? ' AND ' + clauses.join(' AND ') : '';
-}
 
-const COMMERCIAL_PROPERTIES_TABLE = 'DCAD_LAND_2025.PUBLIC.COMMERCIAL_PROPERTIES';
-const ACCOUNT_APPRL_TABLE = 'DCAD_LAND_2025.PUBLIC.ACCOUNT_APPRL_YEAR';
-const ACCOUNT_INFO_TABLE = 'DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO';
-const LAND_TABLE = 'DCAD_LAND_2025.PUBLIC.LAND';
-const REGRID_TABLE = 'NATIONWIDE_PARCEL_DATA__PREMIUM_SCHEMA__FREE_SAMPLE.PREMIUM_PARCELS.TX_DALLAS';
+// County code for the ingestion pipeline (default: DCAD for backwards compatibility)
 
 export interface DCadBuildingRow {
   taxObjId: string | null;
@@ -205,292 +176,33 @@ export interface AggregatedProperty {
 }
 
 
-export async function describeTable(tableName: string): Promise<any[]> {
-  const sql = `DESCRIBE TABLE ${tableName}`;
-  return executeQuery<any>(sql);
+export async function countCommercialPropertiesByZip(zipCode: string, countyCode?: CountyCode): Promise<number> {
+  return countCommercialProperties({ zipCode, countyCode });
 }
 
-export async function sampleAccountInfo(zipCode: string): Promise<any[]> {
-  const sql = `
-    SELECT * 
-    FROM DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO
-    WHERE PROPERTY_ZIPCODE LIKE '${zipCode}%'
-    LIMIT 1
-  `;
-  return executeQuery<any>(sql);
-}
-
-export async function countCommercialPropertiesByZip(zipCode: string): Promise<number> {
-  const sptdCodesList = INCLUDED_SPTD_CODES.map(c => `'${c}'`).join(', ');
-  
-  const sql = `
-    SELECT COUNT(*) as CNT 
-    FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
-    JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
-    WHERE cp.ZIP LIKE '${zipCode}%'
-      AND aa.SPTD_CODE IN (${sptdCodesList})
-  `;
-  const rows = await executeQuery<any>(sql);
-  return rows[0]?.CNT || 0;
-}
-
-export async function countAllCommercialProperties(): Promise<number> {
-  const sptdCodesList = INCLUDED_SPTD_CODES.map(c => `'${c}'`).join(', ');
-  
-  const sql = `
-    SELECT COUNT(*) as CNT 
-    FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
-    JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
-    WHERE aa.SPTD_CODE IN (${sptdCodesList})
-  `;
-  const rows = await executeQuery<any>(sql);
-  return rows[0]?.CNT || 0;
+export async function countAllCommercialProperties(countyCode?: CountyCode): Promise<number> {
+  return countCommercialProperties({ countyCode });
 }
 
 export async function getCommercialPropertiesByZip(
   zipCode: string,
   limit: number = 1000,
   offset: number = 0,
-  filters?: IngestionFilters
+  filters?: IngestionFilters,
+  countyCode?: CountyCode,
 ): Promise<DCadCommercialProperty[]> {
-  const sptdCodesList = INCLUDED_SPTD_CODES.map(c => `'${c}'`).join(', ');
-  const filterClauses = buildFilterClauses(filters);
-  
-  const sql = `
-    SELECT 
-      cp.PARCEL_ID,
-      ai.GIS_PARCEL_ID,
-      r."ll_uuid" AS REGRID_LL_UUID,
-      cp."address",
-      cp.CITY,
-      cp.ZIP,
-      cp."lat",
-      cp."lon",
-      cp."usedesc",
-      cp."usecode",
-      cp.REGRID_YEAR_BUILT,
-      cp.REGRID_NUM_STORIES,
-      cp.REGRID_IMPROV_VAL,
-      cp.REGRID_LAND_VAL,
-      cp.REGRID_TOTAL_VAL,
-      cp.LOT_ACRES,
-      cp.LOT_SQFT,
-      cp.BLDG_FOOTPRINT_SQFT,
-      cp.ACCOUNT_NUM,
-      cp.DIVISION_CD,
-      cp.DCAD_IMPROV_VAL,
-      cp.DCAD_LAND_VAL,
-      cp.DCAD_TOTAL_VAL,
-      cp.BLDG_CLASS_CD,
-      cp.CITY_JURIS_DESC,
-      cp.ISD_JURIS_DESC,
-      cp.BIZ_NAME,
-      cp.OWNER_NAME1,
-      cp.OWNER_NAME2,
-      cp.OWNER_ADDRESS_LINE1,
-      cp.OWNER_CITY,
-      cp.OWNER_STATE,
-      cp.OWNER_ZIPCODE,
-      cp.OWNER_PHONE,
-      cp.DEED_TXFR_DATE,
-      cp.DCAD_ZONING,
-      cp.FRONT_DIM,
-      cp.DEPTH_DIM,
-      cp.LAND_AREA,
-      cp.LAND_AREA_UOM,
-      cp.LAND_COST_PER_UOM,
-      cp.TAX_OBJ_ID,
-      cp.PROPERTY_NAME,
-      cp.BLDG_CLASS_DESC,
-      cp.DCAD_YEAR_BUILT,
-      cp.REMODEL_YR,
-      cp.GROSS_BLDG_AREA,
-      cp.DCAD_NUM_STORIES,
-      cp.NUM_UNITS,
-      cp.NET_LEASE_AREA,
-      cp.CONSTRUCTION_TYPE,
-      cp.FOUNDATION_TYPE,
-      cp.HEATING_TYPE,
-      cp.AC_TYPE,
-      cp.QUALITY_GRADE,
-      cp.CONDITION_GRADE,
-      aa.SPTD_CODE,
-      land.AREA_SIZE AS LAND_AREA_SIZE,
-      land.AREA_UOM_DESC AS LAND_AREA_UOM_DESC
-    FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
-    JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
-    JOIN ${ACCOUNT_INFO_TABLE} ai ON cp.ACCOUNT_NUM = ai.ACCOUNT_NUM
-    LEFT JOIN ${LAND_TABLE} land ON cp.ACCOUNT_NUM = land.ACCOUNT_NUM AND land.APPRAISAL_YR = 2025
-    LEFT JOIN ${REGRID_TABLE} r ON ai.GIS_PARCEL_ID = r."parcelnumb"
-    WHERE cp.ZIP LIKE '${zipCode}%'
-      AND aa.SPTD_CODE IN (${sptdCodesList})${filterClauses}
-    ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
-    LIMIT ${limit}
-    OFFSET ${offset}
-  `;
-  
-  const rows = await executeQuery<any>(sql);
-  return rows.map(mapRowToProperty);
+  return queryCommercialProperties({ zipCode, limit, offset, filters, countyCode });
 }
 
 async function getAllCommercialProperties(
   limit: number = 50000,
   offset: number = 0,
-  filters?: IngestionFilters
+  filters?: IngestionFilters,
+  countyCode?: CountyCode,
 ): Promise<DCadCommercialProperty[]> {
-  const sptdCodesList = INCLUDED_SPTD_CODES.map(c => `'${c}'`).join(', ');
-  const filterClauses = buildFilterClauses(filters);
-  
-  const sql = `
-    SELECT 
-      cp.PARCEL_ID,
-      ai.GIS_PARCEL_ID,
-      r."ll_uuid" AS REGRID_LL_UUID,
-      cp."address",
-      cp.CITY,
-      cp.ZIP,
-      cp."lat",
-      cp."lon",
-      cp."usedesc",
-      cp."usecode",
-      cp.REGRID_YEAR_BUILT,
-      cp.REGRID_NUM_STORIES,
-      cp.REGRID_IMPROV_VAL,
-      cp.REGRID_LAND_VAL,
-      cp.REGRID_TOTAL_VAL,
-      cp.LOT_ACRES,
-      cp.LOT_SQFT,
-      cp.BLDG_FOOTPRINT_SQFT,
-      cp.ACCOUNT_NUM,
-      cp.DIVISION_CD,
-      cp.DCAD_IMPROV_VAL,
-      cp.DCAD_LAND_VAL,
-      cp.DCAD_TOTAL_VAL,
-      cp.BLDG_CLASS_CD,
-      cp.CITY_JURIS_DESC,
-      cp.ISD_JURIS_DESC,
-      cp.BIZ_NAME,
-      cp.OWNER_NAME1,
-      cp.OWNER_NAME2,
-      cp.OWNER_ADDRESS_LINE1,
-      cp.OWNER_CITY,
-      cp.OWNER_STATE,
-      cp.OWNER_ZIPCODE,
-      cp.OWNER_PHONE,
-      cp.DEED_TXFR_DATE,
-      cp.DCAD_ZONING,
-      cp.FRONT_DIM,
-      cp.DEPTH_DIM,
-      cp.LAND_AREA,
-      cp.LAND_AREA_UOM,
-      cp.LAND_COST_PER_UOM,
-      cp.TAX_OBJ_ID,
-      cp.PROPERTY_NAME,
-      cp.BLDG_CLASS_DESC,
-      cp.DCAD_YEAR_BUILT,
-      cp.REMODEL_YR,
-      cp.GROSS_BLDG_AREA,
-      cp.DCAD_NUM_STORIES,
-      cp.NUM_UNITS,
-      cp.NET_LEASE_AREA,
-      cp.CONSTRUCTION_TYPE,
-      cp.FOUNDATION_TYPE,
-      cp.HEATING_TYPE,
-      cp.AC_TYPE,
-      cp.QUALITY_GRADE,
-      cp.CONDITION_GRADE,
-      aa.SPTD_CODE,
-      land.AREA_SIZE AS LAND_AREA_SIZE,
-      land.AREA_UOM_DESC AS LAND_AREA_UOM_DESC
-    FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
-    JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
-    JOIN ${ACCOUNT_INFO_TABLE} ai ON cp.ACCOUNT_NUM = ai.ACCOUNT_NUM
-    LEFT JOIN ${LAND_TABLE} land ON cp.ACCOUNT_NUM = land.ACCOUNT_NUM AND land.APPRAISAL_YR = 2025
-    LEFT JOIN ${REGRID_TABLE} r ON ai.GIS_PARCEL_ID = r."parcelnumb"
-    WHERE aa.SPTD_CODE IN (${sptdCodesList})${filterClauses}
-    ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
-    LIMIT ${limit}
-    OFFSET ${offset}
-  `;
-  
-  const rows = await executeQuery<any>(sql);
-  return rows.map(mapRowToProperty);
+  return queryCommercialProperties({ limit, offset, filters, countyCode });
 }
 
-function mapRowToProperty(row: any): DCadCommercialProperty {
-  return {
-    parcelId: row.PARCEL_ID || '',
-    gisParcelId: row.GIS_PARCEL_ID || '',
-    llUuid: row.REGRID_LL_UUID || null,
-    address: row.address || '',
-    city: row.CITY || '',
-    zip: (row.ZIP || '').trim(),
-    lat: parseFloat(row.lat) || 0,
-    lon: parseFloat(row.lon) || 0,
-    usedesc: row.usedesc || null,
-    usecode: row.usecode || null,
-    stateClass: row.SPTD_CODE || null,
-    sptdCode: row.SPTD_CODE || null,
-    
-    regridYearBuilt: row.REGRID_YEAR_BUILT || null,
-    regridNumStories: row.REGRID_NUM_STORIES || null,
-    regridImprovVal: row.REGRID_IMPROV_VAL || null,
-    regridLandVal: row.REGRID_LAND_VAL || null,
-    regridTotalVal: row.REGRID_TOTAL_VAL || null,
-    lotAcres: row.LOT_ACRES || null,
-    lotSqft: row.LOT_SQFT || null,
-    bldgFootprintSqft: row.BLDG_FOOTPRINT_SQFT || null,
-    
-    accountNum: row.ACCOUNT_NUM || '',
-    divisionCd: row.DIVISION_CD || '',
-    dcadImprovVal: row.DCAD_IMPROV_VAL || null,
-    dcadLandVal: row.DCAD_LAND_VAL || null,
-    dcadTotalVal: row.DCAD_TOTAL_VAL || null,
-    bldgClassCd: row.BLDG_CLASS_CD || null,
-    cityJurisDesc: row.CITY_JURIS_DESC || null,
-    isdJurisDesc: row.ISD_JURIS_DESC || null,
-    
-    bizName: row.BIZ_NAME || null,
-    ownerName1: row.OWNER_NAME1 || null,
-    ownerName2: row.OWNER_NAME2 || null,
-    ownerAddressLine1: row.OWNER_ADDRESS_LINE1 || null,
-    ownerCity: row.OWNER_CITY || null,
-    ownerState: row.OWNER_STATE || null,
-    ownerZipcode: row.OWNER_ZIPCODE || null,
-    ownerPhone: row.OWNER_PHONE || null,
-    deedTxfrDate: row.DEED_TXFR_DATE || null,
-    
-    dcadZoning: row.DCAD_ZONING || null,
-    frontDim: row.FRONT_DIM || null,
-    depthDim: row.DEPTH_DIM || null,
-    landArea: row.LAND_AREA || null,
-    landAreaUom: row.LAND_AREA_UOM || null,
-    landCostPerUom: row.LAND_COST_PER_UOM || null,
-    
-    // From LAND table - convert to sqft if needed
-    dcadLandSqft: row.LAND_AREA_SIZE ? (
-      row.LAND_AREA_UOM_DESC === 'ACRES' 
-        ? Math.round(row.LAND_AREA_SIZE * 43560) 
-        : Math.round(row.LAND_AREA_SIZE)
-    ) : null,
-    
-    taxObjId: row.TAX_OBJ_ID || null,
-    propertyName: row.PROPERTY_NAME || null,
-    bldgClassDesc: row.BLDG_CLASS_DESC || null,
-    dcadYearBuilt: row.DCAD_YEAR_BUILT || null,
-    remodelYr: row.REMODEL_YR || null,
-    grossBldgArea: row.GROSS_BLDG_AREA || null,
-    dcadNumStories: row.DCAD_NUM_STORIES || null,
-    numUnits: row.NUM_UNITS || null,
-    netLeaseArea: row.NET_LEASE_AREA || null,
-    constructionType: row.CONSTRUCTION_TYPE || null,
-    foundationType: row.FOUNDATION_TYPE || null,
-    heatingType: row.HEATING_TYPE || null,
-    acType: row.AC_TYPE || null,
-    qualityGrade: row.QUALITY_GRADE || null,
-    conditionGrade: row.CONDITION_GRADE || null,
-  };
-}
 
 function aggregatePropertiesByParcel(rows: DCadCommercialProperty[]): AggregatedProperty[] {
   const groupedByAccount = new Map<string, DCadCommercialProperty[]>();
@@ -703,7 +415,8 @@ function identifyParcelRelationships(properties: AggregatedProperty[]): Map<stri
 
 function buildPropertyData(
   prop: AggregatedProperty,
-  relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[]; llUuid?: string | null }>
+  relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[]; llUuid?: string | null }>,
+  countyCode?: CountyCode,
 ) {
   const propertyKey = prop.accountNum;
   const gisParcelId = prop.gisParcelId;
@@ -738,7 +451,7 @@ function buildPropertyData(
     city: normalizedCity,
     state: 'TX',
     zip: prop.zip,
-    county: 'DALLAS',
+    county: countyCode ? getCountyName(countyCode) : 'DALLAS',
     lat: prop.lat,
     lon: prop.lon,
     lotSqft: prop.computedLotSqft,
@@ -799,7 +512,8 @@ const UPSERT_BATCH_SIZE = 50;
 
 async function batchUpsertPropertiesToPostgres(
   props: AggregatedProperty[],
-  relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[]; llUuid?: string | null }>
+  relationships?: Map<string, { parentAccountNum: string; constituentAccountNums: string[]; llUuid?: string | null }>,
+  countyCode?: CountyCode,
 ): Promise<{ created: number; updated: number; errors: number }> {
   const result = { created: 0, updated: 0, errors: 0 };
   if (props.length === 0) return result;
@@ -809,7 +523,7 @@ async function batchUpsertPropertiesToPostgres(
 
     try {
       const rows = batch.map(prop => ({
-        ...buildPropertyData(prop, relationships),
+        ...buildPropertyData(prop, relationships, countyCode),
         createdAt: new Date(),
         isActive: true,
       }));
@@ -996,7 +710,7 @@ async function upsertPropertyToPostgres(
 }
 
 export interface IngestionStats {
-  totalFromSnowflake: number;
+  totalFromSnowflake: number; // kept for backwards compat, now counts from local staging
   propertiesSaved: number;
   propertiesUpdated: number;
   errors: number;
@@ -1006,11 +720,12 @@ export interface IngestionStats {
 export async function runIngestion(
   zipCode: string,
   limit: number = 500,
-  filters?: IngestionFilters
+  filters?: IngestionFilters,
+  countyCode?: CountyCode,
 ): Promise<IngestionStats> {
-  console.log(`[Ingestion] Starting ingestion for ZIP ${zipCode}`);
+  console.log(`[Ingestion] Starting ingestion for ZIP ${zipCode}${countyCode ? ` (county: ${countyCode})` : ''}`);
   if (filters) console.log(`[Ingestion] Filters applied:`, JSON.stringify(filters));
-  
+
   const startTime = Date.now();
   const stats: IngestionStats = {
     totalFromSnowflake: 0,
@@ -1019,18 +734,17 @@ export async function runIngestion(
     errors: 0,
     durationMs: 0,
   };
-  
-  const count = await countCommercialPropertiesByZip(zipCode);
+
+  const count = await countCommercialPropertiesByZip(zipCode, countyCode);
   console.log(`[Ingestion] Found ${count} commercial properties (rows) in ZIP ${zipCode}`);
-  
-  const commercialProperties = await getCommercialPropertiesByZip(zipCode, limit, 0, filters);
+
+  const commercialProperties = await getCommercialPropertiesByZip(zipCode, limit, 0, filters, countyCode);
   stats.totalFromSnowflake = commercialProperties.length;
-  console.log(`[Ingestion] Fetched ${commercialProperties.length} rows from Snowflake`);
-  
+  console.log(`[Ingestion] Fetched ${commercialProperties.length} rows from staging tables`);
+
   const aggregatedProperties = aggregatePropertiesByParcel(commercialProperties);
   console.log(`[Ingestion] Aggregated into ${aggregatedProperties.length} unique properties`);
-  
-  // Identify parent/constituent relationships based on parcel ID
+
   const relationships = identifyParcelRelationships(aggregatedProperties);
   const complexCount = relationships.size;
   if (complexCount > 0) {
@@ -1040,7 +754,7 @@ export async function runIngestion(
       console.log(`  - ${parent?.primaryPropertyName || parcelId}: ${rel.constituentAccountNums.length + 1} accounts`);
     }
   }
-  
+
   const multiBuilding = aggregatedProperties.filter(p => p.buildingCount > 1);
   if (multiBuilding.length > 0) {
     console.log(`[Ingestion] ${multiBuilding.length} properties have multiple buildings:`);
@@ -1048,132 +762,59 @@ export async function runIngestion(
       console.log(`  - ${p.primaryPropertyName || p.parcelId}: ${p.buildingCount} buildings, ${p.totalGrossBldgArea?.toLocaleString()} sqft`);
     }
   }
-  
-  const batchResult = await batchUpsertPropertiesToPostgres(aggregatedProperties, relationships);
+
+  const batchResult = await batchUpsertPropertiesToPostgres(aggregatedProperties, relationships, countyCode);
   stats.propertiesSaved += batchResult.created;
   stats.propertiesUpdated += batchResult.updated;
   stats.errors += batchResult.errors;
-  
-  const parentResult = await ingestParentAccounts();
+
+  const parentResult = await ingestParentAccounts(countyCode);
   stats.propertiesSaved += parentResult.ingested;
   stats.errors += parentResult.errors;
-  
-  const mappingResult = await buildParcelnumbMapping();
+
+  const mappingResult = await buildParcelnumbMapping(countyCode);
   if (mappingResult.errors > 0) stats.errors += mappingResult.errors;
-  
+
   stats.durationMs = Date.now() - startTime;
   console.log(`[Ingestion] Complete in ${Math.round(stats.durationMs / 1000)}s: ${stats.propertiesSaved} new, ${stats.propertiesUpdated} updated, ${stats.errors} errors`);
-  
+
   return stats;
 }
 
 async function getParentAccountsByAccountNums(
-  accountNums: string[]
+  accountNums: string[],
+  countyCode?: CountyCode,
 ): Promise<DCadCommercialProperty[]> {
   if (accountNums.length === 0) return [];
-  
-  const accountNumsList = accountNums.map(a => `'${a.replace(/'/g, "''")}'`).join(', ');
-  
-  const sql = `
-    SELECT 
-      cp.PARCEL_ID,
-      ai.GIS_PARCEL_ID,
-      r."ll_uuid" AS REGRID_LL_UUID,
-      cp."address",
-      cp.CITY,
-      cp.ZIP,
-      cp."lat",
-      cp."lon",
-      cp."usedesc",
-      cp."usecode",
-      cp.REGRID_YEAR_BUILT,
-      cp.REGRID_NUM_STORIES,
-      cp.REGRID_IMPROV_VAL,
-      cp.REGRID_LAND_VAL,
-      cp.REGRID_TOTAL_VAL,
-      cp.LOT_ACRES,
-      cp.LOT_SQFT,
-      cp.BLDG_FOOTPRINT_SQFT,
-      cp.ACCOUNT_NUM,
-      cp.DIVISION_CD,
-      cp.DCAD_IMPROV_VAL,
-      cp.DCAD_LAND_VAL,
-      cp.DCAD_TOTAL_VAL,
-      cp.BLDG_CLASS_CD,
-      cp.CITY_JURIS_DESC,
-      cp.ISD_JURIS_DESC,
-      cp.BIZ_NAME,
-      cp.OWNER_NAME1,
-      cp.OWNER_NAME2,
-      cp.OWNER_ADDRESS_LINE1,
-      cp.OWNER_CITY,
-      cp.OWNER_STATE,
-      cp.OWNER_ZIPCODE,
-      cp.OWNER_PHONE,
-      cp.DEED_TXFR_DATE,
-      cp.DCAD_ZONING,
-      cp.FRONT_DIM,
-      cp.DEPTH_DIM,
-      cp.LAND_AREA,
-      cp.LAND_AREA_UOM,
-      cp.LAND_COST_PER_UOM,
-      cp.TAX_OBJ_ID,
-      cp.PROPERTY_NAME,
-      cp.BLDG_CLASS_DESC,
-      cp.DCAD_YEAR_BUILT,
-      cp.REMODEL_YR,
-      cp.GROSS_BLDG_AREA,
-      cp.DCAD_NUM_STORIES,
-      cp.NUM_UNITS,
-      cp.NET_LEASE_AREA,
-      cp.CONSTRUCTION_TYPE,
-      cp.FOUNDATION_TYPE,
-      cp.HEATING_TYPE,
-      cp.AC_TYPE,
-      cp.QUALITY_GRADE,
-      cp.CONDITION_GRADE,
-      aa.SPTD_CODE,
-      land.AREA_SIZE AS LAND_AREA_SIZE,
-      land.AREA_UOM_DESC AS LAND_AREA_UOM_DESC
-    FROM ${COMMERCIAL_PROPERTIES_TABLE} cp
-    JOIN ${ACCOUNT_APPRL_TABLE} aa ON cp.ACCOUNT_NUM = aa.ACCOUNT_NUM AND aa.APPRAISAL_YR = 2025
-    JOIN ${ACCOUNT_INFO_TABLE} ai ON cp.ACCOUNT_NUM = ai.ACCOUNT_NUM
-    LEFT JOIN ${LAND_TABLE} land ON cp.ACCOUNT_NUM = land.ACCOUNT_NUM AND land.APPRAISAL_YR = 2025
-    LEFT JOIN ${REGRID_TABLE} r ON ai.GIS_PARCEL_ID = r."parcelnumb"
-    WHERE cp.ACCOUNT_NUM IN (${accountNumsList})
-    ORDER BY cp.DCAD_TOTAL_VAL DESC NULLS LAST
-  `;
-  
-  const rows = await executeQuery<any>(sql);
-  return rows.map(mapRowToProperty);
+  return getAccountsByAccountNums(accountNums, countyCode);
 }
 
-export async function buildParcelnumbMapping(): Promise<{ mapped: number; errors: number }> {
+export async function buildParcelnumbMapping(countyCode?: CountyCode): Promise<{ mapped: number; errors: number }> {
   const result = { mapped: 0, errors: 0 };
-  
+
   const allGisIds = await db
     .selectDistinct({ gisParcelId: properties.dcadGisParcelId })
     .from(properties);
-  
+
   const gisParcelIds = allGisIds
     .map(r => r.gisParcelId)
     .filter((id): id is string => !!id && id.length > 0);
-  
+
   if (gisParcelIds.length === 0) {
     console.log(`[Ingestion] No GIS parcel IDs found, skipping parcelnumb mapping`);
     return result;
   }
-  
+
   console.log(`[Ingestion] Building parcelnumb mapping for ${gisParcelIds.length} distinct GIS parcel IDs...`);
-  
+
   const existingKeys = new Set(
     (await db.select({ pk: properties.propertyKey }).from(properties)).map(r => r.pk)
   );
-  
+
   const batchSize = 500;
-  let totalFromSnowflake = 0;
+  let totalFromStaging = 0;
   let alreadyInProperties = 0;
-  
+
   async function upsertMappings(mappings: { accountNum: string; gisParcelId: string; parentPropertyKey: string | null }[]) {
     if (mappings.length === 0) return;
     const insertBatchSize = 1000;
@@ -1191,87 +832,61 @@ export async function buildParcelnumbMapping(): Promise<{ mapped: number; errors
     }
     result.mapped += mappings.length;
   }
-  
-  function processRows(rows: { ACCOUNT_NUM: string; GIS_PARCEL_ID: string }[]) {
+
+  function processRows(rows: { accountNum: string; gisParcelId: string | null }[]) {
     const mappings: { accountNum: string; gisParcelId: string; parentPropertyKey: string | null }[] = [];
     for (const row of rows) {
-      if (!row.ACCOUNT_NUM || !row.GIS_PARCEL_ID) continue;
-      if (existingKeys.has(row.ACCOUNT_NUM)) {
+      if (!row.accountNum || !row.gisParcelId) continue;
+      if (existingKeys.has(row.accountNum)) {
         alreadyInProperties++;
         continue;
       }
-      const parentKey = existingKeys.has(row.GIS_PARCEL_ID) ? row.GIS_PARCEL_ID : null;
+      const parentKey = existingKeys.has(row.gisParcelId) ? row.gisParcelId : null;
       mappings.push({
-        accountNum: row.ACCOUNT_NUM,
-        gisParcelId: row.GIS_PARCEL_ID,
+        accountNum: row.accountNum,
+        gisParcelId: row.gisParcelId,
         parentPropertyKey: parentKey,
       });
     }
     return mappings;
   }
-  
-  // Pass 1: All accounts in ACCOUNT_INFO that share a GIS_PARCEL_ID with our properties
+
+  // Query local cad_account_info staging table instead of Snowflake
   for (let i = 0; i < gisParcelIds.length; i += batchSize) {
     const batch = gisParcelIds.slice(i, i + batchSize);
-    const gisIdsList = batch.map(id => `'${id.replace(/'/g, "''")}'`).join(', ');
-    
+
     try {
-      const sfQuery = `
-        SELECT DISTINCT ai.ACCOUNT_NUM, ai.GIS_PARCEL_ID
-        FROM ${ACCOUNT_INFO_TABLE} ai
-        WHERE ai.GIS_PARCEL_ID IN (${gisIdsList})
-      `;
-      
-      const rows = await executeQuery<{ ACCOUNT_NUM: string; GIS_PARCEL_ID: string }>(sfQuery);
-      totalFromSnowflake += rows.length;
+      const conditions: any[] = [inArray(cadAccountInfo.gisParcelId, batch)];
+      if (countyCode) {
+        conditions.push(eq(cadAccountInfo.countyCode, countyCode));
+      }
+
+      const rows = await db
+        .selectDistinct({
+          accountNum: cadAccountInfo.accountNum,
+          gisParcelId: cadAccountInfo.gisParcelId,
+        })
+        .from(cadAccountInfo)
+        .where(and(...conditions));
+
+      totalFromStaging += rows.length;
       const mappings = processRows(rows);
       await upsertMappings(mappings);
-      
-      console.log(`[Ingestion] Parcelnumb mapping pass 1 batch ${Math.floor(i / batchSize) + 1}: ${rows.length} accounts, ${mappings.length} new mappings`);
+
+      console.log(`[Ingestion] Parcelnumb mapping batch ${Math.floor(i / batchSize) + 1}: ${rows.length} accounts, ${mappings.length} new mappings`);
     } catch (error) {
       result.errors++;
-      console.error(`[Ingestion] Error in parcelnumb mapping pass 1:`, error instanceof Error ? error.message : error);
+      console.error(`[Ingestion] Error in parcelnumb mapping:`, error instanceof Error ? error.message : error);
     }
   }
-  
-  // Pass 2: BPP accounts (SPTD_CODE LIKE 'L%') from ACCOUNT_APPRL_YEAR joined with ACCOUNT_INFO
-  // These accounts may not have been picked up in pass 1 if their GIS_PARCEL_ID is null/different in ACCOUNT_INFO
-  console.log(`[Ingestion] Pass 2: Fetching BPP accounts (L-codes) from ACCOUNT_APPRL_YEAR...`);
-  for (let i = 0; i < gisParcelIds.length; i += batchSize) {
-    const batch = gisParcelIds.slice(i, i + batchSize);
-    const gisIdsList = batch.map(id => `'${id.replace(/'/g, "''")}'`).join(', ');
-    
-    try {
-      const bppQuery = `
-        SELECT DISTINCT aa.ACCOUNT_NUM, ai.GIS_PARCEL_ID
-        FROM ${ACCOUNT_APPRL_TABLE} aa
-        JOIN ${ACCOUNT_INFO_TABLE} ai ON aa.ACCOUNT_NUM = ai.ACCOUNT_NUM
-        WHERE aa.APPRAISAL_YR = 2025
-          AND aa.SPTD_CODE LIKE 'L%'
-          AND ai.GIS_PARCEL_ID IN (${gisIdsList})
-      `;
-      
-      const bppRows = await executeQuery<{ ACCOUNT_NUM: string; GIS_PARCEL_ID: string }>(bppQuery);
-      totalFromSnowflake += bppRows.length;
-      const bppMappings = processRows(bppRows);
-      await upsertMappings(bppMappings);
-      
-      if (bppMappings.length > 0) {
-        console.log(`[Ingestion] Pass 2 BPP batch ${Math.floor(i / batchSize) + 1}: ${bppRows.length} accounts, ${bppMappings.length} new mappings`);
-      }
-    } catch (error) {
-      result.errors++;
-      console.error(`[Ingestion] Error in parcelnumb mapping pass 2 batch:`, error instanceof Error ? error.message : error);
-    }
-  }
-  
-  console.log(`[Ingestion] Parcelnumb mapping complete: ${totalFromSnowflake} total accounts, ${alreadyInProperties} already in properties, ${result.mapped} new mappings, ${result.errors} errors`);
+
+  console.log(`[Ingestion] Parcelnumb mapping complete: ${totalFromStaging} total accounts, ${alreadyInProperties} already in properties, ${result.mapped} new mappings, ${result.errors} errors`);
   return result;
 }
 
-async function ingestParentAccounts(): Promise<{ ingested: number; errors: number }> {
+async function ingestParentAccounts(countyCode?: CountyCode): Promise<{ ingested: number; errors: number }> {
   const result = { ingested: 0, errors: 0 };
-  
+
   const allProps = await db
     .select({
       propertyKey: properties.propertyKey,
@@ -1280,38 +895,37 @@ async function ingestParentAccounts(): Promise<{ ingested: number; errors: numbe
     .from(properties);
 
   const existingKeys = new Set(allProps.map(p => p.propertyKey));
-  
+
   const missingParentAccountNums = new Set<string>();
   for (const prop of allProps) {
     if (prop.gisParcelId && prop.gisParcelId !== prop.propertyKey && !existingKeys.has(prop.gisParcelId)) {
       missingParentAccountNums.add(prop.gisParcelId);
     }
   }
-  
+
   if (missingParentAccountNums.size === 0) {
     console.log(`[Ingestion] No missing parent accounts to ingest`);
     return result;
   }
-  
-  console.log(`[Ingestion] Found ${missingParentAccountNums.size} missing parent accounts, fetching from Snowflake...`);
-  console.log(`[Ingestion] Missing parent account nums (first 10): ${Array.from(missingParentAccountNums).slice(0, 10).join(', ')}`);
-  
+
+  console.log(`[Ingestion] Found ${missingParentAccountNums.size} missing parent accounts, fetching from staging tables...`);
+
   const batchSize = 100;
   const accountNumsArray = Array.from(missingParentAccountNums);
   let notFoundCount = 0;
-  
+
   for (let i = 0; i < accountNumsArray.length; i += batchSize) {
     const batch = accountNumsArray.slice(i, i + batchSize);
-    
+
     try {
-      const parentProperties = await getParentAccountsByAccountNums(batch);
+      const parentProperties = await getParentAccountsByAccountNums(batch, countyCode);
       const batchNotFound = batch.length - parentProperties.length;
       notFoundCount += batchNotFound;
-      console.log(`[Ingestion] Fetched ${parentProperties.length}/${batch.length} parent accounts from Snowflake (batch ${Math.floor(i / batchSize) + 1})${batchNotFound > 0 ? ` - ${batchNotFound} not found in source table` : ''}`);
-      
+      console.log(`[Ingestion] Fetched ${parentProperties.length}/${batch.length} parent accounts (batch ${Math.floor(i / batchSize) + 1})${batchNotFound > 0 ? ` - ${batchNotFound} not found in staging` : ''}`);
+
       const aggregated = aggregatePropertiesByParcel(parentProperties);
-      
-      const batchUpsertResult = await batchUpsertPropertiesToPostgres(aggregated);
+
+      const batchUpsertResult = await batchUpsertPropertiesToPostgres(aggregated, undefined, countyCode);
       result.ingested += batchUpsertResult.created;
       result.errors += batchUpsertResult.errors;
     } catch (error) {
@@ -1319,11 +933,11 @@ async function ingestParentAccounts(): Promise<{ ingested: number; errors: numbe
       console.error(`[Ingestion] Error fetching parent accounts batch:`, error instanceof Error ? error.message : error);
     }
   }
-  
+
   if (notFoundCount > 0) {
-    console.warn(`[Ingestion] ${notFoundCount} parent accounts not found in COMMERCIAL_PROPERTIES_TABLE - these may require a broader source table`);
+    console.warn(`[Ingestion] ${notFoundCount} parent accounts not found in staging tables`);
   }
-  
+
   console.log(`[Ingestion] Parent account ingestion: ${result.ingested} ingested, ${result.errors} errors`);
   return result;
 }
@@ -1340,10 +954,11 @@ export interface MultiZipIngestionStats {
 export async function runMultiZipIngestion(
   zipCodes: string[],
   limitPerZip: number = 500,
-  filters?: IngestionFilters
+  filters?: IngestionFilters,
+  countyCode?: CountyCode,
 ): Promise<MultiZipIngestionStats> {
   console.log(`[Ingestion] Starting multi-ZIP ingestion for ${zipCodes.length} ZIP codes: ${zipCodes.join(', ')}`);
-  
+
   const startTime = Date.now();
   const stats: MultiZipIngestionStats = {
     totalFromSnowflake: 0,
@@ -1353,39 +968,40 @@ export async function runMultiZipIngestion(
     durationMs: 0,
     zipCodeStats: {},
   };
-  
+
   for (const zipCode of zipCodes) {
     console.log(`\n[Ingestion] --- Processing ZIP ${zipCode} ---`);
-    const zipStats = await runIngestion(zipCode, limitPerZip, filters);
-    
+    const zipStats = await runIngestion(zipCode, limitPerZip, filters, countyCode);
+
     stats.totalFromSnowflake += zipStats.totalFromSnowflake;
     stats.propertiesSaved += zipStats.propertiesSaved;
     stats.propertiesUpdated += zipStats.propertiesUpdated;
     stats.errors += zipStats.errors;
     stats.zipCodeStats[zipCode] = zipStats;
   }
-  
-  const parentResult = await ingestParentAccounts();
+
+  const parentResult = await ingestParentAccounts(countyCode);
   stats.propertiesSaved += parentResult.ingested;
   stats.errors += parentResult.errors;
-  
-  const mappingResult = await buildParcelnumbMapping();
+
+  const mappingResult = await buildParcelnumbMapping(countyCode);
   if (mappingResult.errors > 0) stats.errors += mappingResult.errors;
-  
+
   stats.durationMs = Date.now() - startTime;
   console.log(`\n[Ingestion] Multi-ZIP ingestion complete in ${Math.round(stats.durationMs / 1000)}s`);
   console.log(`[Ingestion] Total: ${stats.propertiesSaved} new, ${stats.propertiesUpdated} updated, ${stats.errors} errors across ${zipCodes.length} ZIPs`);
-  
+
   return stats;
 }
 
 export async function runAllZipsIngestion(
   limit: number = 50000,
-  filters?: IngestionFilters
+  filters?: IngestionFilters,
+  countyCode?: CountyCode,
 ): Promise<IngestionStats> {
   console.log(`[Ingestion] Starting ALL ZIP codes ingestion with limit ${limit}`);
   if (filters) console.log(`[Ingestion] Filters applied:`, JSON.stringify(filters));
-  
+
   const startTime = Date.now();
   const stats: IngestionStats = {
     totalFromSnowflake: 0,
@@ -1394,17 +1010,17 @@ export async function runAllZipsIngestion(
     errors: 0,
     durationMs: 0,
   };
-  
-  const count = await countAllCommercialProperties();
+
+  const count = await countAllCommercialProperties(countyCode);
   console.log(`[Ingestion] Found ${count} total commercial properties (rows) across all ZIP codes`);
-  
-  const commercialProperties = await getAllCommercialProperties(limit, 0, filters);
+
+  const commercialProperties = await getAllCommercialProperties(limit, 0, filters, countyCode);
   stats.totalFromSnowflake = commercialProperties.length;
-  console.log(`[Ingestion] Fetched ${commercialProperties.length} rows from Snowflake`);
-  
+  console.log(`[Ingestion] Fetched ${commercialProperties.length} rows from staging tables`);
+
   const aggregatedProperties = aggregatePropertiesByParcel(commercialProperties);
   console.log(`[Ingestion] Aggregated into ${aggregatedProperties.length} unique properties`);
-  
+
   const relationships = identifyParcelRelationships(aggregatedProperties);
   const complexCount = relationships.size;
   if (complexCount > 0) {
@@ -1414,7 +1030,7 @@ export async function runAllZipsIngestion(
       console.log(`  - ${parent?.primaryPropertyName || parcelId}: ${rel.constituentAccountNums.length + 1} accounts`);
     }
   }
-  
+
   const multiBuilding = aggregatedProperties.filter(p => p.buildingCount > 1);
   if (multiBuilding.length > 0) {
     console.log(`[Ingestion] ${multiBuilding.length} properties have multiple buildings:`);
@@ -1422,21 +1038,21 @@ export async function runAllZipsIngestion(
       console.log(`  - ${p.primaryPropertyName || p.parcelId}: ${p.buildingCount} buildings, ${p.totalGrossBldgArea?.toLocaleString()} sqft`);
     }
   }
-  
-  const batchResult = await batchUpsertPropertiesToPostgres(aggregatedProperties, relationships);
+
+  const batchResult = await batchUpsertPropertiesToPostgres(aggregatedProperties, relationships, countyCode);
   stats.propertiesSaved += batchResult.created;
   stats.propertiesUpdated += batchResult.updated;
   stats.errors += batchResult.errors;
-  
-  const parentResult = await ingestParentAccounts();
+
+  const parentResult = await ingestParentAccounts(countyCode);
   stats.propertiesSaved += parentResult.ingested;
   stats.errors += parentResult.errors;
-  
-  const mappingResult = await buildParcelnumbMapping();
+
+  const mappingResult = await buildParcelnumbMapping(countyCode);
   if (mappingResult.errors > 0) stats.errors += mappingResult.errors;
-  
+
   stats.durationMs = Date.now() - startTime;
   console.log(`[Ingestion] All-ZIP ingestion complete in ${Math.round(stats.durationMs / 1000)}s: ${stats.propertiesSaved} new, ${stats.propertiesUpdated} updated, ${stats.errors} errors`);
-  
+
   return stats;
 }

@@ -1,95 +1,115 @@
-import { getCommercialPropertyByParcelId, getCommercialPropertiesByZip } from '../src/lib/snowflake';
+import { db } from '../src/lib/db';
+import { properties } from '../src/lib/schema';
+import { eq } from 'drizzle-orm';
 import { runFocusedEnrichment, classifyAndVerifyProperty, identifyOwnership, discoverContacts } from '../src/lib/ai';
+import type { CommercialProperty } from '../src/lib/property-types';
+
+function buildCommercialPropertyFromDb(prop: any): CommercialProperty {
+  return {
+    parcelId: prop.propertyKey,
+    address: prop.regridAddress || '',
+    city: prop.city || '',
+    zip: prop.zip || '',
+    lat: prop.lat || 0,
+    lon: prop.lon || 0,
+    usedesc: prop.dcadZoning || '',
+    usecode: '',
+    sptdCode: prop.dcadSptdCode || null,
+    regridYearBuilt: prop.yearBuilt || null,
+    regridNumStories: prop.numFloors || null,
+    regridImprovVal: null,
+    regridLandVal: null,
+    regridTotalVal: null,
+    lotAcres: prop.lotSqft ? prop.lotSqft / 43560 : null,
+    lotSqft: prop.lotSqft || null,
+    bldgFootprintSqft: null,
+    accountNum: prop.dcadAccountNum || '',
+    gisParcelId: prop.dcadGisParcelId || null,
+    divisionCd: prop.dcadDivisionCd || 'COM',
+    dcadImprovVal: prop.dcadImprovVal || null,
+    dcadLandVal: prop.dcadLandVal || null,
+    dcadTotalVal: prop.dcadTotalVal || null,
+    cityJurisDesc: prop.dcadCityJuris || null,
+    isdJurisDesc: prop.dcadIsdJuris || null,
+    bizName: prop.dcadBizName || null,
+    ownerName1: prop.dcadOwnerName1 || null,
+    ownerName2: prop.dcadOwnerName2 || null,
+    ownerAddressLine1: prop.dcadOwnerAddress || null,
+    ownerCity: prop.dcadOwnerCity || null,
+    ownerState: prop.dcadOwnerState || null,
+    ownerZipcode: prop.dcadOwnerZip || null,
+    ownerPhone: prop.dcadOwnerPhone || null,
+    deedTxfrDate: prop.dcadDeedTransferDate || null,
+    legal1: null,
+    legal2: null,
+    legal3: null,
+    legal4: null,
+    dcadZoning: prop.dcadZoning || null,
+    frontDim: prop.dcadLandFrontDim || null,
+    depthDim: prop.dcadLandDepthDim || null,
+    landArea: prop.dcadLandArea || null,
+    landAreaUom: prop.dcadLandAreaUom || null,
+    landCostPerUom: null,
+    buildingCount: prop.dcadBuildingCount || 1,
+    oldestYearBuilt: prop.dcadOldestYearBuilt || null,
+    newestYearBuilt: prop.dcadNewestYearBuilt || null,
+    totalGrossBldgArea: prop.dcadTotalGrossBldgArea || null,
+    totalUnits: prop.dcadTotalUnits || null,
+    buildings: prop.dcadBuildings || [],
+  };
+}
 
 async function main() {
-  const parcelId = process.argv[2] || '005453000K01A0000'; // NorthPark Mall default
+  const propertyKey = process.argv[2];
   const step = process.argv[3] || 'all';
-  
+
+  if (!propertyKey) {
+    console.log('Usage: npx tsx scripts/test-ai-enrichment.ts <propertyKey> [classify|ownership|contacts|all]');
+    process.exit(1);
+  }
+
   console.log(`\n=== Testing Focused Enrichment ===`);
-  console.log(`Parcel ID: ${parcelId}`);
+  console.log(`Property Key: ${propertyKey}`);
   console.log(`Step: ${step}\n`);
-  
+
   try {
-    let property = await getCommercialPropertyByParcelId(parcelId);
-    
-    if (!property) {
-      console.log(`Property not found: ${parcelId}`);
-      console.log('Fetching a sample property from ZIP 75225...');
-      const properties = await getCommercialPropertiesByZip('75225', 'COM', 5);
-      if (properties.length === 0) {
-        throw new Error('No properties found');
-      }
-      property = properties.find(p => p.buildingCount > 1) || properties[0];
+    const [prop] = await db.select().from(properties).where(eq(properties.propertyKey, propertyKey));
+
+    if (!prop) {
+      console.log(`Property not found: ${propertyKey}`);
+      process.exit(1);
     }
-    
+
+    const property = buildCommercialPropertyFromDb(prop);
+
     console.log('=== INPUT PROPERTY ===');
     console.log(`Address: ${property.address}, ${property.city}, TX ${property.zip}`);
     console.log(`Buildings: ${property.buildingCount}`);
     console.log(`Total Sqft: ${property.totalGrossBldgArea?.toLocaleString()}`);
     console.log(`Owner: ${property.bizName || property.ownerName1}`);
-    console.log('\nBuilding Details:');
-    property.buildings?.slice(0, 5).forEach((b, i) => {
-      console.log(`  ${i + 1}. ${b.propertyName || 'Unnamed'} - ${b.bldgClassDesc} - ${b.grossBldgArea?.toLocaleString()} sqft`);
-    });
-    if ((property.buildings?.length || 0) > 5) {
-      console.log(`  ... and ${property.buildings!.length - 5} more buildings`);
-    }
-    
+
     if (step === 'classify' || step === 'all') {
       console.log('\n=== STEP 1: CLASSIFY PROPERTY ===');
       const startTime = Date.now();
-      const classification = await classifyProperty(property);
-      const elapsed = Date.now() - startTime;
-      console.log(`Time: ${elapsed}ms`);
+      const classification = await classifyAndVerifyProperty(property);
+      console.log(`Time: ${Date.now() - startTime}ms`);
       console.log(JSON.stringify(classification, null, 2));
-      
+
       if (step === 'all') {
         console.log('\n=== STEP 2: IDENTIFY OWNERSHIP ===');
         const startOwnership = Date.now();
         const ownership = await identifyOwnership(property, classification);
-        const elapsedOwnership = Date.now() - startOwnership;
-        console.log(`Time: ${elapsedOwnership}ms`);
+        console.log(`Time: ${Date.now() - startOwnership}ms`);
         console.log(JSON.stringify(ownership, null, 2));
-        
+
         console.log('\n=== STEP 3: DISCOVER CONTACTS ===');
         const startContacts = Date.now();
         const contacts = await discoverContacts(property, classification, ownership);
-        const elapsedContacts = Date.now() - startContacts;
-        console.log(`Time: ${elapsedContacts}ms`);
+        console.log(`Time: ${Date.now() - startContacts}ms`);
         console.log(`Contacts found: ${contacts.length}`);
         console.log(JSON.stringify(contacts, null, 2));
-        
-        console.log('\n=== SUMMARY ===');
-        console.log(`Total time: ${elapsed + elapsedOwnership + elapsedContacts}ms`);
-        console.log(`Classification: ${classification.category} - ${classification.subcategory}`);
-        console.log(`Property Name: ${classification.propertyName}`);
-        console.log(`Beneficial Owner: ${ownership.beneficialOwner?.name || 'Unknown'}`);
-        console.log(`Management Co: ${ownership.managementCompany?.name || 'Unknown'}`);
-        console.log(`Contacts: ${contacts.length}`);
       }
     }
-    
-    if (step === 'ownership') {
-      const classification = await classifyProperty(property);
-      console.log('\n=== STEP 2: IDENTIFY OWNERSHIP ===');
-      const startTime = Date.now();
-      const ownership = await identifyOwnership(property, classification);
-      const elapsed = Date.now() - startTime;
-      console.log(`Time: ${elapsed}ms`);
-      console.log(JSON.stringify(ownership, null, 2));
-    }
-    
-    if (step === 'contacts') {
-      const classification = await classifyProperty(property);
-      const ownership = await identifyOwnership(property, classification);
-      console.log('\n=== STEP 3: DISCOVER CONTACTS ===');
-      const startTime = Date.now();
-      const contacts = await discoverContacts(property, classification, ownership);
-      const elapsed = Date.now() - startTime;
-      console.log(`Time: ${elapsed}ms`);
-      console.log(JSON.stringify(contacts, null, 2));
-    }
-    
   } catch (error) {
     console.error('Error:', error);
   }
