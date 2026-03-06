@@ -8,7 +8,7 @@
 //   if (shouldUseNewPipeline(propertyKey)) { ... V2 ... } else { ... V1 ... }
 // ============================================================================
 
-const DEFAULT_NEW_PIPELINE_PERCENTAGE = 0; // Start at 0%, increase gradually
+const DEFAULT_NEW_PIPELINE_PERCENTAGE = 100; // V2 pipeline active
 
 /** Environment-configurable traffic percentage for new pipeline (0-100). */
 function getNewPipelinePercentage(): number {

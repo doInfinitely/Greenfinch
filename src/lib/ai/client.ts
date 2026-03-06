@@ -22,6 +22,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 let vertexCredentialsReady = false;
+let _geminiClient: GoogleGenAI | null = null;
 
 export { GEMINI_HTTP_TIMEOUT_MS } from './config';
 
@@ -55,8 +56,20 @@ export function ensureVertexCredentials(): { project: string; location: string }
 }
 
 export function getGeminiClient(): GoogleGenAI {
+  if (_geminiClient) return _geminiClient;
+
+  // Prefer API key mode (simpler, no service account needed)
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (apiKey) {
+    console.log('[Gemini] Using API key authentication');
+    _geminiClient = new GoogleGenAI({ apiKey });
+    return _geminiClient;
+  }
+
+  // Fall back to Vertex AI with service account
   const { project, location } = ensureVertexCredentials();
-  return new GoogleGenAI({ vertexai: true, project, location });
+  _geminiClient = new GoogleGenAI({ vertexai: true, project, location });
+  return _geminiClient;
 }
 
 // ---------------------------------------------------------------------------
