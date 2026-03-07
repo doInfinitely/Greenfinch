@@ -3,7 +3,8 @@ import { spawn } from 'child_process';
 const isDev = process.env.NODE_ENV === 'development';
 const command = isDev ? 'dev' : 'start';
 
-const next = spawn('npx', ['next', command, '-p', '5000', '-H', '0.0.0.0'], {
+const port = process.env.PORT || '5000';
+const next = spawn('npx', ['next', command, '-p', port, '-H', '0.0.0.0'], {
   stdio: 'inherit',
   shell: true,
 });
