@@ -20,6 +20,7 @@ import type {
 } from './cascade-enrichment';
 import { enrichPersonSerpAI } from './serp-person-enrichment';
 import { enrichCompanySerpAI } from './serp-company-enrichment';
+import { enrichPersonPDL } from './pdl';
 import { verifyEmployment } from './browser-employment-verification';
 import { verifyEmail as verifyEmailFindymail, findEmailByName, findLinkedInByEmail } from './findymail';
 import { findEmail as findEmailHunter } from './hunter';
@@ -35,9 +36,10 @@ import { parseFullName, getEmployeeRange } from './utils';
 /**
  * Enrich a contact using the new SerpAPI + browser-use cascade pipeline.
  *
- * Five stages:
+ * Six stages:
  *   1. Input validation + email discovery (Findymail + Hunter — unchanged)
- *   2. Person match via SerpAPI + LLM (replaces PDL)
+ *   2. Person match via SerpAPI + LLM
+ *   2b. PDL email/phone supplement (cached — uses existing PDL credits)
  *   3. LinkedIn discovery via SERP (unchanged)
  *   4. Employment verification via browser-use (replaces Crustdata)
  *   5. Confidence flag assignment
@@ -192,6 +194,96 @@ export async function enrichContactCascadeV2(
     console.warn(`[CascadeV2] SerpAPI person enrichment failed: ${err instanceof Error ? err.message : err}`);
   }
 
+  // -- Stage 2b: PDL Email/Phone Supplement (cached) -----------------------
+  // Use PDL credits we already have to fill in emails, phones, and LinkedIn
+  // that SerpAPI + Findymail/Hunter may have missed. Results are cached in
+  // Redis for 7 days so the same person is never fetched from PDL twice.
+  if (inputDomain && lastName) {
+    try {
+      const pdlResult = await enrichPersonPDL(firstName, lastName, inputDomain, {
+        companyName: input.companyName || result.company || undefined,
+        location: input.location || result.location || undefined,
+        email: result.email || input.email || undefined,
+        linkedinUrl: result.linkedinUrl || input.linkedinUrl || undefined,
+      });
+
+      if (pdlResult.found) {
+        // Store PDL metadata fields regardless
+        result.pdlRaw = pdlResult.raw ?? null;
+        result.pdlFullName = pdlResult.fullName;
+        result.pdlWorkEmail = pdlResult.workEmail;
+        result.pdlEmailsJson = pdlResult.emailsJson;
+        result.pdlPersonalEmails = pdlResult.personalEmails;
+        result.pdlPhonesJson = pdlResult.phonesJson;
+        result.pdlMobilePhone = pdlResult.mobilePhone;
+        result.pdlLinkedinUrl = pdlResult.linkedinUrl;
+        result.pdlTitle = pdlResult.title;
+        result.pdlCompany = pdlResult.companyName;
+        result.pdlCompanyDomain = pdlResult.companyDomain;
+        result.pdlTitleRole = pdlResult.titleRole;
+        result.pdlTitleLevels = pdlResult.titleLevels;
+        result.pdlTitleClass = pdlResult.titleClass;
+        result.pdlTitleSubRole = pdlResult.titleSubRole;
+        result.pdlLocation = pdlResult.location;
+        result.pdlCity = pdlResult.city;
+        result.pdlState = pdlResult.state;
+        result.pdlAddressesJson = pdlResult.addressesJson;
+        result.pdlIndustry = pdlResult.industry;
+        result.pdlGender = pdlResult.gender;
+        result.pdlDatasetVersion = pdlResult.datasetVersion;
+        result.companyPdlId = pdlResult.companyPdlId;
+
+        // Fill in email from PDL if we still don't have one
+        if (!result.email && pdlResult.workEmail) {
+          result.email = pdlResult.workEmail;
+          result.emailSource = null; // PDL-sourced, needs verification
+          result.emailStatus = 'unknown';
+        } else if (!result.email && pdlResult.email) {
+          result.email = pdlResult.email;
+          result.emailSource = null;
+          result.emailStatus = 'unknown';
+        }
+
+        // Fill in phones from PDL
+        if (!result.phone) {
+          result.phone = pdlResult.mobilePhone || null;
+          if (!result.phone && pdlResult.phonesJson?.length) {
+            result.phone = pdlResult.phonesJson[0]?.number || null;
+          }
+        }
+        result.mobilePhone = result.mobilePhone || pdlResult.mobilePhone || null;
+
+        // Fill in LinkedIn from PDL if we don't have one
+        if (!result.linkedinUrl && pdlResult.linkedinUrl) {
+          if (validateLinkedInSlug(pdlResult.linkedinUrl, firstName, lastName)) {
+            result.linkedinUrl = pdlResult.linkedinUrl;
+          } else {
+            result.linkedinRejectedUrl = pdlResult.linkedinUrl;
+            result.linkedinRejectedSource = 'pdl';
+          }
+        }
+
+        // Fill in photo from PDL
+        if (!result.photoUrl && pdlResult.photoUrl) {
+          result.photoUrl = pdlResult.photoUrl;
+        }
+
+        // Mark as found if SerpAPI didn't find them but PDL did
+        if (!result.found) {
+          result.found = true;
+          result.enrichmentSource = 'pdl';
+          result.enrichedAt = new Date();
+          result.title = result.title || pdlResult.title;
+          result.company = result.company || pdlResult.companyName || input.companyName || null;
+          result.companyDomain = result.companyDomain || pdlResult.companyDomain || inputDomain;
+          result.location = result.location || pdlResult.location || input.location || null;
+        }
+      }
+    } catch (err) {
+      console.warn(`[CascadeV2] PDL person enrichment failed: ${err instanceof Error ? err.message : err}`);
+    }
+  }
+
   // -- Stage 3: LinkedIn Discovery (SERP fallback — same as V1) ------------
   if (!result.linkedinUrl) {
     try {
@@ -253,6 +345,7 @@ function assignConfidenceFlag(
 ): ConfidenceFlag {
   if (result.employerLeftDetected) return 'unverified';
   if (result.found && result.emailVerified) return 'verified';
+  if (result.found && result.enrichmentSource === 'pdl') return 'pdl_matched';
   if (result.found) return 'search_matched' as ConfidenceFlag;
   if (result.email && emailSource) return 'email_only';
   return 'no_match';

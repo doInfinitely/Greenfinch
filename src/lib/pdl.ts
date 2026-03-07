@@ -2,11 +2,48 @@ import { trackCostFireAndForget, PDL_COST } from '@/lib/cost-tracker';
 import { rateLimiters, withRetry } from './rate-limiter';
 import { normalizeDomain } from './normalization';
 import { getEmployeeRange } from './utils';
+import { cacheGet, cacheSet, cacheDelete } from './redis';
 
 const PDL_API_BASE = 'https://api.peopledatalabs.com/v5';
 
+// Cache TTL: 30 days — changelog API handles invalidation for stale entries
+const PDL_PERSON_CACHE_TTL = 30 * 24 * 60 * 60;
+const PDL_COMPANY_CACHE_TTL = 30 * 24 * 60 * 60;
+
+// Latest known PDL dataset version — cached for 6 hours
+const PDL_VERSION_CACHE_KEY = 'pdl-version:latest';
+const PDL_VERSION_CACHE_TTL = 6 * 60 * 60;
+
+function buildPersonCacheKey(
+  firstName: string,
+  lastName: string,
+  domain: string,
+  options: { email?: string; linkedinUrl?: string; companyName?: string } = {}
+): string {
+  // Use the most specific identifier available for the cache key
+  const parts = [
+    firstName.toLowerCase().trim(),
+    lastName.toLowerCase().trim(),
+    normalizeDomain(domain || ''),
+  ];
+  if (options.email) parts.push(options.email.toLowerCase().trim());
+  if (options.linkedinUrl) parts.push(options.linkedinUrl.toLowerCase().trim());
+  return `pdl-person:${parts.join('|')}`;
+}
+
+function buildCompanyCacheKey(
+  domain: string,
+  options: { name?: string; pdlId?: string } = {}
+): string {
+  if (options.pdlId) return `pdl-company:id:${options.pdlId}`;
+  const parts = [normalizeDomain(domain || '')];
+  if (options.name) parts.push(options.name.toLowerCase().trim());
+  return `pdl-company:${parts.join('|')}`;
+}
+
 export interface PDLPersonResult {
   found: boolean;
+  pdlPersonId: string | null;
   confidence: number;
   firstName: string | null;
   lastName: string | null;
@@ -96,6 +133,7 @@ function strictMatch(
 function emptyPersonResult(): PDLPersonResult {
   return {
     found: false,
+    pdlPersonId: null,
     confidence: 0,
     firstName: null,
     lastName: null,
@@ -156,6 +194,96 @@ function emptyCompanyResult(): PDLCompanyResult {
   };
 }
 
+// ── Changelog-based Cache Invalidation ──────────────────────────────────
+//
+// The PDL Person Changelog API (free, no credits consumed) tells us which
+// person records have been updated/deleted/merged between two dataset
+// versions. We use it to invalidate stale cache entries:
+//
+// 1. Every fresh PDL response stores its dataset_version in Redis.
+// 2. On cache hit, if the cached record's version < latest known version,
+//    we ask the changelog API whether that specific person ID changed.
+// 3. If changed → delete the cache entry → re-fetch from PDL.
+// ────────────────────────────────────────────────────────────────────────
+
+interface ChangelogResponse {
+  status: number;
+  data?: {
+    updated?: { id: string }[];
+    deleted?: { id: string }[];
+    merged?: { id: string; additional_metadata?: { to?: string } }[];
+    opted_out?: { id: string }[];
+    scroll_token?: string | null;
+  };
+  error?: { message?: string; valid_versions?: string }[];
+}
+
+/**
+ * Check if a PDL person record has been updated since the cached version.
+ * Returns true if the record is stale and should be re-fetched.
+ * Returns false if the record is still fresh or if we can't determine.
+ */
+async function isPdlPersonStale(
+  pdlPersonId: string,
+  cachedVersion: string,
+): Promise<boolean> {
+  const apiKey = process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY;
+  if (!apiKey || !pdlPersonId || !cachedVersion) return false;
+
+  try {
+    // Get latest known version
+    const latestVersion = await cacheGet<string>(PDL_VERSION_CACHE_KEY);
+    if (!latestVersion || latestVersion === cachedVersion) return false;
+
+    // Check if this person ID was updated/deleted/merged between versions
+    const response = await fetch(`${PDL_API_BASE}/person/changelog`, {
+      method: 'POST',
+      headers: {
+        'X-Api-Key': apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        origin_version: cachedVersion,
+        current_version: latestVersion,
+        ids: [pdlPersonId],
+      }),
+    });
+
+    if (!response.ok) {
+      // If versions are invalid (e.g., too old), treat as stale to be safe
+      if (response.status === 400) {
+        const body: ChangelogResponse = await response.json();
+        const validVersions = body.error?.[0]?.valid_versions;
+        if (validVersions) {
+          console.log(`[PDL Changelog] Cached version ${cachedVersion} no longer valid. Valid: ${validVersions}`);
+        }
+        return true;
+      }
+      return false;
+    }
+
+    const body: ChangelogResponse = await response.json();
+    const data = body.data;
+    if (!data) return false;
+
+    const hasUpdates = (data.updated?.length ?? 0) > 0;
+    const hasDeletes = (data.deleted?.length ?? 0) > 0;
+    const hasMerges = (data.merged?.length ?? 0) > 0;
+    const hasOptOuts = (data.opted_out?.length ?? 0) > 0;
+
+    if (hasUpdates || hasDeletes || hasMerges || hasOptOuts) {
+      console.log(`[PDL Changelog] Person ${pdlPersonId} changed since v${cachedVersion}: updated=${hasUpdates} deleted=${hasDeletes} merged=${hasMerges} opted_out=${hasOptOuts}`);
+      return true;
+    }
+
+    return false;
+  } catch (err) {
+    // Changelog check failure is non-fatal — use cached data
+    console.warn(`[PDL Changelog] Check failed: ${err instanceof Error ? err.message : err}`);
+    return false;
+  }
+}
+
 export async function enrichPersonPDL(
   firstName: string,
   lastName: string,
@@ -163,10 +291,36 @@ export async function enrichPersonPDL(
   options: { location?: string; useSearch?: boolean; companyName?: string; email?: string; linkedinUrl?: string } = {}
 ): Promise<PDLPersonResult> {
   const apiKey = process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY;
-  
+
   if (!apiKey) {
     console.warn('[PDL] PDL_API_KEY / PEOPLEDATALABS_API_KEY not configured');
     return emptyPersonResult();
+  }
+
+  // -- Cache check with changelog invalidation --
+  const cacheKey = buildPersonCacheKey(firstName, lastName, domain, options);
+  try {
+    const cached = await cacheGet<PDLPersonResult>(cacheKey);
+    if (cached) {
+      // For found results with a PDL person ID, check if data has been updated
+      if (cached.found && cached.pdlPersonId && cached.datasetVersion) {
+        const stale = await isPdlPersonStale(cached.pdlPersonId, cached.datasetVersion);
+        if (stale) {
+          console.log(`[PDL] Cache invalidated (changelog) for person: ${firstName} ${lastName} @ ${domain}`);
+          await cacheDelete(cacheKey);
+          // Fall through to re-fetch
+        } else {
+          console.log(`[PDL] Cache hit for person: ${firstName} ${lastName} @ ${domain}`);
+          return cached;
+        }
+      } else {
+        // Negative results or results without changelog data — use as-is
+        console.log(`[PDL] Cache hit for person: ${firstName} ${lastName} @ ${domain}`);
+        return cached;
+      }
+    }
+  } catch {
+    // Cache read failure is non-fatal
   }
 
   try {
@@ -333,7 +487,10 @@ export async function enrichPersonPDL(
         success: true,
         metadata: { found: false },
       });
-      return emptyPersonResult();
+      const empty = emptyPersonResult();
+      // Cache negative results for 24h to avoid re-fetching known misses
+      cacheSet(cacheKey, empty, 24 * 60 * 60).catch(() => {});
+      return empty;
     }
 
     const person = result.data.data || result.data;
@@ -406,8 +563,14 @@ export async function enrichPersonPDL(
       metadata: { found: true },
     });
 
-    return {
+    // Update latest known version for changelog checks
+    if (person.dataset_version) {
+      cacheSet(PDL_VERSION_CACHE_KEY, person.dataset_version, PDL_VERSION_CACHE_TTL).catch(() => {});
+    }
+
+    const pdlPersonResult: PDLPersonResult = {
       found: true,
+      pdlPersonId: person.id || null,
       confidence: isStrictMatch ? (result.data.likelihood / 10 || 0.8) : (result.data.likelihood / 10 || 0.5),
       firstName: person.first_name || null,
       lastName: person.last_name || null,
@@ -438,6 +601,12 @@ export async function enrichPersonPDL(
       datasetVersion: person.dataset_version || null,
       raw: result.data,
     };
+
+    // Cache without raw API response (too large for Redis)
+    const { raw: _raw, ...cacheable } = pdlPersonResult;
+    cacheSet(cacheKey, cacheable, PDL_PERSON_CACHE_TTL).catch(() => {});
+
+    return pdlPersonResult;
   } catch (error) {
     trackCostFireAndForget({
       provider: 'pdl',
@@ -456,7 +625,7 @@ export async function enrichCompanyPDL(
   options: { name?: string; linkedinUrl?: string; locality?: string; region?: string; streetAddress?: string; postalCode?: string; country?: string; ticker?: string; pdlId?: string } = {}
 ): Promise<PDLCompanyResult> {
   const apiKey = process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY;
-  
+
   if (!apiKey) {
     console.warn('[PDL] PDL_API_KEY / PEOPLEDATALABS_API_KEY not configured');
     return emptyCompanyResult();
@@ -465,6 +634,18 @@ export async function enrichCompanyPDL(
   if (!domain && !options.name && !options.linkedinUrl && !options.ticker && !options.pdlId) {
     console.warn('[PDL] No identifiers provided for company enrichment');
     return emptyCompanyResult();
+  }
+
+  // -- Cache check --
+  const cacheKey = buildCompanyCacheKey(domain, options);
+  try {
+    const cached = await cacheGet<PDLCompanyResult>(cacheKey);
+    if (cached) {
+      console.log(`[PDL] Cache hit for company: ${domain || options.name}`);
+      return cached;
+    }
+  } catch {
+    // Cache read failure is non-fatal
   }
 
   async function attemptEnrich(params: URLSearchParams, attemptLabel: string): Promise<{ found: boolean; data?: any }> {
@@ -572,17 +753,19 @@ export async function enrichCompanyPDL(
         success: true,
         metadata: { found: false },
       });
-      return emptyCompanyResult();
+      const empty = emptyCompanyResult();
+      cacheSet(cacheKey, empty, 24 * 60 * 60).catch(() => {});
+      return empty;
     }
 
     const company = result.data;
-    
+
     const linkedinHandle = company.linkedin_url || company.linkedin_id;
-    const linkedinUrl = linkedinHandle 
+    const linkedinUrl = linkedinHandle
       ? (linkedinHandle.startsWith('http') ? linkedinHandle : `https://${linkedinHandle}`)
       : null;
 
-    const employeeRange = company.size 
+    const employeeRange = company.size
       || (company.employee_count ? getEmployeeRange(company.employee_count) : null);
 
     trackCostFireAndForget({
@@ -594,7 +777,12 @@ export async function enrichCompanyPDL(
       metadata: { found: true },
     });
 
-    return {
+    // Update latest known version for changelog checks
+    if (company.dataset_version) {
+      cacheSet(PDL_VERSION_CACHE_KEY, company.dataset_version, PDL_VERSION_CACHE_TTL).catch(() => {});
+    }
+
+    const pdlCompanyResult: PDLCompanyResult = {
       found: true,
       pdlCompanyId: company.id || null,
       affiliatedProfiles: Array.isArray(company.affiliated_profiles) && company.affiliated_profiles.length > 0
@@ -623,6 +811,12 @@ export async function enrichCompanyPDL(
       logoUrl: company.profile_pic_url || company.logo_url || null,
       raw: result.data,
     };
+
+    // Cache without raw API response
+    const { raw: _raw, ...cacheable } = pdlCompanyResult;
+    cacheSet(cacheKey, cacheable, PDL_COMPANY_CACHE_TTL).catch(() => {});
+
+    return pdlCompanyResult;
   } catch (error) {
     trackCostFireAndForget({
       provider: 'pdl',

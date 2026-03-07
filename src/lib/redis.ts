@@ -52,6 +52,19 @@ export async function cacheSet<T>(key: string, value: T, ttlSeconds: number): Pr
   }
 }
 
+export async function cacheDelete(key: string): Promise<boolean> {
+  const r = getRedis();
+  if (!r) return false;
+
+  try {
+    await r.del(`${CACHE_PREFIX}${key}`);
+    return true;
+  } catch (error) {
+    console.error('[Redis] Cache delete error:', error);
+    return false;
+  }
+}
+
 const lockTokens = new Map<string, string>();
 
 export async function acquireLock(lockName: string, ttlSeconds: number = 30): Promise<boolean> {

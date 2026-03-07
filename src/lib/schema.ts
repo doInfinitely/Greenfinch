@@ -316,7 +316,19 @@ export const contacts = pgTable('contacts', {
 
   linkedinRejectedUrl: text('linkedin_rejected_url'),
   linkedinRejectedSource: text('linkedin_rejected_source'),
-  
+
+  // V2 enrichment columns (SerpAPI + browser-use pipeline)
+  enrichmentExperiences: jsonb('enrichment_experiences').$type<{
+    title: string;
+    company: string;
+    location?: string;
+    startDate?: string;
+    endDate?: string;
+    isCurrent: boolean;
+  }[]>(),
+  enrichmentProvidersUsed: json('enrichment_providers_used').$type<string[]>(),
+  enrichmentRawData: jsonb('enrichment_raw_data'),
+
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
@@ -411,7 +423,10 @@ export const organizations = pgTable('organizations', {
   crustdataRawResponse: json('crustdata_raw_response'),
   crustdataEnriched: boolean('crustdata_enriched').default(false),
   crustdataEnrichedAt: timestamp('crustdata_enriched_at'),
-  
+
+  // V2 enrichment columns (SerpAPI + browser-use pipeline)
+  enrichmentRawData: jsonb('enrichment_raw_data'),
+
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 }, (table) => ({
