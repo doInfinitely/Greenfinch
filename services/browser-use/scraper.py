@@ -3,16 +3,24 @@ Core scraping logic using browser-use library.
 
 Manages a pool of browser instances and provides extraction functions
 for generic pages, LinkedIn profiles, and company team pages.
+
+Every agent run records a full trajectory (actions, screenshots, LLM
+outputs) to disk for later distillation.
 """
 
 import asyncio
 import json
+import logging
 import os
 import re
 from typing import Any
 
 from browser_use import Agent
 from langchain_openai import ChatOpenAI
+
+from trajectory import TrajectoryRecorder, record_from_history
+
+logger = logging.getLogger(__name__)
 
 # ── Browser Pool ─────────────────────────────────────────────────────────
 
@@ -32,19 +40,52 @@ class BrowserPool:
         """Cleanup — no persistent browsers to close."""
         pass
 
-    async def run_agent(self, task: str, timeout_ms: int = 30_000) -> str:
-        """Run a browser-use Agent with the given task under concurrency control."""
+    async def run_agent(
+        self,
+        task: str,
+        timeout_ms: int = 30_000,
+        endpoint: str = "/api/scrape",
+    ) -> tuple[str, str | None]:
+        """Run a browser-use Agent with trajectory recording.
+
+        Returns (final_result, trajectory_id).
+        """
+        recorder = TrajectoryRecorder(task=task, endpoint=endpoint)
+
         async with self.semaphore:
             agent = Agent(
                 task=task,
                 llm=self._llm,
                 use_vision=True,
             )
-            result = await asyncio.wait_for(
-                agent.run(),
-                timeout=timeout_ms / 1000,
-            )
-            return result.final_result() if result else ""
+
+            error = None
+            final_result = ""
+            try:
+                history = await asyncio.wait_for(
+                    agent.run(),
+                    timeout=timeout_ms / 1000,
+                )
+                final_result = history.final_result() if history else ""
+
+                # Record all steps from the history
+                record_from_history(recorder, history)
+
+            except asyncio.TimeoutError:
+                error = "Timeout exceeded"
+                # Try to capture partial history
+                if hasattr(agent, "state") and hasattr(agent.state, "history"):
+                    record_from_history(recorder, agent.state.history)
+                raise
+            except Exception as exc:
+                error = str(exc)[:300]
+                if hasattr(agent, "state") and hasattr(agent.state, "history"):
+                    record_from_history(recorder, agent.state.history)
+                raise
+            finally:
+                recorder.finalize(final_result=final_result or None, error=error)
+
+            return final_result, recorder.trajectory_id
 
 
 # ── Generic Scrape ───────────────────────────────────────────────────────
@@ -56,11 +97,10 @@ async def scrape_page(
     extraction_prompt: str,
     timeout_ms: int = 30_000,
     wait_for_selector: str | None = None,
-) -> Any:
-    """
-    Scrape a page and extract structured data using LLM.
+) -> tuple[Any, str | None]:
+    """Scrape a page and extract structured data using LLM.
 
-    Returns the LLM-extracted data as a parsed JSON object (or raw string).
+    Returns (extracted_data, trajectory_id).
     """
     selector_instruction = ""
     if wait_for_selector:
@@ -72,8 +112,8 @@ async def scrape_page(
         f"{extraction_prompt}"
     )
 
-    raw = await pool.run_agent(task, timeout_ms=timeout_ms)
-    return _try_parse_json(raw)
+    raw, trajectory_id = await pool.run_agent(task, timeout_ms=timeout_ms, endpoint="/api/scrape")
+    return _try_parse_json(raw), trajectory_id
 
 
 # ── LinkedIn Profile ─────────────────────────────────────────────────────
@@ -121,14 +161,19 @@ async def extract_linkedin_profile(
     pool: BrowserPool,
     url: str,
     timeout_ms: int = 45_000,
-) -> dict:
-    """Extract structured data from a LinkedIn profile page."""
+) -> tuple[dict, str | None]:
+    """Extract structured data from a LinkedIn profile page.
+
+    Returns (profile_data, trajectory_id).
+    """
     task = LINKEDIN_PROFILE_TASK.format(url=url)
-    raw = await pool.run_agent(task, timeout_ms=timeout_ms)
+    raw, trajectory_id = await pool.run_agent(
+        task, timeout_ms=timeout_ms, endpoint="/api/linkedin/profile"
+    )
     data = _try_parse_json(raw)
 
     if not isinstance(data, dict):
-        return _empty_profile()
+        return _empty_profile(), trajectory_id
 
     # Normalize keys to snake_case and fill defaults
     profile = _empty_profile()
@@ -140,7 +185,7 @@ async def extract_linkedin_profile(
         if camel in data:
             profile[key] = data[camel]
 
-    return profile
+    return profile, trajectory_id
 
 
 def _empty_profile() -> dict:
@@ -187,17 +232,22 @@ async def extract_team_page(
     pool: BrowserPool,
     domain: str,
     timeout_ms: int = 45_000,
-) -> list[dict]:
-    """Extract team members from a company's website."""
+) -> tuple[list[dict], str | None]:
+    """Extract team members from a company's website.
+
+    Returns (people_list, trajectory_id).
+    """
     task = TEAM_PAGE_TASK.format(domain=domain)
-    raw = await pool.run_agent(task, timeout_ms=timeout_ms)
+    raw, trajectory_id = await pool.run_agent(
+        task, timeout_ms=timeout_ms, endpoint="/api/company/team"
+    )
     data = _try_parse_json(raw)
 
     if isinstance(data, dict) and "people" in data:
-        return data["people"]
+        return data["people"], trajectory_id
     if isinstance(data, list):
-        return data
-    return []
+        return data, trajectory_id
+    return [], trajectory_id
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────

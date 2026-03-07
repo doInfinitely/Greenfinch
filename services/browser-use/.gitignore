@@ -1,0 +1,4 @@
+trajectories/
+__pycache__/
+*.pyc
+.env
