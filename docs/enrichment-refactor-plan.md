@@ -310,3 +310,61 @@ Phases 1, 2, and 3 can proceed **in parallel** since they have no cross-dependen
 - **Phase 3**: Manually test browser-use microservice against a few LinkedIn profiles
 - **Phase 4**: Run new cascade on 10 properties, compare against legacy cascade results
 - **Phase 5-6**: A/B comparison dashboard to track quality metrics across batches
+
+---
+
+## Implementation Notes
+
+### browser-use Python Microservice
+
+Located at `services/browser-use/`. FastAPI service using the browser-use library for LLM-powered web scraping.
+
+**Endpoints:**
+- `POST /api/scrape` — Generic page scrape with LLM extraction
+- `POST /api/linkedin/profile` — LinkedIn profile data extraction (name, headline, experiences, education)
+- `POST /api/company/team` — Company team page scrape (discovers people with titles/emails)
+- `GET /health` — Health check
+
+**Running:**
+```bash
+cd services/browser-use
+pip install -r requirements.txt
+uvicorn main:app --port 8100
+# Or via Docker:
+docker build -t browser-use . && docker run -p 8100:8100 -e OPENAI_API_KEY=sk-... browser-use
+```
+
+Set `BROWSER_USE_URL=http://localhost:8100` in the main app's `.env.local`. The TypeScript client is at `src/lib/browser-use.ts`.
+
+### PDL Cache with Changelog Invalidation
+
+PDL person and company enrichment results are cached in Redis to avoid burning credits on repeat lookups.
+
+**Cache keys:**
+- Person: `pdl-person:{firstName}|{lastName}|{domain}|...`
+- Company: `pdl-company:{domain}|{name}` or `pdl-company:id:{pdlId}`
+
+**TTL:** 30 days for both person and company. Negative results (not found) cached for 24 hours.
+
+**Changelog invalidation (person only):**
+The [PDL Person Changelog API](https://docs.peopledatalabs.com/docs/person-changelog-api) is free (no credits consumed) and tells us which person records changed between dataset versions. On every cache hit for a found person:
+
+1. Compare the cached `datasetVersion` against the latest known version (stored at `pdl-version:latest`, 6h TTL)
+2. If versions differ, call `POST /v5/person/changelog` with the cached `pdlPersonId`
+3. If the person was updated/deleted/merged/opted-out → delete cache entry → re-fetch from PDL
+4. If the cached version is no longer valid (too old for changelog) → treat as stale → re-fetch
+
+This means the cache is effectively unbounded for stable records while still picking up changes within hours of a new PDL data release.
+
+### V2 Cascade Pipeline (updated)
+
+The V2 contact cascade now has 6 stages:
+
+1. **Email discovery** — Findymail + Hunter (unchanged from V1)
+2. **Person match** — SerpAPI + LLM structured extraction
+3. **PDL supplement** — emails, phones, LinkedIn, photo from PDL (cached)
+4. **LinkedIn discovery** — SERP fallback if still no LinkedIn URL
+5. **Employment verification** — browser-use LinkedIn scrape (replaces Crustdata)
+6. **Confidence flag** — verified / pdl_matched / search_matched / email_only / no_match
+
+PDL fills gaps that SerpAPI and Findymail/Hunter miss, particularly multiple email addresses (`emailsJson`), phone numbers (`phonesJson`, `mobilePhone`), and profile photos.
