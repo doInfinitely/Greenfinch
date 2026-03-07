@@ -91,7 +91,7 @@ class TrajectoryRecorder:
             url=url,
             screenshot_path=screenshot_path,
             page_title=page_title,
-            dom_snippet=dom_snippet[:5000],
+            dom_snippet=dom_snippet,
         )
 
         record = ActionRecord(
@@ -99,8 +99,8 @@ class TrajectoryRecorder:
             timestamp=datetime.now(timezone.utc).isoformat(),
             actor="agent",
             action_type=action_type,
-            action_detail=action_detail[:3000],
-            model_output=model_output[:3000] if model_output else "",
+            action_detail=action_detail,
+            model_output=model_output or "",
             browser_context=ctx,
         )
 
