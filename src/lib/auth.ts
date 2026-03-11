@@ -2,7 +2,7 @@ import { db } from './db';
 import { users, serviceProviders } from './schema';
 import { eq, ilike } from 'drizzle-orm';
 import { currentUser, auth } from '@clerk/nextjs/server';
-import { INTERNAL_ORG_SLUG } from './permissions';
+import { INTERNAL_ORG_SLUG, ADMIN_EMAILS } from './permissions';
 
 export type UserRole = 'standard_user' | 'team_manager' | 'account_admin' | 'system_admin';
 
@@ -220,15 +220,20 @@ export async function getUserId(): Promise<string | null> {
 
 export async function requireAdminAccess(): Promise<void> {
   const authData = await auth();
-  
+
   if (!authData.userId) {
     throw new Error('UNAUTHORIZED');
   }
-  
-  const isAdmin = authData.orgSlug === INTERNAL_ORG_SLUG && authData.orgRole === 'org:admin';
-  
-  if (!isAdmin) {
-    throw new Error('FORBIDDEN');
-  }
+
+  const isOrgAdmin = authData.orgSlug === INTERNAL_ORG_SLUG && authData.orgRole === 'org:admin';
+
+  if (isOrgAdmin) return;
+
+  // Fallback: check email allowlist
+  const clerkUser = await currentUser();
+  const email = clerkUser?.emailAddresses?.[0]?.emailAddress?.toLowerCase();
+  if (email && ADMIN_EMAILS.includes(email)) return;
+
+  throw new Error('FORBIDDEN');
 }
 
