@@ -26,7 +26,18 @@ export const users = pgTable('users', {
   
   // Settings completed flag
   settingsCompleted: boolean('settings_completed').default(false),
-  
+
+  // Walkthrough/tour state
+  walkthroughState: jsonb('walkthrough_state').$type<{
+    completedTours: string[];
+    dismissedTooltips: string[];
+    skippedAll: boolean;
+  }>().default({ completedTours: [], dismissedTooltips: [], skippedAll: false }),
+
+  // Onboarding wizard progress
+  onboardingProgress: jsonb('onboarding_progress').$type<import('./onboarding').OnboardingProgress>().default({}),
+  territoryZipCodes: json('territory_zip_codes').$type<string[]>(),
+
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -55,7 +66,8 @@ export const properties = pgTable('properties', {
   state: text('state'),
   zip: text('zip'),
   county: text('county'),
-  
+  cadCountyCode: text('cad_county_code'),
+
   // Location
   lat: real('lat'),
   lon: real('lon'),
@@ -160,7 +172,13 @@ export const properties = pgTable('properties', {
   // Calculated building class (A+/A/B/C/D) based on quality, condition, age, value
   calculatedBuildingClass: text('calculated_building_class'),
   buildingClassRationale: text('building_class_rationale'),
-  
+
+  // Revenue estimation (rule-based per service type)
+  revenueEstimates: jsonb('revenue_estimates'),               // { landscaping: 18500, janitorial: 24000, ... }
+  revenueEstimateTotal: integer('revenue_estimate_total'),     // Sum of ALL service types
+  revenueEstimateRationale: json('revenue_estimate_rationale'), // { landscaping: "2.3ac permeable...", ... }
+  revenueEstimatesUpdatedAt: timestamp('revenue_estimates_updated_at'),
+
   // DCAD Buildings Array (all buildings on this parcel as JSONB)
   dcadBuildings: json('dcad_buildings'),
   
@@ -203,6 +221,8 @@ export const properties = pgTable('properties', {
   isActiveIdx: index('idx_properties_is_active').on(table.isActive),
   createdAtIdx: index('idx_properties_created_at').on(table.createdAt),
   regridOwnerIdx: index('idx_properties_regrid_owner').on(table.regridOwner),
+  cadCountyCodeIdx: index('idx_properties_cad_county_code').on(table.cadCountyCode),
+  latLonIdx: index('idx_properties_lat_lon').on(table.lat, table.lon),
 }));
 
 // Contacts table
@@ -501,25 +521,28 @@ export const classificationCache = pgTable('classification_cache', {
   fieldHashIdx: index('idx_classification_field_hash').on(table.fieldHash),
 }));
 
-// Parcel to Property lookup - maps ll_uuid to property_key for tile click resolution
+// Parcel to Property lookup - maps ll_uuid to property UUID for tile click resolution
 export const parcelToProperty = pgTable('parcel_to_property', {
   llUuid: text('ll_uuid').primaryKey(),
-  propertyKey: text('property_key').notNull(),
+  propertyId: uuid('property_id').references(() => properties.id).notNull(),
   llStackUuid: text('ll_stack_uuid'),
   createdAt: timestamp('created_at').defaultNow(),
 }, (table) => ({
-  propertyKeyIdx: index('idx_parcel_property_key').on(table.propertyKey),
+  propertyIdIdx: index('idx_parcel_property_id').on(table.propertyId),
 }));
 
 // Maps ALL DCAD account numbers to their GIS parcel ID and resolved parent property
 // This enables Regrid tile parcelnumb → parent property resolution for accounts we didn't ingest as full properties
 export const parcelnumbMapping = pgTable('parcelnumb_mapping', {
-  accountNum: text('account_num').primaryKey(),
+  id: uuid('id').primaryKey().defaultRandom(),
+  accountNum: text('account_num').notNull(),
+  county: text('county').default('DCAD').notNull(),
   gisParcelId: text('gis_parcel_id').notNull(),
-  parentPropertyKey: text('parent_property_key'),
+  parentPropertyId: uuid('parent_property_id').references(() => properties.id),
 }, (table) => ({
   gisParcelIdx: index('idx_parcelnumb_gis_parcel').on(table.gisParcelId),
-  parentPropIdx: index('idx_parcelnumb_parent_prop').on(table.parentPropertyKey),
+  parentPropIdIdx: index('idx_parcelnumb_parent_prop_id').on(table.parentPropertyId),
+  countyAccountIdx: uniqueIndex('idx_parcelnumb_county_account').on(table.county, table.accountNum),
 }));
 
 // Waitlist signups
@@ -591,14 +614,27 @@ export const contactsRelations = relations(contacts, ({ many }) => ({
   dataIssues: many(dataIssues),
 }));
 
-export const organizationsRelations = relations(organizations, ({ many }) => ({
+export const organizationsRelations = relations(organizations, ({ one, many }) => ({
   propertyOrganizations: many(propertyOrganizations),
   contactOrganizations: many(contactOrganizations),
+  parentOrg: one(organizations, {
+    fields: [organizations.parentOrgId],
+    references: [organizations.id],
+    relationName: 'orgParentChild',
+  }),
+  ultimateParentOrg: one(organizations, {
+    fields: [organizations.ultimateParentOrgId],
+    references: [organizations.id],
+    relationName: 'orgUltimateParent',
+  }),
+  childOrgs: many(organizations, { relationName: 'orgParentChild' }),
 }));
 
 // Service categories - top 15 by spend for commercial properties and HOAs
 export const SERVICE_CATEGORIES = [
   'landscaping',           // Landscaping & Grounds (~15-25%)
+  'tree_trimming',         // Tree Trimming & Arboriculture
+  'irrigation',            // Irrigation Systems
   'janitorial',            // Janitorial & Cleaning (~10-20%)
   'hvac',                  // HVAC (~8-15%)
   'security',              // Security Services (~5-12%)
@@ -617,6 +653,8 @@ export const SERVICE_CATEGORIES = [
 
 export const SERVICE_CATEGORY_LABELS: Record<string, string> = {
   landscaping: 'Landscaping & Grounds',
+  tree_trimming: 'Tree Trimming & Arboriculture',
+  irrigation: 'Irrigation Systems',
   janitorial: 'Janitorial & Cleaning',
   hvac: 'HVAC',
   security: 'Security Services',
@@ -846,12 +884,15 @@ export const contactLinkedinFlags = pgTable('contact_linkedin_flags', {
   contactFlagIdx: index('idx_contact_linkedin_flags').on(table.contactId),
 }));
 
-// Potential duplicate contacts - flagged for admin review
+// Potential duplicates - flagged for admin review (contacts, organizations, properties)
 export const potentialDuplicates = pgTable('potential_duplicates', {
   id: uuid('id').primaryKey().defaultRandom(),
-  contactIdA: uuid('contact_id_a').references(() => contacts.id).notNull(),
-  contactIdB: uuid('contact_id_b').references(() => contacts.id).notNull(),
-  matchType: text('match_type').notNull(), // 'name_domain' | 'name_employer'
+  entityType: text('entity_type').notNull().default('contact'), // 'contact' | 'organization' | 'property'
+  entityIdA: uuid('entity_id_a'),
+  entityIdB: uuid('entity_id_b'),
+  contactIdA: uuid('contact_id_a').references(() => contacts.id),
+  contactIdB: uuid('contact_id_b').references(() => contacts.id),
+  matchType: text('match_type').notNull(),
   matchKey: text('match_key').notNull(),
   confidence: real('confidence').default(0.5),
   status: text('status').default('pending'), // 'pending' | 'merged' | 'dismissed'
@@ -862,6 +903,8 @@ export const potentialDuplicates = pgTable('potential_duplicates', {
   statusIdx: index('idx_potential_duplicates_status').on(table.status),
   contactAIdx: index('idx_potential_duplicates_contact_a').on(table.contactIdA),
   contactBIdx: index('idx_potential_duplicates_contact_b').on(table.contactIdB),
+  entityTypeIdx: index('idx_potential_duplicates_entity_type').on(table.entityType),
+  entityIdsIdx: index('idx_potential_duplicates_entity_ids').on(table.entityIdA, table.entityIdB),
 }));
 
 // Notifications - for @ mentions and action reminders
@@ -930,6 +973,47 @@ export const propertyActions = pgTable('property_actions', {
   orgIdx: index('idx_property_actions_org').on(table.clerkOrgId),
 }));
 
+// Customer status flag types
+export const CUSTOMER_FLAG_TYPES = [
+  'existing_customer',
+  'competitor_serviced',
+  'do_not_contact',
+  'hot_lead',
+  'under_contract',
+  'past_customer',
+] as const;
+
+export type CustomerFlagType = typeof CUSTOMER_FLAG_TYPES[number];
+
+export const CUSTOMER_FLAG_LABELS: Record<CustomerFlagType, string> = {
+  existing_customer: 'Existing Customer',
+  competitor_serviced: 'Competitor Serviced',
+  do_not_contact: 'Do Not Contact',
+  hot_lead: 'Hot Lead',
+  under_contract: 'Under Contract',
+  past_customer: 'Past Customer',
+};
+
+// Customer status flags - manual tags for territory management (multi-tag per property)
+export const customerStatusFlags = pgTable('customer_status_flags', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  propertyId: uuid('property_id').references(() => properties.id).notNull(),
+  clerkOrgId: text('clerk_org_id').notNull(),
+  flagType: text('flag_type').notNull(), // One of CUSTOMER_FLAG_TYPES
+  competitorName: text('competitor_name'), // Only for 'competitor_serviced'
+  notes: text('notes'),
+  createdByUserId: uuid('created_by_user_id').references(() => users.id).notNull(),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  orgPropertyFlagIdx: uniqueIndex('idx_csf_org_property_flag').on(table.clerkOrgId, table.propertyId, table.flagType),
+  orgPropertyIdx: index('idx_csf_org_property').on(table.clerkOrgId, table.propertyId),
+  flagTypeIdx: index('idx_csf_flag_type').on(table.flagType),
+}));
+
+export type CustomerStatusFlag = typeof customerStatusFlags.$inferSelect;
+export type InsertCustomerStatusFlag = typeof customerStatusFlags.$inferInsert;
+
 // Types
 export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
@@ -979,6 +1063,49 @@ export const adminAuditLog = pgTable('admin_audit_log', {
 
 export type AdminAuditLog = typeof adminAuditLog.$inferSelect;
 export type InsertAdminAuditLog = typeof adminAuditLog.$inferInsert;
+
+// Territories - geographic areas assigned to reps
+export const territories = pgTable('territories', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clerkOrgId: text('clerk_org_id').notNull(),
+  name: text('name').notNull(),
+  color: text('color').notNull().default('#16a34a'),
+  type: text('type').notNull(), // 'zip_codes' | 'counties' | 'polygon'
+  definition: jsonb('definition').notNull(), // { zipCodes: [...] } | { counties: [...] } | { geometry: GeoJSON.Polygon }
+  assignedUserId: uuid('assigned_user_id').references(() => users.id),
+  assignedClerkUserId: text('assigned_clerk_user_id'),
+  createdByUserId: uuid('created_by_user_id').references(() => users.id),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  orgIdx: index('idx_territories_org').on(table.clerkOrgId),
+  assignedUserIdx: index('idx_territories_assigned_user').on(table.assignedUserId),
+  orgActiveIdx: index('idx_territories_org_active').on(table.clerkOrgId, table.isActive),
+}));
+
+export type Territory = typeof territories.$inferSelect;
+export type InsertTerritory = typeof territories.$inferInsert;
+
+export const TERRITORY_TYPES = ['zip_codes', 'counties', 'polygon'] as const;
+export type TerritoryType = typeof TERRITORY_TYPES[number];
+
+export interface TerritoryDefinitionZipCodes {
+  zipCodes: string[];
+}
+
+export interface TerritoryDefinitionCounties {
+  counties: string[];
+}
+
+export interface TerritoryDefinitionPolygon {
+  geometry: {
+    type: 'Polygon';
+    coordinates: number[][][];
+  };
+}
+
+export type TerritoryDefinition = TerritoryDefinitionZipCodes | TerritoryDefinitionCounties | TerritoryDefinitionPolygon;
 
 // Ingestion settings for configurable ZIP codes and limits
 export const ingestionSettings = pgTable('ingestion_settings', {
@@ -1121,6 +1248,7 @@ export const enrichmentCostEvents = pgTable('enrichment_cost_events', {
   createdAtIdx: index('idx_enrichment_cost_created_at').on(table.createdAt),
   entityIdx: index('idx_enrichment_cost_entity').on(table.entityType, table.entityId),
   triggeredByIdx: index('idx_enrichment_cost_triggered_by').on(table.triggeredBy),
+  orgCreatedIdx: index('idx_enrichment_cost_org_created').on(table.clerkOrgId, table.createdAt),
 }));
 
 export type EnrichmentCostEvent = typeof enrichmentCostEvents.$inferSelect;
@@ -1328,3 +1456,210 @@ export const cadLand = pgTable('cad_land', {
 }, (table) => ({
   landAccountIdx: index('cad_land_account_idx').on(table.countyCode, table.accountNum, table.appraisalYear),
 }));
+
+// Org credit allocations — one row per org, managed internally
+export const orgCreditAllocations = pgTable('org_credit_allocations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clerkOrgId: text('clerk_org_id').unique().notNull(),
+  planName: text('plan_name').default('starter'),
+  monthlyCredits: real('monthly_credits').default(1000),
+  billingPeriodStart: timestamp('billing_period_start'),
+  billingPeriodEnd: timestamp('billing_period_end'),
+  rolloverCredits: real('rollover_credits').default(0),
+  notes: text('notes'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export type OrgCreditAllocation = typeof orgCreditAllocations.$inferSelect;
+export type InsertOrgCreditAllocation = typeof orgCreditAllocations.$inferInsert;
+
+// Support tickets — escalated chat conversations
+export const supportTickets = pgTable('support_tickets', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clerkOrgId: text('clerk_org_id').notNull(),
+  userId: uuid('user_id').references(() => users.id).notNull(),
+  subject: text('subject').notNull(),
+  transcript: json('transcript').notNull(), // ChatMessage[]
+  userSummary: text('user_summary'),
+  aiSummary: text('ai_summary'),
+  status: text('status').default('open').notNull(), // 'open' | 'in_progress' | 'resolved'
+  priority: text('priority').default('medium'), // 'low' | 'medium' | 'high'
+  assignedTo: uuid('assigned_to').references(() => users.id),
+  resolution: text('resolution'),
+  resolvedAt: timestamp('resolved_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  orgIdx: index('idx_support_tickets_org').on(table.clerkOrgId),
+  statusIdx: index('idx_support_tickets_status').on(table.status),
+  userIdx: index('idx_support_tickets_user').on(table.userId),
+}));
+
+export type SupportTicket = typeof supportTickets.$inferSelect;
+export type InsertSupportTicket = typeof supportTickets.$inferInsert;
+
+// ============================================================================
+// Credit & Billing System
+// ============================================================================
+
+// Credit tiers (Starter/Pro/Enterprise)
+export const creditTiers = pgTable('credit_tiers', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull().unique(), // 'starter', 'pro', 'enterprise'
+  displayName: text('display_name').notNull(),
+  monthlyCredits: integer('monthly_credits').notNull(),
+  rolloverCap: integer('rollover_cap').notNull(),
+  monthlyPriceUsd: integer('monthly_price_usd').notNull(), // in cents
+  stripePriceId: text('stripe_price_id'),
+  stripeProductId: text('stripe_product_id'),
+  features: json('features').$type<string[]>(),
+  seatsIncluded: integer('seats_included').default(1).notNull(),
+  perSeatPriceUsd: integer('per_seat_price_usd').default(0).notNull(), // cents
+  maxSeats: integer('max_seats'), // null = unlimited (enterprise)
+  isActive: boolean('is_active').default(true),
+  sortOrder: integer('sort_order').default(0),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export type CreditTier = typeof creditTiers.$inferSelect;
+export type InsertCreditTier = typeof creditTiers.$inferInsert;
+
+// Org subscriptions — one per org, links to Stripe
+export const orgSubscriptions = pgTable('org_subscriptions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clerkOrgId: text('clerk_org_id').notNull().unique(),
+  tierId: uuid('tier_id').references(() => creditTiers.id).notNull(),
+  stripeCustomerId: text('stripe_customer_id'),
+  stripeSubscriptionId: text('stripe_subscription_id'),
+  status: text('status').notNull().default('active'), // active, past_due, canceled, trialing
+  currentPeriodStart: timestamp('current_period_start'),
+  currentPeriodEnd: timestamp('current_period_end'),
+  cancelAtPeriodEnd: boolean('cancel_at_period_end').default(false),
+  seatCount: integer('seat_count').default(1).notNull(),
+  cancellationReason: text('cancellation_reason'),
+  cancellationFeedback: text('cancellation_feedback'),
+  canceledAt: timestamp('canceled_at'),
+  pendingTierId: uuid('pending_tier_id').references(() => creditTiers.id),
+  pendingChangeEffectiveAt: timestamp('pending_change_effective_at'),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+}, (table) => ({
+  stripeCustomerIdx: index('idx_org_subscriptions_stripe_customer').on(table.stripeCustomerId),
+}));
+
+export type OrgSubscription = typeof orgSubscriptions.$inferSelect;
+export type InsertOrgSubscription = typeof orgSubscriptions.$inferInsert;
+
+// Credit balances — three-pool system (current, rollover, purchased)
+export const creditBalances = pgTable('credit_balances', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clerkOrgId: text('clerk_org_id').notNull().unique(),
+  currentBalance: integer('current_balance').notNull().default(0),
+  rolloverBalance: integer('rollover_balance').notNull().default(0),
+  purchasedBalance: integer('purchased_balance').notNull().default(0),
+  rolloverCap: integer('rollover_cap').notNull().default(0),
+  lastAllocationAt: timestamp('last_allocation_at'),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export type CreditBalance = typeof creditBalances.$inferSelect;
+export type InsertCreditBalance = typeof creditBalances.$inferInsert;
+
+// Credit transactions — append-only ledger
+export const creditTransactions = pgTable('credit_transactions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clerkOrgId: text('clerk_org_id').notNull(),
+  type: text('type').notNull(), // 'debit', 'credit', 'rollover', 'expired', 'allocation'
+  action: text('action'), // 'contact_enrich', 'email_lookup', etc.
+  amount: integer('amount').notNull(), // positive = credit, negative = debit
+  balanceAfter: integer('balance_after').notNull(),
+  pool: text('pool'), // 'current', 'rollover', 'purchased'
+  entityType: text('entity_type'),
+  entityId: text('entity_id'),
+  userId: text('user_id'),
+  description: text('description'),
+  metadata: json('metadata'),
+  createdAt: timestamp('created_at').defaultNow(),
+}, (table) => ({
+  orgIdx: index('idx_credit_transactions_org').on(table.clerkOrgId),
+  createdAtIdx: index('idx_credit_transactions_created_at').on(table.createdAt),
+  actionIdx: index('idx_credit_transactions_action').on(table.action),
+  orgCreatedIdx: index('idx_credit_transactions_org_created').on(table.clerkOrgId, table.createdAt),
+}));
+
+export type CreditTransaction = typeof creditTransactions.$inferSelect;
+export type InsertCreditTransaction = typeof creditTransactions.$inferInsert;
+
+// Credit action costs — configurable per-action credit costs
+export const creditActionCosts = pgTable('credit_action_costs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  action: text('action').notNull().unique(),
+  displayName: text('display_name').notNull(),
+  creditCost: integer('credit_cost').notNull(),
+  category: text('category').notNull().default('enrichment'),
+  description: text('description'),
+  isActive: boolean('is_active').default(true),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export type CreditActionCost = typeof creditActionCosts.$inferSelect;
+export type InsertCreditActionCost = typeof creditActionCosts.$inferInsert;
+
+// Purchasable credit packs
+export const creditPacks = pgTable('credit_packs', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  name: text('name').notNull(),
+  credits: integer('credits').notNull(),
+  priceUsd: integer('price_usd').notNull(), // in cents
+  stripePriceId: text('stripe_price_id'),
+  stripeProductId: text('stripe_product_id'),
+  isActive: boolean('is_active').default(true),
+  sortOrder: integer('sort_order').default(0),
+  createdAt: timestamp('created_at').defaultNow(),
+  updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+export type CreditPack = typeof creditPacks.$inferSelect;
+export type InsertCreditPack = typeof creditPacks.$inferInsert;
+
+// Credit action type constants
+export const CREDIT_ACTIONS = [
+  'contact_enrich',
+  'email_lookup',
+  'phone_lookup',
+  'property_enrich',
+  'org_enrich',
+] as const;
+
+export type CreditAction = typeof CREDIT_ACTIONS[number];
+
+export const CREDIT_ACTION_LABELS: Record<CreditAction, string> = {
+  contact_enrich: 'Contact Research',
+  email_lookup: 'Email Discovery',
+  phone_lookup: 'Phone Lookup',
+  property_enrich: 'Property AI Enrichment',
+  org_enrich: 'Organization Enrichment',
+};
+
+// ============================================================================
+// Cancellation Surveys
+// ============================================================================
+
+export const cancellationSurveys = pgTable('cancellation_surveys', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  clerkOrgId: text('clerk_org_id').notNull(),
+  reason: text('reason').notNull(),
+  feedback: text('feedback'),
+  retentionOfferShown: boolean('retention_offer_shown').default(false),
+  retentionOfferAccepted: boolean('retention_offer_accepted').default(false),
+  retentionOfferType: text('retention_offer_type'),
+  outcome: text('outcome').notNull(), // 'canceled' | 'retained' | 'downgraded'
+  canceledByUserId: text('canceled_by_user_id'),
+  createdAt: timestamp('created_at').defaultNow(),
+});
+
+export type CancellationSurvey = typeof cancellationSurveys.$inferSelect;
+export type InsertCancellationSurvey = typeof cancellationSurveys.$inferInsert;

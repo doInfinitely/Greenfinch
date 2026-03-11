@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { properties, propertyPipeline, propertyContacts, propertyOrganizations, organizations } from '@/lib/schema';
+import { properties, propertyPipeline, propertyContacts, propertyOrganizations, organizations, users, territories, customerStatusFlags, type TerritoryDefinition, type TerritoryDefinitionPolygon } from '@/lib/schema';
 import { sql, ilike, or, and, eq, inArray, isNotNull, isNull, gte, lte, asc, desc, type SQL } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
+import { buildTerritoryConditions, needsPolygonFilter } from '@/lib/territory-filter';
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 1000;
 const SQFT_PER_ACRE = 43560;
 
-const VALID_SORT_FIELDS = ['commonName', 'lotSqft', 'buildingSqft', 'contactCount'] as const;
+const VALID_SORT_FIELDS = ['commonName', 'lotSqft', 'buildingSqft', 'contactCount', 'estimatedRevenue'] as const;
 type SortField = typeof VALID_SORT_FIELDS[number];
 type SortDir = 'asc' | 'desc';
 
@@ -41,13 +42,19 @@ export async function GET(request: NextRequest) {
     const enrichmentStatus = searchParams.get('enrichmentStatus'); // 'researched' | 'not_researched' | null
     const customerStatuses = searchParams.get('customerStatuses')?.split(',').filter(Boolean) || [];
     const zipCodes = searchParams.get('zipCodes')?.split(',').filter(Boolean) || [];
+    const counties = searchParams.get('counties')?.split(',').filter(Boolean) || [];
     const buildingClasses = searchParams.get('buildingClasses')?.split(',').filter(Boolean) || [];
     const minLotAcres = searchParams.get('minLotAcres') ? parseFloat(searchParams.get('minLotAcres')!) : null;
     const maxLotAcres = searchParams.get('maxLotAcres') ? parseFloat(searchParams.get('maxLotAcres')!) : null;
     const minNetSqft = searchParams.get('minNetSqft') ? parseFloat(searchParams.get('minNetSqft')!) : null;
     const maxNetSqft = searchParams.get('maxNetSqft') ? parseFloat(searchParams.get('maxNetSqft')!) : null;
+    const minRevenue = searchParams.get('minRevenue') ? parseInt(searchParams.get('minRevenue')!, 10) : null;
+    const maxRevenue = searchParams.get('maxRevenue') ? parseInt(searchParams.get('maxRevenue')!, 10) : null;
     const organizationId = searchParams.get('organizationId');
     const contactId = searchParams.get('contactId');
+    const territoryId = searchParams.get('territoryId');
+    const customerFlags = searchParams.get('customerFlags')?.split(',').filter(Boolean) || [];
+    const includeResidential = searchParams.get('includeResidential') === 'true';
     const sortByParam = searchParams.get('sortBy') as SortField | null;
     const sortDirParam = (searchParams.get('sortDir') || 'asc') as SortDir;
     const sortBy: SortField | null = sortByParam && VALID_SORT_FIELDS.includes(sortByParam) ? sortByParam : null;
@@ -56,23 +63,34 @@ export async function GET(request: NextRequest) {
     const conditions: ReturnType<typeof eq>[] = [
       eq(properties.isActive, true),
       eq(properties.isParentProperty, true), // Only show parent properties (exclude constituent accounts)
-      sql`(${properties.assetCategory} IS NULL OR ${properties.assetCategory} != 'Single-Family Residential')`,
     ];
+
+    if (!includeResidential) {
+      conditions.push(sql`(${properties.assetCategory} IS NULL OR ${properties.assetCategory} != 'Single-Family Residential')`);
+    }
     
     // Text search
     if (search && search.length > 0) {
       const searchPattern = `%${search}%`;
-      conditions.push(
-        or(
-          ilike(properties.commonName, searchPattern),
-          ilike(properties.regridAddress, searchPattern),
-          ilike(properties.validatedAddress, searchPattern),
-          ilike(properties.regridOwner, searchPattern),
-          ilike(properties.beneficialOwner, searchPattern),
-          ilike(properties.city, searchPattern),
-          ilike(properties.zip, searchPattern)
-        )!
-      );
+      const textConditions = [
+        ilike(properties.commonName, searchPattern),
+        ilike(properties.regridAddress, searchPattern),
+        ilike(properties.validatedAddress, searchPattern),
+        ilike(properties.regridOwner, searchPattern),
+        ilike(properties.beneficialOwner, searchPattern),
+        ilike(properties.city, searchPattern),
+        ilike(properties.zip, searchPattern),
+      ];
+      // Also search customer flag notes
+      if (orgId) {
+        textConditions.push(sql`EXISTS (
+          SELECT 1 FROM ${customerStatusFlags} csf
+          WHERE csf.property_id = ${properties.id}
+          AND csf.clerk_org_id = ${orgId}
+          AND csf.notes ILIKE ${searchPattern}
+        )`);
+      }
+      conditions.push(or(...textConditions)!);
     }
     
     // Category filter (supports multiple categories including 'Unknown / Unassigned')
@@ -147,6 +165,10 @@ export async function GET(request: NextRequest) {
       conditions.push(sql`LEFT(${properties.zip}, 5) IN (${sql.join(zipCodes.map(z => sql`${z}`), sql`, `)})`);
     }
 
+    if (counties.length > 0) {
+      conditions.push(inArray(properties.cadCountyCode, counties));
+    }
+
     // Building class filter - handle "Unknown" for NULL property_class values
     if (buildingClasses.length > 0) {
       const hasUnknown = buildingClasses.includes('Unknown');
@@ -184,7 +206,15 @@ export async function GET(request: NextRequest) {
     if (maxNetSqft !== null) {
       conditions.push(lte(properties.buildingSqft, maxNetSqft));
     }
-    
+
+    // Revenue estimate filters
+    if (minRevenue !== null) {
+      conditions.push(gte(properties.revenueEstimateTotal, minRevenue));
+    }
+    if (maxRevenue !== null) {
+      conditions.push(lte(properties.revenueEstimateTotal, maxRevenue));
+    }
+
     // Organization filter - show only properties linked to the selected organization
     if (organizationId) {
       conditions.push(sql`EXISTS (
@@ -197,12 +227,41 @@ export async function GET(request: NextRequest) {
     // Contact filter - show only properties linked to the selected contact
     if (contactId) {
       conditions.push(sql`EXISTS (
-        SELECT 1 FROM ${propertyContacts} 
-        WHERE ${propertyContacts.propertyId} = ${properties.id} 
+        SELECT 1 FROM ${propertyContacts}
+        WHERE ${propertyContacts.propertyId} = ${properties.id}
         AND ${propertyContacts.contactId} = ${contactId}
       )`);
     }
-    
+
+    // Customer flag filter
+    if (customerFlags.length > 0 && orgId) {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM ${customerStatusFlags}
+        WHERE ${customerStatusFlags.propertyId} = ${properties.id}
+        AND ${customerStatusFlags.clerkOrgId} = ${orgId}
+        AND ${customerStatusFlags.flagType} IN (${sql.join(customerFlags.map(f => sql`${f}`), sql`, `)})
+      )`);
+    }
+
+    // Territory filter - filter properties by territory definition
+    let territoryRecord: { type: string; definition: TerritoryDefinition } | null = null;
+    if (territoryId && orgId) {
+      const [t] = await db
+        .select({ type: territories.type, definition: territories.definition })
+        .from(territories)
+        .where(and(
+          eq(territories.id, territoryId),
+          eq(territories.clerkOrgId, orgId),
+          eq(territories.isActive, true)
+        ))
+        .limit(1);
+      if (t) {
+        territoryRecord = { type: t.type, definition: t.definition as TerritoryDefinition };
+        const territoryConditions = buildTerritoryConditions(territoryRecord.definition, territoryRecord.type);
+        conditions.push(...territoryConditions);
+      }
+    }
+
     const whereClause = and(...conditions);
     
     // Run count and data queries in parallel
@@ -226,6 +285,7 @@ export async function GET(request: NextRequest) {
           primaryOwner: sql<string>`COALESCE(${properties.beneficialOwner}, ${properties.regridOwner})`,
           lotSqft: properties.lotSqft,
           buildingSqft: properties.buildingSqft,
+          estimatedRevenue: properties.revenueEstimateTotal,
         })
         .from(properties)
         .where(whereClause)
@@ -234,6 +294,8 @@ export async function GET(request: NextRequest) {
             ? [sortDir === 'desc' ? sql`${properties.lotSqft} DESC NULLS LAST` : sql`${properties.lotSqft} ASC NULLS LAST`]
             : sortBy === 'buildingSqft'
             ? [sortDir === 'desc' ? sql`${properties.buildingSqft} DESC NULLS LAST` : sql`${properties.buildingSqft} ASC NULLS LAST`]
+            : sortBy === 'estimatedRevenue'
+            ? [sortDir === 'desc' ? sql`${properties.revenueEstimateTotal} DESC NULLS LAST` : sql`${properties.revenueEstimateTotal} ASC NULLS LAST`]
             : sortBy === 'contactCount'
             ? [sortDir === 'desc'
                 ? sql`(SELECT count(*) FROM ${propertyContacts} WHERE ${propertyContacts.propertyId} = ${properties.id}) DESC`
@@ -320,6 +382,29 @@ export async function GET(request: NextRequest) {
       }
     }
     
+    // Batch-fetch customer flags
+    let customerFlagsMap: Record<string, Array<{ flagType: string; competitorName: string | null }>> = {};
+    if (orgId && propertyIds.length > 0) {
+      const flagResults = await db
+        .select({
+          propertyId: customerStatusFlags.propertyId,
+          flagType: customerStatusFlags.flagType,
+          competitorName: customerStatusFlags.competitorName,
+        })
+        .from(customerStatusFlags)
+        .where(and(
+          eq(customerStatusFlags.clerkOrgId, orgId),
+          inArray(customerStatusFlags.propertyId, propertyIds)
+        ));
+
+      for (const f of flagResults) {
+        if (!customerFlagsMap[f.propertyId]) {
+          customerFlagsMap[f.propertyId] = [];
+        }
+        customerFlagsMap[f.propertyId].push({ flagType: f.flagType, competitorName: f.competitorName });
+      }
+    }
+
     // Add pipeline status, customer status, contact count, and organizations to results
     const resultsWithExtras = results.map(r => {
       const pipelineData = r.propertyId ? pipelineMap[r.propertyId] : null;
@@ -329,6 +414,7 @@ export async function GET(request: NextRequest) {
         isCurrentCustomer: pipelineData?.isCurrentCustomer ?? false,
         contactCount: r.propertyId ? (contactCountMap[r.propertyId] || 0) : 0,
         organizations: r.propertyId ? (organizationsMap[r.propertyId] || []) : [],
+        customerFlags: r.propertyId ? (customerFlagsMap[r.propertyId] || []) : [],
       };
     });
     

@@ -5,6 +5,9 @@ import { eq, desc, sql, and } from 'drizzle-orm';
 import { enrichContactCascade } from '@/lib/cascade-enrichment';
 import { ensureEmployerOrgEnriched } from '@/lib/organization-enrichment';
 import { requireSession, getUserId } from '@/lib/auth';
+import { auth } from '@clerk/nextjs/server';
+import { requireCredits } from '@/lib/credit-guard';
+import { InsufficientCreditsError } from '@/lib/credits';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -47,8 +50,11 @@ export async function POST(
   try {
     await requireSession();
     const userId = await getUserId();
-    
+    const { orgId } = await auth();
+
     const { id } = await params;
+
+    await requireCredits('contact_enrich', 'contact', id);
 
     if (!id || !UUID_REGEX.test(id)) {
       return NextResponse.json(
@@ -87,6 +93,7 @@ export async function POST(
       title: contact.title,
       location,
       linkedinUrl: contact.linkedinUrl,
+      clerkOrgId: orgId || undefined,
     });
 
     if (!result.found) {
@@ -415,7 +422,13 @@ export async function POST(
     if (error instanceof Error && error.message === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
+    if (error instanceof InsufficientCreditsError) {
+      return NextResponse.json(
+        { error: 'Insufficient credits', required: error.required, available: error.available },
+        { status: 402 }
+      );
+    }
+
     return NextResponse.json(
       { error: 'Failed to enrich contact' },
       { status: 500 }

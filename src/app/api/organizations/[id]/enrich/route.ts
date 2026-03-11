@@ -3,6 +3,9 @@ import { db } from '@/lib/db';
 import { organizations } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import { enrichOrganizationById } from '@/lib/organization-enrichment';
+import { auth } from '@clerk/nextjs/server';
+import { requireCredits } from '@/lib/credit-guard';
+import { InsufficientCreditsError } from '@/lib/credits';
 
 export async function POST(
   request: NextRequest,
@@ -10,6 +13,9 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
+    const { orgId } = await auth();
+
+    await requireCredits('org_enrich', 'organization', id);
 
     if (!id) {
       return NextResponse.json({ error: 'Organization ID is required' }, { status: 400 });
@@ -29,7 +35,7 @@ export async function POST(
 
     console.log(`[API] Manually enriching organization ${id} (${org.domain})`);
     
-    const result = await enrichOrganizationById(id);
+    const result = await enrichOrganizationById(id, { clerkOrgId: orgId || undefined });
     
     if (!result.success) {
       return NextResponse.json({ 
@@ -48,6 +54,12 @@ export async function POST(
       enrichedData: result.enrichedData,
     });
   } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
+      return NextResponse.json(
+        { error: 'Insufficient credits', required: error.required, available: error.available },
+        { status: 402 }
+      );
+    }
     console.error('Error enriching organization:', error);
     return NextResponse.json(
       { error: 'Failed to enrich organization' },

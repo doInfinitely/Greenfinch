@@ -341,69 +341,29 @@ export default function AdminPage() {
 
         <DataSourcesSection />
 
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
-          <button
-            onClick={() => {
-              setShowDuplicates(!showDuplicates);
-              if (!showDuplicates && potentialDuplicates.length === 0) {
-                fetchPotentialDuplicates();
-              }
-            }}
-            className="w-full flex items-center justify-between"
-            data-testid="button-toggle-duplicates"
-          >
+        <CountyIngestionStatus />
+
+        <a
+          href="/admin/duplicates"
+          className="block bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6 hover:border-amber-300 transition-colors"
+        >
+          <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <AlertTriangle className="w-5 h-5 text-amber-500" />
               <h2 className="text-lg font-semibold text-gray-900">Potential Duplicates</h2>
-              {potentialDuplicates.length > 0 && (
-                <span className="px-2 py-0.5 text-xs font-medium bg-amber-100 text-amber-800 rounded-full">
-                  {potentialDuplicates.length}
-                </span>
-              )}
             </div>
-            {showDuplicates ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-          </button>
-
-          {showDuplicates && (
-            <div className="mt-4">
-              <p className="text-sm text-gray-600 mb-4">
-                These contacts share the same name and company domain/employer but were not auto-merged. Review and merge or dismiss each pair.
-              </p>
-
-              {isLoadingDuplicates ? (
-                <div className="flex items-center justify-center py-8">
-                  <svg className="animate-spin h-6 w-6 text-gray-400" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                  </svg>
-                </div>
-              ) : potentialDuplicates.length === 0 ? (
-                <div className="text-center py-8 text-gray-500">
-                  <Check className="w-8 h-8 mx-auto mb-2 text-green-500" />
-                  <p className="text-sm">No potential duplicates to review</p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {potentialDuplicates.map((dup) => (
-                    <DuplicateCard
-                      key={dup.id}
-                      duplicate={dup}
-                      isProcessing={processingDupId === dup.id}
-                      onMerge={(keepId) => handleDuplicateAction(dup.id, 'merge', keepId)}
-                      onDismiss={() => handleDuplicateAction(dup.id, 'dismiss')}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-        </div>
+            <span className="text-sm text-blue-600 font-medium">Review Duplicates &rarr;</span>
+          </div>
+          <p className="text-sm text-gray-500 mt-2">
+            Manage duplicate contacts, organizations, and properties with fuzzy matching and batch processing.
+          </p>
+        </a>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Data Ingestion</h2>
             <p className="text-sm text-gray-600 mb-4">
-              Import properties from Snowflake database
+              Import properties from county appraisal data
             </p>
 
             {ingestionSettings && (
@@ -874,6 +834,79 @@ function DataSourcesSection() {
             </div>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+interface CountyIngestionRow {
+  countyCode: string;
+  countyName: string;
+  totalProperties: number;
+  enrichedCount: number;
+  inProgressCount: number;
+  coveragePercent: number;
+  lastIngested: string | null;
+}
+
+function CountyIngestionStatus() {
+  const [counties, setCounties] = useState<CountyIngestionRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/admin/ingestion-status')
+      .then(res => res.json())
+      .then(json => setCounties(json.data || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-4">County Ingestion Status</h2>
+        <p className="text-sm text-gray-500">Loading...</p>
+      </div>
+    );
+  }
+
+  if (counties.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 mb-6">
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">County Ingestion Status</h2>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b">
+              <th className="text-left py-2 pr-4 font-medium text-gray-700">County</th>
+              <th className="text-right py-2 px-4 font-medium text-gray-700">Total Properties</th>
+              <th className="text-right py-2 px-4 font-medium text-gray-700">Enriched</th>
+              <th className="text-right py-2 px-4 font-medium text-gray-700">Coverage %</th>
+              <th className="text-right py-2 pl-4 font-medium text-gray-700">Last Ingested</th>
+            </tr>
+          </thead>
+          <tbody>
+            {counties.map((c) => (
+              <tr key={c.countyCode} className="border-b last:border-0">
+                <td className="py-2 pr-4">
+                  <span className="font-medium">{c.countyName}</span>
+                  <span className="text-xs text-gray-400 ml-1">({c.countyCode})</span>
+                </td>
+                <td className="text-right py-2 px-4">{c.totalProperties.toLocaleString()}</td>
+                <td className="text-right py-2 px-4">{c.enrichedCount.toLocaleString()}</td>
+                <td className="text-right py-2 px-4">
+                  <span className={c.coveragePercent >= 80 ? 'text-green-600' : c.coveragePercent >= 50 ? 'text-amber-600' : 'text-red-600'}>
+                    {c.coveragePercent}%
+                  </span>
+                </td>
+                <td className="text-right py-2 pl-4 text-gray-500">
+                  {c.lastIngested ? new Date(c.lastIngested).toLocaleDateString() : 'Never'}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/lib/db';
 import { propertyPipeline, properties, users } from '@/lib/schema';
-import { eq, desc, and, isNull } from 'drizzle-orm';
+import { eq, desc, and, isNull, inArray } from 'drizzle-orm';
+import { getManagerTeamUserIds } from '@/lib/team-scope';
 
 export async function GET(request: NextRequest) {
   try {
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
 
     const searchParams = request.nextUrl.searchParams;
     const ownerFilter = searchParams.get('owner');
-    const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
+    const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin' || orgRole === 'org:manager';
 
     let whereConditions;
     if (ownerFilter === 'all' && isAdmin) {
@@ -32,6 +33,15 @@ export async function GET(request: NextRequest) {
         eq(propertyPipeline.clerkOrgId, orgId),
         isNull(propertyPipeline.ownerId)
       );
+    } else if (ownerFilter === 'team' && (orgRole === 'org:manager' || isAdmin)) {
+      const teamUserIds = await getManagerTeamUserIds(orgId, clerkUserId);
+      const teamDbUsers = teamUserIds.length > 0
+        ? await db.select({ id: users.id }).from(users).where(inArray(users.clerkId, teamUserIds))
+        : [];
+      const teamDbIds = teamDbUsers.map(u => u.id);
+      whereConditions = teamDbIds.length > 0
+        ? and(eq(propertyPipeline.clerkOrgId, orgId), inArray(propertyPipeline.ownerId, teamDbIds))
+        : and(eq(propertyPipeline.clerkOrgId, orgId), isNull(propertyPipeline.ownerId));
     } else if (ownerFilter && ownerFilter !== 'mine' && isAdmin) {
       whereConditions = and(
         eq(propertyPipeline.clerkOrgId, orgId),

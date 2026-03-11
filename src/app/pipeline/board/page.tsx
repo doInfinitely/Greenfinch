@@ -684,7 +684,7 @@ export default function PipelineBoard() {
               
               {isAdmin && (
                 <Select value={ownerFilter} onValueChange={setOwnerFilter}>
-                  <SelectTrigger className="w-40 md:w-44 touch-manipulation" data-testid="select-owner-filter">
+                  <SelectTrigger className="w-40 md:w-44 touch-manipulation" data-testid="select-owner-filter" data-tour="pipeline-owner-filter">
                     <Users className="w-4 h-4 text-muted-foreground" />
                     <SelectValue placeholder="Filter" className="text-xs sm:text-sm" />
                   </SelectTrigger>
@@ -753,7 +753,7 @@ export default function PipelineBoard() {
                 scrollBehavior: 'smooth',
               }}
             >
-              <div className="flex gap-3 p-4 md:p-6 min-w-max h-full snap-x snap-mandatory">
+              <div data-tour="pipeline-columns" className="flex gap-3 p-4 md:p-6 min-w-max h-full snap-x snap-mandatory">
               {visibleColumns.map((status: PipelineStatus) => {
                 const style = COLUMN_STYLES[status];
                 const isDropTarget = dragOverColumn === status;
@@ -789,22 +789,23 @@ export default function PipelineBoard() {
                         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
                       >
                         {(data?.items[status]?.length || 0) > 0 ? (
-                          data?.items[status].map((item) => {
+                          data?.items[status].map((item, itemIndex) => {
                             const days = getDaysInStage(item.statusChangedAt);
-                            const displayName = item.commonName 
+                            const displayName = item.commonName
                               ? normalizeCommonName(item.commonName)
                               : item.propertyAddress || 'Untitled Property';
-                            
+
                             return (
                               <Link
                                 key={item.id}
-                                href={`/property/${item.propertyKey || item.propertyId}`}
+                                href={`/property/${item.propertyId || item.propertyKey}`}
                                 draggable
                                 onDragStart={(e) => handleDragStart(e, item)}
                                 onDragEnd={handleDragEnd}
                                 onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); e.dataTransfer.dropEffect = 'move'; }}
                                 className={`block ${updating === item.id ? 'opacity-50 pointer-events-none' : ''}`}
                                 data-testid={`card-property-${item.propertyKey || item.propertyId}`}
+                                {...(itemIndex === 0 ? { 'data-tour': 'pipeline-card' } : {})}
                               >
                                 <div className="bg-card border border-border/50 rounded-md p-3 md:p-4 cursor-grab active:cursor-grabbing hover:border-border hover:shadow-sm transition-all touch-manipulation">
                                   <div className="flex items-start gap-2">

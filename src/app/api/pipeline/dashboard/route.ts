@@ -2,30 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 import { db } from '@/lib/db';
 import { propertyPipeline, users } from '@/lib/schema';
-import { eq, sql, and, isNull } from 'drizzle-orm';
-
-function getTimeframeStart(timeframe: string): Date | null {
-  const now = new Date();
-  switch (timeframe) {
-    case 'week': {
-      const day = now.getDay();
-      const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-      return new Date(now.getFullYear(), now.getMonth(), diff);
-    }
-    case 'month':
-      return new Date(now.getFullYear(), now.getMonth(), 1);
-    case 'quarter': {
-      const quarterMonth = Math.floor(now.getMonth() / 3) * 3;
-      return new Date(now.getFullYear(), quarterMonth, 1);
-    }
-    case 'year':
-      return new Date(now.getFullYear(), 0, 1);
-    case 'all':
-      return null;
-    default:
-      return new Date(now.getFullYear(), now.getMonth(), 1);
-  }
-}
+import { eq, sql, and, isNull, inArray } from 'drizzle-orm';
+import { getTimeframeStart } from '@/lib/metrics-queries';
+import { getManagerTeamUserIds } from '@/lib/team-scope';
 
 export async function GET(request: NextRequest) {
   try {
@@ -46,7 +25,7 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const ownerFilter = searchParams.get('owner');
     const timeframe = searchParams.get('timeframe') || 'month';
-    const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
+    const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin' || orgRole === 'org:manager';
 
     let whereConditions;
     if (ownerFilter === 'all' && isAdmin) {
@@ -56,6 +35,15 @@ export async function GET(request: NextRequest) {
         eq(propertyPipeline.clerkOrgId, orgId),
         isNull(propertyPipeline.ownerId)
       );
+    } else if (ownerFilter === 'team' && (orgRole === 'org:manager' || isAdmin)) {
+      const teamUserIds = await getManagerTeamUserIds(orgId, clerkUserId);
+      const teamDbUsers = teamUserIds.length > 0
+        ? await db.select({ id: users.id }).from(users).where(inArray(users.clerkId, teamUserIds))
+        : [];
+      const teamDbIds = teamDbUsers.map(u => u.id);
+      whereConditions = teamDbIds.length > 0
+        ? and(eq(propertyPipeline.clerkOrgId, orgId), inArray(propertyPipeline.ownerId, teamDbIds))
+        : and(eq(propertyPipeline.clerkOrgId, orgId), isNull(propertyPipeline.ownerId));
     } else if (ownerFilter && ownerFilter !== 'mine') {
       if (isAdmin) {
         whereConditions = and(

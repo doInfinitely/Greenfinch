@@ -26,10 +26,18 @@ import {
   SlidersHorizontal,
   Link2,
   Merge,
+  Map,
+  Compass,
+  LifeBuoy,
+  CreditCard,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import EnrichmentQueuePopover from '@/components/EnrichmentQueuePopover';
 import NotificationBell from '@/components/NotificationBell';
+import CreditBalanceIndicator from '@/components/CreditBalanceIndicator';
+import { useWalkthrough } from '@/contexts/WalkthroughContext';
+import OnboardingGuard from '@/components/OnboardingGuard';
+import OnboardingChecklist from '@/components/OnboardingChecklist';
 
 interface NavItem {
   href: string;
@@ -44,6 +52,23 @@ interface NavGroup {
   internalOnly?: boolean;
 }
 
+function TakeTourButton({ collapsed }: { collapsed: boolean }) {
+  const { startCurrentPageTour } = useWalkthrough();
+  return (
+    <li>
+      <button
+        onClick={startCurrentPageTour}
+        className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
+        title={collapsed ? 'Take a Tour' : undefined}
+        data-testid="nav-take-a-tour"
+      >
+        <Compass className="w-4 h-4" />
+        {!collapsed && <span>Take a Tour</span>}
+      </button>
+    </li>
+  );
+}
+
 export default function AppSidebar({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
@@ -53,6 +78,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
 
   const isGreenfinchMember = orgSlug === 'greenfinch';
   const isOrgAdmin = orgRole === 'org:admin';
+  const isAdminOrManager = orgRole === 'org:admin' || orgRole === 'org:manager';
 
   const navGroups: NavGroup[] = [
     {
@@ -60,6 +86,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
       items: [
         { href: '/pipeline/dashboard', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
         { href: '/pipeline/board', label: 'Pipeline Board', icon: <Kanban className="w-4 h-4" /> },
+        { href: '/metrics', label: 'Metrics', icon: <BarChart3 className="w-4 h-4" /> },
       ],
     },
     {
@@ -76,7 +103,9 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
       adminOnly: true,
       items: [
         { href: '/org-admin/team', label: 'Team Management', icon: <UsersRound className="w-4 h-4" /> },
+        { href: '/org-admin/territories', label: 'Territories', icon: <Map className="w-4 h-4" /> },
         { href: '/org-admin/analytics', label: 'Org Analytics', icon: <BarChart3 className="w-4 h-4" /> },
+        { href: '/org-admin/billing', label: 'Billing & Usage', icon: <CreditCard className="w-4 h-4" /> },
       ],
     },
     {
@@ -89,9 +118,12 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
         { href: '/admin/ai-config', label: 'AI Config', icon: <SlidersHorizontal className="w-4 h-4" /> },
         { href: '/admin/vertex-logs', label: 'Vertex AI Debug', icon: <Braces className="w-4 h-4" /> },
         { href: '/admin/linkedin-overrides', label: 'LinkedIn Overrides', icon: <Link2 className="w-4 h-4" /> },
+        { href: '/admin/duplicates', label: 'Duplicates', icon: <Merge className="w-4 h-4" /> },
         { href: '/admin/merge-contacts', label: 'Merge Contacts', icon: <Merge className="w-4 h-4" /> },
         { href: '/admin/merge-properties', label: 'Merge Properties', icon: <Merge className="w-4 h-4" /> },
         { href: '/admin/merge-orgs', label: 'Merge Organizations', icon: <Merge className="w-4 h-4" /> },
+        { href: '/admin/metrics', label: 'Platform Metrics', icon: <BarChart3 className="w-4 h-4" /> },
+        { href: '/admin/support-tickets', label: 'Support Tickets', icon: <LifeBuoy className="w-4 h-4" /> },
       ],
     },
     {
@@ -113,7 +145,7 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
 
   const filteredGroups = navGroups.filter(group => {
     if (group.internalOnly && !isGreenfinchMember) return false;
-    if (group.adminOnly && !isOrgAdmin) return false;
+    if (group.adminOnly && !isAdminOrManager) return false;
     return true;
   });
 
@@ -181,12 +213,14 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
                   </Link>
                 </li>
               ))}
+              {group.label === 'HELP' && <TakeTourButton collapsed={collapsed} />}
             </ul>
           </div>
         ))}
       </nav>
 
       <div className="p-4 border-t border-gray-200 space-y-4">
+        {isSignedIn && <CreditBalanceIndicator collapsed={collapsed} />}
         {isSignedIn && (
           <div className="flex items-center gap-2">
             <UserButton
@@ -283,8 +317,11 @@ export default function AppSidebar({ children }: { children: React.ReactNode }) 
           </div>
         </header>
 
+        <OnboardingChecklist />
         <main className="flex-1 overflow-auto">
-          {children}
+          <OnboardingGuard>
+            {children}
+          </OnboardingGuard>
         </main>
       </div>
     </div>

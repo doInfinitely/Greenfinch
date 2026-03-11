@@ -27,13 +27,13 @@
 
 ## 1. System Overview
 
-greenfinch.ai is an AI-native commercial real estate prospecting CRM. It ingests property tax assessment data from the Dallas Central Appraisal District (DCAD) via Snowflake, enriches it with AI-driven research using Google Gemini, validates and discovers contact information through a multi-provider cascade, and presents everything through an interactive map-based dashboard.
+greenfinch.ai is an AI-native commercial real estate prospecting CRM. It ingests property tax assessment data from county appraisal districts (DCAD, TCAD, etc.) into PostgreSQL staging tables, enriches it with AI-driven research using Google Gemini, validates and discovers contact information through a multi-provider cascade, and presents everything through an interactive map-based dashboard.
 
 ### High-Level Data Flow
 
 ```
-Snowflake (DCAD + Regrid)
-    │
+County Appraisal Data (DCAD, TCAD, etc.)
+    │  (downloaded to PostgreSQL staging tables)
     ▼
 ┌─────────────────────┐
 │  Data Ingestion      │  Filter by SPTD code, resolve parent parcels,
@@ -92,25 +92,21 @@ Snowflake (DCAD + Regrid)
 
 ### Source Data
 
-Properties are sourced from two datasets joined in Snowflake:
+Properties are sourced from county appraisal district data, downloaded from county websites and loaded into PostgreSQL staging tables (`cad_account_info`, `cad_appraisal_values`, `cad_buildings`, `cad_land`).
 
-**DCAD Tables (2025 Dataset):**
-- `ACCOUNT_INFO` (ai): Core account metadata, `GIS_PARCEL_ID`, owner names
-- `ACCOUNT_APPRL_YEAR` (aa): Appraisal values, `SPTD_CODE` (property classification)
-- `COM_DETAIL` (cd): Granular building details (sqft, year built, quality/condition grades, HVAC)
-- `TAXABLE_OBJECT` (tob): Junction between accounts and building details
-- `LAND` (l): Lot dimensions, front footage
-
-**Regrid Tables:**
-- `TX_DALLAS` from the Nationwide Parcel Data schema: GIS coordinates (`lat`, `lon`), parcel geometry, `ll_uuid`
+**CAD Staging Tables:**
+- `cad_account_info`: Core account metadata, `GIS_PARCEL_ID`, owner names, coordinates
+- `cad_appraisal_values`: Appraisal values, `SPTD_CODE` (property classification)
+- `cad_buildings`: Granular building details (sqft, year built, quality/condition grades, HVAC)
+- `cad_land`: Lot dimensions, front footage
 
 ### Ingestion Process
 
 The ingestion is orchestrated by `runMultiZipIngestion()` in `src/lib/dcad-ingestion.ts`:
 
-1. **Query Snowflake**: For each target ZIP code, execute a complex JOIN across DCAD + Regrid tables, filtered to `INCLUDED_SPTD_CODES` (commercial/multifamily/industrial only).
+1. **Query Staging Tables**: For each target ZIP code, execute JOINs across CAD staging tables, filtered to `INCLUDED_SPTD_CODES` (commercial/multifamily/industrial only).
 
-2. **Aggregate Buildings**: A single tax account (parcel) may have multiple buildings. Snowflake's `ARRAY_AGG` + `OBJECT_CONSTRUCT` groups building details from `COM_DETAIL` into a JSON array per account.
+2. **Aggregate Buildings**: A single tax account (parcel) may have multiple buildings. Building details from `cad_buildings` are grouped into a JSON array per account.
 
 3. **Extract Characteristics**:
    - **Square Footage**: Priority hierarchy: `dcad_land` > `regrid` for lots; `dcad_com_detail` (Net Lease Area) > `regrid` for buildings
@@ -126,12 +122,12 @@ Complex commercial sites often span multiple DCAD tax accounts on a single physi
 1. **Group by GIS_PARCEL_ID**: All accounts sharing the same `GIS_PARCEL_ID` are grouped together.
 2. **Identify Parent**: The account where `ACCOUNT_NUM === GIS_PARCEL_ID` is designated the parent. It gets `is_parent_property = true`.
 3. **Link Constituents**: Child accounts store the parent's key in `parent_property_key`. The parent stores the list of children in `constituent_account_nums`.
-4. **Missing Parent Fetch**: If a constituent is ingested but its parent wasn't in the ZIP code batch, `ingestParentAccounts()` specifically fetches and ingests the missing parent from Snowflake.
+4. **Missing Parent Fetch**: If a constituent is ingested but its parent wasn't in the ZIP code batch, `ingestParentAccounts()` specifically fetches and ingests the missing parent from the staging tables.
 5. **Parcel Number Mapping**: `buildParcelnumbMapping()` populates the `parcelnumb_mapping` table, which maps any DCAD account number to its `gis_parcel_id` and resolved `parent_property_key`. This enables fast lookups when a user clicks a parcel on the Mapbox map.
 
 ### Key Files
 - `src/lib/dcad-ingestion.ts` - Ingestion orchestrator
-- `src/lib/snowflake.ts` - Snowflake connection and query builder
+- `src/lib/cad/query.ts` - CAD staging table queries
 - `src/lib/building-class.ts` - Building class calculation
 - `src/lib/property-classifications.ts` - SPTD code definitions and inclusion rules
 - `src/app/api/admin/ingest/route.ts` - Admin API endpoint for triggering ingestion
@@ -193,7 +189,7 @@ The AI enrichment pipeline is a 3-stage sequential process using Google Gemini w
 **Goal**: Verify physical attributes (name, address, sqft, acreage) and assign a category/subcategory from the taxonomy.
 
 **Process**:
-- Sends raw DCAD/Snowflake data (address, owner, quality grade) to Gemini with Google Search grounding
+- Sends raw DCAD data (address, owner, quality grade) to Gemini with Google Search grounding
 - Gemini searches the web to verify current property details
 - Returns: property name, canonical address, category, subcategory, property class, physical measurements
 - Fallback: If AI can't determine property class, falls back to DCAD quality grade mapping
@@ -689,7 +685,7 @@ src/app/
 
 | Service | Purpose | Key File | Rate Limit |
 |---------|---------|----------|------------|
-| **Snowflake** | DCAD + Regrid data source | `src/lib/snowflake.ts` | N/A |
+| **CAD Staging (PostgreSQL)** | County appraisal data (DCAD, TCAD) | `src/lib/cad/query.ts` | N/A |
 | **Google Gemini** | AI enrichment (3 stages) | `src/lib/ai/client.ts` | 200/min, 15 concurrent |
 | **People Data Labs** | Person + company enrichment | `src/lib/pdl.ts` | 90/min, 30 concurrent |
 | **Crustdata** | Employment verification | `src/lib/crustdata.ts` | 14/min, 5 concurrent |
@@ -711,8 +707,8 @@ src/app/
 ### Data Pipeline
 | File | Purpose |
 |------|---------|
-| `src/lib/dcad-ingestion.ts` | Snowflake ingestion orchestrator |
-| `src/lib/snowflake.ts` | Snowflake connection and queries |
+| `src/lib/dcad-ingestion.ts` | CAD data ingestion orchestrator |
+| `src/lib/cad/query.ts` | CAD staging table queries |
 | `src/lib/property-classifications.ts` | SPTD codes and inclusion rules |
 | `src/lib/building-class.ts` | Building class calculation |
 

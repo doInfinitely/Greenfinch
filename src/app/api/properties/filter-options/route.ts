@@ -52,6 +52,21 @@ export async function GET() {
       .map(r => r.zip5)
       .filter(Boolean);
 
+    const countiesResult = await db.execute(
+      sql`SELECT DISTINCT cad_county_code FROM ${properties} WHERE cad_county_code IS NOT NULL AND is_active = true ORDER BY cad_county_code`
+    );
+    const counties = (countiesResult.rows as { cad_county_code: string }[])
+      .map(r => r.cad_county_code)
+      .filter(Boolean);
+
+    // Geographic county names (for territory definitions)
+    const geoCountiesResult = await db.execute(
+      sql`SELECT DISTINCT county FROM ${properties} WHERE county IS NOT NULL AND county != '' AND is_active = true ORDER BY county`
+    );
+    const geoCounties = (geoCountiesResult.rows as { county: string }[])
+      .map(r => r.county)
+      .filter(Boolean);
+
     return NextResponse.json({
       categories,
       subcategories,
@@ -59,6 +74,8 @@ export async function GET() {
       acTypes,
       heatingTypes,
       zipCodes,
+      counties,
+      geoCounties,
     });
   } catch (error) {
     console.error('[API] Filter options error:', error);

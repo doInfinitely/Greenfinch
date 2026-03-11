@@ -3,7 +3,7 @@ import { cadAccountInfo, cadAppraisalValues, cadBuildings, cadLand } from '../sc
 import { eq, and, like, inArray, sql, desc } from 'drizzle-orm';
 import type { CountyCode } from './types';
 import { INCLUDED_PTAD_CODES } from './county-codes';
-import type { IngestionFilters, DCadCommercialProperty } from '../dcad-ingestion';
+import type { IngestionFilters, CadCommercialProperty } from '../cad-ingestion';
 
 interface QueryOptions {
   zipCode?: string;
@@ -15,7 +15,7 @@ interface QueryOptions {
   accountNums?: string[];
 }
 
-export async function queryCommercialProperties(options: QueryOptions): Promise<DCadCommercialProperty[]> {
+export async function queryCommercialProperties(options: QueryOptions): Promise<CadCommercialProperty[]> {
   const {
     zipCode,
     countyCode,
@@ -177,12 +177,12 @@ export async function countCommercialProperties(options: {
 export async function getAccountsByAccountNums(
   accountNums: string[],
   countyCode?: CountyCode,
-): Promise<DCadCommercialProperty[]> {
+): Promise<CadCommercialProperty[]> {
   if (accountNums.length === 0) return [];
   return queryCommercialProperties({ accountNums, countyCode });
 }
 
-function mapRowToProperty(row: any): DCadCommercialProperty {
+function mapRowToProperty(row: any): CadCommercialProperty {
   return {
     parcelId: row.gisParcelId || '',
     gisParcelId: row.gisParcelId || '',

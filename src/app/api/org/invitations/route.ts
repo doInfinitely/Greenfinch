@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth, clerkClient } from '@clerk/nextjs/server';
+import { requireSeatAvailable, SeatLimitExceededError } from '@/lib/seat-management';
 
 export async function GET(request: NextRequest) {
   try {
@@ -56,11 +57,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Valid email is required' }, { status: 400 });
     }
 
+    // Enforce seat limit
+    try {
+      await requireSeatAvailable(orgId);
+    } catch (err) {
+      if (err instanceof SeatLimitExceededError) {
+        return NextResponse.json(
+          { error: 'Seat limit reached. Upgrade your plan or add more seats.' },
+          { status: 402 }
+        );
+      }
+      throw err;
+    }
+
     const client = await clerkClient();
     const invitation = await client.organizations.createOrganizationInvitation({
       organizationId: orgId,
       emailAddress: email,
-      role: role === 'admin' ? 'org:admin' : 'org:member',
+      role: role === 'admin' ? 'org:admin' : role === 'manager' ? 'org:manager' : 'org:member',
       inviterUserId: (await auth()).userId!,
     });
 

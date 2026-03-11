@@ -95,7 +95,7 @@ export interface EnrichLayerProfileResult {
   rawResponse?: any;
 }
 
-async function lookupPerson(input: EnrichLayerPersonInput): Promise<EnrichLayerPersonResult> {
+async function lookupPerson(input: EnrichLayerPersonInput, options?: { clerkOrgId?: string }): Promise<EnrichLayerPersonResult> {
   if (!ENRICHLAYER_API_KEY) {
     console.error('[EnrichLayer] API key not configured');
     return { success: false, error: 'EnrichLayer API key not configured' };
@@ -141,6 +141,7 @@ async function lookupPerson(input: EnrichLayerPersonInput): Promise<EnrichLayerP
             entityType: 'contact',
             statusCode: 404,
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { found: false },
           });
           return { success: false, error: 'Person not found in EnrichLayer database' };
@@ -165,6 +166,7 @@ async function lookupPerson(input: EnrichLayerPersonInput): Promise<EnrichLayerP
             endpoint: 'profile/resolve',
             entityType: 'contact',
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { found: false },
           });
           return { success: false, error: data?.error || 'No data returned', rawResponse: data };
@@ -182,6 +184,7 @@ async function lookupPerson(input: EnrichLayerPersonInput): Promise<EnrichLayerP
             endpoint: 'profile/resolve',
             entityType: 'contact',
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { found: false },
           });
           return {
@@ -197,6 +200,7 @@ async function lookupPerson(input: EnrichLayerPersonInput): Promise<EnrichLayerP
           credits: data.credits_used ?? 1,
           entityType: 'contact',
           success: true,
+          clerkOrgId: options?.clerkOrgId,
           metadata: { found: true },
         });
         return {
@@ -232,6 +236,7 @@ async function lookupPerson(input: EnrichLayerPersonInput): Promise<EnrichLayerP
       endpoint: 'profile/resolve',
       entityType: 'contact',
       success: false,
+      clerkOrgId: options?.clerkOrgId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
     return { success: false, error: isTimeout ? 'Request timed out' : (error instanceof Error ? error.message : 'Unknown error') };
@@ -243,6 +248,7 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
   includePhone?: boolean;
   includeSkills?: boolean;
   liveFetch?: boolean;
+  clerkOrgId?: string;
 }): Promise<EnrichLayerProfileResult> {
   if (!ENRICHLAYER_API_KEY) {
     console.error('[EnrichLayer] API key not configured');
@@ -291,6 +297,7 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
             entityType: 'contact',
             statusCode: 404,
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { found: false },
           });
           return { success: false, error: 'Profile not found' };
@@ -315,6 +322,7 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
             endpoint: 'profile',
             entityType: 'contact',
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { found: false },
           });
           return { success: false, error: data?.error || 'No data returned', rawResponse: data };
@@ -330,6 +338,7 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
           credits: data.credits_used ?? 1,
           entityType: 'contact',
           success: true,
+          clerkOrgId: options?.clerkOrgId,
           metadata: { found: true },
         });
         return {
@@ -385,6 +394,7 @@ export async function enrichLinkedInProfile(linkedinUrl: string, options?: {
       endpoint: 'profile',
       entityType: 'contact',
       success: false,
+      clerkOrgId: options?.clerkOrgId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
     return { success: false, error: isTimeout ? 'Request timed out' : (error instanceof Error ? error.message : 'Unknown error') };
@@ -397,7 +407,7 @@ async function enrichContact(contact: {
   linkedinUrl?: string | null;
   location?: string | null;
   title?: string | null;
-}): Promise<EnrichLayerPersonResult | EnrichLayerProfileResult> {
+}, options?: { clerkOrgId?: string }): Promise<EnrichLayerPersonResult | EnrichLayerProfileResult> {
   // Always use name-based lookup to verify/replace AI-discovered LinkedIn URLs
   // This ensures we get the most accurate match from EnrichLayer
   const { firstName, lastName } = parseFullName(contact.fullName);
@@ -408,7 +418,7 @@ async function enrichContact(contact: {
     companyDomain: contact.companyDomain || undefined,
     location: contact.location || undefined,
     title: contact.title || undefined,
-  });
+  }, { clerkOrgId: options?.clerkOrgId });
 }
 
 export interface WorkEmailResult {
@@ -423,6 +433,7 @@ async function lookupWorkEmail(linkedinUrl: string, options?: {
   validate?: boolean;
   useCache?: 'if-present' | 'if-recent' | 'never';
   expectedDomain?: string;  // Filter to only accept emails from this domain
+  clerkOrgId?: string;
 }): Promise<WorkEmailResult> {
   if (!ENRICHLAYER_API_KEY) {
     console.error('[EnrichLayer] API key not configured');
@@ -466,6 +477,7 @@ async function lookupWorkEmail(linkedinUrl: string, options?: {
             entityType: 'contact',
             statusCode: 404,
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { found: false },
           });
           return { success: false, email: null, status: 'not_found', error: 'Work email not found' };
@@ -499,6 +511,7 @@ async function lookupWorkEmail(linkedinUrl: string, options?: {
                 credits: 3,
                 entityType: 'contact',
                 success: true,
+                clerkOrgId: options?.clerkOrgId,
                 metadata: { found: true, domainMismatch: true },
               });
               return {
@@ -516,6 +529,7 @@ async function lookupWorkEmail(linkedinUrl: string, options?: {
             credits: 3,
             entityType: 'contact',
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { found: true },
           });
           return {
@@ -533,6 +547,7 @@ async function lookupWorkEmail(linkedinUrl: string, options?: {
             endpoint: 'profile/email',
             entityType: 'contact',
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { queued: true, queueCount: data.email_queue_count },
           });
           return {
@@ -548,6 +563,7 @@ async function lookupWorkEmail(linkedinUrl: string, options?: {
           endpoint: 'profile/email',
           entityType: 'contact',
           success: true,
+          clerkOrgId: options?.clerkOrgId,
           metadata: { found: false },
         });
         return {
@@ -571,6 +587,7 @@ async function lookupWorkEmail(linkedinUrl: string, options?: {
       endpoint: 'profile/email',
       entityType: 'contact',
       success: false,
+      clerkOrgId: options?.clerkOrgId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
     return { success: false, email: null, status: null, error: isTimeout ? 'Request timed out' : (error instanceof Error ? error.message : 'Unknown error') };
@@ -587,7 +604,7 @@ export interface ProfilePictureResult {
  * Fetch a person's profile picture using their LinkedIn URL.
  * Uses the dedicated Person Profile Picture endpoint which costs 0 credits.
  */
-export async function getProfilePicture(linkedinUrl: string): Promise<ProfilePictureResult> {
+export async function getProfilePicture(linkedinUrl: string, options?: { clerkOrgId?: string }): Promise<ProfilePictureResult> {
   if (!ENRICHLAYER_API_KEY) {
     return { success: false, error: 'EnrichLayer API key not configured' };
   }
@@ -623,6 +640,7 @@ export async function getProfilePicture(linkedinUrl: string): Promise<ProfilePic
             entityType: 'contact',
             statusCode: 404,
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { found: false },
           });
           return { success: false, error: 'Profile picture not found' };
@@ -646,6 +664,7 @@ export async function getProfilePicture(linkedinUrl: string): Promise<ProfilePic
           credits: 0,
           entityType: 'contact',
           success: true,
+          clerkOrgId: options?.clerkOrgId,
           metadata: { found: !!pictureUrl },
         });
 
@@ -670,6 +689,7 @@ export async function getProfilePicture(linkedinUrl: string): Promise<ProfilePic
       credits: 0,
       entityType: 'contact',
       success: false,
+      clerkOrgId: options?.clerkOrgId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
     return { success: false, error: isTimeout ? 'Request timed out' : 'Request failed' };
@@ -727,7 +747,7 @@ export interface CompanyProfileResult {
  * Resolve a company domain to LinkedIn company URL
  * Cost: ~1 credit
  */
-async function resolveCompanyByDomain(domain: string): Promise<CompanyResolveResult> {
+async function resolveCompanyByDomain(domain: string, options?: { clerkOrgId?: string }): Promise<CompanyResolveResult> {
   if (!ENRICHLAYER_API_KEY) {
     console.warn('[EnrichLayer] API key not configured');
     return { success: false, error: 'API key not configured' };
@@ -760,6 +780,7 @@ async function resolveCompanyByDomain(domain: string): Promise<CompanyResolveRes
             entityType: 'company',
             statusCode: 404,
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { found: false },
           });
           return { success: false, error: 'Company not found' };
@@ -786,6 +807,7 @@ async function resolveCompanyByDomain(domain: string): Promise<CompanyResolveRes
             credits: 1,
             entityType: 'company',
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { found: true },
           });
           return { success: true, linkedinUrl: data.url };
@@ -796,6 +818,7 @@ async function resolveCompanyByDomain(domain: string): Promise<CompanyResolveRes
           endpoint: 'company/resolve',
           entityType: 'company',
           success: true,
+          clerkOrgId: options?.clerkOrgId,
           metadata: { found: false },
         });
         return { success: false, error: 'No LinkedIn URL in response' };
@@ -814,6 +837,7 @@ async function resolveCompanyByDomain(domain: string): Promise<CompanyResolveRes
       endpoint: 'company/resolve',
       entityType: 'company',
       success: false,
+      clerkOrgId: options?.clerkOrgId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
     return { success: false, error: isTimeout ? 'Request timed out' : (error instanceof Error ? error.message : 'Unknown error') };
@@ -824,7 +848,7 @@ async function resolveCompanyByDomain(domain: string): Promise<CompanyResolveRes
  * Get company profile by LinkedIn URL with industry/category data
  * Cost: ~3 credits (base) + 1 credit for categories + 1 credit for extra
  */
-async function getCompanyProfile(linkedinUrl: string): Promise<CompanyProfileResult> {
+async function getCompanyProfile(linkedinUrl: string, options?: { clerkOrgId?: string }): Promise<CompanyProfileResult> {
   if (!ENRICHLAYER_API_KEY) {
     console.warn('[EnrichLayer] API key not configured');
     return { success: false, error: 'API key not configured' };
@@ -860,6 +884,7 @@ async function getCompanyProfile(linkedinUrl: string): Promise<CompanyProfileRes
             entityType: 'company',
             statusCode: 404,
             success: true,
+            clerkOrgId: options?.clerkOrgId,
             metadata: { found: false },
           });
           return { success: false, error: 'Company not found' };
@@ -900,6 +925,7 @@ async function getCompanyProfile(linkedinUrl: string): Promise<CompanyProfileRes
           credits: 5,
           entityType: 'company',
           success: true,
+          clerkOrgId: options?.clerkOrgId,
           metadata: { found: true },
         });
         const result: CompanyProfileResult = {
@@ -954,6 +980,7 @@ async function getCompanyProfile(linkedinUrl: string): Promise<CompanyProfileRes
       endpoint: 'company',
       entityType: 'company',
       success: false,
+      clerkOrgId: options?.clerkOrgId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
     return { success: false, error: isTimeout ? 'Request timed out' : (error instanceof Error ? error.message : 'Unknown error') };
@@ -964,11 +991,11 @@ async function getCompanyProfile(linkedinUrl: string): Promise<CompanyProfileRes
  * Enrich a company by domain - resolves to LinkedIn URL and fetches full profile
  * Cost: ~6 credits total (1 for resolve + 5 for profile)
  */
-export async function enrichCompanyByDomain(domain: string): Promise<CompanyProfileResult> {
+export async function enrichCompanyByDomain(domain: string, options?: { clerkOrgId?: string }): Promise<CompanyProfileResult> {
   console.log(`[EnrichLayer] Enriching company by domain: ${domain}`);
 
   // Step 1: Resolve domain to LinkedIn URL
-  const resolveResult = await resolveCompanyByDomain(domain);
+  const resolveResult = await resolveCompanyByDomain(domain, { clerkOrgId: options?.clerkOrgId });
 
   if (!resolveResult.success || !resolveResult.linkedinUrl) {
     return {
@@ -978,7 +1005,7 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyProf
   }
 
   // Step 2: Get full company profile
-  const profileResult = await getCompanyProfile(resolveResult.linkedinUrl);
+  const profileResult = await getCompanyProfile(resolveResult.linkedinUrl, { clerkOrgId: options?.clerkOrgId });
 
   if (profileResult.success && profileResult.creditsUsed) {
     profileResult.creditsUsed += 1; // Add the resolve credit

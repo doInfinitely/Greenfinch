@@ -829,7 +829,7 @@ export default function DatabaseAdminPage() {
                     <div className="space-y-3">
                       <label className="text-sm font-medium text-gray-700">ZIP Codes for Ingestion</label>
                       <p className="text-sm text-gray-500">
-                        Add the ZIP codes you want to include when running property data ingestion from Snowflake.
+                        Add the ZIP codes you want to include when running property data ingestion from county appraisal data.
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {ingestionZipCodes.map((zip) => (

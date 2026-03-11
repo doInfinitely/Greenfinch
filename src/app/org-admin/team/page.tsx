@@ -63,30 +63,43 @@ interface Invitation {
 const ROLE_LABELS: Record<string, string> = {
   'org:admin': 'Admin',
   'org:super_admin': 'Super Admin',
+  'org:manager': 'Manager',
   'org:member': 'Member',
   'admin': 'Admin',
+  'manager': 'Manager',
   'basic_member': 'Member',
 };
 
 const ROLE_COLORS: Record<string, string> = {
   'org:admin': 'bg-purple-100 text-purple-700',
   'org:super_admin': 'bg-amber-100 text-amber-700',
+  'org:manager': 'bg-blue-100 text-blue-700',
   'org:member': 'bg-gray-100 text-gray-700',
   'admin': 'bg-purple-100 text-purple-700',
+  'manager': 'bg-blue-100 text-blue-700',
   'basic_member': 'bg-gray-100 text-gray-700',
 };
+
+interface SeatInfo {
+  seatCount: number;
+  totalUsed: number;
+  available: number;
+}
 
 export default function TeamManagement() {
   const { orgRole, userId: currentClerkUserId } = useAuth();
   const { organization } = useOrganization();
   const { toast } = useToast();
-  
+
   const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
-  
+  const isManager = orgRole === 'org:manager';
+  const canViewTeam = isAdmin || isManager;
+
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [showInviteDialog, setShowInviteDialog] = useState(false);
+  const [seatInfo, setSeatInfo] = useState<SeatInfo | null>(null);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('basic_member');
   const [inviting, setInviting] = useState(false);
@@ -98,21 +111,26 @@ export default function TeamManagement() {
     setMembers([]);
     setInvitations([]);
     setLoading(true);
-    
-    if (isAdmin && organization?.id) {
+
+    if (canViewTeam && organization?.id) {
       fetchTeamData();
     } else if (!organization?.id) {
       setLoading(false);
     }
-  }, [isAdmin, organization?.id]);
+  }, [canViewTeam, organization?.id]);
 
   async function fetchTeamData() {
     setLoading(true);
     try {
-      const [membersRes, invitationsRes] = await Promise.all([
-        fetch('/api/org/members'),
-        fetch('/api/org/invitations'),
-      ]);
+      const fetches: Promise<Response>[] = [fetch('/api/org/members')];
+      // Only admins can view invitations
+      if (isAdmin) {
+        fetches.push(fetch('/api/org/invitations'));
+      }
+      // Fetch seat info
+      fetches.push(fetch('/api/billing/seats'));
+
+      const [membersRes, invitationsRes, seatsRes] = await Promise.all(fetches);
 
       if (membersRes.ok) {
         const data = await membersRes.json();
@@ -122,9 +140,14 @@ export default function TeamManagement() {
         })));
       }
 
-      if (invitationsRes.ok) {
+      if (invitationsRes?.ok) {
         const data = await invitationsRes.json();
         setInvitations(data.invitations || []);
+      }
+
+      if (seatsRes?.ok) {
+        const data = await seatsRes.json();
+        setSeatInfo(data.data);
       }
     } catch (error) {
       console.error('Failed to fetch team data:', error);
@@ -265,7 +288,7 @@ export default function TeamManagement() {
     });
   }
 
-  if (!isAdmin) {
+  if (!canViewTeam) {
     return (
       <AppSidebar>
         <div className="h-full bg-gray-50 p-6">
@@ -275,7 +298,7 @@ export default function TeamManagement() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-4">Access Denied</h1>
             <p className="text-muted-foreground">
-              You need admin permissions to access this page.
+              You need admin or manager permissions to access this page.
             </p>
           </div>
         </div>
@@ -303,14 +326,33 @@ export default function TeamManagement() {
                 <RefreshCw className={`w-4 h-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
                 Refresh
               </Button>
-              <Button
-                onClick={() => setShowInviteDialog(true)}
-                size="sm"
-                data-testid="button-invite-member"
-              >
-                <UserPlus className="w-4 h-4 mr-1" />
-                Invite Member
-              </Button>
+              {seatInfo && (
+                <Badge variant="secondary" className="text-xs">
+                  {seatInfo.totalUsed}/{seatInfo.seatCount} seats
+                </Badge>
+              )}
+              {isAdmin && (
+                seatInfo && seatInfo.available <= 0 ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => window.location.href = '/billing'}
+                    data-testid="button-upgrade-seats"
+                  >
+                    <UserPlus className="w-4 h-4 mr-1" />
+                    Add Seats to Invite
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={() => setShowInviteDialog(true)}
+                    size="sm"
+                    data-testid="button-invite-member"
+                  >
+                    <UserPlus className="w-4 h-4 mr-1" />
+                    Invite Member
+                  </Button>
+                )
+              )}
             </div>
           </div>
 
@@ -328,17 +370,19 @@ export default function TeamManagement() {
                 >
                   Members ({members.length})
                 </button>
-                <button
-                  onClick={() => setActiveTab('invitations')}
-                  className={`text-sm font-medium pb-2 border-b-2 transition-colors ${
-                    activeTab === 'invitations'
-                      ? 'border-green-600 text-green-600'
-                      : 'border-transparent text-muted-foreground hover:text-foreground'
-                  }`}
-                  data-testid="tab-invitations"
-                >
-                  Pending Invitations ({invitations.length})
-                </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => setActiveTab('invitations')}
+                    className={`text-sm font-medium pb-2 border-b-2 transition-colors ${
+                      activeTab === 'invitations'
+                        ? 'border-green-600 text-green-600'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                    data-testid="tab-invitations"
+                  >
+                    Pending Invitations ({invitations.length})
+                  </button>
+                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -386,7 +430,7 @@ export default function TeamManagement() {
                           {formatDate(member.joinedAt)}
                         </TableCell>
                         <TableCell>
-                          {member.isCurrentUser ? (
+                          {member.isCurrentUser || !isAdmin ? (
                             <Badge className={ROLE_COLORS[member.role] || 'bg-gray-100 text-gray-700'}>
                               {ROLE_LABELS[member.role] || member.role}
                             </Badge>
@@ -395,18 +439,19 @@ export default function TeamManagement() {
                               value={member.role}
                               onValueChange={(value) => handleUpdateRole(member.id, value)}
                             >
-                              <SelectTrigger className="w-[120px]" data-testid={`select-role-${member.id}`}>
+                              <SelectTrigger className="w-[130px]" data-testid={`select-role-${member.id}`}>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem value="org:admin">Admin</SelectItem>
+                                <SelectItem value="org:manager">Manager</SelectItem>
                                 <SelectItem value="org:member">Member</SelectItem>
                               </SelectContent>
                             </Select>
                           )}
                         </TableCell>
                         <TableCell>
-                          {!member.isCurrentUser && (
+                          {!member.isCurrentUser && isAdmin && (
                             <DropdownMenu>
                               <DropdownMenuTrigger asChild>
                                 <Button variant="ghost" size="icon" data-testid={`button-member-actions-${member.id}`}>
@@ -521,6 +566,7 @@ export default function TeamManagement() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="admin">Admin</SelectItem>
+                  <SelectItem value="manager">Manager</SelectItem>
                   <SelectItem value="basic_member">Member</SelectItem>
                 </SelectContent>
               </Select>

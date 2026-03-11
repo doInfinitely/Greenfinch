@@ -74,6 +74,35 @@ export async function GET(
     }
     const contactRelations = Array.from(contactsMap.values());
 
+    // Fetch hierarchy data
+    const childOrgs = await db
+      .select({
+        id: organizations.id,
+        name: organizations.name,
+        domain: organizations.domain,
+        industry: organizations.industry,
+        employees: organizations.employees,
+        logoUrl: organizations.logoUrl,
+      })
+      .from(organizations)
+      .where(eq(organizations.parentOrgId, id));
+
+    let parentOrg = null;
+    if (org.parentOrgId) {
+      parentOrg = await db.query.organizations.findFirst({
+        where: eq(organizations.id, org.parentOrgId),
+        columns: { id: true, name: true, domain: true, logoUrl: true },
+      });
+    }
+
+    let ultimateParentOrg = null;
+    if (org.ultimateParentOrgId && org.ultimateParentOrgId !== org.parentOrgId) {
+      ultimateParentOrg = await db.query.organizations.findFirst({
+        where: eq(organizations.id, org.ultimateParentOrgId),
+        columns: { id: true, name: true, domain: true, logoUrl: true },
+      });
+    }
+
     return NextResponse.json({
       organization: org,
       properties: propertyRelations.map(p => ({
@@ -81,6 +110,9 @@ export async function GET(
         address: p.address || p.regridAddress,
       })),
       contacts: contactRelations,
+      childOrgs,
+      parentOrg,
+      ultimateParentOrg,
     });
   } catch (error) {
     console.error('Error fetching organization:', error);

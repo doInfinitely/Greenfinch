@@ -22,6 +22,7 @@ export interface CommercialProperty {
   parcelId: string;
   address: string;
   city: string;
+  state?: string;
   zip: string;
   lat: number;
   lon: number;

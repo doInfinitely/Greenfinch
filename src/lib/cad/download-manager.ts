@@ -85,6 +85,23 @@ export function findFile(extractDir: string, fileName: string): string | null {
   return caseInsensitive || null;
 }
 
+/**
+ * Find a file by glob-like pattern (supports * wildcards).
+ * Tries multiple patterns in order, returns first match.
+ */
+export function findFileByPattern(extractDir: string, ...patterns: string[]): string | null {
+  const files = listFilesRecursive(extractDir);
+  for (const pattern of patterns) {
+    const regex = new RegExp(
+      '^' + pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*') + '$',
+      'i',
+    );
+    const match = files.find(f => regex.test(path.basename(f)));
+    if (match) return match;
+  }
+  return null;
+}
+
 export function cleanupTempDir(dir: string): void {
   try {
     fs.rmSync(dir, { recursive: true, force: true });

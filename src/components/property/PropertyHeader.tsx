@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { AlertTriangle, X, Loader2, MoreVertical, ListPlus, User, XCircle, Eye, Sparkles, Maximize2, RefreshCw } from 'lucide-react';
+import { AlertTriangle, X, Loader2, MoreVertical, ListPlus, User, XCircle, Eye, Sparkles, Maximize2, RefreshCw, Tag } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import {
@@ -18,6 +18,8 @@ import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
 import { AdminOnly, PermissionGate } from '@/components/PermissionGate';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
+import CustomerFlagBadge from '@/components/CustomerFlagBadge';
+import type { CustomerFlagType } from '@/lib/customer-flags';
 import PipelineStatus from '@/components/PipelineStatus';
 import CustomerToggle from '@/components/CustomerToggle';
 import { normalizeCommonName } from '@/lib/normalization';
@@ -227,6 +229,8 @@ interface PropertyHeaderProps {
   onSetIsCurrentCustomer: (value: boolean) => void;
   onExpandStreetView?: () => void;
   onPipelineChange?: (pipeline: any) => void;
+  customerFlags?: Array<{ flagType: string; competitorName: string | null; notes?: string | null }>;
+  onOpenCustomerFlagDialog?: () => void;
 }
 
 export default function PropertyHeader({
@@ -249,6 +253,8 @@ export default function PropertyHeader({
   onSetIsCurrentCustomer,
   onExpandStreetView,
   onPipelineChange,
+  customerFlags,
+  onOpenCustomerFlagDialog,
 }: PropertyHeaderProps) {
   const router = useRouter();
   const { getEnrichmentStatus } = useEnrichmentQueue();
@@ -315,9 +321,27 @@ export default function PropertyHeader({
                   );
                 })()}
                 <LowConfidenceMarker confidence={enrichedProperty?.categoryConfidence} />
+                {customerFlags && customerFlags.length > 0 && customerFlags.map((f) => (
+                  <CustomerFlagBadge
+                    key={f.flagType}
+                    flagType={f.flagType as CustomerFlagType}
+                    competitorName={f.competitorName}
+                    size="sm"
+                  />
+                ))}
+                {onOpenCustomerFlagDialog && (
+                  <button
+                    onClick={onOpenCustomerFlagDialog}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
+                    title="Manage customer flags"
+                  >
+                    <Tag className="w-3 h-3" />
+                    Flags
+                  </button>
+                )}
               </div>
             </div>
-            
+
             <div className="flex-shrink-0 flex items-center gap-1.5">
               {pipelineOwner && (
                 <TooltipProvider>

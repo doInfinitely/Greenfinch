@@ -3,6 +3,9 @@ import { db } from '@/lib/db';
 import { contacts } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import { requireSession, requireAdminAccess } from '@/lib/auth';
+import { auth } from '@clerk/nextjs/server';
+import { requireCredits } from '@/lib/credit-guard';
+import { InsufficientCreditsError } from '@/lib/credits';
 import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
 import { findEmailByName } from '@/lib/findymail';
 import { findEmail as hunterFindEmail } from '@/lib/hunter';
@@ -34,8 +37,11 @@ export async function POST(
 
     await requireSession();
     await requireAdminAccess();
-    
+    const { orgId } = await auth();
+
     const { id } = await params;
+
+    await requireCredits('email_lookup', 'contact', id);
 
     if (!id || !UUID_REGEX.test(id)) {
       return apiBadRequest('Invalid contact ID format');
@@ -74,7 +80,7 @@ export async function POST(
     }
 
     if (!foundEmail) {
-      const hunterResult = await hunterFindEmail(firstName, lastName, contact.companyDomain);
+      const hunterResult = await hunterFindEmail(firstName, lastName, contact.companyDomain, { clerkOrgId: orgId || undefined });
       if (hunterResult.email) {
         foundEmail = hunterResult.email;
         emailSource = 'hunter_finder';
@@ -115,6 +121,9 @@ export async function POST(
   } catch (error) {
     console.error('[WaterfallEmail] API error:', error);
     
+    if (error instanceof InsufficientCreditsError) {
+      return apiError('Insufficient credits', { status: 402, meta: { required: error.required, available: error.available } });
+    }
     if (error instanceof Error) {
       if (error.message === 'UNAUTHORIZED') {
         return apiUnauthorized();
@@ -123,7 +132,7 @@ export async function POST(
         return apiError('Admin access required', { status: 403 });
       }
     }
-    
+
     return apiError('Failed to trigger email lookup');
   }
 }

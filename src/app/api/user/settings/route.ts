@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { users, serviceProviders } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
+import type { OnboardingProgress } from '@/lib/onboarding';
 
 export async function GET() {
   try {
@@ -44,6 +45,13 @@ export async function PUT(request: Request) {
     const body = await request.json();
     const { companyName, companyDomain, selectedServices } = body;
 
+    // Read current onboarding progress and mark services step
+    const currentUser = await db.query.users.findFirst({
+      where: eq(users.id, session.user.id),
+    });
+    const progress: OnboardingProgress = (currentUser?.onboardingProgress as OnboardingProgress) || {};
+    progress.services = true;
+
     // Update user settings
     await db
       .update(users)
@@ -52,6 +60,7 @@ export async function PUT(request: Request) {
         companyDomain,
         selectedServices,
         settingsCompleted: true,
+        onboardingProgress: progress,
         updatedAt: new Date(),
       })
       .where(eq(users.id, session.user.id));

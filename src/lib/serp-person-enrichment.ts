@@ -11,6 +11,10 @@ import { getLLMAdapter } from './ai/llm';
 import { getStageConfig } from './ai/runtime-config';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { parseJsonResponse } from './ai/parsers';
+import { cacheGet, cacheSet } from './redis';
+
+const SERP_PERSON_CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
+const SERP_PERSON_NEGATIVE_TTL = 24 * 60 * 60; // 24 hours
 
 export interface SerpPersonEnrichmentResult {
   found: boolean;
@@ -39,6 +43,7 @@ export async function enrichPersonSerpAI(
   options: {
     location?: string;
     title?: string;
+    clerkOrgId?: string;
   } = {}
 ): Promise<SerpPersonEnrichmentResult> {
   const empty: SerpPersonEnrichmentResult = {
@@ -49,6 +54,14 @@ export async function enrichPersonSerpAI(
 
   const fullName = `${firstName} ${lastName}`.trim();
   if (!fullName) return empty;
+
+  // Check cache
+  const cacheKey = `serp-person:${firstName.toLowerCase()}|${lastName.toLowerCase()}|${(company || '').toLowerCase()}`;
+  const cached = await cacheGet<SerpPersonEnrichmentResult>(cacheKey);
+  if (cached) {
+    console.log(`[SerpPersonEnrich] Cache hit: ${cacheKey}`);
+    return cached;
+  }
 
   try {
     // Build search queries
@@ -123,13 +136,17 @@ If the person cannot be identified from the results, return {"found": false}.`;
       provider: stageConfig.provider,
       endpoint: 'serp-person-enrichment',
       entityType: 'contact',
+      clerkOrgId: options.clerkOrgId,
       success: !!parsed.found,
       metadata: { name: fullName, company },
     });
 
-    if (!parsed.found) return empty;
+    if (!parsed.found) {
+      await cacheSet(cacheKey, empty, SERP_PERSON_NEGATIVE_TTL);
+      return empty;
+    }
 
-    return {
+    const result: SerpPersonEnrichmentResult = {
       found: true,
       name: parsed.name || fullName,
       title: parsed.title || null,
@@ -143,12 +160,15 @@ If the person cannot be identified from the results, return {"found": false}.`;
       confidence: parsed.confidence || 0.5,
       sources: allResults.map(r => r.link).filter(Boolean),
     };
+    await cacheSet(cacheKey, result, SERP_PERSON_CACHE_TTL);
+    return result;
   } catch (error) {
     console.error(`[SerpPersonEnrich] Failed for ${fullName}: ${error instanceof Error ? error.message : error}`);
     trackCostFireAndForget({
       provider: 'serpapi',
       endpoint: 'serp-person-enrichment',
       entityType: 'contact',
+      clerkOrgId: options.clerkOrgId,
       success: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     });

@@ -27,9 +27,10 @@ export class DashboardMap {
   private config: DashboardMapConfig;
   private isDestroyed = false;
   private currentData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
+  private territoryData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
   private debugLogging = true;
   private bulkLoaded = false;
-  private propertyIndex: Map<string, { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string }> = new Map();
+  private propertyIndex: Map<string, { id?: string; propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string }> = new Map();
   private hoverPopup: mapboxgl.Popup | null = null;
   private hoveredParcelId: string | number | null = null;
   private currentStyle: string = SATELLITE_STREETS_STYLE;
@@ -51,12 +52,12 @@ export class DashboardMap {
     const initialZoom = this.config.initialZoom ?? 13;
     const initialCenter: [number, number] = this.config.initialCenter
       ? [this.config.initialCenter.lon, this.config.initialCenter.lat]
-      : [-96.7784, 32.8639];
+      : [-96.93, 32.97];
     this.currentStyle = SATELLITE_STREETS_STYLE;
 
-    const DALLAS_BOUNDS: [[number, number], [number, number]] = [
-      [-97.6, 32.4],
-      [-96.3, 33.2],
+    const DFW_BOUNDS: [[number, number], [number, number]] = [
+      [-97.65, 32.40],
+      [-96.20, 33.55],
     ];
 
     try {
@@ -67,7 +68,7 @@ export class DashboardMap {
         zoom: initialZoom,
         attributionControl: false,
         minZoom: 9,
-        maxBounds: DALLAS_BOUNDS,
+        maxBounds: DFW_BOUNDS,
       });
     } catch (error) {
       this.initError = error instanceof Error ? error.message : 'Map initialization failed';
@@ -147,7 +148,14 @@ export class DashboardMap {
       });
     }
 
-    const regridTileUrl = this.config.regridTileUrl || 
+    if (!this.map.getSource('territories')) {
+      this.map.addSource('territories', {
+        type: 'geojson',
+        data: this.territoryData,
+      });
+    }
+
+    const regridTileUrl = this.config.regridTileUrl ||
       (this.config.regridToken ? `https://tiles.regrid.com/api/v1/parcels/{z}/{x}/{y}.mvt?token=${this.config.regridToken}` : null);
     
     if (regridTileUrl && !this.map.getSource('regrid')) {
@@ -163,6 +171,52 @@ export class DashboardMap {
 
   private addLayers() {
     if (!this.map) return;
+
+    // Territory boundary layers (underneath parcels and properties)
+    if (this.map.getSource('territories')) {
+      if (!this.map.getLayer('territory-fill')) {
+        this.map.addLayer({
+          id: 'territory-fill',
+          type: 'fill',
+          source: 'territories',
+          paint: {
+            'fill-color': ['get', 'color'],
+            'fill-opacity': 0.1,
+          },
+        });
+      }
+      if (!this.map.getLayer('territory-outline')) {
+        this.map.addLayer({
+          id: 'territory-outline',
+          type: 'line',
+          source: 'territories',
+          paint: {
+            'line-color': ['get', 'color'],
+            'line-width': 2.5,
+            'line-dasharray': [3, 2],
+          },
+        });
+      }
+      if (!this.map.getLayer('territory-label')) {
+        this.map.addLayer({
+          id: 'territory-label',
+          type: 'symbol',
+          source: 'territories',
+          layout: {
+            'text-field': ['get', 'name'],
+            'text-size': 14,
+            'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
+            'text-anchor': 'center',
+            'text-allow-overlap': false,
+          },
+          paint: {
+            'text-color': ['get', 'color'],
+            'text-halo-color': '#ffffff',
+            'text-halo-width': 2,
+          },
+        });
+      }
+    }
 
     if ((this.config.regridToken || this.config.regridTileUrl) && this.map.getSource('regrid')) {
       if (!this.map.getLayer('parcels-fill')) {
@@ -306,9 +360,10 @@ export class DashboardMap {
 
   private onPropertyPointClick = (e: mapboxgl.MapLayerMouseEvent) => {
     if (!e.features?.length) return;
-    const propertyKey = e.features[0].properties?.propertyKey;
-    if (propertyKey && this.config.onPropertyClick) {
-      this.config.onPropertyClick(propertyKey);
+    const props = e.features[0].properties;
+    const propertyId = props?.id || props?.propertyKey;
+    if (propertyId && this.config.onPropertyClick) {
+      this.config.onPropertyClick(propertyId);
     }
   };
 
@@ -508,7 +563,7 @@ export class DashboardMap {
     }
   }
 
-  private findPropertyByParcelNumber(parcelnumb: string): { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
+  private findPropertyByParcelNumber(parcelnumb: string): { id?: string; propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string } | null {
     const normalizedParcel = parcelnumb.replace(/[-\s]/g, '').toUpperCase();
     return this.propertyIndex.get(normalizedParcel) || null;
   }
@@ -578,9 +633,10 @@ export class DashboardMap {
     }
 
     const propertyInfo = this.findPropertyByParcelNumber(parcelnumb);
-    if (propertyInfo?.propertyKey) {
-      if (this.debugLogging) console.log('[ParcelClick] parcelnumb match →', propertyInfo.propertyKey);
-      this.config.onPropertyClick(propertyInfo.propertyKey);
+    const propertyIdentifier = propertyInfo?.id || propertyInfo?.propertyKey;
+    if (propertyIdentifier) {
+      if (this.debugLogging) console.log('[ParcelClick] parcelnumb match →', propertyIdentifier);
+      this.config.onPropertyClick(propertyIdentifier);
       return;
     }
 
@@ -589,9 +645,10 @@ export class DashboardMap {
       const response = await fetch(`/api/parcels/resolve?parcelnumb=${encodeURIComponent(parcelnumb)}`);
       if (response.ok) {
         const data = await response.json();
-        if (data.propertyKey) {
-          if (this.debugLogging) console.log('[ParcelClick] API resolved →', data.propertyKey);
-          this.config.onPropertyClick(data.propertyKey);
+        const resolvedId = data.id || data.propertyKey;
+        if (resolvedId) {
+          if (this.debugLogging) console.log('[ParcelClick] API resolved →', resolvedId);
+          this.config.onPropertyClick(resolvedId);
           return;
         }
       }
@@ -643,6 +700,15 @@ export class DashboardMap {
     }, this.map.getZoom());
   }
 
+  setTerritoryData(geojson: GeoJSON.FeatureCollection) {
+    this.territoryData = geojson;
+    if (!this.map) return;
+    const source = this.map.getSource('territories') as mapboxgl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData(geojson);
+    }
+  }
+
   setData(geojson: GeoJSON.FeatureCollection) {
     this.currentData = geojson;
     this.buildPropertyIndex();
@@ -662,11 +728,12 @@ export class DashboardMap {
     try {
       const response = await fetch('/api/parcels/parcel-index');
       if (!response.ok) return;
-      const data: { p: Record<string, [string | null, string | null, string | null, string | null]>; m: Record<string, string> } = await response.json();
-      
-      const propCache = new Map<string, { propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string }>();
+      const data: { p: Record<string, [string | null, string | null, string | null, string | null, string?]>; m: Record<string, string> } = await response.json();
+
+      const propCache = new Map<string, { id?: string; propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string }>();
       for (const [pk, info] of Object.entries(data.p)) {
         propCache.set(pk, {
+          id: info[4] || undefined,
           propertyKey: pk,
           commonName: info[0],
           address: info[1],
@@ -702,6 +769,7 @@ export class DashboardMap {
       if (!props?.propertyKey) continue;
       
       const info = {
+        id: props.id || undefined,
         propertyKey: props.propertyKey,
         commonName: props.commonName || null,
         address: props.address || null,

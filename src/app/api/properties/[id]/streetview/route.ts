@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
-import { eq, or } from 'drizzle-orm';
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+import { eq } from 'drizzle-orm';
+import { isValidPropertyId } from '@/lib/property-resolver';
 
 export async function GET(
   request: NextRequest,
@@ -12,7 +11,6 @@ export async function GET(
   const { id } = await params;
 
   try {
-    const isUuid = UUID_REGEX.test(id);
     const [property] = await db
       .select({
         id: properties.id,
@@ -29,7 +27,7 @@ export async function GET(
         geocodedLon: properties.geocodedLon,
       })
       .from(properties)
-      .where(isUuid ? or(eq(properties.id, id), eq(properties.propertyKey, id)) : eq(properties.propertyKey, id))
+      .where(eq(properties.id, id))
       .limit(1);
 
     if (!property) {
@@ -104,11 +102,10 @@ export async function DELETE(
   const { id } = await params;
 
   try {
-    const isUuid = UUID_REGEX.test(id);
     await db
       .update(properties)
       .set({ streetviewPanoId: null })
-      .where(isUuid ? or(eq(properties.id, id), eq(properties.propertyKey, id)) : eq(properties.propertyKey, id));
+      .where(eq(properties.id, id));
 
     return NextResponse.json({ success: true });
   } catch (error) {

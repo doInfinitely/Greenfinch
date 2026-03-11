@@ -50,10 +50,10 @@ export async function PATCH(
     }
 
     if (ownerId !== undefined) {
-      const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
-      
+      const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin' || orgRole === 'org:manager';
+
       if (!isAdmin) {
-        return NextResponse.json({ error: 'Only admins can assign owners' }, { status: 403 });
+        return NextResponse.json({ error: 'Only admins and managers can assign owners' }, { status: 403 });
       }
       
       if (ownerId === null) {

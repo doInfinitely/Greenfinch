@@ -20,6 +20,7 @@ interface AnalyticsData {
   totalPipelineValue: number;
   valueGenerated: number;
   teamActivity: TeamMember[];
+  isManagerScope?: boolean;
 }
 
 function formatDate(dateString: string): string {
@@ -33,7 +34,7 @@ function formatDate(dateString: string): string {
 
 export default function OrgAnalytics() {
   const { orgRole } = useAuth();
-  const isAdmin = orgRole === 'org:admin';
+  const isAdmin = orgRole === 'org:admin' || orgRole === 'org:manager';
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -159,7 +160,7 @@ export default function OrgAnalytics() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle>Team Activity</CardTitle>
+                  <CardTitle>{data?.isManagerScope ? 'My Team Activity' : 'Team Activity'}</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {(data?.teamActivity?.length || 0) > 0 ? (

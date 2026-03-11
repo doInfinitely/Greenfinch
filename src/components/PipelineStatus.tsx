@@ -111,7 +111,7 @@ interface OrgMember {
 
 export default function PipelineStatus({ propertyId, inline = false, autoAssignOnFirstStatus = false, hideOwnerControls = false, hideOwnerDisplay = false, triggerAssignDialog = 0, isCustomer = false, initialData, initialLoaded, onPipelineChange }: PipelineStatusProps) {
   const { orgRole } = useAuth();
-  const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin';
+  const isAdmin = orgRole === 'org:admin' || orgRole === 'org:super_admin' || orgRole === 'org:manager';
   
   const [pipeline, setPipeline] = useState<{
     id?: string;

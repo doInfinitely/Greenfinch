@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
-import { properties, propertyContacts, propertyOrganizations, propertyPipeline } from '@/lib/schema';
+import { properties, propertyContacts, propertyOrganizations, propertyPipeline, territories, customerStatusFlags, type TerritoryDefinition, type TerritoryDefinitionPolygon } from '@/lib/schema';
 import { eq, isNotNull, and, or, sql, inArray, gte, lte, isNull, type SQL } from 'drizzle-orm';
 import { normalizeCommonName } from '@/lib/normalization';
 import { auth } from '@clerk/nextjs/server';
+import { buildTerritoryConditions, filterByPolygon, needsPolygonFilter } from '@/lib/territory-filter';
 
 const SQFT_PER_ACRE = 43560;
 
@@ -18,6 +19,7 @@ export async function GET(request: NextRequest) {
     const enrichmentStatus = searchParams.get('enrichmentStatus'); // 'researched' | 'not_researched' | null
     const customerStatuses = searchParams.get('customerStatuses')?.split(',').filter(Boolean) || [];
     const zipCodes = searchParams.get('zipCodes')?.split(',').filter(Boolean) || [];
+    const counties = searchParams.get('counties')?.split(',').filter(Boolean) || [];
     const buildingClasses = searchParams.get('buildingClasses')?.split(',').filter(Boolean) || [];
     const minLotAcres = searchParams.get('minLotAcres') ? parseFloat(searchParams.get('minLotAcres')!) : null;
     const maxLotAcres = searchParams.get('maxLotAcres') ? parseFloat(searchParams.get('maxLotAcres')!) : null;
@@ -25,7 +27,10 @@ export async function GET(request: NextRequest) {
     const maxNetSqft = searchParams.get('maxNetSqft') ? parseFloat(searchParams.get('maxNetSqft')!) : null;
     const organizationId = searchParams.get('organizationId');
     const contactId = searchParams.get('contactId');
-    
+    const territoryId = searchParams.get('territoryId');
+    const customerFlagsParam = searchParams.get('customerFlags')?.split(',').filter(Boolean) || [];
+    const includeResidential = searchParams.get('includeResidential') === 'true';
+
     // Optional limit - if not provided, return all matching properties
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? parseInt(limitParam, 10) : null;
@@ -36,6 +41,10 @@ export async function GET(request: NextRequest) {
       // Only show parent properties on the map (not constituent accounts like parking decks)
       eq(properties.isParentProperty, true),
     ];
+
+    if (!includeResidential) {
+      conditions.push(sql`(${properties.assetCategory} IS NULL OR ${properties.assetCategory} != 'Single-Family Residential')`);
+    }
 
     // Category filter (supports multiple categories including 'Unknown / Unassigned')
     if (categories.length > 0) {
@@ -109,6 +118,10 @@ export async function GET(request: NextRequest) {
       conditions.push(sql`LEFT(${properties.zip}, 5) IN (${sql.join(zipCodes.map(z => sql`${z}`), sql`, `)})`);
     }
 
+    if (counties.length > 0) {
+      conditions.push(inArray(properties.cadCountyCode, counties));
+    }
+
     // Building class filter - handle "Unknown" for NULL property_class values
     if (buildingClasses.length > 0) {
       const hasUnknown = buildingClasses.includes('Unknown');
@@ -159,15 +172,45 @@ export async function GET(request: NextRequest) {
     // Contact filter - show only properties linked to the selected contact
     if (contactId) {
       conditions.push(sql`EXISTS (
-        SELECT 1 FROM ${propertyContacts} 
-        WHERE ${propertyContacts.propertyId} = ${properties.id} 
+        SELECT 1 FROM ${propertyContacts}
+        WHERE ${propertyContacts.propertyId} = ${properties.id}
         AND ${propertyContacts.contactId} = ${contactId}
       )`);
+    }
+
+    // Customer flag filter
+    if (customerFlagsParam.length > 0 && orgId) {
+      conditions.push(sql`EXISTS (
+        SELECT 1 FROM ${customerStatusFlags}
+        WHERE ${customerStatusFlags.propertyId} = ${properties.id}
+        AND ${customerStatusFlags.clerkOrgId} = ${orgId}
+        AND ${customerStatusFlags.flagType} IN (${sql.join(customerFlagsParam.map(f => sql`${f}`), sql`, `)})
+      )`);
+    }
+
+    // Territory filter - filter properties by territory definition
+    let territoryRecord: { type: string; definition: TerritoryDefinition } | null = null;
+    if (territoryId && orgId) {
+      const [t] = await db
+        .select({ type: territories.type, definition: territories.definition })
+        .from(territories)
+        .where(and(
+          eq(territories.id, territoryId),
+          eq(territories.clerkOrgId, orgId),
+          eq(territories.isActive, true)
+        ))
+        .limit(1);
+      if (t) {
+        territoryRecord = { type: t.type, definition: t.definition as TerritoryDefinition };
+        const territoryConditions = buildTerritoryConditions(territoryRecord.definition, territoryRecord.type);
+        conditions.push(...territoryConditions);
+      }
     }
 
     // Build query - with or without limit
     const query = db
       .select({
+        id: properties.id,
         propertyKey: properties.propertyKey,
         regridAddress: properties.regridAddress,
         validatedAddress: properties.validatedAddress,
@@ -186,15 +229,24 @@ export async function GET(request: NextRequest) {
         buildingSqft: properties.buildingSqft,
         propertyClass: properties.propertyClass,
         sourceLlUuid: properties.sourceLlUuid,
+        cadCountyCode: properties.cadCountyCode,
         isCurrentCustomer: sql<boolean>`coalesce("properties"."is_current_customer", false)`,
         pipelineStatus: sql<string | null>`(SELECT pp.status FROM property_pipeline pp WHERE pp.property_id = properties.id LIMIT 1)`,
+        customerFlags: orgId
+          ? sql<string>`COALESCE((SELECT json_agg(json_build_object('flagType', csf.flag_type, 'competitorName', csf.competitor_name)) FROM customer_status_flags csf WHERE csf.property_id = properties.id AND csf.clerk_org_id = ${orgId}), '[]')`
+          : sql<string>`'[]'`,
       })
       .from(properties)
       .where(and(...conditions));
 
-    const allProperties = limit 
+    let allProperties = limit
       ? await query.limit(limit)
       : await query;
+
+    // Post-filter for polygon territories (bounding box was pre-filtered in SQL)
+    if (territoryRecord && needsPolygonFilter(territoryRecord.type)) {
+      allProperties = filterByPolygon(allProperties, territoryRecord.definition as TerritoryDefinitionPolygon);
+    }
 
     const totalCount = allProperties.length;
 
@@ -212,6 +264,7 @@ export async function GET(request: NextRequest) {
             coordinates: [p.lon!, p.lat!],
           },
           properties: {
+            id: p.id,
             propertyKey: p.propertyKey,
             address,
             city: p.city || '',
@@ -226,8 +279,10 @@ export async function GET(request: NextRequest) {
             lotSqft: p.lotSqft || 0,
             buildingSqft: p.buildingSqft || 0,
             llUuid: p.sourceLlUuid || '',
+            county: p.cadCountyCode || '',
             isCurrentCustomer: p.isCurrentCustomer || false,
             pipelineStatus: p.pipelineStatus || '',
+            customerFlags: typeof p.customerFlags === 'string' ? JSON.parse(p.customerFlags) : (p.customerFlags || []),
           },
         };
       });

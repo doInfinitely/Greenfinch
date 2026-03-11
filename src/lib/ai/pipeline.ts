@@ -26,14 +26,15 @@ import { runWithCallLog, getGeminiCallLog } from './client';
 /**
  * Run the complete AI enrichment pipeline for a single property.
  *
- * @param property    – Raw property record from Snowflake/DCAD
+ * @param property    – Raw property record from DCAD staging data
  * @param checkpoint  – Optional checkpoint from a previous failed run;
  *                      completed stages will be skipped
  * @returns Full enrichment result plus a new checkpoint for downstream use
  */
 export async function runFocusedEnrichment(
   property: CommercialProperty,
-  checkpoint?: EnrichmentStageCheckpoint | null
+  checkpoint?: EnrichmentStageCheckpoint | null,
+  options?: { clerkOrgId?: string }
 ): Promise<FocusedEnrichmentResult & { checkpoint: EnrichmentStageCheckpoint }> {
   return runWithCallLog(async () => {
     const startTotal = Date.now();
@@ -54,7 +55,7 @@ export async function runFocusedEnrichment(
     } else {
       try {
         const startStage1 = Date.now();
-        const stage1Result = await classifyAndVerifyProperty(property);
+        const stage1Result = await classifyAndVerifyProperty(property, { clerkOrgId: options?.clerkOrgId });
         const stage1Ms = Date.now() - startStage1;
         timing.physicalMs = stage1Ms;
         timing.classificationMs = 0;
@@ -91,7 +92,7 @@ export async function runFocusedEnrichment(
     } else {
       try {
         const startOwnership = Date.now();
-        ownership = await identifyOwnership(property, classification.data);
+        ownership = await identifyOwnership(property, classification.data, { clerkOrgId: options?.clerkOrgId });
         const ownershipMs = Date.now() - startOwnership;
         timing.ownershipMs = ownershipMs;
         if (ownership.metadata) stageMetadata.ownership = ownership.metadata;
@@ -116,7 +117,7 @@ export async function runFocusedEnrichment(
     } else {
       try {
         const startContacts = Date.now();
-        const contactsResult = await discoverContacts(property, classification.data, ownership.data);
+        const contactsResult = await discoverContacts(property, classification.data, ownership.data, { clerkOrgId: options?.clerkOrgId });
         const contactsMs = Date.now() - startContacts;
         timing.contactsMs = contactsMs;
         timing.contactIdentificationMs = contactsResult.contactIdentificationMs;

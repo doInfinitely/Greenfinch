@@ -74,6 +74,7 @@ const EMPTY_COMPANY_RESULT: CrustdataCompanyResult = {
 export async function enrichPersonCrustdata(params: {
   linkedinUrl?: string;
   email?: string;
+  clerkOrgId?: string;
 }): Promise<CrustdataPersonResult> {
   const apiKey = process.env.CRUSTDATA_API_KEY;
 
@@ -182,6 +183,7 @@ export async function enrichPersonCrustdata(params: {
       provider: 'crustdata',
       endpoint: 'person/enrich',
       entityType: 'contact',
+      clerkOrgId: params.clerkOrgId,
       success: true,
       metadata: { found: true },
     });
@@ -265,6 +267,7 @@ export async function enrichPersonCrustdata(params: {
       provider: 'crustdata',
       endpoint: 'person/enrich',
       entityType: 'contact',
+      clerkOrgId: params.clerkOrgId,
       success: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
@@ -273,7 +276,7 @@ export async function enrichPersonCrustdata(params: {
   }
 }
 
-export async function enrichCompanyCrustdata(domain: string): Promise<CrustdataCompanyResult> {
+export async function enrichCompanyCrustdata(domain: string, options: { clerkOrgId?: string } = {}): Promise<CrustdataCompanyResult> {
   const apiKey = process.env.CRUSTDATA_API_KEY;
 
   if (!apiKey) {
@@ -366,6 +369,7 @@ export async function enrichCompanyCrustdata(domain: string): Promise<CrustdataC
       provider: 'crustdata',
       endpoint: 'company/enrich',
       entityType: 'company',
+      clerkOrgId: options.clerkOrgId,
       success: true,
       metadata: { found: true },
     });
@@ -390,6 +394,7 @@ export async function enrichCompanyCrustdata(domain: string): Promise<CrustdataC
       provider: 'crustdata',
       endpoint: 'company/enrich',
       entityType: 'company',
+      clerkOrgId: options.clerkOrgId,
       success: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     });

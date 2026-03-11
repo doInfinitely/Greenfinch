@@ -3,9 +3,7 @@ import { db } from '@/lib/db';
 import { propertyServiceProviders, serviceProviders, properties } from '@/lib/schema';
 import { eq, and } from 'drizzle-orm';
 import { getSession } from '@/lib/auth';
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DCAD_KEY_REGEX = /^[0-9A-Z]{17,20}$/i;
+import { resolveProperty, isValidPropertyId } from '@/lib/property-resolver';
 
 export async function GET(
   request: NextRequest,
@@ -14,21 +12,14 @@ export async function GET(
   try {
     const { id } = await params;
 
-    if (!id || (!UUID_REGEX.test(id) && !DCAD_KEY_REGEX.test(id))) {
+    if (!id || !isValidPropertyId(id)) {
       return NextResponse.json(
         { error: 'Invalid property ID format' },
         { status: 400 }
       );
     }
 
-    // Find property first to get UUID id
-    const isUuid = UUID_REGEX.test(id);
-    const [property] = await db
-      .select({ id: properties.id })
-      .from(properties)
-      .where(isUuid ? eq(properties.id, id) : eq(properties.propertyKey, id))
-      .limit(1);
-
+    const property = await resolveProperty(id);
     if (!property) {
       return NextResponse.json({ providers: [] });
     }
@@ -75,7 +66,7 @@ export async function POST(
       );
     }
 
-    if (!id || (!UUID_REGEX.test(id) && !DCAD_KEY_REGEX.test(id))) {
+    if (!id || !isValidPropertyId(id)) {
       return NextResponse.json(
         { error: 'Invalid property ID format' },
         { status: 400 }
@@ -92,12 +83,7 @@ export async function POST(
       );
     }
 
-    // Verify property exists - handle both UUID and DCAD key formats
-    const isUuid = UUID_REGEX.test(id);
-    const property = await db.query.properties.findFirst({
-      where: isUuid ? eq(properties.id, id) : eq(properties.propertyKey, id),
-    });
-
+    const property = await resolveProperty(id);
     if (!property) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     }

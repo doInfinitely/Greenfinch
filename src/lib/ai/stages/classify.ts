@@ -11,6 +11,7 @@
 // ============================================================================
 
 import type { CommercialProperty } from "../../property-types";
+import type { MarketConfig } from "../../markets/types";
 import type { StageResult, PropertyDataAndClassification, StageMetadata } from '../types';
 import { isRetryableGeminiError } from '../errors';
 import { extractGroundingQuality, parseJsonResponse, validateStage1Schema } from '../parsers';
@@ -26,10 +27,10 @@ import type { LLMResponse } from '../llm';
 /**
  * Run Stage 1 of the AI enrichment pipeline.
  *
- * Given a raw property record from Snowflake/DCAD, this searches the web
+ * Given a raw property record from DCAD staging data, this searches the web
  * to verify details and returns structured classification + physical data.
  */
-export async function classifyAndVerifyProperty(property: CommercialProperty): Promise<StageResult<PropertyDataAndClassification>> {
+export async function classifyAndVerifyProperty(property: CommercialProperty, options: { clerkOrgId?: string; market?: MarketConfig } = {}): Promise<StageResult<PropertyDataAndClassification>> {
   const deedOwner = property.ownerName1 || 'Unknown';
   const bizName = property.bizName || null;
   const totalSqft = property.totalGrossBldgArea || null;
@@ -54,7 +55,7 @@ export async function classifyAndVerifyProperty(property: CommercialProperty): P
   // -- Build the prompt -------------------------------------------------------
   const prompt = `Search the web to verify and classify this commercial property. Return ONLY valid JSON.
 
-ADDRESS: ${property.address}, ${property.city}, TX ${property.zip}
+ADDRESS: ${property.address}, ${property.city}, ${options.market?.state || property.state || 'TX'} ${property.zip}
 DCAD: ${property.sptdCode || '?'} ${sptdDescription} | ${property.buildingCount || 0} bldgs, ${totalSqft?.toLocaleString() || 'unknown'} sqft | ${valStr} | ${lotAcresStr} | Quality: ${dcadQualityGrade || 'Unknown'}
 DEED OWNER: ${deedOwner}${bizName ? ` | BUSINESS NAME: ${bizName}` : ''} | ZONING: ${property.usedesc || 'Unknown'}
 Note: DCAD may show one parcel of a multi-parcel property. Confirm or correct with canonical totals.${buildingInfo}${classLine}
@@ -137,6 +138,7 @@ Return JSON:
       provider: stageConfig.provider,
       endpoint: 'classify-property',
       entityType: 'property',
+      clerkOrgId: options.clerkOrgId,
       tokenUsage: response?.tokenUsage ? {
         promptTokens: response.tokenUsage.inputTokens,
         responseTokens: response.tokenUsage.outputTokens,
@@ -188,6 +190,7 @@ Return JSON:
     provider: stageConfig.provider,
     endpoint: 'classify-property',
     entityType: 'property',
+    clerkOrgId: options.clerkOrgId,
     tokenUsage: response?.tokenUsage ? {
       promptTokens: response.tokenUsage.inputTokens,
       responseTokens: response.tokenUsage.outputTokens,

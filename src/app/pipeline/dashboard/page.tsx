@@ -377,7 +377,7 @@ export default function PipelineDashboard() {
                           return (
                             <Link
                               key={action.id}
-                              href={`/property/${action.propertyKey || action.propertyId}`}
+                              href={`/property/${action.propertyId || action.propertyKey}`}
                               className="flex items-center gap-3 p-3 -mx-3 rounded-md hover-elevate group"
                               data-testid={`task-item-${action.id}`}
                             >
@@ -442,7 +442,7 @@ export default function PipelineDashboard() {
                         {activity.recentMentions.map((mention) => (
                           <Link
                             key={mention.id}
-                            href={mention.propertyKey || mention.propertyId ? `/property/${mention.propertyKey || mention.propertyId}` : '#'}
+                            href={mention.propertyId || mention.propertyKey ? `/property/${mention.propertyId || mention.propertyKey}` : '#'}
                             className={`flex items-center gap-3 p-3 -mx-3 rounded-md hover-elevate group ${!mention.isRead ? 'bg-blue-50' : ''}`}
                             data-testid={`mention-item-${mention.id}`}
                           >

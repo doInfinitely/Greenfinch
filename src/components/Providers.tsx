@@ -7,6 +7,10 @@ import { ToastProvider } from '@/components/ui/toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { EnrichmentQueueProvider } from '@/contexts/EnrichmentQueueContext';
 import { CelebrationProvider } from '@/contexts/CelebrationContext';
+import { WalkthroughProvider } from '@/contexts/WalkthroughContext';
+import WalkthroughPrompt from '@/components/WalkthroughPrompt';
+import { OnboardingProvider } from '@/contexts/OnboardingContext';
+import SupportChat from '@/components/support/SupportChat';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,8 +43,14 @@ export default function Providers({ children }: { children: ReactNode }) {
         <TooltipProvider>
           <CelebrationProvider>
             <EnrichmentQueueProvider>
-              <OrgSwitchWatcher />
-              {children}
+              <OnboardingProvider>
+                <WalkthroughProvider>
+                  <OrgSwitchWatcher />
+                  {children}
+                  <WalkthroughPrompt />
+                  <SupportChat />
+                </WalkthroughProvider>
+              </OnboardingProvider>
             </EnrichmentQueueProvider>
           </CelebrationProvider>
         </TooltipProvider>

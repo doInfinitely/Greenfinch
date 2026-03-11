@@ -32,9 +32,12 @@ export interface Property {
   parentPropertyKey: string | null;
   constituentAccountNums: string[] | null;
   constituentCount: number;
+  revenueEstimates?: Record<string, number> | null;
+  revenueEstimateTotal?: number | null;
 }
 
 export interface ConstituentProperty {
+  id: string;
   propertyKey: string;
   commonName: string | null;
   buildingSqft: number | null;

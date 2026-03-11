@@ -9,6 +9,7 @@ interface MapCanvasProps {
   regridToken?: string;
   regridTileUrl?: string;
   properties: GeoJSON.Feature[];
+  territoryFeatures?: GeoJSON.Feature[];
   initialCenter?: { lat: number; lon: number };
   initialZoom?: number;
   onBoundsChange?: (bounds: MapBounds, zoom: number) => void;
@@ -27,6 +28,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
   regridToken,
   regridTileUrl,
   properties,
+  territoryFeatures,
   initialCenter,
   initialZoom,
   onBoundsChange,
@@ -101,6 +103,14 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
       features: properties,
     });
   }, [properties]);
+
+  useEffect(() => {
+    if (!mapRef.current || !territoryFeatures) return;
+    mapRef.current.setTerritoryData({
+      type: 'FeatureCollection',
+      features: territoryFeatures,
+    });
+  }, [territoryFeatures]);
 
   if (mapError) {
     return (

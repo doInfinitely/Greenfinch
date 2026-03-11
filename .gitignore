@@ -39,3 +39,6 @@ ai-stage-config.json
 .keys/
 .config/
 .local/
+
+# CAD data files (large CSVs/ZIPs)
+data/

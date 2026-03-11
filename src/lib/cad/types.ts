@@ -84,7 +84,8 @@ export interface CountyConfig {
   code: CountyCode;
   name: string;
   downloadUrl: string;
-  fileFormat: 'csv' | 'pipe-delimited';
+  downloadMethod: 'direct' | 'manual';
+  fileFormat: 'csv' | 'pipe-delimited' | 'fixed-width';
   files: {
     accountInfo: string;
     appraisalValues: string;
@@ -98,6 +99,7 @@ export const COUNTY_CONFIGS: Record<CountyCode, CountyConfig> = {
     code: 'DCAD',
     name: 'Dallas Central Appraisal District',
     downloadUrl: 'https://www.dallascad.org/ViewPDFs.aspx?type=3&id=%5C%5CDCAD.ORG%5CWEB%5CWEBDATA%5CWEBFORMS%5CDATA%20PRODUCTS%5CDCAD2025_CURRENT.ZIP',
+    downloadMethod: 'direct',
     fileFormat: 'csv',
     files: {
       accountInfo: 'ACCOUNT_INFO.csv',
@@ -110,36 +112,39 @@ export const COUNTY_CONFIGS: Record<CountyCode, CountyConfig> = {
     code: 'TAD',
     name: 'Tarrant Appraisal District',
     downloadUrl: 'https://www.tad.org/resources/data-downloads',
+    downloadMethod: 'manual',
     fileFormat: 'pipe-delimited',
     files: {
-      accountInfo: 'prop.txt',
-      appraisalValues: 'prop.txt', // Combined in Tarrant
-      buildings: ['improvement.txt', 'improvement_detail.txt'],
-      land: 'land.txt',
+      accountInfo: 'PropertyData*.txt',  // Combined single file
+      appraisalValues: 'PropertyData*.txt',
+      buildings: ['PropertyData*.txt'],
+      land: 'PropertyData*.txt',
     },
   },
   CCAD: {
     code: 'CCAD',
     name: 'Collin Central Appraisal District',
-    downloadUrl: 'https://collincad.org/open-data-portal/',
+    downloadUrl: 'https://data.texas.gov/',  // data.texas.gov combined export
+    downloadMethod: 'manual',
     fileFormat: 'csv',
     files: {
-      accountInfo: 'Property.csv',
-      appraisalValues: 'Property.csv', // Combined in Collin
-      buildings: ['Improvement.csv'],
-      land: 'Land.csv',
+      accountInfo: 'CollinCAD_Appraisal.csv',  // Combined single file
+      appraisalValues: 'CollinCAD_Appraisal.csv',
+      buildings: ['CollinCAD_Appraisal.csv'],
+      land: 'CollinCAD_Appraisal.csv',
     },
   },
   DENT: {
     code: 'DENT',
     name: 'Denton Central Appraisal District',
     downloadUrl: 'https://www.dentoncad.com/data-extracts/',
-    fileFormat: 'csv',
+    downloadMethod: 'manual',
+    fileFormat: 'fixed-width',
     files: {
-      accountInfo: 'Property.csv',
-      appraisalValues: 'Property.csv',
-      buildings: ['Improvement.csv'],
-      land: 'Land.csv',
+      accountInfo: '*_APPRAISAL_INFO.TXT',
+      appraisalValues: '*_APPRAISAL_INFO.TXT',
+      buildings: ['*_APPRAISAL_IMPROVEMENT_INFO.TXT'],
+      land: '*_APPRAISAL_LAND_DETAIL.TXT',
     },
   },
 };

@@ -1,6 +1,8 @@
 'use client';
 
 import { Badge } from '@/components/ui/badge';
+import { formatCurrencyCompact } from '@/lib/utils';
+import { computeUserRevenueTotal, checkPropertySuitability } from '@/lib/revenue-estimation';
 import type { Property, EnrichedPropertyData } from './types';
 
 const formatLotSize = (acres: number) => acres.toFixed(1);
@@ -20,11 +22,53 @@ const formatBuildingSqft = (sqft: number) => {
 interface PropertyStatsProps {
   property: Property;
   enrichedProperty: EnrichedPropertyData | null;
+  selectedServices?: string[] | null;
 }
 
-export default function PropertyStats({ property, enrichedProperty }: PropertyStatsProps) {
+export default function PropertyStats({ property, enrichedProperty, selectedServices }: PropertyStatsProps) {
+  const userRevenueTotal = computeUserRevenueTotal(
+    property.revenueEstimates,
+    selectedServices,
+  );
+  const serviceCount = selectedServices?.filter(
+    svc => property.revenueEstimates && (property.revenueEstimates as Record<string, number>)[svc]
+  ).length || 0;
+
+  // Check suitability for each selected service
+  const lotSqft = property.lotAcres ? Math.round(property.lotAcres * 43560) : null;
+  const unsuitableServices = selectedServices?.map(svc => {
+    const result = checkPropertySuitability(
+      svc,
+      enrichedProperty?.assetCategory || null,
+      enrichedProperty?.assetSubcategory || null,
+      lotSqft,
+    );
+    return result.suitable ? null : { service: svc, reason: result.reason };
+  }).filter(Boolean) || [];
+
   return (
     <>
+      {unsuitableServices.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4" data-testid="suitability-warning">
+          <p className="text-sm text-amber-700 font-medium">Property suitability note</p>
+          {unsuitableServices.map((item, i) => (
+            <p key={i} className="text-xs text-amber-600 mt-1">{item!.reason}</p>
+          ))}
+        </div>
+      )}
+
+      {userRevenueTotal > 0 && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6" data-testid="stat-estimated-revenue">
+          <p className="text-sm text-green-700 mb-1">Estimated Annual Value</p>
+          <p className="text-2xl font-bold text-green-800" data-testid="text-estimated-revenue-value">
+            {formatCurrencyCompact(userRevenueTotal)} <span className="text-base font-normal text-green-600">/yr</span>
+          </p>
+          <p className="text-xs text-green-600 mt-1">
+            Based on {serviceCount} service{serviceCount !== 1 ? 's' : ''} you provide
+          </p>
+        </div>
+      )}
+
       <div className={`grid grid-cols-1 gap-4 mb-6 ${property.calculatedBuildingClass ? 'sm:grid-cols-4' : 'sm:grid-cols-3'}`}>
         <div className="bg-gray-50 rounded-lg p-4" data-testid="stat-lot-size">
           <p className="text-sm text-gray-600 mb-1">Lot Size</p>
@@ -43,11 +87,11 @@ export default function PropertyStats({ property, enrichedProperty }: PropertySt
             <p className="text-sm text-gray-600 mb-1">Building Class</p>
             <div className="flex items-center h-[28px]">
               <Badge variant="outline" className={
-                property.calculatedBuildingClass === 'A+' || property.calculatedBuildingClass === 'A' 
+                property.calculatedBuildingClass === 'A+' || property.calculatedBuildingClass === 'A'
                   ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                property.calculatedBuildingClass === 'B' 
+                property.calculatedBuildingClass === 'B'
                   ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                property.calculatedBuildingClass === 'C' 
+                property.calculatedBuildingClass === 'C'
                   ? 'bg-amber-100 text-amber-800 border-amber-200' :
                 'bg-gray-200 text-gray-700 border-gray-300'
               } data-testid="badge-building-class">

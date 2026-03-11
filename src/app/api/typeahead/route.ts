@@ -106,7 +106,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const proximity = searchParams.get('proximity') || '-96.797,32.777';
+    const proximity = searchParams.get('proximity') || '-96.93,32.97';
     const proximityParts = proximity.split(',');
     
     if (proximityParts.length !== 2) {
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
                 latitude: lat,
                 longitude: lon,
               },
-              radius: 50000.0,
+              radius: 80000.0,
             },
           },
           includedPrimaryTypes: [

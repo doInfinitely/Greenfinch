@@ -1,8 +1,12 @@
 import axios from 'axios';
 import pRetry from 'p-retry';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
+import { rateLimiters } from './rate-limiter';
+import { cacheGet, cacheSet } from './redis';
 
 const HUNTER_API_BASE = 'https://api.hunter.io/v2';
+const HUNTER_EMAIL_CACHE_TTL = 30 * 24 * 60 * 60; // 30 days
+const HUNTER_NEGATIVE_CACHE_TTL = 24 * 60 * 60; // 24 hours
 
 export interface EmailFindResult {
   email: string | null;
@@ -72,12 +76,13 @@ async function makeEmailFinderRequest(
 }
 
 export async function findEmail(
-  firstName: string, 
-  lastName: string, 
-  companyDomain: string
+  firstName: string,
+  lastName: string,
+  companyDomain: string,
+  options: { clerkOrgId?: string } = {}
 ): Promise<EmailFindResult> {
   const apiKey = process.env.HUNTER_API_KEY;
-  
+
   if (!apiKey) {
     console.warn('HUNTER_API_KEY not configured, returning null email');
     return {
@@ -88,11 +93,21 @@ export async function findEmail(
     };
   }
 
+  // Check cache
+  const hunterCacheKey = `hunter-email:${firstName.toLowerCase()}|${lastName.toLowerCase()}|${companyDomain.toLowerCase()}`;
+  const cachedHunter = await cacheGet<EmailFindResult>(hunterCacheKey);
+  if (cachedHunter) {
+    console.log('[Hunter] Cache hit for findEmail:', hunterCacheKey);
+    return cachedHunter;
+  }
+
   try {
     const response = await pRetry(
       async () => {
         try {
-          return await makeEmailFinderRequest(firstName, lastName, companyDomain, apiKey);
+          return await rateLimiters.hunter.execute(() =>
+            makeEmailFinderRequest(firstName, lastName, companyDomain, apiKey)
+          );
         } catch (error: any) {
           if (error.response?.status === 429) {
             console.warn('Hunter.io rate limit hit, will retry...');
@@ -123,15 +138,18 @@ export async function findEmail(
         provider: 'hunter',
         endpoint: 'email-finder',
         entityType: 'contact',
+        clerkOrgId: options.clerkOrgId,
         success: true,
         metadata: { found: false },
       });
-      return {
+      const negResult: EmailFindResult = {
         email: null,
         confidence: 0,
         status: 'not_found',
         creditsUsed: 1,
       };
+      await cacheSet(hunterCacheKey, negResult, HUNTER_NEGATIVE_CACHE_TTL);
+      return negResult;
     }
 
     const data = response.data;
@@ -141,17 +159,22 @@ export async function findEmail(
       provider: 'hunter',
       endpoint: 'email-finder',
       entityType: 'contact',
+      clerkOrgId: options.clerkOrgId,
       success: true,
       metadata: { found: true, confidence },
     });
 
-    return {
+    const foundResult: EmailFindResult = {
       email: data.email,
       confidence: confidence,
       status: confidence >= 0.8 ? 'found' : confidence >= 0.5 ? 'likely' : 'uncertain',
       creditsUsed: 1,
       sources: data.sources,
     };
+    // Cache without sources (may contain large payloads)
+    const { sources: _s, ...cacheableResult } = foundResult;
+    await cacheSet(hunterCacheKey, cacheableResult, HUNTER_EMAIL_CACHE_TTL);
+    return foundResult;
   } catch (error: any) {
     if (error.response?.status === 402) {
       console.error('Hunter.io: Payment required - out of credits');
@@ -159,6 +182,7 @@ export async function findEmail(
         provider: 'hunter',
         endpoint: 'email-finder',
         entityType: 'contact',
+        clerkOrgId: options.clerkOrgId,
         statusCode: 402,
         success: false,
         errorMessage: 'Payment required - out of credits',
@@ -175,6 +199,7 @@ export async function findEmail(
       provider: 'hunter',
       endpoint: 'email-finder',
       entityType: 'contact',
+      clerkOrgId: options.clerkOrgId,
       statusCode: error.response?.status,
       success: false,
       errorMessage: error.message,
@@ -200,7 +225,8 @@ export interface HunterPhoneResult {
 export async function findPhoneByName(
   firstName: string,
   lastName: string,
-  companyDomain: string
+  companyDomain: string,
+  options: { clerkOrgId?: string } = {}
 ): Promise<HunterPhoneResult> {
   const apiKey = process.env.HUNTER_API_KEY;
 
@@ -215,6 +241,7 @@ export async function findPhoneByName(
       provider: 'hunter',
       endpoint: 'email-finder-phone',
       entityType: 'contact',
+      clerkOrgId: options.clerkOrgId,
       success: true,
       metadata: { found: !!response?.data?.phone_number },
     });
@@ -236,6 +263,7 @@ export async function findPhoneByName(
       provider: 'hunter',
       endpoint: 'email-finder-phone',
       entityType: 'contact',
+      clerkOrgId: options.clerkOrgId,
       success: false,
       errorMessage: error.message,
     });
@@ -365,7 +393,7 @@ interface HunterCompanyEnrichmentResponse {
   };
 }
 
-export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnrichmentResult> {
+export async function enrichCompanyByDomain(domain: string, options: { clerkOrgId?: string } = {}): Promise<CompanyEnrichmentResult> {
   const apiKey = process.env.HUNTER_API_KEY;
   
   if (!apiKey) {
@@ -424,6 +452,7 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnri
         provider: 'hunter',
         endpoint: 'companies/find',
         entityType: 'company',
+        clerkOrgId: options.clerkOrgId,
         success: true,
         metadata: { found: false },
       });
@@ -441,6 +470,7 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnri
       provider: 'hunter',
       endpoint: 'companies/find',
       entityType: 'company',
+      clerkOrgId: options.clerkOrgId,
       success: true,
       metadata: { found: true },
     });
@@ -505,6 +535,7 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnri
         provider: 'hunter',
         endpoint: 'companies/find',
         entityType: 'company',
+        clerkOrgId: options.clerkOrgId,
         statusCode: 402,
         success: false,
         errorMessage: 'Payment required - out of credits',
@@ -521,6 +552,7 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnri
       provider: 'hunter',
       endpoint: 'companies/find',
       entityType: 'company',
+      clerkOrgId: options.clerkOrgId,
       statusCode: error.response?.status,
       success: false,
       errorMessage: error.message,
@@ -535,7 +567,7 @@ export async function enrichCompanyByDomain(domain: string): Promise<CompanyEnri
   }
 }
 
-export async function verifyEmail(email: string): Promise<{
+export async function verifyEmail(email: string, options: { clerkOrgId?: string } = {}): Promise<{
   status: string;
   score: number;
   regexp: boolean;
@@ -567,6 +599,7 @@ export async function verifyEmail(email: string): Promise<{
       provider: 'hunter',
       endpoint: 'email-verifier',
       entityType: 'contact',
+      clerkOrgId: options.clerkOrgId,
       statusCode: response.status,
       success: true,
     });
@@ -576,6 +609,7 @@ export async function verifyEmail(email: string): Promise<{
       provider: 'hunter',
       endpoint: 'email-verifier',
       entityType: 'contact',
+      clerkOrgId: options.clerkOrgId,
       statusCode: error.response?.status,
       success: false,
       errorMessage: error.message,

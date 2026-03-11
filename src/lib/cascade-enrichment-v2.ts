@@ -106,7 +106,7 @@ export async function enrichContactCascadeV2(
   // Try Hunter if still no email
   if (!result.email && inputDomain) {
     try {
-      const hunterResult = await findEmailHunter(firstName, lastName, inputDomain);
+      const hunterResult = await findEmailHunter(firstName, lastName, inputDomain, { clerkOrgId: input.clerkOrgId });
       if (hunterResult.email) {
         // Re-verify with Findymail
         try {
@@ -157,7 +157,7 @@ export async function enrichContactCascadeV2(
       lastName,
       input.companyName || null,
       inputDomain,
-      { location: input.location || undefined, title: input.title || undefined }
+      { location: input.location || undefined, title: input.title || undefined, clerkOrgId: input.clerkOrgId }
     );
 
     if (serpPerson.found) {
@@ -205,6 +205,7 @@ export async function enrichContactCascadeV2(
         location: input.location || result.location || undefined,
         email: result.email || input.email || undefined,
         linkedinUrl: result.linkedinUrl || input.linkedinUrl || undefined,
+        clerkOrgId: input.clerkOrgId,
       });
 
       if (pdlResult.found) {
@@ -291,7 +292,8 @@ export async function enrichContactCascadeV2(
         firstName,
         lastName,
         input.companyName || result.company || null,
-        input.location || result.location || null
+        input.location || result.location || null,
+        { clerkOrgId: input.clerkOrgId }
       );
       if (serpLinkedIn.found && serpLinkedIn.linkedinUrl) {
         if (validateLinkedInSlug(serpLinkedIn.linkedinUrl, firstName, lastName)) {
@@ -432,6 +434,7 @@ export async function enrichOrganizationCascadeV2(
     name?: string;
     locality?: string;
     region?: string;
+    clerkOrgId?: string;
   } = {}
 ): Promise<OrganizationEnrichmentResult> {
   const empty = createEmptyOrgResult();
@@ -439,7 +442,7 @@ export async function enrichOrganizationCascadeV2(
   if (!domain && !options.name) return empty;
 
   try {
-    const serpCompany = await enrichCompanySerpAI(domain, options);
+    const serpCompany = await enrichCompanySerpAI(domain, { ...options, clerkOrgId: options.clerkOrgId });
 
     if (!serpCompany.found) return empty;
 
@@ -470,6 +473,8 @@ export async function enrichOrganizationCascadeV2(
       sicCodes: null,
       naicsCodes: null,
       tags: null,
+      parentDomain: serpCompany.parentCompanyDomain || null,
+      ultimateParentDomain: null,
       pdlRaw: null,
       crustdataRaw: null,
     };
@@ -507,6 +512,8 @@ function createEmptyOrgResult(): OrganizationEnrichmentResult {
     sicCodes: null,
     naicsCodes: null,
     tags: null,
+    parentDomain: null,
+    ultimateParentDomain: null,
     pdlRaw: null,
     crustdataRaw: null,
   };

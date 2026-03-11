@@ -49,7 +49,6 @@ greenfinch.ai is an AI-native commercial real estate prospecting CRM designed fo
 - **Authentication & Authorization**: Implemented with Clerk Auth, supporting organization-scoped sessions and role-based access control.
 
 ## External Dependencies
-- **Snowflake**: For Regrid parcel data ingestion.
 - **Mapbox**: For interactive mapping and geocoding functionalities.
 - **Findymail**: Provides email finding, verification, reverse email lookup, and phone lookup.
 - **Hunter.io**: Used for email finding and organization domain enrichment.

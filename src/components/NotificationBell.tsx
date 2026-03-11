@@ -172,7 +172,7 @@ export default function NotificationBell() {
                       }
                       if (notification.propertyKey || notification.propertyId) {
                         setIsOpen(false);
-                        router.push(`/property/${notification.propertyKey || notification.propertyId}`);
+                        router.push(`/property/${notification.propertyId || notification.propertyKey}`);
                       }
                     }}
                     data-testid={`notification-item-${notification.id}`}

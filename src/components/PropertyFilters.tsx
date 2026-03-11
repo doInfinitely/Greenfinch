@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useDebounce } from '@/hooks/use-debounce';
 import { Checkbox } from '@/components/ui/checkbox';
+import { CUSTOMER_FLAG_CONFIG, CUSTOMER_FLAG_TYPES } from '@/lib/customer-flags';
 
 export interface FilterState {
   minLotAcres: number | null;
@@ -20,6 +21,12 @@ export interface FilterState {
   viewStatus: 'all' | 'new_only' | 'viewed_only';
   customerStatuses: string[];
   zipCodes: string[];
+  counties: string[];
+  minRevenue: number | null;
+  maxRevenue: number | null;
+  territoryId: string | null;
+  customerFlags: string[];
+  includeResidential: boolean;
   // Legacy fields for backwards compatibility
   minLotSqft: number | null;
   maxLotSqft: number | null;
@@ -28,15 +35,24 @@ export interface FilterState {
 interface PropertyFiltersProps {
   filters: FilterState;
   onFiltersChange: (filters: FilterState) => void;
+  segmentDefaults?: FilterState;
   availableCategories?: string[];
   availableSubcategories?: string[];
   availableBuildingClasses?: string[];
   availableAcTypes?: string[];
   availableHeatingTypes?: string[];
   availableZipCodes?: string[];
+  availableCounties?: string[];
 }
 
 const UNKNOWN_CATEGORY = 'Unknown / Unassigned';
+
+const COUNTY_LABELS: Record<string, string> = {
+  DCAD: 'Dallas',
+  TAD: 'Tarrant',
+  CCAD: 'Collin',
+  DENT: 'Denton',
+};
 
 const DEFAULT_CATEGORIES = [
   'Healthcare',
@@ -71,6 +87,12 @@ export const emptyFilters: FilterState = {
   viewStatus: 'all',
   customerStatuses: [],
   zipCodes: [],
+  counties: [],
+  minRevenue: null,
+  maxRevenue: null,
+  territoryId: null,
+  customerFlags: [],
+  includeResidential: false,
   minLotSqft: null,
   maxLotSqft: null,
 };
@@ -95,7 +117,13 @@ export function serializeFiltersToParams(filters: FilterState): URLSearchParams 
   if (filters.viewStatus !== 'all') params.set('viewStatus', filters.viewStatus);
   if (filters.customerStatuses.length > 0) params.set('customerStatuses', filters.customerStatuses.join(','));
   if (filters.zipCodes.length > 0) params.set('zipCodes', filters.zipCodes.join(','));
-  
+  if (filters.counties.length > 0) params.set('counties', filters.counties.join(','));
+  if (filters.minRevenue) params.set('minRevenue', String(filters.minRevenue));
+  if (filters.maxRevenue) params.set('maxRevenue', String(filters.maxRevenue));
+  if (filters.territoryId) params.set('territoryId', filters.territoryId);
+  if (filters.customerFlags.length > 0) params.set('customerFlags', filters.customerFlags.join(','));
+  if (filters.includeResidential) params.set('includeResidential', 'true');
+
   return params;
 }
 
@@ -115,6 +143,12 @@ export function parseFiltersFromParams(searchParams: URLSearchParams): FilterSta
   const viewStatus = searchParams.get('viewStatus') as 'all' | 'new_only' | 'viewed_only' | null;
   const customerStatuses = searchParams.get('customerStatuses');
   const zipCodes = searchParams.get('zipCodes');
+  const counties = searchParams.get('counties');
+  const minRevenueParam = searchParams.get('minRevenue');
+  const maxRevenueParam = searchParams.get('maxRevenue');
+  const territoryId = searchParams.get('territoryId');
+  const customerFlagsParam = searchParams.get('customerFlags');
+  const includeResidential = searchParams.get('includeResidential') === 'true';
 
   const parsedMinLotAcres = minLotAcres ? parseFloat(minLotAcres) : null;
   const parsedMaxLotAcres = maxLotAcres ? parseFloat(maxLotAcres) : null;
@@ -135,6 +169,12 @@ export function parseFiltersFromParams(searchParams: URLSearchParams): FilterSta
     viewStatus: viewStatus || 'all',
     customerStatuses: customerStatuses ? customerStatuses.split(',') : [],
     zipCodes: zipCodes ? zipCodes.split(',') : [],
+    counties: counties ? counties.split(',') : [],
+    minRevenue: minRevenueParam ? parseInt(minRevenueParam, 10) : null,
+    maxRevenue: maxRevenueParam ? parseInt(maxRevenueParam, 10) : null,
+    territoryId: territoryId || null,
+    customerFlags: customerFlagsParam ? customerFlagsParam.split(',') : [],
+    includeResidential,
     minLotSqft: parsedMinLotAcres ? Math.round(parsedMinLotAcres * 43560) : null,
     maxLotSqft: parsedMaxLotAcres ? Math.round(parsedMaxLotAcres * 43560) : null,
   };
@@ -143,12 +183,14 @@ export function parseFiltersFromParams(searchParams: URLSearchParams): FilterSta
 export default function PropertyFilters({
   filters,
   onFiltersChange,
+  segmentDefaults,
   availableCategories = DEFAULT_CATEGORIES,
   availableSubcategories = [],
   availableBuildingClasses = DEFAULT_BUILDING_CLASSES,
   availableAcTypes = [],
   availableHeatingTypes = [],
   availableZipCodes = [],
+  availableCounties = [],
 }: PropertyFiltersProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [openSections, setOpenSections] = useState<Set<string>>(new Set());
@@ -166,6 +208,12 @@ export default function PropertyFilters({
   const [localMaxNetSqft, setLocalMaxNetSqft] = useState<string>(
     filters.maxNetSqft ? String(filters.maxNetSqft) : ''
   );
+  const [localMinRevenue, setLocalMinRevenue] = useState<string>(
+    filters.minRevenue ? String(filters.minRevenue) : ''
+  );
+  const [localMaxRevenue, setLocalMaxRevenue] = useState<string>(
+    filters.maxRevenue ? String(filters.maxRevenue) : ''
+  );
   const [orgSearch, setOrgSearch] = useState('');
   const [contactSearch, setContactSearch] = useState('');
   const [zipSearch, setZipSearch] = useState('');
@@ -175,24 +223,29 @@ export default function PropertyFilters({
   const [selectedContact, setSelectedContact] = useState<{id: string; fullName: string} | null>(null);
   const [showZipSuggestions, setShowZipSuggestions] = useState(false);
   const [fetchedZipCodes, setFetchedZipCodes] = useState<string[]>([]);
+  const [fetchedCounties, setFetchedCounties] = useState<string[]>([]);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Merge provided zip codes with fetched zip codes
   const allAvailableZipCodes = availableZipCodes.length > 0 ? availableZipCodes : fetchedZipCodes;
+  const allAvailableCounties = availableCounties.length > 0 ? availableCounties : fetchedCounties;
 
-  // Fetch zip codes from API on mount if not provided via props
+  // Fetch zip codes and counties from API on mount if not provided via props
   useEffect(() => {
-    if (availableZipCodes.length === 0) {
+    if (availableZipCodes.length === 0 || availableCounties.length === 0) {
       fetch('/api/properties/filter-options')
         .then(res => res.json())
         .then(data => {
-          if (data.zipCodes) {
+          if (data.zipCodes && availableZipCodes.length === 0) {
             setFetchedZipCodes(data.zipCodes);
+          }
+          if (data.counties && availableCounties.length === 0) {
+            setFetchedCounties(data.counties);
           }
         })
         .catch(() => {});
     }
-  }, [availableZipCodes.length]);
+  }, [availableZipCodes.length, availableCounties.length]);
 
   // Debounce organization and contact search inputs with 300ms delay
   const debouncedOrgSearch = useDebounce(orgSearch, 300);
@@ -331,16 +384,17 @@ export default function PropertyFilters({
   };
 
   const handleClearFilters = () => {
-    setLocalMinLotAcres('');
-    setLocalMaxLotAcres('');
-    setLocalMinNetSqft('');
-    setLocalMaxNetSqft('');
+    const resetTo = segmentDefaults ?? emptyFilters;
+    setLocalMinLotAcres(resetTo.minLotAcres != null ? String(resetTo.minLotAcres) : '');
+    setLocalMaxLotAcres(resetTo.maxLotAcres != null ? String(resetTo.maxLotAcres) : '');
+    setLocalMinNetSqft(resetTo.minNetSqft != null ? String(resetTo.minNetSqft) : '');
+    setLocalMaxNetSqft(resetTo.maxNetSqft != null ? String(resetTo.maxNetSqft) : '');
     setOrgSearch('');
     setContactSearch('');
     setZipSearch('');
     setSelectedOrg(null);
     setSelectedContact(null);
-    onFiltersChange(emptyFilters);
+    onFiltersChange(resetTo);
   };
 
   const selectOrg = (org: {id: string; name: string}) => {
@@ -380,7 +434,9 @@ export default function PropertyFilters({
     (filters.enrichmentStatus !== 'all' ? 1 : 0) +
     (filters.viewStatus !== 'all' ? 1 : 0) +
     ((filters.customerStatuses?.length ?? 0) > 0 ? 1 : 0) +
-    ((filters.zipCodes?.length ?? 0) > 0 ? 1 : 0);
+    ((filters.zipCodes?.length ?? 0) > 0 ? 1 : 0) +
+    ((filters.counties?.length ?? 0) > 0 ? 1 : 0) +
+    (filters.includeResidential ? 1 : 0);
 
   const toggleSection = (id: string) => {
     setOpenSections(prev => {
@@ -461,6 +517,29 @@ export default function PropertyFilters({
 
   const desktopFilters = (
     <div className="flex items-center gap-1.5 flex-wrap">
+      {allAvailableCounties.length > 1 && (
+        <FilterChip id="market" label="Market" count={filters.counties?.length ?? 0}>
+          <div className="p-2 w-[220px]">
+            <div className="flex items-center justify-between mb-1.5 px-1">
+              <span className="text-xs font-medium text-gray-500">Market</span>
+              {(filters.counties?.length ?? 0) > 0 && (
+                <button onClick={() => handleClearArray('counties')} className="text-[10px] text-gray-400 hover:text-gray-600" data-testid="desktop-clear-market">Clear</button>
+              )}
+            </div>
+            {allAvailableCounties.map((code) => (
+              <label key={code} className="flex items-center gap-2 text-sm cursor-pointer hover:bg-gray-50 px-1 py-1.5 rounded">
+                <Checkbox
+                  checked={filters.counties?.includes(code) ?? false}
+                  onChange={() => handleArrayToggle('counties', code)}
+                  data-testid={`checkbox-county-${code.toLowerCase()}`}
+                />
+                <span className="text-gray-700 text-xs">{COUNTY_LABELS[code] || code}</span>
+              </label>
+            ))}
+          </div>
+        </FilterChip>
+      )}
+
       <FilterChip id="category" label="Category" count={(filters.categories?.length ?? 0) + (filters.subcategories?.length ?? 0)}>
         <div className="p-2 max-h-[300px] overflow-y-auto w-[240px]">
           <div className="flex items-center justify-between mb-1 px-1">
@@ -497,7 +576,7 @@ export default function PropertyFilters({
         </div>
       </FilterChip>
 
-      <FilterChip id="size" label="Size" count={(filters.minLotAcres || filters.maxLotAcres ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0)}>
+      <FilterChip id="size" label="Size" count={(filters.minLotAcres || filters.maxLotAcres ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0) + (filters.minRevenue || filters.maxRevenue ? 1 : 0)}>
         <div className="p-3 w-[260px] space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-medium text-gray-500">Size</span>
@@ -520,6 +599,13 @@ export default function PropertyFilters({
             <div className="flex gap-1.5">
               <input type="number" value={localMinNetSqft} onChange={(e) => handleNumberChange('minNetSqft', e.target.value, setLocalMinNetSqft)} placeholder="Min" className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs" data-testid="input-min-net-sqft" />
               <input type="number" value={localMaxNetSqft} onChange={(e) => handleNumberChange('maxNetSqft', e.target.value, setLocalMaxNetSqft)} placeholder="Max" className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs" data-testid="input-max-net-sqft" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-[11px] text-gray-500 mb-1">Est. Revenue ($/yr)</label>
+            <div className="flex gap-1.5">
+              <input type="number" value={localMinRevenue} onChange={(e) => handleNumberChange('minRevenue', e.target.value, setLocalMinRevenue)} placeholder="Min" className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs" data-testid="input-min-revenue" />
+              <input type="number" value={localMaxRevenue} onChange={(e) => handleNumberChange('maxRevenue', e.target.value, setLocalMaxRevenue)} placeholder="Max" className="w-full px-2 py-1.5 border border-gray-300 rounded text-xs" data-testid="input-max-revenue" />
             </div>
           </div>
         </div>
@@ -585,6 +671,33 @@ export default function PropertyFilters({
               <span className="text-gray-700">Lost</span>
             </label>
           </div>
+        </div>
+      </FilterChip>
+
+      <FilterChip id="customerFlags" label="Flags" count={filters.customerFlags?.length ?? 0}>
+        <div className="p-2 w-[220px]">
+          <div className="flex items-center justify-between mb-1 px-1">
+            <span className="text-xs font-medium text-gray-500">Customer Flags</span>
+            {(filters.customerFlags?.length ?? 0) > 0 && (
+              <button onClick={() => handleClearArray('customerFlags')} className="text-[10px] text-gray-400 hover:text-gray-600" data-testid="desktop-clear-customer-flags">Clear</button>
+            )}
+          </div>
+          {CUSTOMER_FLAG_TYPES.map((ft) => {
+            const config = CUSTOMER_FLAG_CONFIG[ft];
+            return (
+              <label key={ft} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-1 py-1.5 rounded">
+                <Checkbox
+                  checked={filters.customerFlags?.includes(ft) ?? false}
+                  onChange={() => handleArrayToggle('customerFlags', ft)}
+                  data-testid={`checkbox-flag-${ft}`}
+                />
+                <span className={`inline-flex items-center gap-1 ${config.textColor}`}>
+                  <span className={`w-2 h-2 rounded-full ${config.color}`} />
+                  {config.label}
+                </span>
+              </label>
+            );
+          })}
         </div>
       </FilterChip>
 
@@ -720,6 +833,20 @@ export default function PropertyFilters({
         New
       </button>
 
+      <button
+        onClick={() => onFiltersChange({ ...filters, includeResidential: !filters.includeResidential })}
+        className={`flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium rounded-lg border transition-all whitespace-nowrap ${
+          filters.includeResidential ? 'bg-teal-50 border-teal-300 text-teal-700' : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+        }`}
+        data-testid="filter-btn-residential"
+      >
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+        Residential
+      </button>
+
       {activeFilterCount > 0 && (
         <button
           onClick={handleClearFilters}
@@ -746,6 +873,22 @@ export default function PropertyFilters({
           </button>
         )}
       </div>
+
+      {allAvailableCounties.length > 1 && (
+        <div className="border-b border-gray-100 pb-2">
+          <SectionHeader id="market" title="Market" count={filters.counties?.length ?? 0} onClear={() => handleClearArray('counties')} />
+          {openSections.has('market') && (
+            <div className="mt-2 space-y-1">
+              {allAvailableCounties.map((code) => (
+                <label key={code} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
+                  <Checkbox checked={filters.counties?.includes(code) ?? false} onChange={() => handleArrayToggle('counties', code)} data-testid={`checkbox-county-mobile-${code.toLowerCase()}`} />
+                  <span className="text-gray-700">{COUNTY_LABELS[code] || code}</span>
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="border-b border-gray-100 pb-3">
         <label className="block text-xs text-gray-600 mb-1.5 font-medium">Organization</label>
@@ -856,7 +999,31 @@ export default function PropertyFilters({
       </div>
 
       <div className="border-b border-gray-100 pb-2">
-        <SectionHeader id="size" title="Size" count={(filters.minLotAcres || filters.maxLotAcres ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0)} onClear={() => { setLocalMinLotAcres(''); setLocalMaxLotAcres(''); setLocalMinNetSqft(''); setLocalMaxNetSqft(''); onFiltersChange({ ...filters, minLotAcres: null, maxLotAcres: null, minNetSqft: null, maxNetSqft: null, minLotSqft: null, maxLotSqft: null }); }} />
+        <SectionHeader id="customerFlags" title="Customer Flags" count={filters.customerFlags?.length ?? 0} onClear={() => handleClearArray('customerFlags')} />
+        {openSections.has('customerFlags') && (
+          <div className="mt-2">
+            {CUSTOMER_FLAG_TYPES.map((ft) => {
+              const config = CUSTOMER_FLAG_CONFIG[ft];
+              return (
+                <label key={ft} className="flex items-center gap-3 text-sm cursor-pointer hover:bg-gray-50 active:bg-gray-100 px-2 py-2.5 rounded-lg">
+                  <Checkbox
+                    checked={filters.customerFlags?.includes(ft) ?? false}
+                    onChange={() => handleArrayToggle('customerFlags', ft)}
+                    data-testid={`checkbox-flag-mobile-${ft}`}
+                  />
+                  <span className={`inline-flex items-center gap-1.5 ${config.textColor}`}>
+                    <span className={`w-2 h-2 rounded-full ${config.color}`} />
+                    {config.label}
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      <div className="border-b border-gray-100 pb-2">
+        <SectionHeader id="size" title="Size" count={(filters.minLotAcres || filters.maxLotAcres ? 1 : 0) + (filters.minNetSqft || filters.maxNetSqft ? 1 : 0) + (filters.minRevenue || filters.maxRevenue ? 1 : 0)} onClear={() => { setLocalMinLotAcres(''); setLocalMaxLotAcres(''); setLocalMinNetSqft(''); setLocalMaxNetSqft(''); setLocalMinRevenue(''); setLocalMaxRevenue(''); onFiltersChange({ ...filters, minLotAcres: null, maxLotAcres: null, minNetSqft: null, maxNetSqft: null, minRevenue: null, maxRevenue: null, minLotSqft: null, maxLotSqft: null }); }} />
         {openSections.has('size') && (
           <div className="mt-2 space-y-4">
             <div>
@@ -871,6 +1038,13 @@ export default function PropertyFilters({
               <div className="flex gap-2">
                 <input type="number" value={localMinNetSqft} onChange={(e) => handleNumberChange('minNetSqft', e.target.value, setLocalMinNetSqft)} placeholder="Min" className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm" data-testid="input-min-net-sqft-mobile" />
                 <input type="number" value={localMaxNetSqft} onChange={(e) => handleNumberChange('maxNetSqft', e.target.value, setLocalMaxNetSqft)} placeholder="Max" className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm" data-testid="input-max-net-sqft-mobile" />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs text-gray-600 mb-1.5">Est. Revenue ($/yr)</label>
+              <div className="flex gap-2">
+                <input type="number" value={localMinRevenue} onChange={(e) => handleNumberChange('minRevenue', e.target.value, setLocalMinRevenue)} placeholder="Min" className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm" data-testid="input-min-revenue-mobile" />
+                <input type="number" value={localMaxRevenue} onChange={(e) => handleNumberChange('maxRevenue', e.target.value, setLocalMaxRevenue)} placeholder="Max" className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm" data-testid="input-max-revenue-mobile" />
               </div>
             </div>
           </div>

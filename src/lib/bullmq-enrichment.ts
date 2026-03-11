@@ -42,6 +42,7 @@ export interface BullMQBatchStatus {
 
 interface EnrichmentJobData {
   propertyKey: string;
+  propertyId?: string;
   batchId: string;
 }
 
@@ -152,7 +153,7 @@ async function updateBatchProgress(batchId: string, propertyKey: string, success
 }
 
 async function processJobHandler(job: Job<EnrichmentJobData>): Promise<{ propertyKey: string; success: boolean }> {
-  const { propertyKey, batchId } = job.data;
+  const { propertyKey, propertyId, batchId } = job.data;
   const maxAttempts = job.opts?.attempts || 3;
   const isFinalAttempt = job.attemptsMade + 1 >= maxAttempts;
   const itemStart = Date.now();
@@ -162,7 +163,7 @@ async function processJobHandler(job: Job<EnrichmentJobData>): Promise<{ propert
   const { processPropertyItem } = await import('./enrichment-queue');
 
   const result = await processPropertyItem(
-    { propertyKey, retryAttempt: job.attemptsMade },
+    { propertyKey, propertyId, retryAttempt: job.attemptsMade },
     itemStart
   );
 
@@ -245,7 +246,7 @@ export async function startBullMQBatch(options: StartBullMQBatchOptions): Promis
   const batchLimit = Math.min(options.limit || ENRICHMENT_MAX_BATCH_SIZE, ENRICHMENT_MAX_BATCH_SIZE);
   const concurrency = options.concurrency || CONCURRENCY.PROPERTIES;
 
-  let propertyKeysToEnrich: string[] = [];
+  let propertiesToEnrich: { propertyKey: string; id: string }[] = [];
 
   const unenrichedFilter = and(
     eq(properties.isParentProperty, true),
@@ -262,10 +263,10 @@ export async function startBullMQBatch(options: StartBullMQBatchOptions): Promis
         inArray(properties.propertyKey, options.propertyKeys.slice(0, batchLimit)),
         unenrichedFilter
       ),
-      columns: { propertyKey: true },
+      columns: { propertyKey: true, id: true },
     });
-    propertyKeysToEnrich = filtered.map(p => p.propertyKey);
-    const skipped = options.propertyKeys.length - propertyKeysToEnrich.length;
+    propertiesToEnrich = filtered;
+    const skipped = options.propertyKeys.length - propertiesToEnrich.length;
     if (skipped > 0) console.log(`[BullMQ] Skipped ${skipped} already-enriched properties`);
   } else if (options.propertyIds && options.propertyIds.length > 0) {
     const filtered = await db.query.properties.findMany({
@@ -273,21 +274,21 @@ export async function startBullMQBatch(options: StartBullMQBatchOptions): Promis
         inArray(properties.id, options.propertyIds.slice(0, batchLimit)),
         unenrichedFilter
       ),
-      columns: { propertyKey: true },
+      columns: { propertyKey: true, id: true },
     });
-    propertyKeysToEnrich = filtered.map(p => p.propertyKey);
-    const skipped = options.propertyIds.length - propertyKeysToEnrich.length;
+    propertiesToEnrich = filtered;
+    const skipped = options.propertyIds.length - propertiesToEnrich.length;
     if (skipped > 0) console.log(`[BullMQ] Skipped ${skipped} already-enriched properties`);
   } else {
     const unenrichedProperties = await db.query.properties.findMany({
       where: unenrichedFilter,
-      columns: { propertyKey: true },
+      columns: { propertyKey: true, id: true },
       limit: batchLimit,
     });
-    propertyKeysToEnrich = unenrichedProperties.map(p => p.propertyKey);
+    propertiesToEnrich = unenrichedProperties;
   }
 
-  if (propertyKeysToEnrich.length === 0) {
+  if (propertiesToEnrich.length === 0) {
     throw new Error('No properties found to enrich');
   }
 
@@ -301,7 +302,7 @@ export async function startBullMQBatch(options: StartBullMQBatchOptions): Promis
     batchId,
     status: 'running',
     progress: {
-      total: propertyKeysToEnrich.length,
+      total: propertiesToEnrich.length,
       processed: 0,
       succeeded: 0,
       failed: 0,
@@ -316,18 +317,18 @@ export async function startBullMQBatch(options: StartBullMQBatchOptions): Promis
   await setActiveBatchId(batchId);
 
   const queue = getQueue();
-  const jobs = propertyKeysToEnrich.map((propertyKey, index) => ({
+  const jobs = propertiesToEnrich.map((p, index) => ({
     name: 'enrich-property',
-    data: { propertyKey, batchId } as EnrichmentJobData,
+    data: { propertyKey: p.propertyKey, propertyId: p.id, batchId } as EnrichmentJobData,
     opts: {
-      jobId: `${batchId}--${propertyKey}`,
+      jobId: `${batchId}--${p.id}`,
       priority: index,
     },
   }));
 
   await queue.addBulk(jobs);
 
-  console.log(`[BullMQ] Batch ${batchId}: enqueued ${propertyKeysToEnrich.length} properties with concurrency=${concurrency}`);
+  console.log(`[BullMQ] Batch ${batchId}: enqueued ${propertiesToEnrich.length} properties with concurrency=${concurrency}`);
 
   return batch;
 }

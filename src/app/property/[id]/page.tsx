@@ -11,6 +11,7 @@ import AddContactModal from '@/components/AddContactModal';
 import StreetView from '@/components/StreetView';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
+import { useOnboarding } from '@/contexts/OnboardingContext';
 import PropertyNotes from '@/components/PropertyNotes';
 import PropertyActivity from '@/components/PropertyActivity';
 import PropertyDetailSkeleton from '@/components/PropertyDetailSkeleton';
@@ -21,6 +22,7 @@ import PropertyAbout from '@/components/property/PropertyAbout';
 import OwnershipSection from '@/components/property/OwnershipSection';
 import ContactsSection from '@/components/property/ContactsSection';
 import FlagDialog from '@/components/property/FlagDialog';
+import CustomerFlagDialog from '@/components/property/CustomerFlagDialog';
 import ServiceProviderDialog from '@/components/property/ServiceProviderDialog';
 import DataIssueDialog from '@/components/DataIssueDialog';
 import type { Property, ConstituentProperty, EnrichedPropertyData, Contact, Organization, EnrichmentStatusType } from '@/components/property/types';
@@ -38,6 +40,22 @@ export default function PropertyDetailPage() {
   const params = useParams();
   const router = useRouter();
   const propertyId = params?.id as string;
+
+  // Redirect old propertyKey URLs to UUID URLs
+  useEffect(() => {
+    if (!propertyId) return;
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(propertyId)) {
+      fetch(`/api/properties/resolve?key=${encodeURIComponent(propertyId)}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.found && data.id) {
+            router.replace(`/property/${data.id}`);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [propertyId, router]);
 
   const [property, setProperty] = useState<Property | null>(null);
   const [propertyDbId, setPropertyDbId] = useState<string | null>(null);
@@ -57,11 +75,13 @@ export default function PropertyDetailPage() {
   const [isCurrentCustomer, setIsCurrentCustomer] = useState(false);
   const { startEnrichment } = useEnrichment();
   const { getEnrichmentStatus } = useEnrichmentQueue();
+  const { markStep } = useOnboarding();
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const onboardingTrackedRef = useRef(false);
   
   const [constituentProperties, setConstituentProperties] = useState<ConstituentProperty[]>([]);
   const [showConstituents, setShowConstituents] = useState(false);
-  const [parentProperty, setParentProperty] = useState<{ propertyKey: string; commonName: string | null } | null>(null);
+  const [parentProperty, setParentProperty] = useState<{ id: string; propertyKey: string; commonName: string | null } | null>(null);
   const [expandedMapType, setExpandedMapType] = useState<'satellite' | 'street' | null>(null);
   
   const [showFlagDialog, setShowFlagDialog] = useState(false);
@@ -70,6 +90,7 @@ export default function PropertyDetailPage() {
   
   const [showAddServiceProvider, setShowAddServiceProvider] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
+  const [selectedServices, setSelectedServices] = useState<string[] | null>(null);
   const [mapToken, setMapToken] = useState<string>('');
   const [regridToken, setRegridToken] = useState<string>('');
   const [googleMapsApiKey, setGoogleMapsApiKey] = useState<string>('');
@@ -90,6 +111,8 @@ export default function PropertyDetailPage() {
   } | null>(null);
   const [pipelineLoaded, setPipelineLoaded] = useState(false);
   const [customerLoaded, setCustomerLoaded] = useState(false);
+  const [customerFlags, setCustomerFlags] = useState<Array<{ flagType: string; competitorName: string | null; notes: string | null }>>([]);
+  const [showCustomerFlagDialog, setShowCustomerFlagDialog] = useState(false);
 
   useEffect(() => {
     const fetchUser = async () => {
@@ -98,6 +121,9 @@ export default function PropertyDetailPage() {
         const data = await response.json();
         if (data.user?.id) {
           setUserId(data.user.id);
+        }
+        if (data.user?.selectedServices) {
+          setSelectedServices(data.user.selectedServices);
         }
       } catch (err) {
         console.error('Failed to fetch user:', err);
@@ -218,8 +244,10 @@ export default function PropertyDetailPage() {
           parentPropertyKey: prop.parentPropertyKey || null,
           constituentAccountNums: prop.constituentAccountNums || null,
           constituentCount: prop.constituentCount || 0,
+          revenueEstimates: prop.revenueEstimates || null,
+          revenueEstimateTotal: prop.revenueEstimateTotal || null,
         });
-        
+
         setPropertyDbId(prop.id);
 
         if (prop.isParentProperty && prop.constituentAccountNums?.length > 0) {
@@ -229,6 +257,7 @@ export default function PropertyDetailPage() {
             if (constResponse.ok) {
               const constData = await constResponse.json();
               setConstituentProperties((constData.properties || []).map((cp: any) => ({
+                id: cp.id || cp.propertyKey,
                 propertyKey: cp.propertyKey,
                 commonName: cp.commonName || null,
                 buildingSqft: cp.buildingSqft || null,
@@ -244,6 +273,7 @@ export default function PropertyDetailPage() {
             if (parentResponse.ok) {
               const parentData = await parentResponse.json();
               setParentProperty({
+                id: parentData.property.id,
                 propertyKey: parentData.property.propertyKey,
                 commonName: parentData.property.commonName || null,
               });
@@ -353,6 +383,10 @@ export default function PropertyDetailPage() {
     } finally {
       if (!options?.silent) {
         setIsLoading(false);
+        if (!onboardingTrackedRef.current) {
+          onboardingTrackedRef.current = true;
+          markStep('viewedProperty');
+        }
       }
     }
   }, [propertyId]);
@@ -434,6 +468,21 @@ export default function PropertyDetailPage() {
     };
     fetchPipelineData();
   }, [propertyId]);
+
+  const fetchCustomerFlags = useCallback(async () => {
+    if (!propertyId) return;
+    try {
+      const res = await fetch(`/api/properties/${propertyId}/customer-flags`);
+      if (res.ok) {
+        const data = await res.json();
+        setCustomerFlags(data.flags || []);
+      }
+    } catch {}
+  }, [propertyId]);
+
+  useEffect(() => {
+    fetchCustomerFlags();
+  }, [fetchCustomerFlags]);
 
   const handlePipelineChange = useCallback((pipelineUpdate: any) => {
     setPipelineData(pipelineUpdate || null);
@@ -606,6 +655,8 @@ export default function PropertyDetailPage() {
         onSetIsCurrentCustomer={setIsCurrentCustomer}
         onExpandStreetView={() => setExpandedMapType('street')}
         onPipelineChange={handlePipelineChange}
+        customerFlags={customerFlags}
+        onOpenCustomerFlagDialog={() => setShowCustomerFlagDialog(true)}
       />
 
       <main className="max-w-7xl mx-auto px-4 py-6">
@@ -623,7 +674,7 @@ export default function PropertyDetailPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
-              <PropertyStats property={property} enrichedProperty={enrichedProperty} />
+              <PropertyStats property={property} enrichedProperty={enrichedProperty} selectedServices={selectedServices} />
             </div>
 
             {enrichedProperty && (
@@ -646,6 +697,7 @@ export default function PropertyDetailPage() {
               enrichedProperty={enrichedProperty}
               organizations={organizations}
               onOpenFlagDialog={openFlagDialog}
+              isResidential={enrichedProperty?.assetCategory === 'Single-Family Residential'}
             />
 
             {parentProperty && (
@@ -657,7 +709,7 @@ export default function PropertyDetailPage() {
                   <span className="text-sm font-medium text-blue-800">Part of Complex</span>
                 </div>
                 <a 
-                  href={`/property/${parentProperty.propertyKey}`}
+                  href={`/property/${parentProperty.id}`}
                   className="block hover:bg-blue-100 rounded p-2 -m-2 transition-colors"
                 >
                   <p className="text-blue-900 font-semibold">{parentProperty.commonName ? normalizeCommonName(parentProperty.commonName) : 'Parent Property'}</p>
@@ -688,8 +740,8 @@ export default function PropertyDetailPage() {
                   <div className="px-4 pb-4 space-y-2">
                     {constituentProperties.map((constituent) => (
                       <a
-                        key={constituent.propertyKey}
-                        href={`/property/${constituent.propertyKey}`}
+                        key={constituent.id}
+                        href={`/property/${constituent.id}`}
                         className="block p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors"
                       >
                         <div className="flex items-center justify-between">
@@ -906,6 +958,13 @@ export default function PropertyDetailPage() {
           onClose={() => setShowFlagDialog(false)}
         />
       )}
+
+      <CustomerFlagDialog
+        open={showCustomerFlagDialog}
+        onOpenChange={setShowCustomerFlagDialog}
+        propertyId={propertyId}
+        onFlagsChange={fetchCustomerFlags}
+      />
 
       {showDataIssueDialog && (
         <DataIssueDialog

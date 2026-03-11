@@ -4,9 +4,7 @@ import { properties, propertyPipeline, propertyActivity } from '@/lib/schema';
 import { eq, and } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { getSession } from '@/lib/auth';
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DCAD_KEY_REGEX = /^[0-9A-Z]{17,20}$/i;
+import { resolveProperty, isValidPropertyId } from '@/lib/property-resolver';
 
 export async function POST(
   request: NextRequest,
@@ -24,7 +22,7 @@ export async function POST(
     }
 
     const { id } = await params;
-    if (!id || (!UUID_REGEX.test(id) && !DCAD_KEY_REGEX.test(id))) {
+    if (!id || !isValidPropertyId(id)) {
       return NextResponse.json({ error: 'Invalid property ID format' }, { status: 400 });
     }
 
@@ -35,13 +33,7 @@ export async function POST(
       return NextResponse.json({ error: 'isCurrentCustomer must be a boolean' }, { status: 400 });
     }
 
-    const isUuid = UUID_REGEX.test(id);
-    const [property] = await db
-      .select({ id: properties.id })
-      .from(properties)
-      .where(isUuid ? eq(properties.id, id) : eq(properties.propertyKey, id))
-      .limit(1);
-
+    const property = await resolveProperty(id);
     if (!property) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     }
@@ -108,17 +100,11 @@ export async function GET(
     }
 
     const { id } = await params;
-    if (!id || (!UUID_REGEX.test(id) && !DCAD_KEY_REGEX.test(id))) {
+    if (!id || !isValidPropertyId(id)) {
       return NextResponse.json({ error: 'Invalid property ID format' }, { status: 400 });
     }
 
-    const isUuid = UUID_REGEX.test(id);
-    const [property] = await db
-      .select({ id: properties.id })
-      .from(properties)
-      .where(isUuid ? eq(properties.id, id) : eq(properties.propertyKey, id))
-      .limit(1);
-
+    const property = await resolveProperty(id);
     if (!property) {
       return NextResponse.json({ error: 'Property not found' }, { status: 404 });
     }

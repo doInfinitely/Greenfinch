@@ -32,7 +32,8 @@ export async function searchLinkedInProfile(
   firstName: string,
   lastName: string,
   company: string | null,
-  location: string | null = null
+  location: string | null = null,
+  options: { clerkOrgId?: string } = {}
 ): Promise<SerpLinkedInResult> {
   const apiKey = process.env.SERP_API_KEY;
   if (!apiKey) {
@@ -91,6 +92,7 @@ export async function searchLinkedInProfile(
       provider: 'serp',
       endpoint: 'google-search',
       entityType: 'contact',
+      clerkOrgId: options.clerkOrgId,
       success: true,
       metadata: { found: !!linkedinMatch },
     });

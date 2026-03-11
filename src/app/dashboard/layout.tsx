@@ -35,6 +35,7 @@ export default function DashboardLayout({
               className="inline-flex items-center bg-gray-100 rounded-full p-0.5"
               role="tablist"
               data-testid="view-toggle"
+              data-tour="view-toggle"
             >
               <button
                 role="tab"

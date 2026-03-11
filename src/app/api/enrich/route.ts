@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-// Snowflake fallback removed — all properties are now in local PostgreSQL staging tables
+import { auth } from '@clerk/nextjs/server';
 import { runFocusedEnrichment } from '@/lib/ai';
 import { isBatchRunning, checkRateLimitForIndividual, updateLastRequestTime, saveEnrichmentResults, runCascadeEnrichmentOnSavedRecords } from '@/lib/enrichment-queue';
 import { db } from '@/lib/db';
@@ -7,11 +7,16 @@ import { properties } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
 import type { AggregatedProperty } from '@/lib/property-types';
 import { rateLimitMiddleware, checkRateLimit as checkRateLimitFn, addRateLimitHeaders, getIdentifier } from '@/lib/rate-limit';
+import { requireCredits } from '@/lib/credit-guard';
+import { InsufficientCreditsError } from '@/lib/credits';
 
 const checkRateLimit = rateLimitMiddleware(20, 60);
 
-async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedProperty | null> {
-  const [prop] = await db.select().from(properties).where(eq(properties.propertyKey, propertyKey));
+async function getPropertyFromPostgres(propertyKeyOrId: string): Promise<AggregatedProperty | null> {
+  const isUuidFormat = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(propertyKeyOrId);
+  const [prop] = await db.select().from(properties).where(
+    isUuidFormat ? eq(properties.id, propertyKeyOrId) : eq(properties.propertyKey, propertyKeyOrId)
+  );
   if (!prop) return null;
   
   // Collect all owners from DCAD and Regrid data
@@ -146,19 +151,21 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { propertyKey, storeResults = true } = body;
+    const { propertyKey, propertyId, storeResults = true } = body;
 
-    if (!propertyKey) {
+    await requireCredits('property_enrich', 'property', propertyKey || propertyId);
+
+    if (!propertyKey && !propertyId) {
       return NextResponse.json(
-        { error: 'propertyKey is required' },
+        { error: 'propertyKey or propertyId is required' },
         { status: 400 }
       );
     }
 
     await updateLastRequestTime();
-    console.log(`[API] Enrichment request for property: ${propertyKey}`);
+    console.log(`[API] Enrichment request for property: ${propertyId || propertyKey}`);
 
-    let property = await getPropertyFromPostgres(propertyKey);
+    let property = await getPropertyFromPostgres(propertyKey || propertyId!);
 
     if (!property) {
       return NextResponse.json(
@@ -228,10 +235,11 @@ export async function POST(request: NextRequest) {
     };
 
     try {
-      const enrichmentResult = await runFocusedEnrichment(commercialProperty as any);
+      const { orgId: clerkOrgId } = await auth();
+      const enrichmentResult = await runFocusedEnrichment(commercialProperty as any, null, { clerkOrgId: clerkOrgId || undefined });
 
       if (storeResults) {
-        const saved = await saveEnrichmentResults(property.propertyKey, enrichmentResult);
+        const saved = await saveEnrichmentResults(property.propertyKey, enrichmentResult, propertyId);
         console.log(`[API] Saved enrichment results: ${saved.contactIds.length} contacts, ${saved.orgIds.length} orgs`);
 
         if (saved.contactIds.length > 0 || saved.orgIds.length > 0) {
@@ -267,11 +275,17 @@ export async function POST(request: NextRequest) {
       );
     }
   } catch (error) {
+    if (error instanceof InsufficientCreditsError) {
+      return NextResponse.json(
+        { error: 'Insufficient credits', required: error.required, available: error.available },
+        { status: 402 }
+      );
+    }
     console.error('[API] Enrichment error:', error);
     return NextResponse.json(
-      { 
-        error: 'Internal server error', 
-        details: error instanceof Error ? error.message : 'Unknown error' 
+      {
+        error: 'Internal server error',
+        details: error instanceof Error ? error.message : 'Unknown error'
       },
       { status: 500 }
     );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { normalizeCommonName } from '@/lib/normalization';
@@ -12,12 +12,16 @@ import { Sparkles, ListPlus, Users, ArrowUp, ArrowDown } from 'lucide-react';
 import { TableSkeleton } from '@/components/PageSkeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
-import { formatLotSize, formatBuildingSqft } from '@/lib/utils';
+import { formatLotSize, formatBuildingSqft, formatCurrencyCompact } from '@/lib/utils';
 import { useToast } from '@/hooks/use-toast';
 import BulkAddToListModal from '@/components/BulkAddToListModal';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
 import PropertyFilters, { FilterState, parseFiltersFromParams, serializeFiltersToParams } from '@/components/PropertyFilters';
+import { useSegmentDefaults } from '@/hooks/use-segment-defaults';
+import { useMyTerritory } from '@/hooks/use-territory';
+import CustomerFlagBadge from '@/components/CustomerFlagBadge';
+import type { CustomerFlagType } from '@/lib/customer-flags';
 
 interface Property {
   propertyKey: string;
@@ -38,6 +42,8 @@ interface Property {
   isCurrentCustomer: boolean;
   contactCount: number;
   organizations: Array<{ id: string; name: string }>;
+  estimatedRevenue: number | null;
+  customerFlags: Array<{ flagType: string; competitorName: string | null }>;
 }
 
 const PIPELINE_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
@@ -89,10 +95,41 @@ export default function ListPage() {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const { getEnrichmentStatus } = useEnrichmentQueue();
   const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
+  const { segmentDefaults, isLoading: segmentDefaultsLoading } = useSegmentDefaults();
+  const { territory: myTerritory, isLoading: territoryLoading, isAdmin: isAdminOrManager } = useMyTerritory();
+  const defaultsAppliedRef = useRef(false);
+  const territoryAppliedRef = useRef(false);
+
+  // Apply segment defaults on first load when no URL filter params exist
+  const FILTER_PARAM_KEYS = ['minLotAcres', 'maxLotAcres', 'minNetSqft', 'maxNetSqft', 'minRevenue', 'maxRevenue', 'categories', 'subcategories', 'buildingClasses', 'acTypes', 'heatingTypes', 'organizationId', 'contactId', 'enrichmentStatus', 'viewStatus', 'customerStatuses', 'zipCodes', 'territoryId', 'customerFlags'];
+  const hasUrlFilters = FILTER_PARAM_KEYS.some(key => searchParams.has(key));
+
+  useEffect(() => {
+    if (defaultsAppliedRef.current || segmentDefaultsLoading || hasUrlFilters) return;
+    defaultsAppliedRef.current = true;
+    const params = serializeFiltersToParams(segmentDefaults);
+    if (params.toString()) {
+      setFilters(segmentDefaults);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [segmentDefaultsLoading, segmentDefaults, hasUrlFilters, router, pathname]);
+
+  // Auto-apply territory filter for non-admin users with an assigned territory
+  useEffect(() => {
+    if (territoryAppliedRef.current || territoryLoading || hasUrlFilters) return;
+    if (!isAdminOrManager && myTerritory) {
+      territoryAppliedRef.current = true;
+      const newFilters = { ...filters, territoryId: myTerritory.id };
+      setFilters(newFilters);
+      const params = serializeFiltersToParams(newFilters);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [territoryLoading, myTerritory, isAdminOrManager, hasUrlFilters, filters, router, pathname]);
 
   const debouncedQuery = useDebounce(searchQuery, 300);
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
+    defaultsAppliedRef.current = true;
     setFilters(newFilters);
     setCurrentPage(1);
     const params = serializeFiltersToParams(newFilters);
@@ -140,11 +177,20 @@ export default function ListPage() {
       if (filters.maxNetSqft !== null) {
         params.set('maxNetSqft', String(filters.maxNetSqft));
       }
+      if (filters.minRevenue !== null && filters.minRevenue !== undefined) {
+        params.set('minRevenue', String(filters.minRevenue));
+      }
+      if (filters.maxRevenue !== null && filters.maxRevenue !== undefined) {
+        params.set('maxRevenue', String(filters.maxRevenue));
+      }
       if (filters.organizationId) {
         params.set('organizationId', filters.organizationId);
       }
       if (filters.contactId) {
         params.set('contactId', filters.contactId);
+      }
+      if (filters.territoryId) {
+        params.set('territoryId', filters.territoryId);
       }
       if (sortBy) {
         params.set('sortBy', sortBy);
@@ -211,8 +257,8 @@ export default function ListPage() {
     setSelectedProperties(new Set());
   }, []);
 
-  const handleRowClick = useCallback((propertyKey: string) => {
-    router.push(`/property/${propertyKey}`);
+  const handleRowClick = useCallback((propertyId: string) => {
+    router.push(`/property/${propertyId}`);
   }, [router]);
 
   const handleSelectProperty = useCallback((propertyId: string | undefined, checked: boolean) => {
@@ -337,7 +383,7 @@ export default function ListPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
+            <div data-tour="list-filters"><PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} segmentDefaults={segmentDefaults} /></div>
             <div className="relative flex-1 min-w-[200px] md:flex-none">
               <input
                 type="text"
@@ -369,7 +415,7 @@ export default function ListPage() {
           <>
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full min-w-[900px]">
-                <thead className="bg-gray-50 sticky top-0 z-10">
+                <thead data-tour="list-sort" className="bg-gray-50 sticky top-0 z-10">
                   <tr>
                     <th className="px-4 py-3 text-left w-10">
                       <Checkbox
@@ -406,6 +452,13 @@ export default function ListPage() {
                     >
                       Building Sqft<SortIcon field="buildingSqft" />
                     </th>
+                    <th
+                      className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer select-none hover:text-gray-700"
+                      onClick={() => handleSort('estimatedRevenue')}
+                      data-testid="sort-header-estimated-revenue"
+                    >
+                      Est. Revenue<SortIcon field="estimatedRevenue" />
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider min-w-[120px]">Location</th>
                   </tr>
                 </thead>
@@ -428,7 +481,7 @@ export default function ListPage() {
                           aria-label={`Select ${p.address}`}
                         />
                       </td>
-                      <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
+                      <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyId)}>
                         <div className="flex items-start gap-1.5">
                           {!viewedPropertyIds.has(p.propertyKey) && (
                             <Tooltip>
@@ -476,7 +529,7 @@ export default function ListPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
+                      <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyId)}>
                         {p.category && (() => {
                           const colors = CATEGORY_COLORS[p.category] ?? DEFAULT_CATEGORY_COLORS;
                           return (
@@ -496,7 +549,7 @@ export default function ListPage() {
                           );
                         })()}
                       </td>
-                      <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyKey)}>
+                      <td className="px-6 py-4" onClick={() => handleRowClick(p.propertyId)}>
                         <div className="flex flex-wrap gap-1">
                           {(() => {
                             const status = getStatusDisplay(p);
@@ -517,21 +570,27 @@ export default function ListPage() {
                               Researching
                             </span>
                           ) : null}
+                          {p.customerFlags?.map((f) => (
+                            <CustomerFlagBadge key={f.flagType} flagType={f.flagType as CustomerFlagType} competitorName={f.competitorName} size="xs" />
+                          ))}
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
+                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyId)}>
                         {p.contactCount > 0 ? p.contactCount : '-'}
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
+                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyId)}>
                         {p.organizations?.length > 0 ? p.organizations.length : '-'}
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)}>
+                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyId)}>
                         {formatLotSize(p.lotSqft)}
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyKey)} data-testid={`text-building-sqft-${p.propertyKey}`}>
+                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyId)} data-testid={`text-building-sqft-${p.propertyKey}`}>
                         {formatBuildingSqft(p.buildingSqft)}
                       </td>
-                      <td className="px-4 py-4 text-sm text-gray-500 min-w-[120px]" onClick={() => handleRowClick(p.propertyKey)}>
+                      <td className="px-4 py-4 text-sm text-gray-600" onClick={() => handleRowClick(p.propertyId)} data-testid={`text-est-revenue-${p.propertyKey}`}>
+                        {p.estimatedRevenue ? formatCurrencyCompact(p.estimatedRevenue) : '-'}
+                      </td>
+                      <td className="px-4 py-4 text-sm text-gray-500 min-w-[120px]" onClick={() => handleRowClick(p.propertyId)}>
                         {[p.city, p.state].filter(Boolean).join(', ')}
                       </td>
                     </tr>
@@ -567,7 +626,7 @@ export default function ListPage() {
                     aria-label={`Select ${p.address}`}
                   />
                   <button
-                    onClick={() => handleRowClick(p.propertyKey)}
+                    onClick={() => handleRowClick(p.propertyId)}
                     className="flex-1 text-left min-w-0"
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -608,8 +667,14 @@ export default function ListPage() {
                               Researching
                             </span>
                           ) : null}
+                          {p.customerFlags?.map((f) => (
+                            <CustomerFlagBadge key={f.flagType} flagType={f.flagType as CustomerFlagType} competitorName={f.competitorName} size="xs" />
+                          ))}
                         </div>
                         <span className="text-xs text-gray-500">{formatLotSize(p.lotSqft)}</span>
+                        {p.estimatedRevenue && (
+                          <span className="text-xs font-medium text-green-700">{formatCurrencyCompact(p.estimatedRevenue)}/yr</span>
+                        )}
                       </div>
                     </div>
                     {p.subcategory && (
@@ -707,6 +772,7 @@ export default function ListPage() {
         selectedCount={selectedProperties.size}
         itemLabel="property"
         onDeselectAll={handleDeselectAll}
+        data-tour="bulk-actions"
       >
         <Button
           variant="outline"

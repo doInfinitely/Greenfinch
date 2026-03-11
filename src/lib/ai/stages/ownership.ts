@@ -15,6 +15,7 @@
 // ============================================================================
 
 import type { CommercialProperty } from "../../property-types";
+import type { MarketConfig } from "../../markets/types";
 import type { StageResult, OwnershipInfo, PropertyClassification, BeneficialOwnerEntry, ManagementCompanyEntry, StageMetadata } from '../types';
 import { extractGroundingQuality, extractCitationMetadata, parseJsonResponse, validateStage2Schema } from '../parsers';
 import { propertyLatLng, extractUsefulLegalInfo, crossValidateOwnership, OWNER_TYPE_MAP } from '../helpers';
@@ -37,8 +38,13 @@ import type { LLMResponse } from '../llm';
  */
 export async function identifyOwnership(
   property: CommercialProperty,
-  classification: PropertyClassification
+  classification: PropertyClassification,
+  options: { clerkOrgId?: string; market?: MarketConfig } = {}
 ): Promise<StageResult<OwnershipInfo>> {
+  const marketState = options.market?.state || property.state || 'TX';
+  const marketCity = options.market?.defaultCity || 'Dallas';
+  const marketSosLabel = options.market?.sosLabel || 'TX Secretary of State';
+  const marketPdlRegion = options.market?.pdlRegion || 'TX';
   const stageConfig = getStageConfig('stage2_ownership');
   const adapter = getLLMAdapter(stageConfig.provider);
   const deedOwner = property.ownerName1 || 'Unknown';
@@ -59,12 +65,12 @@ ${bizName ? `DCAD BUSINESS NAME: ${bizName}` : ''}
 ${legalInfo ? `LEGAL: ${legalInfo}` : ''}
 
 SEARCH SEQUENCE:
-1. Search "${classification.propertyName} ${property.city || 'Dallas'}" to find the property website and management company
+1. Search "${classification.propertyName} ${property.city || marketCity}" to find the property website and management company
 2. On the property website, look for "managed by", "a ___ community", or PM company branding in the footer — this identifies the PM. If the property site is hosted on a PM's domain (e.g. propertyname.pmcompany.com or pmcompany.com/propertyname), that is likely the PM.
-3. Search "${classification.propertyName} ${property.city || 'Dallas'} property management" to cross-check or discover the PM if step 2 didn't find one
+3. Search "${classification.propertyName} ${property.city || marketCity} property management" to cross-check or discover the PM if step 2 didn't find one
 4. Search the management company's portfolio or property listings to CONFIRM this property appears
 5. Search the management company website for this property listing to find a direct property management phone number
-6. Search "${deedOwner} Texas" on OpenCorporates or TX Secretary of State to find the entity behind the LLC/trust
+6. Search "${deedOwner} ${marketState}" on OpenCorporates or ${marketSosLabel} to find the entity behind the LLC/trust
 7. Search for news about acquisitions or sales of ${classification.propertyName} around ${deedDate} to identify the beneficial owner
 
 
@@ -133,6 +139,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
           provider: stageConfig.provider,
           endpoint: 'identify-ownership',
           entityType: 'property',
+          clerkOrgId: options.clerkOrgId,
           tokenUsage: response.tokenUsage ? {
             promptTokens: response.tokenUsage.inputTokens,
             responseTokens: response.tokenUsage.outputTokens,
@@ -188,6 +195,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
         provider: stageConfig.provider,
         endpoint: 'identify-ownership',
         entityType: 'property',
+        clerkOrgId: options.clerkOrgId,
         tokenUsage: response.tokenUsage ? {
           promptTokens: response.tokenUsage.inputTokens,
           responseTokens: response.tokenUsage.outputTokens,
@@ -270,7 +278,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
 
       const mgmtName = validated.managementCompany.name || undefined;
       const ownerName = validated.beneficialOwner.name || property.bizName || property.ownerName1 || null;
-      const propCity = property.city || 'Dallas';
+      const propCity = property.city || marketCity;
 
       // -- Property website validation ----------------------------------------
       // Verify the URL resolves, isn't a parking page, and matches the property
@@ -279,7 +287,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
           validated.propertyWebsite,
           classification.propertyName,
           mgmtName,
-          `${classification.canonicalAddress}, ${propCity}, TX`
+          `${classification.canonicalAddress}, ${propCity}, ${marketState}`
         );
         if (!websiteResult.validatedUrl) {
           console.warn(`[FocusedEnrichment] Stage 2: Property website "${validated.propertyWebsite}" failed validation, clearing`);
@@ -305,7 +313,9 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
           mgmtName || null,
           ownerName,
           propCity,
-          propertyLatLng(property)
+          propertyLatLng(property),
+          options.clerkOrgId,
+          marketState
         );
         if (retryResult.url) {
           validated.propertyWebsite = retryResult.url;
@@ -333,7 +343,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
           const pdlResult = await enrichCompanyPDL(aiDomain || '', {
             name: entry.name,
             locality: propCity || undefined,
-            region: 'TX',
+            region: marketPdlRegion,
           });
 
           if (pdlResult.found && pdlResult.website) {
@@ -367,7 +377,9 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
           const retryDomain = await retryFindCompanyDomain(
             entry.name!,
             propCity,
-            propertyLatLng(property)
+            propertyLatLng(property),
+            options.clerkOrgId,
+            marketState
           );
           if (retryDomain) {
             entry.domain = retryDomain;
@@ -424,6 +436,7 @@ Return JSON (mgmt and owners are ARRAYS — include every company you identify):
         provider: stageConfig.provider,
         endpoint: 'identify-ownership',
         entityType: 'property',
+        clerkOrgId: options.clerkOrgId,
         success: false,
         errorMessage: error instanceof Error ? error.message : String(error),
       });
@@ -482,7 +495,9 @@ async function retryFindPropertyWebsite(
   mgmtCompany: string | null,
   ownerName: string | null,
   city: string,
-  latLng?: { latitude: number; longitude: number }
+  latLng?: { latitude: number; longitude: number },
+  clerkOrgId?: string,
+  state: string = 'TX'
 ): Promise<{ url: string | null; domain: string | null }> {
   const retryConfig = getStageConfig('domain_retry');
   const retryAdapter = getLLMAdapter(retryConfig.provider);
@@ -493,7 +508,7 @@ async function retryFindPropertyWebsite(
 
   const prompt = `Find the official website for this property. Return ONLY valid JSON.
 
-PROPERTY: ${propertyName} at ${address}, ${city}, TX
+PROPERTY: ${propertyName} at ${address}, ${city}, ${state}
 ${context}
 
 Search for "${propertyName} ${city}" and "${propertyName} apartments" or "${propertyName} office" as a consumer would. Look for the property's own marketing website (e.g. "live${(propertyName || '').toLowerCase().replace(/\s+/g, '')}.com" or similar), a listing on the management company's site, or a dedicated property page. Copy the exact URL from search results.
@@ -526,11 +541,12 @@ Return JSON:
       provider: retryConfig.provider,
       endpoint: 'retry-property-website',
       entityType: 'property',
+      clerkOrgId,
       success: true,
     });
 
     if (url) {
-      const websiteResult = await validatePropertyWebsite(url, propertyName, mgmtCompany || undefined, `${address}, ${city}, TX`);
+      const websiteResult = await validatePropertyWebsite(url, propertyName, mgmtCompany || undefined, `${address}, ${city}, ${state}`);
       if (websiteResult.validatedUrl) {
         console.log(`[FocusedEnrichment] Domain retry: found valid property website: ${websiteResult.validatedUrl}`);
         return { url: websiteResult.validatedUrl, domain: websiteResult.extractedDomain };
@@ -543,6 +559,7 @@ Return JSON:
       provider: retryConfig.provider,
       endpoint: 'retry-property-website',
       entityType: 'property',
+      clerkOrgId,
       success: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
@@ -560,7 +577,9 @@ Return JSON:
 export async function retryFindCompanyDomain(
   companyName: string,
   city: string,
-  latLng?: { latitude: number; longitude: number }
+  latLng?: { latitude: number; longitude: number },
+  clerkOrgId?: string,
+  state: string = 'TX'
 ): Promise<string | null> {
   const retryConfig = getStageConfig('domain_retry');
   const retryAdapter = getLLMAdapter(retryConfig.provider);
@@ -568,7 +587,7 @@ export async function retryFindCompanyDomain(
   const prompt = `Find the official website for this company. Return ONLY valid JSON.
 
 COMPANY: ${companyName}
-LOCATION: ${city}, TX
+LOCATION: ${city}, ${state}
 
 Search for the company's official website. Copy the exact domain from the URL you find in search results.
 
@@ -599,6 +618,7 @@ Return JSON:
       provider: retryConfig.provider,
       endpoint: 'retry-company-domain',
       entityType: 'organization',
+      clerkOrgId,
       success: true,
     });
 
@@ -616,6 +636,7 @@ Return JSON:
       provider: retryConfig.provider,
       endpoint: 'retry-company-domain',
       entityType: 'organization',
+      clerkOrgId,
       success: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     });

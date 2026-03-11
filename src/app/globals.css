@@ -1,3 +1,6 @@
+@import 'driver.js/dist/driver.css';
+@import '../styles/walkthrough.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

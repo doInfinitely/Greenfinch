@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
 import { eq } from 'drizzle-orm';
+import { isValidPropertyId } from '@/lib/property-resolver';
 
 export async function POST(
   request: NextRequest,
@@ -23,31 +24,11 @@ export async function POST(
         zip: properties.zip,
       })
       .from(properties)
-      .where(eq(properties.propertyKey, id))
+      .where(eq(properties.id, id))
       .limit(1);
 
     if (!property) {
-      const [byId] = await db
-        .select({
-          id: properties.id,
-          propertyKey: properties.propertyKey,
-          geocodedLat: properties.geocodedLat,
-          geocodedLon: properties.geocodedLon,
-          validatedAddress: properties.validatedAddress,
-          regridAddress: properties.regridAddress,
-          city: properties.city,
-          state: properties.state,
-          zip: properties.zip,
-        })
-        .from(properties)
-        .where(eq(properties.id, id))
-        .limit(1);
-
-      if (!byId) {
-        return NextResponse.json({ success: false, error: 'Property not found' }, { status: 404 });
-      }
-      Object.assign(property ?? {}, byId);
-      return geocodeProperty(byId);
+      return NextResponse.json({ success: false, error: 'Property not found' }, { status: 404 });
     }
 
     return geocodeProperty(property);

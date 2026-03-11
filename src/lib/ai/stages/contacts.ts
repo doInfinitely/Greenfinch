@@ -17,6 +17,7 @@
 // ============================================================================
 
 import type { CommercialProperty } from "../../property-types";
+import type { MarketConfig } from "../../markets/types";
 import type {
   StageResult, OwnershipInfo, PropertyClassification,
   IdentifiedDecisionMaker, DiscoveredContact, RelationshipGrounding, StageMetadata
@@ -40,14 +41,15 @@ import type { LLMResponse } from '../llm';
 async function identifyDecisionMakers(
   property: CommercialProperty,
   classification: PropertyClassification,
-  ownership: OwnershipInfo
+  ownership: OwnershipInfo,
+  options: { clerkOrgId?: string; market?: MarketConfig } = {}
 ): Promise<StageResult<{ contacts: IdentifiedDecisionMaker[] }>> {
   const stageConfig = getStageConfig('stage3_contacts');
   const adapter = getLLMAdapter(stageConfig.provider);
 
   const propertySite = ownership.propertyWebsite || 'none';
-  const city = property.city || 'Dallas';
-  const state = (property as any).state || 'TX';
+  const city = property.city || options.market?.defaultCity || 'Dallas';
+  const state = property.state || options.market?.state || 'TX';
 
   const companyLines: string[] = [];
   if (ownership.managementCompany?.name && ownership.managementCompany.confidence > 0) {
@@ -151,6 +153,7 @@ Return JSON:
           provider: stageConfig.provider,
           endpoint: 'identify-decision-makers',
           entityType: 'property',
+          clerkOrgId: options.clerkOrgId,
           tokenUsage: response.tokenUsage ? {
             promptTokens: response.tokenUsage.inputTokens,
             responseTokens: response.tokenUsage.outputTokens,
@@ -321,6 +324,7 @@ Return JSON:
         provider: stageConfig.provider,
         endpoint: 'identify-decision-makers',
         entityType: 'property',
+        clerkOrgId: options.clerkOrgId,
         tokenUsage: response.tokenUsage ? {
           promptTokens: response.tokenUsage.inputTokens,
           responseTokens: response.tokenUsage.outputTokens,
@@ -356,6 +360,7 @@ Return JSON:
         provider: stageConfig.provider,
         endpoint: 'identify-decision-makers',
         entityType: 'property',
+        clerkOrgId: options.clerkOrgId,
         success: false,
         errorMessage: error instanceof Error ? error.message : String(error),
       });
@@ -384,10 +389,11 @@ Return JSON:
 export async function discoverContacts(
   property: CommercialProperty,
   classification: PropertyClassification,
-  ownership: OwnershipInfo
+  ownership: OwnershipInfo,
+  options: { clerkOrgId?: string; market?: MarketConfig } = {}
 ): Promise<StageResult<{ contacts: DiscoveredContact[] }> & { contactIdentificationMs: number; contactEnrichmentMs: number }> {
   const startIdentify = Date.now();
-  const identifyResult = await identifyDecisionMakers(property, classification, ownership);
+  const identifyResult = await identifyDecisionMakers(property, classification, ownership, options);
   const contactIdentificationMs = Date.now() - startIdentify;
 
   const identifiedContacts = identifyResult.data.contacts;

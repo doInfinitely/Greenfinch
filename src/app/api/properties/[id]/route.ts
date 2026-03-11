@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations } from '@/lib/schema';
-import { eq, or } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { auth } from '@clerk/nextjs/server';
 import { INTERNAL_ORG_SLUG } from '@/lib/permissions';
-
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DCAD_KEY_REGEX = /^[0-9A-Z]{17,20}$/i;
+import { isValidPropertyId } from '@/lib/property-resolver';
 
 export async function GET(
   request: NextRequest,
@@ -15,19 +13,17 @@ export async function GET(
   try {
     const { id } = await params;
 
-    if (!id || (!UUID_REGEX.test(id) && !DCAD_KEY_REGEX.test(id))) {
+    if (!id || !isValidPropertyId(id)) {
       return NextResponse.json(
         { error: 'Invalid property ID format' },
         { status: 400 }
       );
     }
 
-    // Find property - only compare against UUID column if input is a valid UUID
-    const isUuid = UUID_REGEX.test(id);
     const [dbProperty] = await db
       .select()
       .from(properties)
-      .where(isUuid ? or(eq(properties.id, id), eq(properties.propertyKey, id)) : eq(properties.propertyKey, id))
+      .where(eq(properties.id, id))
       .limit(1);
 
     if (!dbProperty) {
@@ -99,6 +95,7 @@ export async function GET(
         state: dbProperty.state,
         zip: dbProperty.zip,
         county: dbProperty.county,
+        cadCountyCode: dbProperty.cadCountyCode,
         lat: dbProperty.lat,
         lon: dbProperty.lon,
         lotSqft: dbProperty.lotSqft,
@@ -141,6 +138,9 @@ export async function GET(
         parentPropertyKey: dbProperty.parentPropertyKey,
         constituentAccountNums: dbProperty.constituentAccountNums,
         constituentCount: dbProperty.constituentCount,
+        revenueEstimates: dbProperty.revenueEstimates,
+        revenueEstimateTotal: dbProperty.revenueEstimateTotal,
+        revenueEstimateRationale: dbProperty.revenueEstimateRationale,
         gisParcelId: dbProperty.dcadGisParcelId,
         parcelCount: Array.isArray(dbProperty.rawParcelsJson) ? (dbProperty.rawParcelsJson as any[]).length : 1,
         usedesc: (() => {

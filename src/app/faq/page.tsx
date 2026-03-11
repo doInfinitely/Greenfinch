@@ -15,13 +15,13 @@ const faqs = [
     category: 'Coverage & Data',
     question: 'What geographic areas are currently available?',
     answer:
-      'We are live across Dallas County, TX. That covers Dallas and all surrounding cities within the county — including Garland, Mesquite, Irving, Grand Prairie, Carrollton, Farmers Branch, and more. We are actively expanding to additional counties and markets based on demand from early access partners. If you have a specific market in mind, mention it when you join the waitlist.',
+      'We are live across the Dallas–Fort Worth metroplex, covering Dallas, Tarrant, Collin, and Denton counties. That includes Dallas, Fort Worth, Arlington, Plano, Frisco, McKinney, Denton, Irving, Grand Prairie, and dozens more cities across the metro. We are actively expanding to additional markets based on demand from early access partners. If you have a specific market in mind, mention it when you join the waitlist.',
   },
   {
     category: 'Coverage & Data',
     question: 'Where does the property data come from?',
     answer:
-      'Property data is sourced from the Dallas Central Appraisal District (DCAD) — the authoritative public record for parcel ownership, building details, and property values in Dallas County. We enrich this data with AI to surface property type, use classification, ownership structure, and management companies.',
+      'Property data is sourced from the county appraisal districts across the DFW metro — DCAD (Dallas), TAD (Tarrant), CCAD (Collin), and DCAD (Denton). These are the authoritative public records for parcel ownership, building details, and property values. We enrich this data with AI to surface property type, use classification, ownership structure, and management companies.',
   },
   {
     category: 'Coverage & Data',

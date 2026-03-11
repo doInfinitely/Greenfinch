@@ -3,6 +3,7 @@ import { auth, clerkClient } from '@clerk/nextjs/server';
 import { db } from '@/lib/db';
 import { propertyPipeline, propertyActivity, users } from '@/lib/schema';
 import { eq, sql, gte, and, inArray } from 'drizzle-orm';
+import { getManagerTeamUserIds } from '@/lib/team-scope';
 
 export async function GET(request: NextRequest) {
   try {
@@ -12,13 +13,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    if (orgRole !== 'org:admin') {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    if (orgRole !== 'org:admin' && orgRole !== 'org:manager') {
+      return NextResponse.json({ error: 'Admin or manager access required' }, { status: 403 });
     }
 
     const startOfMonth = new Date();
     startOfMonth.setDate(1);
     startOfMonth.setHours(0, 0, 0, 0);
+
+    const { userId: clerkUserId } = await auth();
+    const isManagerOnly = orgRole === 'org:manager';
+
+    // For managers, scope to team members
+    let teamUserDbIds: string[] | null = null;
+    if (isManagerOnly && clerkUserId) {
+      const teamClerkIds = await getManagerTeamUserIds(orgId, clerkUserId);
+      if (teamClerkIds.length > 0) {
+        const teamDbUsers = await db
+          .select({ id: users.id })
+          .from(users)
+          .where(inArray(users.clerkId, teamClerkIds));
+        teamUserDbIds = teamDbUsers.map(u => u.id);
+      } else {
+        teamUserDbIds = [];
+      }
+    }
 
     let teamMemberCount = 0;
     try {
@@ -26,10 +45,24 @@ export async function GET(request: NextRequest) {
       const memberships = await clerk.organizations.getOrganizationMembershipList({
         organizationId: orgId,
       });
-      teamMemberCount = memberships.totalCount || memberships.data?.length || 0;
+      teamMemberCount = teamUserDbIds
+        ? teamUserDbIds.length
+        : (memberships.totalCount || memberships.data?.length || 0);
     } catch (e) {
       console.error('Error fetching org members:', e);
     }
+
+    const pipelineWhere = teamUserDbIds && teamUserDbIds.length > 0
+      ? and(eq(propertyPipeline.clerkOrgId, orgId), inArray(propertyPipeline.ownerId, teamUserDbIds))
+      : eq(propertyPipeline.clerkOrgId, orgId);
+
+    const activityWhere = teamUserDbIds && teamUserDbIds.length > 0
+      ? and(eq(propertyActivity.clerkOrgId, orgId), inArray(propertyActivity.userId, teamUserDbIds), gte(propertyActivity.createdAt, startOfMonth))
+      : and(eq(propertyActivity.clerkOrgId, orgId), gte(propertyActivity.createdAt, startOfMonth));
+
+    const teamActivityWhere = teamUserDbIds && teamUserDbIds.length > 0
+      ? and(eq(propertyActivity.clerkOrgId, orgId), inArray(propertyActivity.userId, teamUserDbIds))
+      : eq(propertyActivity.clerkOrgId, orgId);
 
     const [pipelineStats] = await db
       .select({
@@ -37,17 +70,14 @@ export async function GET(request: NextRequest) {
         valueGenerated: sql<number>`COALESCE(SUM(CASE WHEN ${propertyPipeline.status} = 'won' THEN ${propertyPipeline.dealValue} ELSE 0 END), 0)`,
       })
       .from(propertyPipeline)
-      .where(eq(propertyPipeline.clerkOrgId, orgId));
+      .where(pipelineWhere);
 
     const [activityStats] = await db
       .select({
         propertiesWorkedThisMonth: sql<number>`COUNT(DISTINCT ${propertyActivity.propertyId})`,
       })
       .from(propertyActivity)
-      .where(and(
-        eq(propertyActivity.clerkOrgId, orgId),
-        gte(propertyActivity.createdAt, startOfMonth)
-      ));
+      .where(activityWhere);
 
     const teamActivity = await db
       .select({
@@ -56,7 +86,7 @@ export async function GET(request: NextRequest) {
         lastActivity: sql<Date>`MAX(${propertyActivity.createdAt})`,
       })
       .from(propertyActivity)
-      .where(eq(propertyActivity.clerkOrgId, orgId))
+      .where(teamActivityWhere)
       .groupBy(propertyActivity.userId)
       .orderBy(sql`COUNT(*) DESC`)
       .limit(20);
@@ -90,6 +120,7 @@ export async function GET(request: NextRequest) {
       totalPipelineValue: Number(pipelineStats?.totalPipelineValue) || 0,
       valueGenerated: Number(pipelineStats?.valueGenerated) || 0,
       teamActivity: enrichedTeamActivity,
+      isManagerScope: isManagerOnly,
     });
   } catch (error) {
     console.error('Error fetching org analytics:', error);

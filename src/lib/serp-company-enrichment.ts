@@ -10,6 +10,10 @@ import { getLLMAdapter } from './ai/llm';
 import { getStageConfig } from './ai/runtime-config';
 import { trackCostFireAndForget } from '@/lib/cost-tracker';
 import { parseJsonResponse } from './ai/parsers';
+import { cacheGet, cacheSet } from './redis';
+
+const SERP_COMPANY_CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
+const SERP_COMPANY_NEGATIVE_TTL = 24 * 60 * 60; // 24 hours
 
 export interface SerpCompanyEnrichmentResult {
   found: boolean;
@@ -25,6 +29,8 @@ export interface SerpCompanyEnrichmentResult {
   founded: number | null;
   logoUrl: string | null;
   phone: string | null;
+  parentCompanyName: string | null;
+  parentCompanyDomain: string | null;
   confidence: number;
   sources: string[];
 }
@@ -39,6 +45,7 @@ export async function enrichCompanySerpAI(
     name?: string;
     locality?: string;
     region?: string;
+    clerkOrgId?: string;
   } = {}
 ): Promise<SerpCompanyEnrichmentResult> {
   const empty: SerpCompanyEnrichmentResult = {
@@ -46,10 +53,19 @@ export async function enrichCompanySerpAI(
     industry: null, employeeCount: null, employeeRange: null,
     description: null, linkedinUrl: null, location: null,
     founded: null, logoUrl: null, phone: null,
+    parentCompanyName: null, parentCompanyDomain: null,
     confidence: 0, sources: [],
   };
 
   if (!domain && !options.name) return empty;
+
+  // Check cache
+  const cacheKey = `serp-company:${(domain || '').toLowerCase()}`;
+  const cached = await cacheGet<SerpCompanyEnrichmentResult>(cacheKey);
+  if (cached) {
+    console.log(`[SerpCompanyEnrich] Cache hit: ${cacheKey}`);
+    return cached;
+  }
 
   try {
     const queries: string[] = [];
@@ -101,6 +117,8 @@ Extract and return JSON:
   "location": "City, State | null",
   "founded": 2000,
   "phone": "+1... | null",
+  "parentCompanyName": "Parent company name if subsidiary | null",
+  "parentCompanyDomain": "parentcompany.com if known | null",
   "confidence": 0.0
 }
 
@@ -120,13 +138,17 @@ If the company cannot be identified, return {"found": false}.`;
       provider: stageConfig.provider,
       endpoint: 'serp-company-enrichment',
       entityType: 'organization',
+      clerkOrgId: options.clerkOrgId,
       success: !!parsed.found,
       metadata: { domain, name: options.name },
     });
 
-    if (!parsed.found) return empty;
+    if (!parsed.found) {
+      await cacheSet(cacheKey, empty, SERP_COMPANY_NEGATIVE_TTL);
+      return empty;
+    }
 
-    return {
+    const result: SerpCompanyEnrichmentResult = {
       found: true,
       name: parsed.name || options.name || null,
       domain: parsed.domain || domain || null,
@@ -140,15 +162,20 @@ If the company cannot be identified, return {"found": false}.`;
       founded: parsed.founded || null,
       logoUrl: null,
       phone: parsed.phone || null,
+      parentCompanyName: parsed.parentCompanyName || null,
+      parentCompanyDomain: parsed.parentCompanyDomain || null,
       confidence: parsed.confidence || 0.5,
       sources: allResults.map(r => r.link).filter(Boolean),
     };
+    await cacheSet(cacheKey, result, SERP_COMPANY_CACHE_TTL);
+    return result;
   } catch (error) {
     console.error(`[SerpCompanyEnrich] Failed for ${domain || options.name}: ${error instanceof Error ? error.message : error}`);
     trackCostFireAndForget({
       provider: 'serpapi',
       endpoint: 'serp-company-enrichment',
       entityType: 'organization',
+      clerkOrgId: options.clerkOrgId,
       success: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     });

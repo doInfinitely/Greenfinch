@@ -14,7 +14,7 @@ async function main() {
     console.log(`Duration: ${Math.round(stats.durationMs / 1000)} seconds`);
     console.log('');
     console.log('Statistics:');
-    console.log(`  Properties from Snowflake: ${stats.totalFromSnowflake}`);
+    console.log(`  Properties from staging: ${stats.totalFromStaging}`);
     console.log(`  New properties saved: ${stats.propertiesSaved}`);
     console.log(`  Existing properties updated: ${stats.propertiesUpdated}`);
     console.log(`  Errors: ${stats.errors}`);

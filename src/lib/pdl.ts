@@ -288,7 +288,7 @@ export async function enrichPersonPDL(
   firstName: string,
   lastName: string,
   domain: string,
-  options: { location?: string; useSearch?: boolean; companyName?: string; email?: string; linkedinUrl?: string } = {}
+  options: { location?: string; useSearch?: boolean; companyName?: string; email?: string; linkedinUrl?: string; clerkOrgId?: string } = {}
 ): Promise<PDLPersonResult> {
   const apiKey = process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY;
 
@@ -484,6 +484,7 @@ export async function enrichPersonPDL(
         provider: 'pdl',
         endpoint: options.useSearch ? 'person/search' : 'person/enrich',
         entityType: 'contact',
+        clerkOrgId: options.clerkOrgId,
         success: true,
         metadata: { found: false },
       });
@@ -558,6 +559,7 @@ export async function enrichPersonPDL(
       provider: 'pdl',
       endpoint: options.useSearch ? 'person/search' : 'person/enrich',
       entityType: 'contact',
+      clerkOrgId: options.clerkOrgId,
       costOverrideUsd: PDL_COST.PERSON_ENRICH_SUCCESS,
       success: true,
       metadata: { found: true },
@@ -612,6 +614,7 @@ export async function enrichPersonPDL(
       provider: 'pdl',
       endpoint: options.useSearch ? 'person/search' : 'person/enrich',
       entityType: 'contact',
+      clerkOrgId: options.clerkOrgId,
       success: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
@@ -622,7 +625,7 @@ export async function enrichPersonPDL(
 
 export async function enrichCompanyPDL(
   domain: string,
-  options: { name?: string; linkedinUrl?: string; locality?: string; region?: string; streetAddress?: string; postalCode?: string; country?: string; ticker?: string; pdlId?: string } = {}
+  options: { name?: string; linkedinUrl?: string; locality?: string; region?: string; streetAddress?: string; postalCode?: string; country?: string; ticker?: string; pdlId?: string; clerkOrgId?: string } = {}
 ): Promise<PDLCompanyResult> {
   const apiKey = process.env.PDL_API_KEY || process.env.PEOPLEDATALABS_API_KEY;
 
@@ -750,6 +753,7 @@ export async function enrichCompanyPDL(
         provider: 'pdl',
         endpoint: 'company/enrich',
         entityType: 'company',
+        clerkOrgId: options.clerkOrgId,
         success: true,
         metadata: { found: false },
       });
@@ -772,6 +776,7 @@ export async function enrichCompanyPDL(
       provider: 'pdl',
       endpoint: 'company/enrich',
       entityType: 'company',
+      clerkOrgId: options.clerkOrgId,
       costOverrideUsd: PDL_COST.COMPANY_ENRICH_SUCCESS,
       success: true,
       metadata: { found: true },
@@ -822,6 +827,7 @@ export async function enrichCompanyPDL(
       provider: 'pdl',
       endpoint: 'company/enrich',
       entityType: 'company',
+      clerkOrgId: options.clerkOrgId,
       success: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     });

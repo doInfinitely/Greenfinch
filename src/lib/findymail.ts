@@ -6,8 +6,12 @@
  */
 
 import { rateLimiters, withRetry } from './rate-limiter';
+import { cacheGet, cacheSet } from './redis';
 
 const FINDYMAIL_API_URL = 'https://app.findymail.com/api';
+const EMAIL_CACHE_TTL = 30 * 24 * 60 * 60; // 30 days
+const VERIFY_CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
+const NEGATIVE_CACHE_TTL = 24 * 60 * 60; // 24 hours
 
 interface FindymailEmailResult {
   email?: string;
@@ -71,6 +75,14 @@ export async function findEmailByName(
   const fullName = `${firstName} ${lastName}`.trim();
   console.log('[Findymail] Find email by name:', { name: fullName, domain });
 
+  // Check cache
+  const cacheKey = `findymail-email:${firstName.toLowerCase()}|${lastName.toLowerCase()}|${domain.toLowerCase()}`;
+  const cached = await cacheGet<FindEmailResult>(cacheKey);
+  if (cached) {
+    console.log('[Findymail] Cache hit for findEmailByName:', cacheKey);
+    return cached;
+  }
+
   try {
     return await withRetry(() => rateLimiters.findymail.execute(async () => {
       const response = await fetch(`${FINDYMAIL_API_URL}/search/name`, {
@@ -121,7 +133,7 @@ export async function findEmailByName(
         linkedinUrl = `https://${linkedinUrl}`;
       }
 
-      return {
+      const result: FindEmailResult = {
         found: true,
         email,
         fullName: contact?.name || fullName,
@@ -132,10 +144,16 @@ export async function findEmailByName(
         phone: contact?.phone,
         raw: data,
       };
+      // Cache without raw response
+      const { raw: _raw, ...cacheable } = result;
+      await cacheSet(cacheKey, cacheable, EMAIL_CACHE_TTL);
+      return result;
     }), { maxRetries: 3, baseDelayMs: 2000, serviceName: 'Findymail' });
   } catch (error: any) {
     console.error('[Findymail] Find by name failed:', error.message);
-    return { found: false, error: error.message };
+    const negativeResult: FindEmailResult = { found: false, error: error.message };
+    await cacheSet(cacheKey, negativeResult, NEGATIVE_CACHE_TTL);
+    return negativeResult;
   }
 }
 
@@ -309,6 +327,14 @@ export async function verifyEmail(email: string): Promise<VerifyEmailResult> {
 
   console.log('[Findymail] Verify email:', email);
 
+  // Check cache
+  const verifyCacheKey = `email-verify:${email.toLowerCase()}`;
+  const cachedVerify = await cacheGet<VerifyEmailResult>(verifyCacheKey);
+  if (cachedVerify) {
+    console.log('[Findymail] Cache hit for verifyEmail:', email);
+    return cachedVerify;
+  }
+
   try {
     return await withRetry(() => rateLimiters.findymail.execute(async () => {
       const response = await fetch(`${FINDYMAIL_API_URL}/verify`, {
@@ -355,12 +381,16 @@ export async function verifyEmail(email: string): Promise<VerifyEmailResult> {
         }
       }
 
-      return {
+      const verifyResult: VerifyEmailResult = {
         success: true,
         status: normalizedStatus,
         rawStatus: rawStatus,
         raw: data,
       };
+      // Cache without raw response
+      const { raw: _rawV, ...cacheableVerify } = verifyResult;
+      await cacheSet(verifyCacheKey, cacheableVerify, VERIFY_CACHE_TTL);
+      return verifyResult;
     }), { maxRetries: 3, baseDelayMs: 2000, serviceName: 'Findymail' });
   } catch (error: any) {
     console.error('[Findymail] Verify failed:', error.message);

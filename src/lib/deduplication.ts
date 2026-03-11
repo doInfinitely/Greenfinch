@@ -363,6 +363,15 @@ export async function mergeOrganizationPair(keepOrgId: string, deleteOrgId: stri
       }
 
       await tx.delete(organizations).where(eq(organizations.id, deleteOrgId));
+
+      // Audit log
+      try {
+        await tx.insert(adminAuditLog).values({
+          action: 'merge_organization',
+          targetTable: 'organizations',
+          metadata: { keepId: keepOrgId, deleteId: deleteOrgId, stats },
+        });
+      } catch {}
     });
 
     console.log(`[Dedup] Org merge complete: ${JSON.stringify(stats)}`);
@@ -401,8 +410,248 @@ async function mergeOrganizations(duplicates: DuplicateGroup<typeof organization
 }
 
 /**
+ * Smart field-level merge for contacts.
+ * Picks the best value for each field from keep and delete contacts.
+ * Returns an update object with only the fields that should be updated.
+ */
+export function smartMergeContactFields(
+  keep: typeof contacts.$inferSelect,
+  del: typeof contacts.$inferSelect
+): Record<string, unknown> {
+  const updates: Record<string, unknown> = {};
+  const fieldsUpdated: string[] = [];
+
+  // Email: prefer 'valid' validation status, then most recently enriched
+  if (!keep.email && del.email) {
+    updates.email = del.email;
+    updates.normalizedEmail = del.normalizedEmail;
+    updates.emailValidationStatus = del.emailValidationStatus;
+    fieldsUpdated.push('email');
+  } else if (keep.email && del.email && del.emailValidationStatus === 'valid' && keep.emailValidationStatus !== 'valid') {
+    updates.email = del.email;
+    updates.normalizedEmail = del.normalizedEmail;
+    updates.emailValidationStatus = del.emailValidationStatus;
+    fieldsUpdated.push('email');
+  }
+
+  // Phone: prefer higher phoneConfidence
+  if (!keep.phone && del.phone) {
+    updates.phone = del.phone;
+    if (del.phoneConfidence) updates.phoneConfidence = del.phoneConfidence;
+    fieldsUpdated.push('phone');
+  } else if (keep.phone && del.phone && (del.phoneConfidence || 0) > (keep.phoneConfidence || 0)) {
+    updates.phone = del.phone;
+    updates.phoneConfidence = del.phoneConfidence;
+    fieldsUpdated.push('phone');
+  }
+
+  // LinkedIn URL: prefer non-null, prefer enrichment source
+  if (!keep.linkedinUrl && del.linkedinUrl) {
+    updates.linkedinUrl = del.linkedinUrl;
+    fieldsUpdated.push('linkedinUrl');
+  }
+  if (!keep.pdlLinkedinUrl && del.pdlLinkedinUrl) {
+    updates.pdlLinkedinUrl = del.pdlLinkedinUrl;
+    fieldsUpdated.push('pdlLinkedinUrl');
+  }
+
+  // Title, employer: prefer most recently enriched
+  const keepDate = keep.enrichedAt?.getTime() || 0;
+  const delDate = del.enrichedAt?.getTime() || 0;
+
+  if (!keep.title && del.title) {
+    updates.title = del.title;
+    fieldsUpdated.push('title');
+  } else if (keep.title && del.title && delDate > keepDate) {
+    updates.title = del.title;
+    fieldsUpdated.push('title');
+  }
+
+  if (!keep.employerName && del.employerName) {
+    updates.employerName = del.employerName;
+    fieldsUpdated.push('employerName');
+  } else if (keep.employerName && del.employerName && delDate > keepDate) {
+    updates.employerName = del.employerName;
+    fieldsUpdated.push('employerName');
+  }
+
+  // Photo URL: prefer non-null
+  if (!keep.photoUrl && del.photoUrl) {
+    updates.photoUrl = del.photoUrl;
+    fieldsUpdated.push('photoUrl');
+  }
+
+  // JSON arrays: merge/union PDL emails and phones
+  if (del.pdlEmailsJson) {
+    const keepEmails = (keep.pdlEmailsJson as any[] | null) || [];
+    const delEmails = (del.pdlEmailsJson as any[] | null) || [];
+    if (delEmails.length > 0) {
+      const existingAddresses = new Set(keepEmails.map((e: any) => e.address?.toLowerCase()));
+      const merged = [...keepEmails];
+      for (const e of delEmails) {
+        if (!existingAddresses.has(e.address?.toLowerCase())) {
+          merged.push(e);
+        }
+      }
+      if (merged.length > keepEmails.length) {
+        updates.pdlEmailsJson = merged;
+        fieldsUpdated.push('pdlEmailsJson');
+      }
+    }
+  }
+
+  if (del.pdlPhonesJson) {
+    const keepPhones = (keep.pdlPhonesJson as any[] | null) || [];
+    const delPhones = (del.pdlPhonesJson as any[] | null) || [];
+    if (delPhones.length > 0) {
+      const existingNumbers = new Set(keepPhones.map((p: any) => p.number));
+      const merged = [...keepPhones];
+      for (const p of delPhones) {
+        if (!existingNumbers.has(p.number)) {
+          merged.push(p);
+        }
+      }
+      if (merged.length > keepPhones.length) {
+        updates.pdlPhonesJson = merged;
+        fieldsUpdated.push('pdlPhonesJson');
+      }
+    }
+  }
+
+  // Simple fill-in for remaining fields
+  const fillFields = [
+    'companyDomain', 'source', 'crustdataLinkedinUrl',
+    'providerId', 'normalizedName',
+  ] as const;
+  for (const field of fillFields) {
+    if (!keep[field] && del[field]) {
+      (updates as any)[field] = del[field];
+      fieldsUpdated.push(field);
+    }
+  }
+
+  (updates as any)._fieldsUpdated = fieldsUpdated;
+  return updates;
+}
+
+/**
+ * Smart field-level merge for properties.
+ * Picks the best value for each field from keep and delete properties.
+ */
+export function smartMergePropertyFields(
+  keep: typeof properties.$inferSelect,
+  del: typeof properties.$inferSelect
+): Record<string, unknown> {
+  const updates: Record<string, unknown> = {};
+  const fieldsUpdated: string[] = [];
+
+  // Address: prefer validatedAddress > regridAddress, higher confidence
+  if (!keep.validatedAddress && del.validatedAddress) {
+    updates.validatedAddress = del.validatedAddress;
+    updates.validatedAddressConfidence = del.validatedAddressConfidence;
+    fieldsUpdated.push('validatedAddress');
+  } else if (keep.validatedAddress && del.validatedAddress &&
+    (del.validatedAddressConfidence || 0) > (keep.validatedAddressConfidence || 0)) {
+    updates.validatedAddress = del.validatedAddress;
+    updates.validatedAddressConfidence = del.validatedAddressConfidence;
+    fieldsUpdated.push('validatedAddress');
+  }
+
+  if (!keep.regridAddress && del.regridAddress) {
+    updates.regridAddress = del.regridAddress;
+    fieldsUpdated.push('regridAddress');
+  }
+
+  // Classification: prefer higher confidence
+  if (!keep.assetCategory && del.assetCategory) {
+    updates.assetCategory = del.assetCategory;
+    updates.assetSubcategory = del.assetSubcategory;
+    updates.categoryConfidence = del.categoryConfidence;
+    fieldsUpdated.push('assetCategory');
+  } else if (keep.assetCategory && del.assetCategory &&
+    (del.categoryConfidence || 0) > (keep.categoryConfidence || 0)) {
+    updates.assetCategory = del.assetCategory;
+    updates.assetSubcategory = del.assetSubcategory;
+    updates.categoryConfidence = del.categoryConfidence;
+    fieldsUpdated.push('assetCategory');
+  }
+
+  // Property class: prefer higher confidence
+  if (!keep.propertyClass && del.propertyClass) {
+    updates.propertyClass = del.propertyClass;
+    updates.propertyClassConfidence = del.propertyClassConfidence;
+    fieldsUpdated.push('propertyClass');
+  } else if (keep.propertyClass && del.propertyClass &&
+    (del.propertyClassConfidence || 0) > (keep.propertyClassConfidence || 0)) {
+    updates.propertyClass = del.propertyClass;
+    updates.propertyClassConfidence = del.propertyClassConfidence;
+    fieldsUpdated.push('propertyClass');
+  }
+
+  // DCAD data: prefer non-null
+  const dcadFields = [
+    'dcadOwnerName1', 'dcadOwnerName2', 'dcadBizName',
+    'dcadOwnerAddress', 'dcadOwnerCity', 'dcadOwnerState',
+    'dcadOwnerZip', 'dcadOwnerPhone',
+  ] as const;
+  for (const field of dcadFields) {
+    if (!keep[field] && del[field]) {
+      (updates as any)[field] = del[field];
+      fieldsUpdated.push(field);
+    }
+  }
+
+  // Ownership: prefer non-null with higher confidence
+  if (!keep.beneficialOwner && del.beneficialOwner) {
+    updates.beneficialOwner = del.beneficialOwner;
+    updates.beneficialOwnerConfidence = del.beneficialOwnerConfidence;
+    updates.beneficialOwnerType = del.beneficialOwnerType;
+    updates.beneficialOwnerDomain = del.beneficialOwnerDomain;
+    fieldsUpdated.push('beneficialOwner');
+  } else if (keep.beneficialOwner && del.beneficialOwner &&
+    (del.beneficialOwnerConfidence || 0) > (keep.beneficialOwnerConfidence || 0)) {
+    updates.beneficialOwner = del.beneficialOwner;
+    updates.beneficialOwnerConfidence = del.beneficialOwnerConfidence;
+    updates.beneficialOwnerType = del.beneficialOwnerType;
+    updates.beneficialOwnerDomain = del.beneficialOwnerDomain;
+    fieldsUpdated.push('beneficialOwner');
+  }
+
+  // Management: prefer non-null with higher confidence
+  if (!keep.managementCompany && del.managementCompany) {
+    updates.managementCompany = del.managementCompany;
+    updates.managementCompanyDomain = del.managementCompanyDomain;
+    updates.managementConfidence = del.managementConfidence;
+    updates.managementType = del.managementType;
+    fieldsUpdated.push('managementCompany');
+  } else if (keep.managementCompany && del.managementCompany &&
+    (del.managementConfidence || 0) > (keep.managementConfidence || 0)) {
+    updates.managementCompany = del.managementCompany;
+    updates.managementCompanyDomain = del.managementCompanyDomain;
+    updates.managementConfidence = del.managementConfidence;
+    updates.managementType = del.managementType;
+    fieldsUpdated.push('managementCompany');
+  }
+
+  // Simple fill-in for remaining fields
+  const fillFields = [
+    'commonName', 'regridOwner', 'regridOwner2',
+    'city', 'state', 'zip', 'county',
+  ] as const;
+  for (const field of fillFields) {
+    if (!keep[field] && del[field]) {
+      (updates as any)[field] = del[field];
+      fieldsUpdated.push(field);
+    }
+  }
+
+  (updates as any)._fieldsUpdated = fieldsUpdated;
+  return updates;
+}
+
+/**
  * Merge duplicate contacts
- * Updates all foreign key references and deletes duplicates
+ * Updates all foreign key references, applies smart field merge, and deletes duplicates
  */
 export async function mergeContacts(duplicates: DuplicateGroup<typeof contacts.$inferSelect>[]): Promise<{ merged: number; errors: string[] }> {
   let merged = 0;
@@ -413,10 +662,32 @@ export async function mergeContacts(duplicates: DuplicateGroup<typeof contacts.$
       console.log(`[Dedup] Merging ${group.deleteIds.length} duplicate contacts into ${group.keepId} (key: ${group.key})`);
 
       await db.transaction(async (tx) => {
+        const [keepContact] = await tx.select().from(contacts).where(eq(contacts.id, group.keepId));
         const keepLinks = await tx.select().from(propertyContacts).where(eq(propertyContacts.contactId, group.keepId));
         const keepPropertyIds = new Set(keepLinks.map(l => l.propertyId));
 
         for (const deleteId of group.deleteIds) {
+          const [deleteContact] = await tx.select().from(contacts).where(eq(contacts.id, deleteId));
+
+          // Smart field merge
+          if (keepContact && deleteContact) {
+            const mergeUpdates = smartMergeContactFields(keepContact, deleteContact);
+            const fieldsUpdated = (mergeUpdates as any)._fieldsUpdated as string[];
+            delete (mergeUpdates as any)._fieldsUpdated;
+            if (Object.keys(mergeUpdates).length > 0) {
+              await tx.update(contacts).set(mergeUpdates).where(eq(contacts.id, group.keepId));
+            }
+
+            // Audit log
+            try {
+              await tx.insert(adminAuditLog).values({
+                action: 'merge_contact',
+                targetTable: 'contacts',
+                metadata: { keepId: group.keepId, deleteId, fieldsUpdated },
+              });
+            } catch {}
+          }
+
           const dupeLinks = await tx.select().from(propertyContacts).where(eq(propertyContacts.contactId, deleteId));
           for (const link of dupeLinks) {
             if (keepPropertyIds.has(link.propertyId)) {
@@ -748,6 +1019,20 @@ async function flagPotentialDuplicate(
 export async function mergeProperties(keepId: string, mergeId: string): Promise<void> {
   console.log(`[Dedup] Merging property ${mergeId} into ${keepId}`);
 
+  // Smart field merge
+  const [keepProp] = await db.select().from(properties).where(eq(properties.id, keepId));
+  const [mergeProp] = await db.select().from(properties).where(eq(properties.id, mergeId));
+  let fieldsUpdated: string[] = [];
+
+  if (keepProp && mergeProp) {
+    const mergeUpdates = smartMergePropertyFields(keepProp, mergeProp);
+    fieldsUpdated = (mergeUpdates as any)._fieldsUpdated || [];
+    delete (mergeUpdates as any)._fieldsUpdated;
+    if (Object.keys(mergeUpdates).length > 0) {
+      await db.update(properties).set(mergeUpdates).where(eq(properties.id, keepId));
+    }
+  }
+
   const moveRows = async (table: any) => {
     const rows = await db.select().from(table).where(eq(table.propertyId, mergeId));
     for (const row of rows) {
@@ -804,7 +1089,7 @@ export async function mergeProperties(keepId: string, mergeId: string): Promise<
     await db.insert(adminAuditLog).values({
       action: 'merge_property',
       targetTable: 'properties',
-      metadata: { keepId, mergeId },
+      metadata: { keepId, mergeId, fieldsUpdated },
     });
   } catch {
   }

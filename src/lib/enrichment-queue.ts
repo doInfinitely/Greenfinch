@@ -11,11 +11,14 @@ import { enrichContactCascade } from './cascade-enrichment';
 import { enrichOrganizationCascade } from './cascade-enrichment';
 import { enrichContactCascadeV2 } from './cascade-enrichment-v2';
 import { enrichOrganizationCascadeV2 } from './cascade-enrichment-v2';
-import { shouldUseNewPipeline, shouldForceNewPipeline, isComparisonModeEnabled, getExperimentInfo } from './enrichment-experiments';
+import { enrichContactCascadeV3 } from './cascade-enrichment-v3';
+import { enrichOrganizationCascadeV3 } from './cascade-enrichment-v3';
+import { shouldUseNewPipeline, shouldForceNewPipeline, shouldUseV3Pipeline, shouldForceV3Pipeline, isComparisonModeEnabled, getExperimentInfo } from './enrichment-experiments';
 import { compareContactResults, compareOrganizationResults } from './enrichment-comparison';
-import { areCompaniesAffiliated, ensureEmployerOrgEnriched, enrichOrganizationByDomain, resolveOrganization } from './organization-enrichment';
+import { areCompaniesAffiliated, ensureEmployerOrgEnriched, enrichOrganizationByDomain, resolveOrganization, resolveParentHierarchy } from './organization-enrichment';
+import { estimateRevenue } from './revenue-estimation';
 import { findExistingContactByIdentifiers, flagPotentialDuplicateById, normalizeName as normalizeNameDedup, normalizeDomainForDedup as normalizeDomainDedup } from './deduplication';
-// Snowflake fallback removed — all properties are now in local PostgreSQL staging tables
+// All properties are sourced from local PostgreSQL staging tables (CAD data downloaded from county websites)
 import type { AggregatedProperty } from './property-types';
 import { CONCURRENCY } from './constants';
 import { 
@@ -158,12 +161,29 @@ function normalizeName(name: string | null): string | null {
 
 export async function saveEnrichmentResults(
   propertyKey: string,
-  result: FocusedEnrichmentResult
+  result: FocusedEnrichmentResult,
+  knownPropertyId?: string
 ): Promise<{ propertyId: string; contactIds: string[]; orgIds: string[] }> {
   const [dbProperty] = await db
-    .select({ id: properties.id, city: properties.city, state: properties.state, zip: properties.zip })
+    .select({
+      id: properties.id,
+      city: properties.city,
+      state: properties.state,
+      zip: properties.zip,
+      lotSqft: properties.lotSqft,
+      buildingSqft: properties.buildingSqft,
+      dcadParkingSqft: properties.dcadParkingSqft,
+      dcadRentableArea: properties.dcadRentableArea,
+      dcadTotalUnits: properties.dcadTotalUnits,
+      yearBuilt: properties.yearBuilt,
+      calculatedBuildingClass: properties.calculatedBuildingClass,
+      assetCategory: properties.assetCategory,
+      assetSubcategory: properties.assetSubcategory,
+      numFloors: properties.numFloors,
+      dcadTotalVal: properties.dcadTotalVal,
+    })
     .from(properties)
-    .where(eq(properties.propertyKey, propertyKey))
+    .where(knownPropertyId ? eq(properties.id, knownPropertyId) : eq(properties.propertyKey, propertyKey))
     .limit(1);
 
   if (!dbProperty) {
@@ -385,6 +405,41 @@ export async function saveEnrichmentResults(
       .where(eq(properties.id, propertyId));
 
     console.log(`[SaveEnrichment] Updated property ${propertyKey} with enrichment data`);
+
+    // 1b. Compute and store revenue estimates
+    try {
+      const revenueInput = {
+        lotSqft: dbProperty.lotSqft,
+        buildingSqft: dbProperty.buildingSqft,
+        dcadParkingSqft: dbProperty.dcadParkingSqft,
+        dcadRentableArea: dbProperty.dcadRentableArea,
+        dcadTotalUnits: dbProperty.dcadTotalUnits,
+        yearBuilt: dbProperty.yearBuilt,
+        calculatedBuildingClass: dbProperty.calculatedBuildingClass,
+        assetCategory: classification.category || dbProperty.assetCategory,
+        assetSubcategory: classification.subcategory || dbProperty.assetSubcategory,
+        numFloors: dbProperty.numFloors,
+        dcadTotalVal: dbProperty.dcadTotalVal,
+      };
+      const revenueResult = estimateRevenue(revenueInput);
+      const estimateValues: Record<string, number> = {};
+      const rationaleValues: Record<string, string> = {};
+      for (const [svc, est] of Object.entries(revenueResult.estimates)) {
+        estimateValues[svc] = est!.annualValue;
+        rationaleValues[svc] = est!.rationale;
+      }
+      await tx.update(properties)
+        .set({
+          revenueEstimates: estimateValues,
+          revenueEstimateTotal: revenueResult.totalAllServices,
+          revenueEstimateRationale: rationaleValues,
+          revenueEstimatesUpdatedAt: new Date(),
+        })
+        .where(eq(properties.id, propertyId));
+      console.log(`[SaveEnrichment] Revenue estimates computed for ${propertyKey}: $${revenueResult.totalAllServices}`);
+    } catch (revErr) {
+      console.warn(`[SaveEnrichment] Revenue estimation failed for ${propertyKey}:`, revErr);
+    }
 
     // 2. Insert property-organization junction records
     const orgIds: string[] = [];
@@ -644,12 +699,20 @@ export async function runCascadeEnrichmentOnSavedRecords(
       if (!org.domain) continue;
 
       const routingKey = propertyId || orgId;
-      const useV2 = shouldForceNewPipeline() || shouldUseNewPipeline(routingKey);
+      const useV3 = shouldForceV3Pipeline() || shouldUseV3Pipeline(routingKey);
+      const useV2 = !useV3 && (shouldForceNewPipeline() || shouldUseNewPipeline(routingKey));
       const comparisonMode = isComparisonModeEnabled();
-      console.log(`[CascadeEnrichment] Enriching org: ${org.name} (${org.domain}) [pipeline: ${useV2 ? 'v2' : 'v1'}]`);
+      const pipelineLabel = useV3 ? 'v3' : useV2 ? 'v2' : 'v1';
+      console.log(`[CascadeEnrichment] Enriching org: ${org.name} (${org.domain}) [pipeline: ${pipelineLabel}]`);
 
       let result;
-      if (useV2) {
+      if (useV3) {
+        result = await enrichOrganizationCascadeV3(org.domain, {
+          name: org.name || undefined,
+          locality: org.city || undefined,
+          region: org.state || undefined,
+        });
+      } else if (useV2) {
         result = await enrichOrganizationCascadeV2(org.domain, {
           name: org.name || undefined,
           locality: org.city || undefined,
@@ -713,10 +776,18 @@ export async function runCascadeEnrichmentOnSavedRecords(
           updateData.crustdataEnriched = true;
           updateData.crustdataEnrichedAt = new Date();
         }
+        if (result.parentDomain) updateData.parentDomain = result.parentDomain;
+        if (result.ultimateParentDomain) updateData.ultimateParentDomain = result.ultimateParentDomain;
 
         await db.update(organizations)
           .set(updateData)
           .where(eq(organizations.id, orgId));
+
+        // Resolve parent hierarchy if parent domain was found
+        if (result.parentDomain) {
+          resolveParentHierarchy(orgId, result.parentDomain)
+            .catch(err => console.error(`[CascadeEnrichment] Error resolving parent hierarchy for ${org.name}:`, err));
+        }
 
         console.log(`[CascadeEnrichment] Org enriched: ${org.name} via ${result.enrichmentSource}`);
       }
@@ -778,9 +849,11 @@ export async function runCascadeEnrichmentOnSavedRecords(
       }
 
       const contactRoutingKey = propertyId || contactId;
-      const useV2Contact = shouldForceNewPipeline() || shouldUseNewPipeline(contactRoutingKey);
+      const useV3Contact = shouldForceV3Pipeline() || shouldUseV3Pipeline(contactRoutingKey);
+      const useV2Contact = !useV3Contact && (shouldForceNewPipeline() || shouldUseNewPipeline(contactRoutingKey));
       const comparisonModeContact = isComparisonModeEnabled();
-      console.log(`[CascadeEnrichment] Enriching contact: ${contact.fullName} (${contact.email || 'no email'}) [pipeline: ${useV2Contact ? 'v2' : 'v1'}]`);
+      const contactPipelineLabel = useV3Contact ? 'v3' : useV2Contact ? 'v2' : 'v1';
+      console.log(`[CascadeEnrichment] Enriching contact: ${contact.fullName} (${contact.email || 'no email'}) [pipeline: ${contactPipelineLabel}]`);
 
       const cascadeInput = {
         fullName: contact.fullName,
@@ -793,7 +866,9 @@ export async function runCascadeEnrichmentOnSavedRecords(
       };
 
       let result;
-      if (useV2Contact) {
+      if (useV3Contact) {
+        result = await enrichContactCascadeV3(cascadeInput);
+      } else if (useV2Contact) {
         result = await enrichContactCascadeV2(cascadeInput);
 
         // Side-by-side comparison if enabled
@@ -1439,7 +1514,7 @@ async function waitForGeminiCircuitBreaker(context: string): Promise<boolean> {
 }
 
 export async function processPropertyItem(
-  item: { propertyKey: string; retryAttempt?: number; lastFailedStage?: string },
+  item: { propertyKey: string; propertyId?: string; retryAttempt?: number; lastFailedStage?: string },
   startTime: number
 ): Promise<{ success: boolean; error?: string; failedStage?: string; isRetryable?: boolean }> {
   try {
@@ -1478,15 +1553,15 @@ export async function processPropertyItem(
       buildings: dbProp.dcadBuildings || [],
     };
 
-    const checkpoint = await getCheckpoint(item.propertyKey);
+    const checkpoint = await getCheckpoint(item.propertyId || item.propertyKey);
     if (checkpoint?.lastCompletedStage) {
       console.log(`[EnrichmentQueue] Resuming ${item.propertyKey} from checkpoint (last stage: ${checkpoint.lastCompletedStage}, attempts: ${checkpoint.failureCount || 0})`);
     }
     const enrichmentResult = await runFocusedEnrichment(dcadProperty as any, checkpoint);
     
-    const saved = await saveEnrichmentResults(item.propertyKey, enrichmentResult);
+    const saved = await saveEnrichmentResults(item.propertyKey, enrichmentResult, item.propertyId);
 
-    await clearCheckpoint(item.propertyKey);
+    await clearCheckpoint(item.propertyId || item.propertyKey);
     
     if (saved.contactIds.length > 0 || saved.orgIds.length > 0) {
       console.log(`[EnrichmentQueue] Running cascade enrichment on ${saved.contactIds.length} contacts, ${saved.orgIds.length} orgs...`);
@@ -1500,7 +1575,7 @@ export async function processPropertyItem(
     if (error instanceof EnrichmentStageError) {
       const cp = error.checkpoint;
       cp.failureCount = (cp.failureCount || 0) + 1;
-      await saveCheckpoint(item.propertyKey, cp);
+      await saveCheckpoint(item.propertyId || item.propertyKey, cp);
 
       if (cp.classification && cp.physical) {
         try {
@@ -1838,7 +1913,7 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
     const batchLimit = Math.min(options.limit || ENRICHMENT_MAX_BATCH_SIZE, ENRICHMENT_MAX_BATCH_SIZE);
     const concurrency = options.concurrency || CONCURRENCY.PROPERTIES;
     
-    let propertyKeysToEnrich: string[] = [];
+    let propertiesToEnrich: { propertyKey: string; id: string }[] = [];
 
     const unenrichedFilter = and(
       eq(properties.isParentProperty, true),
@@ -1855,10 +1930,10 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
           inArray(properties.propertyKey, options.propertyKeys.slice(0, batchLimit)),
           unenrichedFilter
         ),
-        columns: { propertyKey: true },
+        columns: { propertyKey: true, id: true },
       });
-      propertyKeysToEnrich = filtered.map(p => p.propertyKey);
-      const skipped = options.propertyKeys.length - propertyKeysToEnrich.length;
+      propertiesToEnrich = filtered;
+      const skipped = options.propertyKeys.length - propertiesToEnrich.length;
       if (skipped > 0) console.log(`[EnrichmentQueue] Skipped ${skipped} already-enriched properties`);
     } else if (options.propertyIds && options.propertyIds.length > 0) {
       const filtered = await db.query.properties.findMany({
@@ -1866,21 +1941,21 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
           inArray(properties.id, options.propertyIds.slice(0, batchLimit)),
           unenrichedFilter
         ),
-        columns: { propertyKey: true },
+        columns: { propertyKey: true, id: true },
       });
-      propertyKeysToEnrich = filtered.map(p => p.propertyKey);
-      const skipped = options.propertyIds.length - propertyKeysToEnrich.length;
+      propertiesToEnrich = filtered;
+      const skipped = options.propertyIds.length - propertiesToEnrich.length;
       if (skipped > 0) console.log(`[EnrichmentQueue] Skipped ${skipped} already-enriched properties`);
     } else {
       const unenrichedProperties = await db.query.properties.findMany({
         where: unenrichedFilter,
-        columns: { propertyKey: true },
+        columns: { propertyKey: true, id: true },
         limit: batchLimit,
       });
-      propertyKeysToEnrich = unenrichedProperties.map(p => p.propertyKey);
+      propertiesToEnrich = unenrichedProperties;
     }
 
-    if (propertyKeysToEnrich.length === 0) {
+    if (propertiesToEnrich.length === 0) {
       throw new Error('No properties found to enrich');
     }
 
@@ -1888,7 +1963,7 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
       batchId,
       status: 'running',
       progress: {
-        total: propertyKeysToEnrich.length,
+        total: propertiesToEnrich.length,
         processed: 0,
         succeeded: 0,
         failed: 0,
@@ -1903,9 +1978,9 @@ export async function startBatch(options: StartBatchOptions): Promise<BatchStatu
     await setQueueItems([]);
     await setBatchStatus(newBatch);
 
-    console.log(`[EnrichmentQueue] Starting batch ${batchId}: ${propertyKeysToEnrich.length} properties with concurrency=${concurrency}`);
+    console.log(`[EnrichmentQueue] Starting batch ${batchId}: ${propertiesToEnrich.length} properties with concurrency=${concurrency}`);
 
-    await addToQueue(propertyKeysToEnrich.map(key => ({ propertyKey: key })));
+    await addToQueue(propertiesToEnrich.map(p => ({ propertyKey: p.propertyKey, propertyId: p.id })));
 
     // Set in-memory processing flag for fallback mode
     memoryIsProcessing = true;

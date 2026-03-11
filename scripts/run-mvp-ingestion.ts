@@ -12,7 +12,7 @@ async function main() {
     console.log(`Duration: ${stats.durationMs ? Math.round(stats.durationMs / 1000) : 0} seconds`);
     console.log('');
     console.log('Statistics:');
-    console.log(`  Parcels from Snowflake: ${stats.totalParcelsFromSnowflake}`);
+    console.log(`  Parcels from staging: ${stats.totalParcelsFromStaging}`);
     console.log(`  Properties after aggregation: ${stats.totalPropertiesAfterAggregation}`);
     console.log(`  Commercial/Multifamily identified: ${stats.commercialPropertiesIdentified}`);
     console.log(`  Enriched with POI data: ${stats.propertiesEnrichedWithPOI}`);

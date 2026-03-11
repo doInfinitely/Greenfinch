@@ -23,6 +23,7 @@ import { ROLE_LABELS, ROLE_COLORS, formatRoleLabel } from '@/lib/constants';
 import { capitalizeSentences } from '@/lib/normalization';
 import { decode } from 'blurhash';
 import BulkAddToListModal from '@/components/BulkAddToListModal';
+import SetParentOrgModal from '@/components/SetParentOrgModal';
 
 // Helper to title-case ALL CAPS names for better display
 function formatPropertyName(name: string | null): string | null {
@@ -334,6 +335,12 @@ export default function OrganizationDetailPage() {
   const [showBulkAddToList, setShowBulkAddToList] = useState(false);
   const [selectedPropertyIds, setSelectedPropertyIds] = useState<Set<string>>(new Set());
   const [showBulkAddPropertiesToList, setShowBulkAddPropertiesToList] = useState(false);
+  const [childOrgs, setChildOrgs] = useState<Array<{ id: string; name: string | null; domain: string | null; industry: string | null; employees: number | null; logoUrl: string | null }>>([]);
+  const [parentOrg, setParentOrg] = useState<{ id: string; name: string | null; domain: string | null; logoUrl: string | null } | null>(null);
+  const [ultimateParentOrg, setUltimateParentOrg] = useState<{ id: string; name: string | null; domain: string | null; logoUrl: string | null } | null>(null);
+  const [showSetParentModal, setShowSetParentModal] = useState(false);
+  const [portfolioData, setPortfolioData] = useState<{ totalOrgs: number; totalProperties: number; properties: any[] } | null>(null);
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
   const enrichTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const { startEnrichment } = useEnrichment();
   const { getEnrichmentStatus } = useEnrichmentQueue();
@@ -389,6 +396,9 @@ export default function OrganizationDetailPage() {
         setOrganization(data.organization);
         setProperties(data.properties || []);
         setContacts(data.contacts || []);
+        setChildOrgs(data.childOrgs || []);
+        setParentOrg(data.parentOrg || null);
+        setUltimateParentOrg(data.ultimateParentOrg || null);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'An error occurred');
       } finally {
@@ -709,22 +719,37 @@ export default function OrganizationDetailPage() {
           </div>
         ) : null}
 
-        {(organization.parentDomain || organization.ultimateParentDomain) && (
+        {(parentOrg || ultimateParentOrg || childOrgs.length > 0 || organization.parentDomain || organization.ultimateParentDomain) && (
           <div className="bg-white rounded-lg border border-gray-200 p-4 mb-6">
-            <p className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3">Parent Companies</p>
-            <div className="flex flex-wrap gap-4">
-              {organization.parentDomain && (
-                <div>
-                  <p className="text-xs text-gray-500">Parent</p>
-                  {organization.parentOrgId ? (
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">Organization Hierarchy</p>
+              <AdminOnly>
+                <button
+                  onClick={() => setShowSetParentModal(true)}
+                  className="text-xs text-green-600 hover:text-green-700 font-medium"
+                >
+                  Set Parent Organization
+                </button>
+              </AdminOnly>
+            </div>
+
+            {/* Parent chain */}
+            {(parentOrg || organization.parentDomain) && (
+              <div className="mb-3">
+                <p className="text-xs text-gray-500 mb-1">Parent Company</p>
+                <div className="flex items-center gap-2">
+                  {parentOrg?.logoUrl && (
+                    <img src={parentOrg.logoUrl} alt="" className="w-5 h-5 rounded object-contain" />
+                  )}
+                  {parentOrg ? (
                     <Link
-                      href={`/organization/${organization.parentOrgId}`}
-                      className="text-sm text-green-600 hover:text-green-700 hover:underline"
+                      href={`/organization/${parentOrg.id}`}
+                      className="text-sm text-green-600 hover:text-green-700 hover:underline font-medium"
                       data-testid="link-parent-org"
                     >
-                      {organization.parentDomain}
+                      {parentOrg.name || parentOrg.domain || organization.parentDomain}
                     </Link>
-                  ) : (
+                  ) : organization.parentDomain ? (
                     <a
                       href={`https://${organization.parentDomain}`}
                       target="_blank"
@@ -733,21 +758,28 @@ export default function OrganizationDetailPage() {
                     >
                       {organization.parentDomain}
                     </a>
-                  )}
+                  ) : null}
                 </div>
-              )}
-              {organization.ultimateParentDomain && organization.ultimateParentDomain !== organization.parentDomain && (
-                <div>
-                  <p className="text-xs text-gray-500">Ultimate Parent</p>
-                  {organization.ultimateParentOrgId ? (
+              </div>
+            )}
+
+            {/* Ultimate parent */}
+            {(ultimateParentOrg || (organization.ultimateParentDomain && organization.ultimateParentDomain !== organization.parentDomain)) && (
+              <div className="mb-3">
+                <p className="text-xs text-gray-500 mb-1">Ultimate Parent</p>
+                <div className="flex items-center gap-2">
+                  {ultimateParentOrg?.logoUrl && (
+                    <img src={ultimateParentOrg.logoUrl} alt="" className="w-5 h-5 rounded object-contain" />
+                  )}
+                  {ultimateParentOrg ? (
                     <Link
-                      href={`/organization/${organization.ultimateParentOrgId}`}
-                      className="text-sm text-green-600 hover:text-green-700 hover:underline"
+                      href={`/organization/${ultimateParentOrg.id}`}
+                      className="text-sm text-green-600 hover:text-green-700 hover:underline font-medium"
                       data-testid="link-ultimate-parent-org"
                     >
-                      {organization.ultimateParentDomain}
+                      {ultimateParentOrg.name || ultimateParentOrg.domain || organization.ultimateParentDomain}
                     </Link>
-                  ) : (
+                  ) : organization.ultimateParentDomain ? (
                     <a
                       href={`https://${organization.ultimateParentDomain}`}
                       target="_blank"
@@ -756,11 +788,100 @@ export default function OrganizationDetailPage() {
                     >
                       {organization.ultimateParentDomain}
                     </a>
-                  )}
+                  ) : null}
                 </div>
-              )}
-            </div>
+              </div>
+            )}
+
+            {/* Subsidiaries */}
+            {childOrgs.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-500 mb-2">Subsidiaries ({childOrgs.length})</p>
+                <div className="space-y-1.5">
+                  {childOrgs.map(child => (
+                    <div key={child.id} className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        {child.logoUrl && (
+                          <img src={child.logoUrl} alt="" className="w-4 h-4 rounded object-contain" />
+                        )}
+                        <Link
+                          href={`/organization/${child.id}`}
+                          className="text-sm text-green-600 hover:text-green-700 hover:underline"
+                        >
+                          {child.name || child.domain}
+                        </Link>
+                      </div>
+                      <div className="flex items-center gap-3 text-xs text-gray-400">
+                        {child.industry && <span>{child.industry}</span>}
+                        {child.employees && <span>{child.employees.toLocaleString()} emp.</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Portfolio view button */}
+                <button
+                  onClick={async () => {
+                    if (portfolioData) {
+                      setPortfolioData(null);
+                      return;
+                    }
+                    setPortfolioLoading(true);
+                    try {
+                      const res = await fetch(`/api/organizations/${orgId}/portfolio`);
+                      if (res.ok) {
+                        setPortfolioData(await res.json());
+                      }
+                    } catch (e) {
+                      console.error('Failed to fetch portfolio:', e);
+                    } finally {
+                      setPortfolioLoading(false);
+                    }
+                  }}
+                  className="mt-3 text-xs text-green-600 hover:text-green-700 font-medium"
+                >
+                  {portfolioLoading ? 'Loading...' : portfolioData ? 'Hide portfolio' : 'View full portfolio'}
+                </button>
+
+                {portfolioData && (
+                  <div className="mt-3 pt-3 border-t border-gray-100">
+                    <p className="text-xs text-gray-500 mb-2">
+                      Portfolio: {portfolioData.totalProperties} properties across {portfolioData.totalOrgs} organizations
+                    </p>
+                    <div className="space-y-1 max-h-48 overflow-y-auto">
+                      {portfolioData.properties.map((p: any) => (
+                        <div key={p.id} className="flex items-center justify-between text-xs">
+                          <Link
+                            href={`/property/${p.propertyKey || p.id}`}
+                            className="text-green-600 hover:underline truncate max-w-[60%]"
+                          >
+                            {p.commonName || p.address || 'Unknown'}
+                          </Link>
+                          <span className="text-gray-400 truncate max-w-[35%]">
+                            {p.orgs?.map((o: any) => o.name).filter(Boolean).join(', ')}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
+        )}
+
+        {/* Admin-only: Set Parent when no hierarchy exists yet */}
+        {!parentOrg && !organization.parentDomain && childOrgs.length === 0 && (
+          <AdminOnly>
+            <div className="mb-6">
+              <button
+                onClick={() => setShowSetParentModal(true)}
+                className="text-xs text-gray-400 hover:text-green-600 font-medium"
+              >
+                + Set Parent Organization
+              </button>
+            </div>
+          </AdminOnly>
         )}
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -1023,6 +1144,26 @@ export default function OrganizationDetailPage() {
         }}
         itemIds={Array.from(selectedPropertyIds)}
         itemType="properties"
+      />
+
+      <SetParentOrgModal
+        isOpen={showSetParentModal}
+        onClose={() => setShowSetParentModal(false)}
+        orgId={orgId}
+        currentParentOrgId={organization?.parentOrgId || null}
+        onSuccess={(updatedOrg) => {
+          setOrganization(updatedOrg);
+          // Refetch hierarchy data
+          fetch(`/api/organizations/${orgId}`)
+            .then(res => res.json())
+            .then(data => {
+              setChildOrgs(data.childOrgs || []);
+              setParentOrg(data.parentOrg || null);
+              setUltimateParentOrg(data.ultimateParentOrg || null);
+            })
+            .catch(() => {});
+          setShowSetParentModal(false);
+        }}
       />
     </div>
   );

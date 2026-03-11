@@ -155,6 +155,8 @@ export default function WaitlistPage() {
                       <option value="">Select your industry</option>
                       <option value="janitorial">Janitorial / Commercial Cleaning</option>
                       <option value="landscaping">Landscaping & Grounds Maintenance</option>
+                      <option value="tree_trimming">Tree Trimming & Arboriculture</option>
+                      <option value="irrigation">Irrigation Systems</option>
                       <option value="hvac">HVAC & Mechanical Services</option>
                       <option value="security">Security Services</option>
                       <option value="roofing">Roofing & Exterior Maintenance</option>

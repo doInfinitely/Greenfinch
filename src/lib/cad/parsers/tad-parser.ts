@@ -2,7 +2,7 @@ import * as fs from 'fs';
 import * as readline from 'readline';
 import type { CadParser, CadAccountInfoRow, CadAppraisalRow, CadBuildingRow, CadLandRow } from '../types';
 import { toPtadCode } from '../county-codes';
-import { findFile } from '../download-manager';
+import { findFile, findFileByPattern } from '../download-manager';
 
 function parseNum(val: string | undefined | null): number | null {
   if (!val || val.trim() === '') return null;
@@ -14,6 +14,21 @@ function trimOrNull(val: string | undefined | null): string | null {
   if (!val) return null;
   const trimmed = val.trim();
   return trimmed === '' ? null : trimmed;
+}
+
+/**
+ * Split combined "CITY, ST" field into { city, state }.
+ * Handles formats like "FT WORTH, TX" or "ARLINGTON,TX".
+ */
+function splitCityState(val: string | undefined | null): { city: string | null; state: string | null } {
+  if (!val || val.trim() === '') return { city: null, state: null };
+  const trimmed = val.trim();
+  const commaIdx = trimmed.lastIndexOf(',');
+  if (commaIdx === -1) return { city: trimmed, state: null };
+  return {
+    city: trimmed.slice(0, commaIdx).trim() || null,
+    state: trimmed.slice(commaIdx + 1).trim() || null,
+  };
 }
 
 async function* parsePipeDelimited(filePath: string): AsyncIterable<Record<string, string>> {
@@ -39,6 +54,26 @@ async function* parsePipeDelimited(filePath: string): AsyncIterable<Record<strin
   }
 }
 
+/**
+ * Find the combined TAD data file.
+ * Tries: PropertyData_YYYY.txt → PropertyData*.txt → prop.txt (legacy)
+ */
+function findTadFile(extractDir: string): string {
+  const combined = findFileByPattern(
+    extractDir,
+    'PropertyData_*.txt',
+    'PropertyData*.txt',
+  );
+  if (combined) return combined;
+
+  const legacy = findFile(extractDir, 'prop.txt');
+  if (legacy) return legacy;
+
+  throw new Error(
+    'TAD data file not found. Expected PropertyData_YYYY.txt or prop.txt in extracted files',
+  );
+}
+
 export class TadParser implements CadParser {
   readonly countyCode = 'TAD' as const;
   private extractDir: string;
@@ -50,113 +85,111 @@ export class TadParser implements CadParser {
   }
 
   async *parseAccountInfo(): AsyncIterable<CadAccountInfoRow> {
-    const filePath = findFile(this.extractDir, 'prop.txt');
-    if (!filePath) throw new Error('prop.txt not found in extracted files');
-
+    const filePath = findTadFile(this.extractDir);
     console.log(`[TAD Parser] Parsing account info from ${filePath}`);
 
     for await (const row of parsePipeDelimited(filePath)) {
+      const { city: ownerCity, state: ownerState } = splitCityState(
+        row['Owner_CityState'] || row['OWNER_CITYSTATE'],
+      );
+
       yield {
         countyCode: 'TAD',
-        accountNum: row['ACCOUNT_NUM'] || row['PROP_ID'] || '',
+        accountNum: row['Account_Num'] || row['ACCOUNT_NUM'] || row['PROP_ID'] || '',
         appraisalYear: this.appraisalYear,
-        gisParcelId: trimOrNull(row['GEO_ID']) || trimOrNull(row['GIS_PARCEL_ID']),
-        divisionCd: trimOrNull(row['PROP_TYPE_CD']),
+        gisParcelId: trimOrNull(row['GIS_Link']) || trimOrNull(row['GEO_ID']),
+        divisionCd: trimOrNull(row['Property_Class']) || trimOrNull(row['PROP_TYPE_CD']),
         bizName: trimOrNull(row['DBA']),
-        ownerName1: trimOrNull(row['OWNER_NAME']) || trimOrNull(row['OWNER_NAME1']),
-        ownerName2: trimOrNull(row['OWNER_NAME2']),
-        ownerAddressLine1: trimOrNull(row['OWNER_ADDR_LINE1']) || trimOrNull(row['OWNER_ADDRESS_LINE1']),
-        ownerCity: trimOrNull(row['OWNER_CITY']),
-        ownerState: trimOrNull(row['OWNER_STATE']),
-        ownerZipcode: trimOrNull(row['OWNER_ZIP']) || trimOrNull(row['OWNER_ZIPCODE']),
-        phoneNum: trimOrNull(row['PHONE_NUM']),
-        deedTxfrDate: trimOrNull(row['DEED_DATE']) || trimOrNull(row['DEED_TXFR_DATE']),
-        legal1: trimOrNull(row['LEGAL_DESC']) || trimOrNull(row['LEGAL_1']),
-        legal2: trimOrNull(row['LEGAL_2']),
-        legal3: trimOrNull(row['LEGAL_3']),
-        legal4: trimOrNull(row['LEGAL_4']),
-        propertyAddress: trimOrNull(row['SITUS_ADDR']) || trimOrNull(row['PROPERTY_ADDRESS']),
-        propertyCity: trimOrNull(row['SITUS_CITY']) || trimOrNull(row['PROPERTY_CITY']),
-        propertyZipcode: trimOrNull(row['SITUS_ZIP']) || trimOrNull(row['PROPERTY_ZIPCODE']),
+        ownerName1: trimOrNull(row['Owner_Name']) || trimOrNull(row['OWNER_NAME']),
+        ownerName2: null,
+        ownerAddressLine1: trimOrNull(row['Owner_Address']) || trimOrNull(row['OWNER_ADDR_LINE1']),
+        ownerCity: ownerCity || trimOrNull(row['OWNER_CITY']),
+        ownerState: ownerState || trimOrNull(row['OWNER_STATE']),
+        ownerZipcode: trimOrNull(row['Owner_Zip']) || trimOrNull(row['OWNER_ZIP']),
+        phoneNum: null,
+        deedTxfrDate: trimOrNull(row['Deed_Date']) || trimOrNull(row['DEED_DATE']),
+        legal1: trimOrNull(row['LegalDescription']) || trimOrNull(row['LEGAL_DESC']),
+        legal2: null,
+        legal3: null,
+        legal4: null,
+        propertyAddress: trimOrNull(row['Situs_Address']) || trimOrNull(row['SITUS_ADDR']),
+        propertyCity: null, // Not available separately in combined format
+        propertyZipcode: null,
       };
     }
   }
 
   async *parseAppraisalValues(): AsyncIterable<CadAppraisalRow> {
-    const filePath = findFile(this.extractDir, 'prop.txt');
-    if (!filePath) throw new Error('prop.txt not found in extracted files');
-
+    const filePath = findTadFile(this.extractDir);
     console.log(`[TAD Parser] Parsing appraisal values from ${filePath}`);
 
     for await (const row of parsePipeDelimited(filePath)) {
-      const sptdCode = trimOrNull(row['STATE_CD']) || trimOrNull(row['SPTD_CODE']);
+      const sptdCode = trimOrNull(row['State_Use_Code']) || trimOrNull(row['STATE_CD']);
       const ptadCode = toPtadCode('TAD', sptdCode);
 
       yield {
         countyCode: 'TAD',
-        accountNum: row['ACCOUNT_NUM'] || row['PROP_ID'] || '',
+        accountNum: row['Account_Num'] || row['ACCOUNT_NUM'] || row['PROP_ID'] || '',
         appraisalYear: this.appraisalYear,
         sptdCode,
         ptadCode,
-        improvVal: parseNum(row['IMPR_VAL']) || parseNum(row['IMPROVEMENT_VALUE']),
-        landVal: parseNum(row['LAND_VAL']) || parseNum(row['LAND_VALUE']),
-        totalVal: parseNum(row['TOT_VAL']) || parseNum(row['TOTAL_VALUE']),
-        cityJurisDesc: trimOrNull(row['CITY_JURIS_DESC']) || trimOrNull(row['CITY']),
-        isdJurisDesc: trimOrNull(row['ISD_JURIS_DESC']) || trimOrNull(row['ISD']),
+        improvVal: parseNum(row['Improvement_Value']) || parseNum(row['IMPR_VAL']),
+        landVal: parseNum(row['Land_Value']) || parseNum(row['LAND_VAL']),
+        totalVal: parseNum(row['Total_Value']) || parseNum(row['TOT_VAL']),
+        cityJurisDesc: null,
+        isdJurisDesc: null,
       };
     }
   }
 
   async *parseBuildings(): AsyncIterable<CadBuildingRow> {
-    const filePath = findFile(this.extractDir, 'improvement.txt') ||
-                     findFile(this.extractDir, 'improvement_detail.txt');
-    if (!filePath) throw new Error('improvement.txt not found in extracted files');
-
+    const filePath = findTadFile(this.extractDir);
     console.log(`[TAD Parser] Parsing buildings from ${filePath}`);
 
     for await (const row of parsePipeDelimited(filePath)) {
       yield {
         countyCode: 'TAD',
-        accountNum: row['ACCOUNT_NUM'] || row['PROP_ID'] || '',
-        taxObjId: trimOrNull(row['IMPR_ID']) || trimOrNull(row['TAX_OBJ_ID']),
+        accountNum: row['Account_Num'] || row['ACCOUNT_NUM'] || row['PROP_ID'] || '',
+        taxObjId: null,
         appraisalYear: this.appraisalYear,
-        propertyName: trimOrNull(row['IMPR_DESC']) || trimOrNull(row['PROPERTY_NAME']),
-        bldgClassDesc: trimOrNull(row['BLDG_CLASS_DESC']) || trimOrNull(row['CLASS_DESC']),
-        bldgClassCd: trimOrNull(row['BLDG_CLASS_CD']) || trimOrNull(row['CLASS_CD']),
-        yearBuilt: parseNum(row['YEAR_BUILT']) || parseNum(row['YR_BUILT']),
-        remodelYear: parseNum(row['REMODEL_YR']) || parseNum(row['YR_REMODEL']),
-        grossBldgArea: parseNum(row['LIVING_AREA']) || parseNum(row['GROSS_BLDG_AREA']),
-        numStories: parseNum(row['NUM_STORIES']) || parseNum(row['STORIES']),
-        numUnits: parseNum(row['NUM_UNITS']) || parseNum(row['UNITS']),
-        netLeaseArea: parseNum(row['NET_LEASE_AREA']),
-        constructionType: trimOrNull(row['CONSTRUCTION_TYPE']) || trimOrNull(row['EXT_WALL_DESC']),
-        foundationType: trimOrNull(row['FOUNDATION_TYPE']) || trimOrNull(row['FOUNDATION_DESC']),
-        heatingType: trimOrNull(row['HEATING_TYPE']) || trimOrNull(row['HEAT_DESC']),
-        acType: trimOrNull(row['AC_TYPE']) || trimOrNull(row['AC_DESC']),
-        qualityGrade: trimOrNull(row['QUALITY_GRADE']) || trimOrNull(row['QUALITY_DESC']),
-        conditionGrade: trimOrNull(row['CONDITION_GRADE']) || trimOrNull(row['CONDITION_DESC']),
+        propertyName: null,
+        bldgClassDesc: trimOrNull(row['Property_Class']),
+        bldgClassCd: null,
+        yearBuilt: parseNum(row['Year_Built']),
+        remodelYear: null,
+        grossBldgArea: parseNum(row['Living_Area']),
+        numStories: null,
+        numUnits: null,
+        netLeaseArea: null,
+        constructionType: null,
+        foundationType: null,
+        heatingType: trimOrNull(row['Central_Heat_Ind']) === 'Y' ? 'Central' : null,
+        acType: trimOrNull(row['Central_Air_Ind']) === 'Y' ? 'Central' : null,
+        qualityGrade: null,
+        conditionGrade: null,
       };
     }
   }
 
   async *parseLand(): AsyncIterable<CadLandRow> {
-    const filePath = findFile(this.extractDir, 'land.txt');
-    if (!filePath) throw new Error('land.txt not found in extracted files');
-
+    const filePath = findTadFile(this.extractDir);
     console.log(`[TAD Parser] Parsing land from ${filePath}`);
 
     for await (const row of parsePipeDelimited(filePath)) {
+      const acres = parseNum(row['Land_Acres']);
+      const sqft = parseNum(row['Land_SqFt']);
+
       yield {
         countyCode: 'TAD',
-        accountNum: row['ACCOUNT_NUM'] || row['PROP_ID'] || '',
+        accountNum: row['Account_Num'] || row['ACCOUNT_NUM'] || row['PROP_ID'] || '',
         appraisalYear: this.appraisalYear,
-        landTypeCd: trimOrNull(row['LAND_TYPE_CD']) || trimOrNull(row['LAND_TYPE']),
-        zoningDesc: trimOrNull(row['ZONING_DESC']) || trimOrNull(row['ZONING']),
-        frontDim: parseNum(row['FRONT_DIM']) || parseNum(row['FRONT_FT']),
-        depthDim: parseNum(row['DEPTH_DIM']) || parseNum(row['DEPTH_FT']),
-        landArea: parseNum(row['LAND_AREA']) || parseNum(row['AREA_SIZE']),
-        landAreaUom: trimOrNull(row['LAND_AREA_UOM']) || trimOrNull(row['AREA_UOM']),
-        costPerUom: parseNum(row['COST_PER_UOM']) || parseNum(row['UNIT_PRICE']),
+        landTypeCd: null,
+        zoningDesc: null,
+        frontDim: null,
+        depthDim: null,
+        landArea: acres || sqft,
+        landAreaUom: acres ? 'AC' : sqft ? 'SF' : null,
+        costPerUom: null,
       };
     }
   }

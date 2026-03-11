@@ -1052,7 +1052,7 @@ export default function ContactsPage() {
         ) : (
           <>
             <div className="hidden md:block bg-white rounded-lg border border-gray-200 overflow-hidden">
-              <div className="overflow-x-auto">
+              <div data-tour="contact-list" className="overflow-x-auto">
                 <table className={`w-full divide-y divide-gray-200 ${contactInfoVisible ? 'min-w-[1200px]' : ''}`}>
                   <thead className="bg-gray-50">
                     <tr>
@@ -1302,7 +1302,7 @@ export default function ContactsPage() {
                                     <ul className="space-y-1">
                                       {contact.properties.slice(0, 5).map((prop) => (
                                         <li key={prop.propertyId || prop.propertyKey} className="text-sm text-gray-600">
-                                          <Link href={`/property/${prop.propertyKey || prop.propertyId}`} className="text-green-600 hover:underline">
+                                          <Link href={`/property/${prop.propertyId || prop.propertyKey}`} className="text-green-600 hover:underline">
                                             {prop.address || prop.propertyKey || 'Unknown'}
                                           </Link>
                                           {prop.role && <span className="text-gray-400 ml-2">({prop.role})</span>}
@@ -1459,7 +1459,7 @@ export default function ContactsPage() {
                           <div className="pt-1">
                             <p className="text-xs font-medium text-gray-500 mb-1">Properties</p>
                             {contact.properties.slice(0, 3).map((prop) => (
-                              <Link key={prop.propertyId} href={`/property/${prop.propertyKey || prop.propertyId}`} className="block text-xs text-green-600 underline truncate py-0.5" data-testid={`mobile-property-link-${contact.id}-${prop.propertyId}`}>
+                              <Link key={prop.propertyId} href={`/property/${prop.propertyId || prop.propertyKey}`} className="block text-xs text-green-600 underline truncate py-0.5" data-testid={`mobile-property-link-${contact.id}-${prop.propertyId}`}>
                                 {prop.address || prop.propertyKey || 'Unknown'}
                               </Link>
                             ))}
@@ -1569,6 +1569,7 @@ export default function ContactsPage() {
             selectedCount={selectedContacts.size}
             itemLabel="contact"
             onDeselectAll={handleDeselectAll}
+            data-tour="contact-enrich"
           >
             <Button
               variant="outline"

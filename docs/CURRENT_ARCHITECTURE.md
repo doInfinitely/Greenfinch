@@ -30,8 +30,8 @@ greenfinch.ai is a commercial real estate prospecting platform that provides sal
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              DATA SOURCES                                    │
 ├─────────────────┬─────────────────┬─────────────────┬──────────────────────┤
-│   Snowflake     │   Regrid APIs   │   DCAD Data     │   Mapbox/Google      │
-│   (Regrid bulk) │   (runtime)     │   (via Snowflake)│   (POI/Places/Maps)  │
+│  CAD Staging    │   Regrid APIs   │   County Data   │   Mapbox/Google      │
+│  (PostgreSQL)   │   (runtime)     │   (downloaded)  │   (POI/Places/Maps)  │
 └────────┬────────┴────────┬────────┴────────┬────────┴──────────┬───────────┘
          │                 │                 │                   │
          ▼                 ▼                 ▼                   ▼
@@ -79,21 +79,22 @@ greenfinch.ai is a commercial real estate prospecting platform that provides sal
 
 ## 2. Data Sources & Ingestion
 
-### 2.1 Primary Data: DCAD via Snowflake
+### 2.1 Primary Data: County Appraisal Districts
 
-Dallas Central Appraisal District (DCAD) data is the primary source for property information, accessed through Snowflake.
+County appraisal district data (DCAD, TCAD, etc.) is the primary source for property information, downloaded from county websites and loaded into PostgreSQL staging tables.
 
-**Snowflake Tables:**
-- `DCAD_LAND_2025.PUBLIC.COMMERCIAL_PROPERTIES` - Main commercial property records
-- `DCAD_LAND_2025.PUBLIC.ACCOUNT_APPRL_YEAR` - Appraisal values
-- `DCAD_LAND_2025.PUBLIC.ACCOUNT_INFO` - Owner/account details
-- `DCAD_LAND_2025.PUBLIC.LAND` - Land characteristics
-- `NATIONWIDE_PARCEL_DATA__PREMIUM_SCHEMA__FREE_SAMPLE.PREMIUM_PARCELS.TX_DALLAS` - Regrid parcel data
+**CAD Staging Tables:**
+- `cad_account_info` - Core account metadata, GIS parcel IDs, owner names, coordinates
+- `cad_appraisal_values` - Appraisal values, SPTD codes
+- `cad_buildings` - Building details (sqft, year built, quality/condition grades, HVAC)
+- `cad_land` - Lot dimensions, front footage
+- `cad_downloads` - Tracks download history and data freshness
 
 **Ingestion Flow:**
 ```
-Snowflake Query → Filter by SPTD Codes → Aggregate by GIS_PARCEL_ID 
-→ Calculate Building Class → Normalize Addresses → Upsert to PostgreSQL
+County Website → Download ZIP → Load to staging tables → Filter by SPTD Codes
+→ Aggregate by GIS_PARCEL_ID → Calculate Building Class → Normalize Addresses
+→ Upsert to PostgreSQL properties table
 ```
 
 **Key Fields Ingested:**
@@ -424,9 +425,7 @@ All API integrations are implemented in `src/lib/` with corresponding TypeScript
 
 ### 4.4 Data Sources
 
-| Provider | Module | Purpose | Secret Key |
-|----------|--------|---------|------------|
-| **Snowflake** | `snowflake.ts` | Bulk parcel/DCAD data access | `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USERNAME`, `SNOWFLAKE_PASSWORD`, `SNOWFLAKE_DATABASE`, `SNOWFLAKE_WAREHOUSE` |
+County appraisal data is downloaded directly from county websites and loaded into PostgreSQL staging tables. No external data warehouse is required.
 
 ### 4.5 API Integration Summary Table
 
@@ -444,7 +443,7 @@ All API integrations are implemented in `src/lib/` with corresponding TypeScript
 | Google Maps/Places | Maps/Names | Implemented | 24hr Redis (Places) | 100ms throttle | `GoogleMap.ts`, `google-places.ts` |
 | Regrid | Parcels | Implemented | No | No | `regrid.ts`, `/api/geocode/reverse` |
 | Gemini | AI | Implemented | No | Concurrency=5 | `ai-enrichment.ts` |
-| Snowflake | Data | Implemented | No | No | `snowflake.ts`, `dcad-ingestion.ts` |
+| CAD Staging | Data | Implemented | No | No | `cad/query.ts`, `dcad-ingestion.ts` |
 
 ---
 
@@ -677,7 +676,6 @@ UPSTASH_REDIS_REST_TOKEN
 MAPBOX_API_KEY
 REGRID_API_KEY
 GOOGLE_GENAI_API_KEY (or AI_INTEGRATIONS_GEMINI_API_KEY)
-SNOWFLAKE_ACCOUNT, SNOWFLAKE_USERNAME, SNOWFLAKE_PASSWORD, SNOWFLAKE_DATABASE
 DATABASE_URL (auto-populated)
 ```
 
@@ -714,7 +712,7 @@ GOOGLE_MAPS_API_KEY
 | Regrid | Parcel Data | Tiles, typeahead | API calls |
 | Google Places | Location | Common names | API calls |
 | Google Gemini | AI | Classification, research | Tokens |
-| Snowflake | Data | DCAD/Regrid bulk data | Compute |
+| CAD Staging | Data | County appraisal data (local PostgreSQL) | N/A |
 
 ---
 

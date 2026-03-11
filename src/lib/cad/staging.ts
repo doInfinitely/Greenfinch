@@ -5,6 +5,19 @@ import type { CountyCode, CadAccountInfoRow, CadAppraisalRow, CadBuildingRow, Ca
 
 const BATCH_SIZE = 1000;
 
+/**
+ * Deduplicate a batch by composite key, keeping the last occurrence.
+ * Needed because some CAD files (e.g. Denton) have duplicate prop_ids,
+ * and Postgres ON CONFLICT DO UPDATE can't affect the same row twice in one INSERT.
+ */
+function deduplicateBatch<T>(batch: T[], keyFn: (row: T) => string): T[] {
+  const map = new Map<string, T>();
+  for (const row of batch) {
+    map.set(keyFn(row), row);
+  }
+  return Array.from(map.values());
+}
+
 export async function createDownloadRecord(
   countyCode: CountyCode,
   appraisalYear: number,
@@ -62,8 +75,9 @@ export async function stageAccountInfo(
 }
 
 async function upsertAccountInfoBatch(batch: (CadAccountInfoRow & { downloadId: string })[]) {
+  const deduped = deduplicateBatch(batch, r => `${r.countyCode}|${r.accountNum}|${r.appraisalYear}`);
   await db.insert(cadAccountInfo)
-    .values(batch)
+    .values(deduped)
     .onConflictDoUpdate({
       target: [cadAccountInfo.countyCode, cadAccountInfo.accountNum, cadAccountInfo.appraisalYear],
       set: {
@@ -121,8 +135,9 @@ export async function stageAppraisalValues(
 }
 
 async function upsertAppraisalBatch(batch: (CadAppraisalRow & { downloadId: string })[]) {
+  const deduped = deduplicateBatch(batch, r => `${r.countyCode}|${r.accountNum}|${r.appraisalYear}`);
   await db.insert(cadAppraisalValues)
-    .values(batch)
+    .values(deduped)
     .onConflictDoUpdate({
       target: [cadAppraisalValues.countyCode, cadAppraisalValues.accountNum, cadAppraisalValues.appraisalYear],
       set: {

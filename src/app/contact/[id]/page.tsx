@@ -7,6 +7,7 @@ import GreenfinchAgentIcon from '@/components/icons/GreenfinchAgentIcon';
 import { AdminOnly } from '@/components/PermissionGate';
 import { useEnrichment } from '@/hooks/use-enrichment';
 import { useEnrichmentQueue } from '@/contexts/EnrichmentQueueContext';
+import { useOnboarding } from '@/contexts/OnboardingContext';
 import AddToListModal from '@/components/AddToListModal';
 import ContactDetailSkeleton from '@/components/ContactDetailSkeleton';
 import { List } from 'lucide-react';
@@ -44,6 +45,7 @@ export default function ContactDetailPage() {
   const [selectingAlternative, setSelectingAlternative] = useState(false);
   const { startEnrichment } = useEnrichment();
   const { items: enrichmentItems, getEnrichmentStatus } = useEnrichmentQueue();
+  const { markStep } = useOnboarding();
   const [isFindingPhone, setIsFindingPhone] = useState(false);
   const [isFindingEmail, setIsFindingEmail] = useState(false);
   const [phoneNoResults, setPhoneNoResults] = useState(false);
@@ -279,6 +281,7 @@ export default function ContactDetailPage() {
 
     setIsFindingPhone(true);
     setPhoneNoResults(false);
+    markStep('revealedContact');
 
     startEnrichment({
       type: 'contact_phone',
@@ -304,6 +307,7 @@ export default function ContactDetailPage() {
 
     setIsFindingEmail(true);
     setEmailMessage(null);
+    markStep('revealedContact');
 
     const originalEnrichedAt = contact.enrichedAt;
 

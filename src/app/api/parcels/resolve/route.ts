@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 import { normalizeCommonName } from '@/lib/normalization';
 
 function formatResolvedProperty(resolved: {
+  id: string;
   propertyKey: string;
   commonName: string | null;
   bizName: string | null;
@@ -19,6 +20,7 @@ function formatResolvedProperty(resolved: {
 
   return {
     found: true,
+    id: resolved.id,
     propertyKey: resolved.propertyKey,
     displayName,
     address: resolved.address || resolved.regridAddress,
@@ -28,6 +30,7 @@ function formatResolvedProperty(resolved: {
 }
 
 const PROPERTY_SELECT = {
+  id: properties.id,
   propertyKey: properties.propertyKey,
   gisParcelId: properties.dcadGisParcelId,
   commonName: properties.commonName,
@@ -77,18 +80,18 @@ export async function GET(request: NextRequest) {
 
     const mappingResult = await db
       .select({
-        parentPropertyKey: parcelnumbMapping.parentPropertyKey,
+        parentPropertyId: parcelnumbMapping.parentPropertyId,
         gisParcelId: parcelnumbMapping.gisParcelId,
       })
       .from(parcelnumbMapping)
       .where(eq(parcelnumbMapping.accountNum, parcelnumb))
       .limit(1);
 
-    if (mappingResult.length > 0 && mappingResult[0].parentPropertyKey) {
+    if (mappingResult.length > 0 && mappingResult[0].parentPropertyId) {
       const parentResult = await db
         .select(PROPERTY_SELECT)
         .from(properties)
-        .where(eq(properties.propertyKey, mappingResult[0].parentPropertyKey))
+        .where(eq(properties.id, mappingResult[0].parentPropertyId))
         .limit(1);
 
       if (parentResult.length > 0) {

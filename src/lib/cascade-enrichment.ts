@@ -29,7 +29,7 @@ import { normalizeDomain } from './normalization';
 import { validateLinkedInSlug } from './linkedin-validation';
 import { parseFullName, getEmployeeRange } from './utils';
 
-export type ConfidenceFlag = 'verified' | 'pdl_matched' | 'unverified' | 'email_only' | 'insufficient_input' | 'no_match';
+export type ConfidenceFlag = 'verified' | 'pdl_matched' | 'search_matched' | 'unverified' | 'email_only' | 'insufficient_input' | 'no_match';
 export type EmailSource = 'input_verified' | 'input_invalid' | 'findymail_finder' | 'hunter_finder' | null;
 
 export interface OrganizationEnrichmentResult {
@@ -65,6 +65,9 @@ export interface OrganizationEnrichmentResult {
   naicsCodes: string[] | null;
   tags: string[] | null;
   
+  parentDomain: string | null;
+  ultimateParentDomain: string | null;
+
   pdlRaw: any;
   crustdataRaw: any;
 }
@@ -77,6 +80,7 @@ export interface ContactEnrichmentInput {
   title?: string | null;
   location?: string | null;
   linkedinUrl?: string | null;
+  clerkOrgId?: string;
 }
 
 export interface ContactEnrichmentResult {
@@ -208,7 +212,7 @@ function companiesMatch(a: string | null | undefined, b: string | null | undefin
  */
 export async function enrichOrganizationCascade(
   domain: string,
-  options: { name?: string; linkedinUrl?: string } = {}
+  options: { name?: string; linkedinUrl?: string; clerkOrgId?: string } = {}
 ): Promise<OrganizationEnrichmentResult> {
   const normalizedDomain = normalizeDomain(domain);
   console.log(`[OrgEnrich] Starting enrichment (PDL → Crustdata fallback) for domain: ${normalizedDomain}`);
@@ -240,10 +244,12 @@ export async function enrichOrganizationCascade(
     sicCodes: null,
     naicsCodes: null,
     tags: null,
+    parentDomain: null,
+    ultimateParentDomain: null,
     pdlRaw: null,
     crustdataRaw: null,
   };
-  
+
   let pdlResult: any = null;
   
   try {
@@ -251,6 +257,7 @@ export async function enrichOrganizationCascade(
     const pdl = await enrichCompanyPDL(normalizedDomain, {
       name: options.name,
       linkedinUrl: options.linkedinUrl,
+      clerkOrgId: options.clerkOrgId,
     });
     
     if (pdl.found) {
@@ -296,11 +303,14 @@ export async function enrichOrganizationCascade(
       sicCodes: pdlResult.sicCode ? [pdlResult.sicCode] : null,
       naicsCodes: pdlResult.naicsCode ? [pdlResult.naicsCode] : null,
       tags: pdlResult.tags || null,
-      
+
+      parentDomain: null,
+      ultimateParentDomain: null,
+
       pdlRaw: pdlResult.raw || null,
       crustdataRaw: null,
     };
-    
+
     console.log(`[OrgEnrich] Complete for ${normalizedDomain}: ${result.name} (pdl)`);
     return result;
   }
@@ -308,7 +318,7 @@ export async function enrichOrganizationCascade(
   let crustdataResult: any = null;
   try {
     console.log('[OrgEnrich] Company Verify (Crustdata)...');
-    const crustdata = await enrichCompanyCrustdata(normalizedDomain);
+    const crustdata = await enrichCompanyCrustdata(normalizedDomain, { clerkOrgId: options.clerkOrgId });
     
     if (crustdata.found) {
       console.log(`[OrgEnrich] Crustdata found company: ${crustdata.companyName}`);
@@ -357,11 +367,14 @@ export async function enrichOrganizationCascade(
     sicCodes: null,
     naicsCodes: null,
     tags: null,
-    
+
+    parentDomain: null,
+    ultimateParentDomain: null,
+
     pdlRaw: null,
     crustdataRaw: crustdataResult.raw || null,
   };
-  
+
   console.log(`[OrgEnrich] Complete for ${normalizedDomain}: ${result.name} (crustdata fallback)`);
   return result;
 }
@@ -377,7 +390,7 @@ export async function enrichOrganizationCascade(
 export async function enrichContactCascade(
   input: ContactEnrichmentInput,
 ): Promise<ContactEnrichmentResult> {
-  const { fullName, email, companyDomain, companyName, title, location, linkedinUrl: existingLinkedin } = input;
+  const { fullName, email, companyDomain, companyName, title, location, linkedinUrl: existingLinkedin, clerkOrgId } = input;
   const { firstName, lastName } = parseFullName(fullName);
   
   console.log(`[Contact] Starting enrichment for: ${fullName} (${email || 'no email'})`);
@@ -396,6 +409,7 @@ export async function enrichContactCascade(
           companyName: companyName || undefined,
           location: location || undefined,
           email: email || undefined,
+          clerkOrgId,
         });
 
         if (pdlResult.found) {
@@ -519,7 +533,7 @@ export async function enrichContactCascade(
   if (!emailVerified && companyDomain) {
     try {
       console.log(`[Contact] Step: Find Email (Hunter) for ${firstName} ${lastName} @ ${companyDomain}`);
-      const hunterResult = await findEmailHunter(firstName, lastName, companyDomain);
+      const hunterResult = await findEmailHunter(firstName, lastName, companyDomain, { clerkOrgId });
       
       if (hunterResult.email && hunterResult.confidence >= 0.7) {
         console.log(`[Contact] Hunter found email: ${hunterResult.email} (confidence: ${hunterResult.confidence})`);
@@ -595,6 +609,7 @@ export async function enrichContactCascade(
       companyName: companyName || undefined,
       email: verifiedEmail || email || undefined,
       linkedinUrl: foundLinkedin || undefined,
+      clerkOrgId,
     });
     
     if (pdlResult.found) {
@@ -633,7 +648,8 @@ export async function enrichContactCascade(
         firstName,
         lastName,
         companyName || companyDomain || null,
-        location || null
+        location || null,
+        { clerkOrgId }
       );
       
       if (serpResult.found && serpResult.linkedinUrl) {
@@ -678,6 +694,7 @@ export async function enrichContactCascade(
       const crustdataResult = await enrichPersonCrustdata({
         linkedinUrl: foundLinkedin || undefined,
         email: !foundLinkedin ? (verifiedEmail || undefined) : undefined,
+        clerkOrgId,
       });
       
       if (crustdataResult.found) {

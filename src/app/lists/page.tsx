@@ -165,11 +165,12 @@ export default function ListsPage() {
           <button
             onClick={() => setShowCreateModal(true)}
             className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 transition-colors w-full sm:w-auto"
+            data-tour="create-list"
           >
             + New List
           </button>
         </div>
-        <div className="flex flex-wrap items-center gap-2 sm:space-x-4 mb-6">
+        <div data-tour="list-tabs" className="flex flex-wrap items-center gap-2 sm:space-x-4 mb-6">
           <button
             onClick={() => setActiveTab('all')}
             className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${

@@ -286,7 +286,7 @@ async function findOrCreateOrgByDomain(domain: string): Promise<{ id: string; is
 
 export async function enrichOrganizationByDomain(
   domain: string,
-  options?: { forceRefresh?: boolean; name?: string; linkedinUrl?: string }
+  options?: { forceRefresh?: boolean; name?: string; linkedinUrl?: string; clerkOrgId?: string }
 ): Promise<OrganizationEnrichmentResult> {
   console.log(`[OrgEnrichment] Enriching organization with cascade (PDL → Crustdata): ${domain}`);
   
@@ -315,6 +315,7 @@ export async function enrichOrganizationByDomain(
   const cascadeResult = await enrichOrganizationCascade(domain, {
     name: cascadeName,
     linkedinUrl: cascadeLinkedin,
+    clerkOrgId: options?.clerkOrgId,
   });
   
   if (!cascadeResult.found) {
@@ -382,6 +383,9 @@ export async function enrichOrganizationByDomain(
     pdlCompanyId: cascadeResult.pdlCompanyId || undefined,
     affiliatedPdlIds: cascadeResult.affiliatedProfiles || undefined,
 
+    parentDomain: cascadeResult.parentDomain || undefined,
+    ultimateParentDomain: cascadeResult.ultimateParentDomain || undefined,
+
     pdlEnriched: !!cascadeResult.pdlRaw,
     pdlEnrichedAt: cascadeResult.pdlRaw ? new Date() : undefined,
     pdlDataVersion: cascadeResult.datasetVersion || undefined,
@@ -409,6 +413,11 @@ export async function enrichOrganizationByDomain(
       .catch(err => console.error(`[OrgEnrichment] Error resolving affiliated companies for ${domain}:`, err));
   }
 
+  if (cascadeResult.parentDomain) {
+    resolveParentHierarchy(orgRecord.id, cascadeResult.parentDomain)
+      .catch(err => console.error(`[OrgEnrichment] Error resolving parent hierarchy for ${domain}:`, err));
+  }
+
   return {
     success: true,
     orgId: orgRecord.id,
@@ -416,7 +425,7 @@ export async function enrichOrganizationByDomain(
   };
 }
 
-export async function enrichOrganizationById(orgId: string): Promise<OrganizationEnrichmentResult> {
+export async function enrichOrganizationById(orgId: string, options?: { clerkOrgId?: string }): Promise<OrganizationEnrichmentResult> {
   const org = await db.query.organizations.findFirst({
     where: eq(organizations.id, orgId),
   });
@@ -429,6 +438,7 @@ export async function enrichOrganizationById(orgId: string): Promise<Organizatio
     return enrichOrganizationByDomain(org.domain, {
       name: org.name || undefined,
       linkedinUrl: org.linkedinHandle ? `https://linkedin.com/company/${org.linkedinHandle}` : undefined,
+      clerkOrgId: options?.clerkOrgId,
     });
   }
 
@@ -462,6 +472,7 @@ export async function enrichOrganizationById(orgId: string): Promise<Organizatio
       locality,
       region,
       postalCode,
+      clerkOrgId: options?.clerkOrgId,
     });
 
     if (pdlResult.found && pdlResult.pdlCompanyId) {
@@ -622,6 +633,76 @@ export async function resolveAffiliatedCompanies(
       console.error(`[OrgEnrichment] Error resolving affiliated company ${pdlId}:`, err instanceof Error ? err.message : err);
     }
   })));
+}
+
+/**
+ * Resolve parent hierarchy for an org after enrichment writes parentDomain.
+ * 1. Find or create an org record for parentDomain
+ * 2. Set parentOrgId on the child org
+ * 3. Walk up the parent chain to compute ultimateParentOrgId (max depth 10, cycle detection)
+ * 4. Set ultimateParentDomain from the resolved ultimate parent
+ */
+export async function resolveParentHierarchy(
+  orgId: string,
+  parentDomain: string
+): Promise<void> {
+  const normalizedParentDomain = normalizeDomain(parentDomain);
+  if (!normalizedParentDomain) return;
+
+  console.log(`[OrgHierarchy] Resolving parent hierarchy for org ${orgId}, parentDomain=${normalizedParentDomain}`);
+
+  // Find or create the parent org
+  const parentOrg = await findOrCreateOrgByDomain(normalizedParentDomain);
+
+  // Don't set self as parent
+  if (parentOrg.id === orgId) {
+    console.log(`[OrgHierarchy] Skipping self-reference for org ${orgId}`);
+    return;
+  }
+
+  // Walk up the parent chain to find the ultimate parent (max depth 10, cycle detection)
+  let ultimateParentId = parentOrg.id;
+  let ultimateParentDomain = normalizedParentDomain;
+  const visited = new Set<string>([orgId, parentOrg.id]);
+
+  for (let depth = 0; depth < 10; depth++) {
+    const current = await db.query.organizations.findFirst({
+      where: eq(organizations.id, ultimateParentId),
+      columns: { id: true, parentOrgId: true, domain: true },
+    });
+
+    if (!current?.parentOrgId || visited.has(current.parentOrgId)) break;
+
+    visited.add(current.parentOrgId);
+    ultimateParentId = current.parentOrgId;
+
+    const nextParent = await db.query.organizations.findFirst({
+      where: eq(organizations.id, ultimateParentId),
+      columns: { domain: true },
+    });
+    if (nextParent?.domain) ultimateParentDomain = nextParent.domain;
+  }
+
+  // Update the child org with resolved IDs
+  const updateData: Record<string, any> = {
+    parentOrgId: parentOrg.id,
+    updatedAt: new Date(),
+  };
+
+  // Only set ultimate parent if it differs from the direct parent
+  if (ultimateParentId !== parentOrg.id) {
+    updateData.ultimateParentOrgId = ultimateParentId;
+    updateData.ultimateParentDomain = ultimateParentDomain;
+  } else {
+    updateData.ultimateParentOrgId = null;
+    updateData.ultimateParentDomain = null;
+  }
+
+  await db.update(organizations)
+    .set(updateData)
+    .where(eq(organizations.id, orgId));
+
+  console.log(`[OrgHierarchy] Resolved: org ${orgId} → parent ${parentOrg.id}${ultimateParentId !== parentOrg.id ? ` → ultimate ${ultimateParentId}` : ''}`);
 }
 
 async function findOrgByDomainOrName(domain: string | null, companyName: string | null): Promise<typeof organizations.$inferSelect | null> {

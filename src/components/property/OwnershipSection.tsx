@@ -48,6 +48,7 @@ interface OwnershipSectionProps {
   enrichedProperty: EnrichedPropertyData | null;
   organizations: Organization[];
   onOpenFlagDialog: (type: 'management_company' | 'owner' | 'property_info' | 'other') => void;
+  isResidential?: boolean;
 }
 
 export default function OwnershipSection({
@@ -55,6 +56,7 @@ export default function OwnershipSection({
   enrichedProperty,
   organizations,
   onOpenFlagDialog,
+  isResidential = false,
 }: OwnershipSectionProps) {
   const router = useRouter();
 
@@ -274,7 +276,7 @@ export default function OwnershipSection({
             </div>
           )}
 
-          {enrichedProperty?.managementCompany && (
+          {enrichedProperty?.managementCompany && !isResidential && (
             <div className="mb-4 p-4 bg-blue-50 rounded-lg border border-blue-100">
               <div className="flex items-start justify-between">
                 <div>

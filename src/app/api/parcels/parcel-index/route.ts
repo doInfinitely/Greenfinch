@@ -7,6 +7,7 @@ export async function GET() {
   try {
     const rows = await db
       .select({
+        id: properties.id,
         propertyKey: properties.propertyKey,
         gisParcelId: properties.dcadGisParcelId,
         commonName: properties.commonName,
@@ -18,17 +19,19 @@ export async function GET() {
       })
       .from(properties);
 
-    const propertyMap = new Map<string, typeof rows[0]>();
+    const propertyMapByKey = new Map<string, typeof rows[0]>();
+    const propertyMapById = new Map<string, typeof rows[0]>();
     for (const row of rows) {
-      propertyMap.set(row.propertyKey, row);
+      propertyMapByKey.set(row.propertyKey, row);
+      propertyMapById.set(row.id, row);
     }
 
-    const props: Record<string, [string | null, string | null, string | null, string | null]> = {};
+    const props: Record<string, [string | null, string | null, string | null, string | null, string]> = {};
     const m: Record<string, string> = {};
 
     const resolveParent = (row: typeof rows[0]) => {
       if (row.gisParcelId && row.gisParcelId !== row.propertyKey) {
-        const gisParent = propertyMap.get(row.gisParcelId);
+        const gisParent = propertyMapByKey.get(row.gisParcelId);
         if (gisParent) return gisParent;
       }
       return row;
@@ -44,6 +47,7 @@ export async function GET() {
           p.address || p.regridAddress || null,
           p.category || null,
           p.subcategory || null,
+          p.id,
         ];
       }
     };
@@ -57,15 +61,15 @@ export async function GET() {
     const mappingRows = await db
       .select({
         accountNum: parcelnumbMapping.accountNum,
-        parentPropertyKey: parcelnumbMapping.parentPropertyKey,
+        parentPropertyId: parcelnumbMapping.parentPropertyId,
       })
       .from(parcelnumbMapping);
 
     for (const mapping of mappingRows) {
       if (m[mapping.accountNum]) continue;
 
-      if (mapping.parentPropertyKey) {
-        const parent = propertyMap.get(mapping.parentPropertyKey);
+      if (mapping.parentPropertyId) {
+        const parent = propertyMapById.get(mapping.parentPropertyId);
         if (parent) {
           ensureProp(parent);
           m[mapping.accountNum] = parent.propertyKey;

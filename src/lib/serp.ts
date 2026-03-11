@@ -29,6 +29,7 @@ export interface SerpWebSearchOptions {
   numResults?: number;
   location?: string;
   latLng?: { latitude: number; longitude: number };
+  clerkOrgId?: string;
 }
 
 function buildCacheKey(query: string, location?: string): string {
@@ -98,6 +99,7 @@ export async function serpWebSearch(options: SerpWebSearchOptions): Promise<Serp
       provider: 'serpapi',
       endpoint: 'google-search',
       entityType: 'search',
+      clerkOrgId: options.clerkOrgId,
       success: true,
       metadata: { query: query.substring(0, 100), resultCount: results.length },
     });
@@ -115,6 +117,7 @@ export async function serpWebSearch(options: SerpWebSearchOptions): Promise<Serp
       provider: 'serpapi',
       endpoint: 'google-search',
       entityType: 'search',
+      clerkOrgId: options.clerkOrgId,
       success: false,
       errorMessage: error instanceof Error ? error.message : String(error),
     });

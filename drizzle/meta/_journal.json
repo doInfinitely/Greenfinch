@@ -15,6 +15,76 @@
       "when": 1741276800000,
       "tag": "0001_enrichment_refactor",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1741363200000,
+      "tag": "0002_multi_county",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1773195376209,
+      "tag": "0003_hesitant_wrecking_crew",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1773195432383,
+      "tag": "0004_strong_purple_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1773368400000,
+      "tag": "0005_onboarding_progress",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1773195718417,
+      "tag": "0006_striped_blob",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1741622400000,
+      "tag": "0007_support_tickets",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1773196522574,
+      "tag": "0008_groovy_matthew_murdock",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1773221518086,
+      "tag": "0009_old_wasp",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1773222241355,
+      "tag": "0010_moaning_lady_deathstrike",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1773308400000,
+      "tag": "0011_uuid_cleanup",
+      "breakpoints": true
     }
   ]
 }

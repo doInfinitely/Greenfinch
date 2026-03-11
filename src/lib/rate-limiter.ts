@@ -345,4 +345,6 @@ export const rateLimiters = {
   crustdata: new ServiceRateLimiter({ name: 'Crustdata', maxPerMinute: 14, maxConcurrent: 5, circuitBreaker: { failureThreshold: 3, resetTimeoutMs: 60000 } }),
   pdlPerson: new ServiceRateLimiter({ name: 'PDL Person', maxPerMinute: 90, maxConcurrent: 30, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
   pdlCompany: new ServiceRateLimiter({ name: 'PDL Company', maxPerMinute: 90, maxConcurrent: 30, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
+  hunter: new ServiceRateLimiter({ name: 'Hunter', maxPerMinute: 100, maxConcurrent: 10, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
+  apollo: new ServiceRateLimiter({ name: 'Apollo', maxPerMinute: 100, maxConcurrent: 10, circuitBreaker: { failureThreshold: 5, resetTimeoutMs: 30000 } }),
 };

@@ -26,6 +26,7 @@ export interface BrowserScrapeInput {
   extractionPrompt: string;
   timeoutMs?: number;
   waitForSelector?: string;
+  clerkOrgId?: string;
 }
 
 export interface BrowserScrapeResult {
@@ -138,6 +139,7 @@ export async function browserScrape(input: BrowserScrapeInput): Promise<BrowserS
       endpoint: 'scrape',
       entityType: 'page',
       success: result.success,
+      clerkOrgId: input.clerkOrgId,
       metadata: { url: input.url },
     });
 
@@ -148,6 +150,7 @@ export async function browserScrape(input: BrowserScrapeInput): Promise<BrowserS
       endpoint: 'scrape',
       entityType: 'page',
       success: false,
+      clerkOrgId: input.clerkOrgId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
 
@@ -164,7 +167,7 @@ export async function browserScrape(input: BrowserScrapeInput): Promise<BrowserS
 /**
  * Extract structured LinkedIn profile data from a profile URL.
  */
-export async function browserExtractLinkedInProfile(url: string): Promise<LinkedInProfileData> {
+export async function browserExtractLinkedInProfile(url: string, options: { clerkOrgId?: string } = {}): Promise<LinkedInProfileData> {
   const emptyProfile: LinkedInProfileData = {
     name: null, headline: null, location: null,
     currentTitle: null, currentCompany: null,
@@ -185,6 +188,7 @@ export async function browserExtractLinkedInProfile(url: string): Promise<Linked
       endpoint: 'linkedin-profile',
       entityType: 'contact',
       success: true,
+      clerkOrgId: options.clerkOrgId,
       metadata: { url },
     });
 
@@ -196,6 +200,7 @@ export async function browserExtractLinkedInProfile(url: string): Promise<Linked
       endpoint: 'linkedin-profile',
       entityType: 'contact',
       success: false,
+      clerkOrgId: options.clerkOrgId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
     return emptyProfile;
@@ -205,14 +210,14 @@ export async function browserExtractLinkedInProfile(url: string): Promise<Linked
 /**
  * Extract employment history from a LinkedIn profile URL.
  */
-export async function browserExtractEmploymentHistory(linkedinUrl: string): Promise<EmploymentHistory> {
+export async function browserExtractEmploymentHistory(linkedinUrl: string, options: { clerkOrgId?: string } = {}): Promise<EmploymentHistory> {
   const empty: EmploymentHistory = {
     currentEmployer: null, currentTitle: null,
     experiences: [], hasJobChange: false, lastUpdated: null,
   };
 
   try {
-    const profile = await browserExtractLinkedInProfile(linkedinUrl);
+    const profile = await browserExtractLinkedInProfile(linkedinUrl, { clerkOrgId: options.clerkOrgId });
     if (!profile.experiences || profile.experiences.length === 0) {
       return empty;
     }
@@ -234,7 +239,7 @@ export async function browserExtractEmploymentHistory(linkedinUrl: string): Prom
 /**
  * Extract team/people from a company's team page.
  */
-export async function browserExtractTeamPage(domain: string): Promise<{ people: PersonFromPage[] }> {
+export async function browserExtractTeamPage(domain: string, options: { clerkOrgId?: string } = {}): Promise<{ people: PersonFromPage[] }> {
   try {
     const result = await rateLimiters.browserUse.execute(() =>
       browserUseRequest<{ data: { people: PersonFromPage[] } }>('/api/company/team', {
@@ -248,6 +253,7 @@ export async function browserExtractTeamPage(domain: string): Promise<{ people: 
       endpoint: 'company-team',
       entityType: 'organization',
       success: true,
+      clerkOrgId: options.clerkOrgId,
       metadata: { domain, peopleCount: result.data?.people?.length || 0 },
     });
 
@@ -259,6 +265,7 @@ export async function browserExtractTeamPage(domain: string): Promise<{ people: 
       endpoint: 'company-team',
       entityType: 'organization',
       success: false,
+      clerkOrgId: options.clerkOrgId,
       errorMessage: error instanceof Error ? error.message : String(error),
     });
     return { people: [] };

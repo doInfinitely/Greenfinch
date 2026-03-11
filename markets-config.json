@@ -1,0 +1,13 @@
+{
+  "dallas-tx": {
+    "id": "dallas-tx",
+    "state": "TX",
+    "defaultCity": "Dallas",
+    "counties": ["DCAD", "TAD", "CCAD", "DENT"],
+    "sosLabel": "TX Secretary of State",
+    "sosSearchUrl": "https://mycpa.cpa.state.tx.us/coa/",
+    "pdlRegion": "texas",
+    "centerLatLng": [32.7767, -96.7970],
+    "residentialEnabled": true
+  }
+}

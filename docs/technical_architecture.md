@@ -65,9 +65,9 @@ At the highest level, the system works like this:
 
 ## 2. Data Sources
 
-### 2.1 Regrid (via Snowflake)
+### 2.1 Regrid (via PostgreSQL staging)
 
-Regrid is our source for baseline parcel data. We access it through Snowflake, using their standard parcel dataset (no premium add-ons).
+Regrid is our source for baseline parcel data. Parcel data is downloaded from county websites and loaded into PostgreSQL staging tables.
 
 **Key identifier fields we use from Regrid:**
 
@@ -369,7 +369,7 @@ The enrichment pipeline transforms raw Regrid data into our rich, deduplicated p
 Step 1              Step 2                  Step 3              Step 4
 ────────────────    ────────────────────    ────────────────    ────────────────
 Pull all parcels    Deduplicate             AI Enrichment       Normalize
-from Snowflake      (collapse stacks)       (Gemini Flash)      Contacts
+from staging        (collapse stacks)       (Gemini Flash)      Contacts
       │                   │                       │                   │
       ▼                   ▼                       ▼                   ▼
 Raw parcels         One record per          Validated data +    Unique IDs for
@@ -379,9 +379,9 @@ Raw parcels         One record per          Validated data +    Unique IDs for
 
 ### 4.2 Step-by-Step Detail
 
-**Step 1: Pull from Snowflake**
+**Step 1: Pull from Staging Tables**
 
-Query all parcels from Regrid’s Snowflake tables. Filter to commercial properties using `usedesc` or `usecode` fields if needed.
+Query all parcels from the PostgreSQL staging tables. Filter to commercial properties using `usedesc` or `usecode` fields if needed.
 
 ```sql
 SELECT *
@@ -1571,7 +1571,7 @@ def generate_org_uuid(domain, org_name):
 
 ## 7. Database Schema
 
-All data lives in Snowflake. Here are the core tables:
+All data lives in PostgreSQL. Here are the core tables:
 
 ### 7.1 Properties Table
 
@@ -1935,7 +1935,7 @@ Recommended order for building this system:
 
 ### Phase 1: Foundation
 
-1. Set up Snowflake serving database with schema from Section 7
+1. Set up PostgreSQL database with schema from Section 7
 2. Build parcel deduplication logic (Section 3)
 3. Create `parcel_to_property` lookup table
 4. Build basic property list UI (no enrichment yet—just raw Regrid data)

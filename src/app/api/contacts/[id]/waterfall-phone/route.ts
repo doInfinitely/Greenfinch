@@ -7,6 +7,9 @@ import { findPhoneByLinkedIn } from '@/lib/findymail';
 import { findPhoneByName as hunterFindPhone } from '@/lib/hunter';
 import { enrichLinkedInProfile } from '@/lib/enrichlayer';
 import { requireSession, requireAdminAccess } from '@/lib/auth';
+import { auth } from '@clerk/nextjs/server';
+import { requireCredits } from '@/lib/credit-guard';
+import { InsufficientCreditsError } from '@/lib/credits';
 import { rateLimitMiddleware } from '@/lib/rate-limit';
 import { apiSuccess, apiError, apiNotFound, apiBadRequest, apiUnauthorized } from '@/lib/api-response';
 import { normalizePhoneWithExtension, normalizePhoneNumber } from '@/lib/phone-format';
@@ -66,8 +69,11 @@ export async function POST(
 
     await requireSession();
     await requireAdminAccess();
-    
+    const { orgId } = await auth();
+
     const { id } = await params;
+
+    await requireCredits('phone_lookup', 'contact', id);
 
     if (!id || !UUID_REGEX.test(id)) {
       return apiBadRequest('Invalid contact ID format');
@@ -108,6 +114,7 @@ export async function POST(
               endpoint: 'search/phone',
               entityType: 'contact',
               entityId: id,
+              clerkOrgId: orgId || undefined,
               success: result.found,
               metadata: { found: result.found },
             });
@@ -130,12 +137,14 @@ export async function POST(
             const result = await enrichPersonPDL(firstName, lastName, contact.companyDomain || '', {
               email: contact.email || undefined,
               linkedinUrl: contact.linkedinUrl || undefined,
+              clerkOrgId: orgId || undefined,
             });
             trackCostFireAndForget({
               provider: 'pdl',
               endpoint: 'person-phone',
               entityType: 'contact',
               entityId: id,
+              clerkOrgId: orgId || undefined,
               success: !!result?.found,
               metadata: { found: !!result?.found, hasPhone: !!result?.mobilePhone, phoneCount: result?.phonesJson?.length || 0 },
             });
@@ -173,6 +182,7 @@ export async function POST(
               endpoint: 'email-finder-phone',
               entityType: 'contact',
               entityId: id,
+              clerkOrgId: orgId || undefined,
               success: result.found,
               metadata: { found: result.found },
             });
@@ -201,6 +211,7 @@ export async function POST(
               endpoint: 'profile-phone',
               entityType: 'contact',
               entityId: id,
+              clerkOrgId: orgId || undefined,
               success: result.success,
               metadata: { found: !!result.phone },
             });
@@ -313,6 +324,9 @@ export async function POST(
   } catch (error) {
     console.error('[WaterfallPhone] API error:', error);
     
+    if (error instanceof InsufficientCreditsError) {
+      return apiError('Insufficient credits', { status: 402, meta: { required: error.required, available: error.available } });
+    }
     if (error instanceof Error) {
       if (error.message === 'UNAUTHORIZED') {
         return apiUnauthorized();
@@ -321,7 +335,7 @@ export async function POST(
         return apiError('Admin access required', { status: 403 });
       }
     }
-    
+
     return apiError('Failed to trigger phone lookup');
   }
 }

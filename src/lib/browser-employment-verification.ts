@@ -6,6 +6,10 @@
 // ============================================================================
 
 import { browserExtractEmploymentHistory, type EmploymentHistory } from './browser-use';
+import { cacheGet, cacheSet } from './redis';
+
+const VERIFY_CACHE_TTL = 7 * 24 * 60 * 60; // 7 days
+const VERIFY_NEGATIVE_TTL = 24 * 60 * 60; // 24 hours
 
 export interface EmploymentVerificationResult {
   verified: boolean;
@@ -41,6 +45,14 @@ export async function verifyEmployment(
   };
 
   if (!linkedinUrl) return empty;
+
+  // Check cache
+  const cacheKey = `employment-verify:${linkedinUrl.toLowerCase().replace(/\/$/, '')}`;
+  const cached = await cacheGet<EmploymentVerificationResult>(cacheKey);
+  if (cached) {
+    console.log(`[EmploymentVerification] Cache hit: ${cacheKey}`);
+    return cached;
+  }
 
   try {
     const history: EmploymentHistory = await browserExtractEmploymentHistory(linkedinUrl);
@@ -82,7 +94,7 @@ export async function verifyEmployment(
     if (!hasJobChange && expectedCompany) confidence += 0.1;
     confidence = Math.min(confidence, 1.0);
 
-    return {
+    const result: EmploymentVerificationResult = {
       verified: !!currentEmployer,
       currentEmployer,
       currentTitle,
@@ -91,6 +103,8 @@ export async function verifyEmployment(
       confidence,
       source: 'browser_use',
     };
+    await cacheSet(cacheKey, result, result.verified ? VERIFY_CACHE_TTL : VERIFY_NEGATIVE_TTL);
+    return result;
   } catch (error) {
     console.error(`[EmploymentVerification] Failed for ${linkedinUrl}: ${error instanceof Error ? error.message : error}`);
     return empty;

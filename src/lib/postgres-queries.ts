@@ -376,14 +376,20 @@ export async function resolveParcelToProperty(
     .from(parcelToProperty)
     .where(eq(parcelToProperty.llUuid, llUuid))
     .limit(1);
-  
-  if (parcelMapping.length === 0) return null;
-  
-  const property = await getPropertyByKeyFromPostgres(parcelMapping[0].propertyKey);
-  if (!property) return null;
-  
+
+  if (parcelMapping.length === 0 || !parcelMapping[0].propertyId) return null;
+
+  const results = await db
+    .select()
+    .from(properties)
+    .where(eq(properties.id, parcelMapping[0].propertyId))
+    .limit(1);
+
+  if (results.length === 0) return null;
+  const property = formatPropertyResult(results[0]);
+
   return {
-    propertyKey: parcelMapping[0].propertyKey,
+    propertyKey: property.propertyKey,
     property,
   };
 }

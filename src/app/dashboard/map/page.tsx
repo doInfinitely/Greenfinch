@@ -10,6 +10,11 @@ import MapSearchBar from '@/components/MapSearchBar';
 import { useToast } from '@/hooks/use-toast';
 import { CATEGORY_COLORS, DEFAULT_CATEGORY_COLORS } from '@/lib/constants';
 import { ArrowUpDown } from 'lucide-react';
+import { useSegmentDefaults } from '@/hooks/use-segment-defaults';
+import { useOnboarding } from '@/contexts/OnboardingContext';
+import { useMyTerritory } from '@/hooks/use-territory';
+import CustomerFlagBadge from '@/components/CustomerFlagBadge';
+import type { CustomerFlagType } from '@/lib/customer-flags';
 
 type SidebarSortField = 'name' | 'lotSqft' | 'buildingSqft';
 
@@ -26,6 +31,7 @@ interface PropertyFeature {
   type: 'Feature';
   geometry: { type: 'Point'; coordinates: [number, number] };
   properties: {
+    id: string;
     propertyKey: string;
     address: string;
     city: string;
@@ -38,6 +44,7 @@ interface PropertyFeature {
     lotSqft: number;
     buildingSqft: number;
     isCurrentCustomer: boolean;
+    customerFlags?: Array<{ flagType: string; competitorName?: string | null }>;
   };
 }
 
@@ -82,11 +89,43 @@ export default function MapPage() {
   const [configLoading, setConfigLoading] = useState(true);
   const [allProperties, setAllProperties] = useState<PropertyFeature[]>([]);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
-  const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 32.8639, lon: -96.7784 });
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lon: number }>({ lat: 32.97, lon: -96.93 });
   const [isLoading, setIsLoading] = useState(true);
   const [isNavigating, setIsNavigating] = useState(false);
   const [filters, setFilters] = useState<FilterState>(() => parseFiltersFromParams(searchParams));
   const [sidebarSort, setSidebarSort] = useState<SidebarSortField>('name');
+  const [territoryFeatures, setTerritoryFeatures] = useState<GeoJSON.Feature[]>([]);
+  const { segmentDefaults, isLoading: segmentDefaultsLoading } = useSegmentDefaults();
+  const { territory: myTerritory, isLoading: territoryLoading, isAdmin: isAdminOrManager } = useMyTerritory();
+  const defaultsAppliedRef = useRef(false);
+  const territoryAppliedRef = useRef(false);
+  const { markStep } = useOnboarding();
+  const onboardingTrackedRef = useRef(false);
+
+  const FILTER_PARAM_KEYS = ['minLotAcres', 'maxLotAcres', 'minNetSqft', 'maxNetSqft', 'categories', 'subcategories', 'buildingClasses', 'acTypes', 'heatingTypes', 'organizationId', 'contactId', 'enrichmentStatus', 'viewStatus', 'customerStatuses', 'zipCodes', 'territoryId', 'customerFlags'];
+  const hasUrlFilters = FILTER_PARAM_KEYS.some(key => searchParams.has(key));
+
+  useEffect(() => {
+    if (defaultsAppliedRef.current || segmentDefaultsLoading || hasUrlFilters) return;
+    defaultsAppliedRef.current = true;
+    const params = serializeFiltersToParams(segmentDefaults);
+    if (params.toString()) {
+      setFilters(segmentDefaults);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [segmentDefaultsLoading, segmentDefaults, hasUrlFilters, router, pathname]);
+
+  // Auto-apply territory filter for non-admin users with an assigned territory
+  useEffect(() => {
+    if (territoryAppliedRef.current || territoryLoading || hasUrlFilters) return;
+    if (!isAdminOrManager && myTerritory) {
+      territoryAppliedRef.current = true;
+      const newFilters = { ...filters, territoryId: myTerritory.id };
+      setFilters(newFilters);
+      const params = serializeFiltersToParams(newFilters);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    }
+  }, [territoryLoading, myTerritory, isAdminOrManager, hasUrlFilters, filters, router, pathname]);
 
   const prevFiltersRef = useRef<string>('');
   const shouldAutoFitRef = useRef(false);
@@ -106,7 +145,8 @@ export default function MapPage() {
       (f.maxLotAcres !== null && f.maxLotAcres !== undefined) ||
       (f.minNetSqft !== null && f.minNetSqft !== undefined) ||
       (f.maxNetSqft !== null && f.maxNetSqft !== undefined) ||
-      (f.viewStatus && f.viewStatus !== 'all')
+      (f.viewStatus && f.viewStatus !== 'all') ||
+      f.territoryId
     );
   }, []);
 
@@ -164,12 +204,19 @@ export default function MapPage() {
     if (filterState.buildingClasses && filterState.buildingClasses.length > 0) {
       params.set('buildingClasses', filterState.buildingClasses.join(','));
     }
-    
+    if (filterState.territoryId) {
+      params.set('territoryId', filterState.territoryId);
+    }
+    if (filterState.includeResidential) {
+      params.set('includeResidential', 'true');
+    }
+
     const queryString = params.toString();
     return `/api/properties/geojson${queryString ? `?${queryString}` : ''}`;
   }, []);
 
   const handleFiltersChange = useCallback((newFilters: FilterState) => {
+    defaultsAppliedRef.current = true;
     const newKey = JSON.stringify(newFilters);
     if (newKey !== prevFiltersRef.current) {
       shouldAutoFitRef.current = hasActiveFilters(newFilters);
@@ -189,6 +236,78 @@ export default function MapPage() {
     }).catch(() => setConfigLoading(false));
   }, []);
 
+  // Fetch territory boundaries for map visualization
+  useEffect(() => {
+    let cancelled = false;
+    async function loadTerritoryBoundaries() {
+      try {
+        const res = await fetch('/api/territories');
+        const data = await res.json();
+        const territories = data.territories || [];
+        if (cancelled) return;
+
+        const features: GeoJSON.Feature[] = [];
+        // Lazy-load boundary files only if needed
+        let zipBoundaries: GeoJSON.FeatureCollection | null = null;
+        let countyBoundaries: GeoJSON.FeatureCollection | null = null;
+
+        const needsZips = territories.some((t: any) => t.type === 'zip_codes');
+        const needsCounties = territories.some((t: any) => t.type === 'counties');
+
+        if (needsZips) {
+          try {
+            const r = await fetch('/geo/dallas-zipcodes.geojson');
+            zipBoundaries = await r.json();
+          } catch {}
+        }
+        if (needsCounties) {
+          try {
+            const r = await fetch('/geo/dallas-counties.geojson');
+            countyBoundaries = await r.json();
+          } catch {}
+        }
+        if (cancelled) return;
+
+        for (const t of territories) {
+          if (t.type === 'polygon' && t.definition?.geometry) {
+            features.push({
+              type: 'Feature',
+              geometry: t.definition.geometry,
+              properties: { name: t.name, color: t.color, id: t.id },
+            });
+          } else if (t.type === 'zip_codes' && t.definition?.zipCodes && zipBoundaries) {
+            const zips = new Set(t.definition.zipCodes as string[]);
+            for (const feat of zipBoundaries.features) {
+              const zip = feat.properties?.BASENAME || feat.properties?.zip || feat.properties?.GEOID;
+              if (zips.has(zip)) {
+                features.push({
+                  type: 'Feature',
+                  geometry: feat.geometry,
+                  properties: { name: t.name, color: t.color, id: t.id },
+                });
+              }
+            }
+          } else if (t.type === 'counties' && t.definition?.counties && countyBoundaries) {
+            const counties = new Set((t.definition.counties as string[]).map((c: string) => c.toLowerCase()));
+            for (const feat of countyBoundaries.features) {
+              const county = (feat.properties?.BASENAME || feat.properties?.county || '').toLowerCase();
+              if (counties.has(county)) {
+                features.push({
+                  type: 'Feature',
+                  geometry: feat.geometry,
+                  properties: { name: t.name, color: t.color, id: t.id },
+                });
+              }
+            }
+          }
+        }
+        setTerritoryFeatures(features);
+      } catch {}
+    }
+    loadTerritoryBoundaries();
+    return () => { cancelled = true; };
+  }, []);
+
   // Fetch properties when filters change - applies all filters server-side
   useEffect(() => {
     setIsLoading(true);
@@ -199,6 +318,10 @@ export default function MapPage() {
         const features = geoData.features || [];
         setAllProperties(features);
         setIsLoading(false);
+        if (!onboardingTrackedRef.current) {
+          onboardingTrackedRef.current = true;
+          markStep('viewedMap');
+        }
         if (shouldAutoFitRef.current && features.length > 0) {
           shouldAutoFitRef.current = false;
           const vp = boundsRef.current;
@@ -231,7 +354,7 @@ export default function MapPage() {
     mapZoomRef.current = zoom;
   }, []);
 
-  const handlePropertyClick = useCallback((propertyKey: string) => {
+  const handlePropertyClick = useCallback((propertyId: string) => {
     setIsNavigating(true);
     try {
       sessionStorage.setItem('greenfinch_map_viewport', JSON.stringify({
@@ -240,7 +363,7 @@ export default function MapPage() {
         timestamp: Date.now(),
       }));
     } catch {}
-    router.push(`/property/${propertyKey}`);
+    router.push(`/property/${propertyId}`);
   }, [router, mapCenter]);
 
   const handleSearchSelect = useCallback((suggestion: SearchSuggestion) => {
@@ -298,13 +421,14 @@ export default function MapPage() {
   return (
     <div className="flex h-full relative">
       <div className="flex-1 relative">
-        <div className={`w-full h-full ${isLoading ? "opacity-50 pointer-events-none" : ""}`}>
+        <div data-tour="map-canvas" className={`w-full h-full ${isLoading ? "opacity-50 pointer-events-none" : ""}`}>
           <MapCanvas
             ref={mapRef}
             accessToken={config.mapboxToken}
             regridToken={config.regridToken}
             regridTileUrl={config.regridTileUrl}
             properties={allProperties}
+            territoryFeatures={territoryFeatures}
             initialCenter={savedViewport?.center}
             initialZoom={savedViewport?.zoom}
             onBoundsChange={handleBoundsChange}
@@ -313,8 +437,8 @@ export default function MapPage() {
         </div>
         <div className="absolute top-3 left-3 right-14 z-10 pointer-events-none">
           <div className="flex items-center gap-2 flex-wrap pointer-events-auto w-fit">
-            <MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} />
-            <PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} />
+            <div data-tour="map-search"><MapSearchBar onSelect={handleSearchSelect} mapCenter={mapCenter} /></div>
+            <div data-tour="map-filters"><PropertyFilters filters={filters} onFiltersChange={handleFiltersChange} segmentDefaults={segmentDefaults} /></div>
           </div>
         </div>
         {isLoading && (
@@ -369,8 +493,8 @@ export default function MapPage() {
           ) : (
             sortedVisibleProperties.slice(0, 100).map((f) => (
               <button
-                key={f.properties.propertyKey}
-                onClick={() => handlePropertyClick(f.properties.propertyKey)}
+                key={f.properties.id || f.properties.propertyKey}
+                onClick={() => handlePropertyClick(f.properties.id || f.properties.propertyKey)}
                 onMouseEnter={() => mapRef.current?.highlightProperty(f.properties.propertyKey)}
                 onMouseLeave={() => mapRef.current?.highlightProperty(null)}
                 className="w-full text-left px-4 py-3 border-b border-gray-100 hover:bg-amber-50 transition-colors"
@@ -401,6 +525,13 @@ export default function MapPage() {
                       </span>
                     );
                   })()}
+                  {(f.properties.customerFlags?.length ?? 0) > 0 && (
+                    <div className="flex flex-wrap gap-0.5">
+                      {f.properties.customerFlags!.map((cf: { flagType: string; competitorName?: string | null }) => (
+                        <CustomerFlagBadge key={cf.flagType} flagType={cf.flagType as CustomerFlagType} competitorName={cf.competitorName} size="xs" />
+                      ))}
+                    </div>
+                  )}
                   {f.properties.lotSqft > 0 && (
                     <span className="text-[10px] text-gray-500">
                       {(f.properties.lotSqft / 43560).toFixed(1)} ac
