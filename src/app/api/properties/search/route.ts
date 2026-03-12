@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
   try {
     const { orgId } = await auth();
     const { searchParams } = new URL(request.url);
+    console.log('[Search] Request received, orgId:', orgId, 'params:', searchParams.toString());
     const search = (searchParams.get('q') || searchParams.get('search'))?.trim();
     const limit = validateLimit(searchParams.get('limit'));
     const page = validatePage(searchParams.get('page'));

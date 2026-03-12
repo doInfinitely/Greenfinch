@@ -12,6 +12,7 @@ export async function GET(request: NextRequest) {
   try {
     const { orgId } = await auth();
     const searchParams = request.nextUrl.searchParams;
+    console.log('[GeoJSON] Request received, orgId:', orgId, 'params:', searchParams.toString());
     
     // Filter parameters
     const categories = searchParams.get('categories')?.split(',').filter(Boolean) || [];
@@ -317,13 +318,14 @@ export async function GET(request: NextRequest) {
         };
       });
 
+    console.log('[GeoJSON] Returning', features.length, 'features of', totalCount, 'total');
     return NextResponse.json({
       type: 'FeatureCollection',
       features,
       totalCount,
     });
   } catch (error) {
-    console.error('GeoJSON error:', error);
+    console.error('[GeoJSON] Error:', error);
     return NextResponse.json({ error: 'Failed to load properties' }, { status: 500 });
   }
 }
