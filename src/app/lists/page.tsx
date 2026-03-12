@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { SignInButton } from '@clerk/nextjs';
+import { SignInButton, useAuth } from '@clerk/nextjs';
 import { CardGridSkeleton } from '@/components/PageSkeleton';
 
 interface List {
@@ -14,6 +14,7 @@ interface List {
 }
 
 export default function ListsPage() {
+  const { isSignedIn, isLoaded: authLoaded } = useAuth();
   const [lists, setLists] = useState<List[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'all' | 'properties' | 'contacts'>('all');
@@ -24,22 +25,24 @@ export default function ListsPage() {
   const [editingList, setEditingList] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
 
   useEffect(() => {
-    fetchLists();
-  }, []);
+    if (authLoaded && isSignedIn) {
+      fetchLists();
+    } else if (authLoaded && !isSignedIn) {
+      setIsLoading(false);
+    }
+  }, [authLoaded, isSignedIn]);
 
   const fetchLists = async () => {
     setIsLoading(true);
     setError(null);
     try {
       const response = await fetch('/api/lists');
-      if (response.status === 401) {
-        setIsAuthenticated(false);
+      if (!response.ok) {
+        setError('Failed to load lists');
         return;
       }
-      setIsAuthenticated(true);
       const data = await response.json();
       if (data.lists) {
         setLists(data.lists);
@@ -129,7 +132,7 @@ export default function ListsPage() {
     });
   };
 
-  if (isAuthenticated === false) {
+  if (authLoaded && !isSignedIn) {
     return (
       <div className="min-h-screen bg-gray-50">
         <main className="w-full px-4 sm:px-6 py-6 sm:py-8">

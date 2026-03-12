@@ -191,7 +191,10 @@ export default function TerritoriesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error('Failed to update');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update territory');
+      }
       toast({ title: 'Territory updated' });
     } else {
       // Create
@@ -200,7 +203,10 @@ export default function TerritoriesPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(data),
       });
-      if (!res.ok) throw new Error('Failed to create');
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create territory');
+      }
       toast({ title: 'Territory created' });
     }
     fetchTerritories();

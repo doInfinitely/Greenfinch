@@ -11,6 +11,7 @@ export default function OnboardingPage() {
   const { progress, settingsCompleted, dismiss } = useOnboarding();
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   // Step 1 state
   const [companyName, setCompanyName] = useState('');
@@ -74,9 +75,13 @@ export default function OnboardingPage() {
       });
       if (res.ok) {
         setStep(2);
+      } else {
+        console.error('Failed to save services: HTTP', res.status);
+        setError('Failed to save your selections. Please try again.');
       }
     } catch (err) {
       console.error('Failed to save services:', err);
+      setError('Network error. Please check your connection and try again.');
     } finally {
       setSaving(false);
     }
@@ -147,19 +152,12 @@ export default function OnboardingPage() {
       <div className="p-6">
         {step === 1 && (
           <div className="space-y-6">
-            <div>
-              <label htmlFor="companyName" className="block text-sm font-medium text-gray-700 mb-1">
-                Company Name (optional)
-              </label>
-              <input
-                type="text"
-                id="companyName"
-                value={companyName}
-                onChange={(e) => setCompanyName(e.target.value)}
-                placeholder="Your Company Name"
-                className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
-              />
-            </div>
+            {error && (
+              <div className="p-3 bg-red-50 text-red-700 rounded-md text-sm">
+                {error}
+                <button onClick={() => setError(null)} className="ml-2 underline">Dismiss</button>
+              </div>
+            )}
 
             <div>
               <h2 className="text-lg font-medium text-gray-900 mb-2">

@@ -225,7 +225,8 @@ export default function TerritoryDialog({
       });
       onOpenChange(false);
     } catch (error) {
-      toast({ title: 'Error', description: 'Failed to save territory', variant: 'destructive' });
+      const msg = error instanceof Error ? error.message : 'Failed to save territory';
+      toast({ title: 'Error', description: msg, variant: 'destructive' });
     } finally {
       setSaving(false);
     }

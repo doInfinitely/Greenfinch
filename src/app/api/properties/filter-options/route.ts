@@ -53,7 +53,7 @@ export async function GET() {
       .filter(Boolean);
 
     const countiesResult = await db.execute(
-      sql`SELECT DISTINCT cad_county_code FROM ${properties} WHERE cad_county_code IS NOT NULL AND is_active = true ORDER BY cad_county_code`
+      sql`SELECT DISTINCT COALESCE(cad_county_code, 'DCAD') AS cad_county_code FROM ${properties} WHERE is_active = true ORDER BY cad_county_code`
     );
     const counties = (countiesResult.rows as { cad_county_code: string }[])
       .map(r => r.cad_county_code)

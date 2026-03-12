@@ -119,7 +119,23 @@ export async function GET(request: NextRequest) {
     }
 
     if (counties.length > 0) {
-      conditions.push(inArray(properties.cadCountyCode, counties));
+      // DCAD properties may have NULL cad_county_code (legacy data)
+      if (counties.includes('DCAD')) {
+        const otherCounties = counties.filter(c => c !== 'DCAD');
+        if (otherCounties.length > 0) {
+          conditions.push(or(
+            inArray(properties.cadCountyCode, counties),
+            isNull(properties.cadCountyCode),
+          )!);
+        } else {
+          conditions.push(or(
+            eq(properties.cadCountyCode, 'DCAD'),
+            isNull(properties.cadCountyCode),
+          )!);
+        }
+      } else {
+        conditions.push(inArray(properties.cadCountyCode, counties));
+      }
     }
 
     // Building class filter - handle "Unknown" for NULL property_class values
