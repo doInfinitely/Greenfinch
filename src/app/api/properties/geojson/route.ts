@@ -31,6 +31,12 @@ export async function GET(request: NextRequest) {
     const customerFlagsParam = searchParams.get('customerFlags')?.split(',').filter(Boolean) || [];
     const includeResidential = searchParams.get('includeResidential') === 'true';
 
+    // Viewport bounds for map-based loading
+    const north = searchParams.get('north') ? parseFloat(searchParams.get('north')!) : null;
+    const south = searchParams.get('south') ? parseFloat(searchParams.get('south')!) : null;
+    const east = searchParams.get('east') ? parseFloat(searchParams.get('east')!) : null;
+    const west = searchParams.get('west') ? parseFloat(searchParams.get('west')!) : null;
+
     // Optional limit - if not provided, return all matching properties
     const limitParam = searchParams.get('limit');
     const limit = limitParam ? parseInt(limitParam, 10) : null;
@@ -44,6 +50,14 @@ export async function GET(request: NextRequest) {
 
     if (!includeResidential) {
       conditions.push(sql`(${properties.assetCategory} IS NULL OR ${properties.assetCategory} != 'Single-Family Residential')`);
+    }
+
+    // Viewport bounds filter - only return properties within the visible map area
+    if (north !== null && south !== null && east !== null && west !== null) {
+      conditions.push(gte(properties.lat, south));
+      conditions.push(lte(properties.lat, north));
+      conditions.push(gte(properties.lon, west));
+      conditions.push(lte(properties.lon, east));
     }
 
     // Category filter (supports multiple categories including 'Unknown / Unassigned')

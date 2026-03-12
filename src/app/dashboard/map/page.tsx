@@ -165,9 +165,9 @@ export default function MapPage() {
   }, []);
 
   // Build API URL with all active filters
-  const buildGeojsonUrl = useCallback((filterState: FilterState): string => {
+  const buildGeojsonUrl = useCallback((filterState: FilterState, viewportBounds?: MapBounds | null): string => {
     const params = new URLSearchParams();
-    
+
     if (filterState.categories.length > 0) {
       params.set('categories', filterState.categories.join(','));
     }
@@ -209,6 +209,14 @@ export default function MapPage() {
     }
     if (filterState.includeResidential) {
       params.set('includeResidential', 'true');
+    }
+
+    // Viewport bounds — only fetch properties visible on the map
+    if (viewportBounds) {
+      params.set('north', String(viewportBounds.north));
+      params.set('south', String(viewportBounds.south));
+      params.set('east', String(viewportBounds.east));
+      params.set('west', String(viewportBounds.west));
     }
 
     const queryString = params.toString();
@@ -308,11 +316,19 @@ export default function MapPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // Fetch properties when filters change - applies all filters server-side
-  useEffect(() => {
+  // Fetch properties when filters or viewport bounds change
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  const fetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const fetchProperties = useCallback((currentBounds?: MapBounds | null) => {
+    // Cancel any in-flight request
+    if (fetchAbortRef.current) fetchAbortRef.current.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
+
     setIsLoading(true);
-    const url = buildGeojsonUrl(filters);
-    fetch(url)
+    const url = buildGeojsonUrl(filters, currentBounds);
+    fetch(url, { signal: controller.signal })
       .then(r => r.json())
       .then(geoData => {
         const features = geoData.features || [];
@@ -341,18 +357,46 @@ export default function MapPage() {
           }
         }
       })
-      .catch(() => setIsLoading(false));
-  }, [filters, buildGeojsonUrl]);
+      .catch((err) => {
+        if (err.name !== 'AbortError') setIsLoading(false);
+      });
+  }, [filters, buildGeojsonUrl, markStep]);
 
+  // Refetch when filters change — uses current viewport bounds
+  const filtersChangedRef = useRef(0);
+  useEffect(() => {
+    filtersChangedRef.current += 1;
+    // If we already have bounds, refetch immediately with viewport
+    if (boundsRef.current) {
+      fetchProperties(boundsRef.current);
+    }
+    // Otherwise, the first handleBoundsChange will trigger the fetch
+  }, [fetchProperties]);
+
+  const initialFetchDoneRef = useRef(false);
 
   const handleBoundsChange = useCallback((newBounds: MapBounds, zoom: number) => {
+    const isFirstBounds = !boundsRef.current;
     setBounds(newBounds);
     boundsRef.current = newBounds;
     const centerLat = (newBounds.north + newBounds.south) / 2;
     const centerLon = (newBounds.east + newBounds.west) / 2;
     setMapCenter({ lat: centerLat, lon: centerLon });
     mapZoomRef.current = zoom;
-  }, []);
+
+    if (isFirstBounds && !initialFetchDoneRef.current) {
+      // First bounds from map — fetch immediately
+      initialFetchDoneRef.current = true;
+      fetchProperties(newBounds);
+      return;
+    }
+
+    // Debounce viewport-based refetch (300ms after user stops panning/zooming)
+    if (fetchTimeoutRef.current) clearTimeout(fetchTimeoutRef.current);
+    fetchTimeoutRef.current = setTimeout(() => {
+      fetchProperties(newBounds);
+    }, 300);
+  }, [fetchProperties]);
 
   const handlePropertyClick = useCallback((propertyId: string) => {
     setIsNavigating(true);
