@@ -15,6 +15,7 @@ export interface DashboardMapConfig {
   accessToken: string;
   regridToken?: string;
   regridTileUrl?: string;
+  pmtilesUrl?: string;
   initialCenter?: { lat: number; lon: number };
   initialZoom?: number;
   onBoundsChange?: (bounds: MapBounds, zoom: number) => void;
@@ -28,11 +29,12 @@ export class DashboardMap {
   private isDestroyed = false;
   private currentData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
   private territoryData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: [] };
-  private debugLogging = true;
+  private debugLogging = false;
   private bulkLoaded = false;
   private propertyIndex: Map<string, { id?: string; propertyKey: string; commonName: string | null; address: string | null; category?: string; subcategory?: string }> = new Map();
   private hoverPopup: mapboxgl.Popup | null = null;
   private hoveredParcelId: string | number | null = null;
+  private parcelSource: string = 'parcels'; // 'parcels' (self-hosted) or 'regrid'
   private currentStyle: string = SATELLITE_STREETS_STYLE;
   private styleReady = false;
   private isAnimating = false;
@@ -99,9 +101,15 @@ export class DashboardMap {
 
     this.map.on('error', (e) => {
       const errorMsg = e.error?.message || 'Map error occurred';
-      console.warn('Mapbox error:', errorMsg);
-      this.initError = errorMsg;
-      this.config.onError?.(errorMsg);
+      // Only treat WebGL/style errors as fatal, not tile loading errors
+      const isTileError = errorMsg.includes('tile') || errorMsg.includes('404') || errorMsg.includes('500') || errorMsg.includes('Error loading');
+      if (isTileError) {
+        console.warn('Mapbox tile error (non-fatal):', errorMsg);
+      } else {
+        console.warn('Mapbox error:', errorMsg);
+        this.initError = errorMsg;
+        this.config.onError?.(errorMsg);
+      }
     });
 
     this.map.on('moveend', () => {
@@ -155,17 +163,33 @@ export class DashboardMap {
       });
     }
 
-    const regridTileUrl = this.config.regridTileUrl ||
-      (this.config.regridToken ? `https://tiles.regrid.com/api/v1/parcels/{z}/{x}/{y}.mvt?token=${this.config.regridToken}` : null);
-    
-    if (regridTileUrl && !this.map.getSource('regrid')) {
-      this.map.addSource('regrid', {
+    // Self-hosted parcel boundaries from CAD shapefiles (served as MVT via API)
+    const pmUrl = this.config.pmtilesUrl;
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const parcelTileUrl = (pmUrl && pmUrl.includes('{z}')) ? pmUrl : `${baseUrl}/api/tiles/parcels/{z}/{x}/{y}`;
+    if (!this.map.getSource('parcels')) {
+      this.map.addSource('parcels', {
         type: 'vector',
-        tiles: [regridTileUrl],
-        minzoom: 10,
-        maxzoom: 21,
-        promoteId: 'll_uuid',
+        tiles: [parcelTileUrl],
+        minzoom: 13,
+        maxzoom: 16,
       });
+    }
+
+    // Regrid as fallback (requires API key — skip if no token)
+    if (this.config.regridToken) {
+      const regridTileUrl = this.config.regridTileUrl ||
+        `https://tiles.regrid.com/api/v1/parcels/{z}/{x}/{y}.mvt?token=${this.config.regridToken}`;
+
+      if (!this.map.getSource('regrid')) {
+        this.map.addSource('regrid', {
+          type: 'vector',
+          tiles: [regridTileUrl],
+          minzoom: 10,
+          maxzoom: 21,
+          promoteId: 'll_uuid',
+        });
+      }
     }
   }
 
@@ -218,12 +242,18 @@ export class DashboardMap {
       }
     }
 
-    if ((this.config.regridToken || this.config.regridTileUrl) && this.map.getSource('regrid')) {
+    // Self-hosted parcel boundaries (from CAD shapefiles), fallback to Regrid
+    const parcelSource = this.map.getSource('parcels') ? 'parcels' :
+      ((this.config.regridToken || this.config.regridTileUrl) && this.map.getSource('regrid') ? 'regrid' : null);
+    if (parcelSource) this.parcelSource = parcelSource;
+    if (this.debugLogging) console.log('[Map] Parcel source:', parcelSource, 'has parcels source:', !!this.map.getSource('parcels'));
+
+    if (parcelSource) {
       if (!this.map.getLayer('parcels-fill')) {
         this.map.addLayer({
           id: 'parcels-fill',
           type: 'fill',
-          source: 'regrid',
+          source: parcelSource,
           'source-layer': 'parcels',
           paint: {
             'fill-color': '#16a34a',
@@ -241,11 +271,16 @@ export class DashboardMap {
         this.map.addLayer({
           id: 'parcels-outline',
           type: 'line',
-          source: 'regrid',
+          source: parcelSource,
           'source-layer': 'parcels',
           paint: {
             'line-color': '#22c55e',
-            'line-width': 1,
+            'line-width': [
+              'interpolate', ['linear'], ['zoom'],
+              13, 1,
+              15, 1.5,
+              17, 2,
+            ],
           },
         });
       }
@@ -393,7 +428,7 @@ export class DashboardMap {
     if (this.hoveredParcelId !== null && this.hoveredParcelId !== featureId) {
       try {
         this.map.setFeatureState(
-          { source: 'regrid', sourceLayer: 'parcels', id: this.hoveredParcelId },
+          { source: this.parcelSource, sourceLayer: 'parcels', id: this.hoveredParcelId },
           { hover: false }
         );
       } catch (err) {
@@ -405,7 +440,7 @@ export class DashboardMap {
       this.hoveredParcelId = featureId;
       try {
         this.map.setFeatureState(
-          { source: 'regrid', sourceLayer: 'parcels', id: featureId },
+          { source: this.parcelSource, sourceLayer: 'parcels', id: featureId },
           { hover: true }
         );
       } catch (err) {
@@ -577,7 +612,7 @@ export class DashboardMap {
     if (this.hoveredParcelId !== null && this.styleReady) {
       try {
         this.map.setFeatureState(
-          { source: 'regrid', sourceLayer: 'parcels', id: this.hoveredParcelId },
+          { source: this.parcelSource, sourceLayer: 'parcels', id: this.hoveredParcelId },
           { hover: false }
         );
       } catch (err) {
@@ -672,8 +707,8 @@ export class DashboardMap {
     if (!this.map) return;
 
     const zoom = this.map.getZoom();
-    const showParcels = zoom >= 15;
-    const showClusters = zoom < 15;
+    const showParcels = zoom >= 13;
+    const showClusters = zoom < 13;
 
     const setVisibility = (layerId: string, visible: boolean) => {
       if (this.map?.getLayer(layerId)) {

@@ -101,6 +101,7 @@
     "passport-openidconnect": "^0.1.2",
     "peopledatalabs": "^14.1.1",
     "pg": "^8.16.3",
+    "pmtiles": "^4.4.0",
     "react": "^18.3.1",
     "react-day-picker": "^8.10.1",
     "react-dom": "^18.3.1",

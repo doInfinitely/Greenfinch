@@ -17,6 +17,14 @@ function trimOrNull(val: string | undefined | null): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
+function buildDcadAddress(row: Record<string, string>): string | null {
+  const streetNum = (row['STREET_NUM'] || '').trim();
+  const streetName = (row['FULL_STREET_NAME'] || '').trim();
+  if (streetNum && streetName) return `${streetNum} ${streetName}`;
+  if (streetName) return streetName;
+  return null;
+}
+
 async function* parseCsvFile(filePath: string): AsyncIterable<Record<string, string>> {
   const stream = fs.createReadStream(filePath);
   const parser = stream.pipe(parse({
@@ -70,7 +78,7 @@ export class DcadParser implements CadParser {
         legal2: trimOrNull(row['LEGAL_2']),
         legal3: trimOrNull(row['LEGAL_3']),
         legal4: trimOrNull(row['LEGAL_4']),
-        propertyAddress: trimOrNull(row['PROPERTY_ADDRESS']),
+        propertyAddress: buildDcadAddress(row),
         propertyCity: trimOrNull(row['PROPERTY_CITY']),
         propertyZipcode: trimOrNull(row['PROPERTY_ZIPCODE']),
       };

@@ -42,3 +42,7 @@ ai-stage-config.json
 
 # CAD data files (large CSVs/ZIPs)
 data/
+.geocode-cache.json
+
+# PMTiles (served from CDN in production)
+public/tiles/

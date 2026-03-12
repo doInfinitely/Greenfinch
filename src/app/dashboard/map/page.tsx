@@ -85,7 +85,7 @@ export default function MapPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { toast } = useToast();
-  const [config, setConfig] = useState<{ mapboxToken: string; regridToken: string; regridTileUrl: string } | null>(null);
+  const [config, setConfig] = useState<{ mapboxToken: string; regridToken: string; regridTileUrl: string; pmtilesUrl?: string } | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [allProperties, setAllProperties] = useState<PropertyFeature[]>([]);
   const [bounds, setBounds] = useState<MapBounds | null>(null);
@@ -239,7 +239,7 @@ export default function MapPage() {
   // Fetch config on mount
   useEffect(() => {
     fetch('/api/config').then(r => r.json()).then(configData => {
-      setConfig({ mapboxToken: configData.mapboxToken, regridToken: configData.regridToken, regridTileUrl: configData.regridTileUrl });
+      setConfig({ mapboxToken: configData.mapboxToken, regridToken: configData.regridToken, regridTileUrl: configData.regridTileUrl, pmtilesUrl: configData.pmtilesUrl });
       setConfigLoading(false);
     }).catch(() => setConfigLoading(false));
   }, []);
@@ -471,6 +471,7 @@ export default function MapPage() {
             accessToken={config.mapboxToken}
             regridToken={config.regridToken}
             regridTileUrl={config.regridTileUrl}
+            pmtilesUrl={config.pmtilesUrl}
             properties={allProperties}
             territoryFeatures={territoryFeatures}
             initialCenter={savedViewport?.center}

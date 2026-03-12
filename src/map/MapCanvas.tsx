@@ -8,6 +8,7 @@ interface MapCanvasProps {
   accessToken: string;
   regridToken?: string;
   regridTileUrl?: string;
+  pmtilesUrl?: string;
   properties: GeoJSON.Feature[];
   territoryFeatures?: GeoJSON.Feature[];
   initialCenter?: { lat: number; lon: number };
@@ -27,6 +28,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
   accessToken,
   regridToken,
   regridTileUrl,
+  pmtilesUrl,
   properties,
   territoryFeatures,
   initialCenter,
@@ -69,6 +71,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
       accessToken,
       regridToken,
       regridTileUrl,
+      pmtilesUrl,
       initialCenter: initialCenterRef.current,
       initialZoom: initialZoomRef.current,
       onBoundsChange: (bounds, zoom) => {
@@ -94,7 +97,7 @@ const MapCanvas = forwardRef<MapCanvasHandle, MapCanvasProps>(({
       }
     };
     // Only depend on tokens - don't reinit for center/zoom changes
-  }, [accessToken, regridToken, regridTileUrl]);
+  }, [accessToken, regridToken, regridTileUrl, pmtilesUrl]);
 
   useEffect(() => {
     if (!mapRef.current) return;

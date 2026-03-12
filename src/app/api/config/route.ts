@@ -7,9 +7,10 @@ export async function GET() {
     mapboxToken: process.env.MAPBOX_API_KEY || '',
     regridToken: regridToken,
     // Use direct Regrid URL to bypass proxy caching issues
-    regridTileUrl: regridToken 
+    regridTileUrl: regridToken
       ? `https://tiles.regrid.com/api/v1/parcels/{z}/{x}/{y}.mvt?token=${regridToken}`
-      : '/api/tiles/regrid/{z}/{x}/{y}',
+      : '',
+    pmtilesUrl: process.env.PMTILES_URL || '',
     googleMapsApiKey: process.env.GOOGLE_MAPS_API_KEY || '',
   });
 }

@@ -1,8 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Player } from '@lottiefiles/react-lottie-player';
+import dynamic from 'next/dynamic';
 import celebrationAnimation from '@/assets/celebration.json';
+
+const Player = dynamic(
+  () => import('@lottiefiles/react-lottie-player').then(mod => mod.Player),
+  { ssr: false }
+);
 
 interface CelebrationAnimationProps {
   trigger: boolean;
@@ -13,7 +18,6 @@ interface CelebrationAnimationProps {
 export default function CelebrationAnimation({ trigger, onComplete, originRef }: CelebrationAnimationProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [position, setPosition] = useState({ x: 50, y: 10 });
-  const playerRef = useRef<Player>(null);
   const isInitialMount = useRef(true);
 
   const updatePosition = useCallback(() => {
@@ -59,7 +63,6 @@ export default function CelebrationAnimation({ trigger, onComplete, originRef }:
       }}
     >
       <Player
-        ref={playerRef}
         src={celebrationAnimation}
         autoplay
         loop={false}
