@@ -19,9 +19,6 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install playwright browsers used by browser-use
-RUN playwright install chromium
-
 COPY . .
 
 EXPOSE 8100
