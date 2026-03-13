@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Activity, ArrowRight, MessageSquare, DollarSign, RefreshCw, Check, X, AlertCircle } from 'lucide-react';
+import { Activity, ArrowRight, MessageSquare, DollarSign, RefreshCw, Check, X, AlertCircle, Sparkles, UserCheck, Flag, FlagOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { PIPELINE_STATUS_LABELS, type PipelineStatus } from '@/lib/schema';
@@ -30,6 +30,10 @@ const ACTIVITY_ICONS: Record<string, React.ReactNode> = {
   status_change: <ArrowRight className="w-4 h-4" />,
   note_added: <MessageSquare className="w-4 h-4" />,
   deal_value_updated: <DollarSign className="w-4 h-4" />,
+  enriched: <Sparkles className="w-4 h-4" />,
+  owner_assigned: <UserCheck className="w-4 h-4" />,
+  customer_flag_added: <Flag className="w-4 h-4" />,
+  customer_flag_removed: <FlagOff className="w-4 h-4" />,
   qualified: <Check className="w-4 h-4" />,
   disqualified: <AlertCircle className="w-4 h-4" />,
   requalified: <RefreshCw className="w-4 h-4" />,
@@ -41,6 +45,8 @@ export default function PropertyActivity({ propertyId }: PropertyActivityProps) 
 
   useEffect(() => {
     fetchActivities();
+    const interval = setInterval(fetchActivities, 30000);
+    return () => clearInterval(interval);
   }, [propertyId]);
 
   async function fetchActivities() {
@@ -121,6 +127,45 @@ export default function PropertyActivity({ propertyId }: PropertyActivityProps) 
           <>
             <span className="font-medium">{userName}</span> set deal value to{' '}
             <span className="font-medium">{formatCurrencyFull(activity.newValue || '0')}</span>
+          </>
+        );
+
+      case 'enriched': {
+        let detail = '';
+        try {
+          const parsed = JSON.parse(activity.newValue || '{}');
+          const parts = [];
+          if (parsed.contacts) parts.push(`${parsed.contacts} contact${parsed.contacts !== 1 ? 's' : ''}`);
+          if (parsed.organizations) parts.push(`${parsed.organizations} org${parsed.organizations !== 1 ? 's' : ''}`);
+          if (parts.length) detail = ` — found ${parts.join(', ')}`;
+        } catch {}
+        return (
+          <>
+            <span className="font-medium">{userName}</span> enriched this property{detail}
+          </>
+        );
+      }
+
+      case 'owner_assigned':
+        return (
+          <>
+            <span className="font-medium">{userName}</span> assigned an owner to this property
+          </>
+        );
+
+      case 'customer_flag_added':
+        return (
+          <>
+            <span className="font-medium">{userName}</span> flagged this property
+            {activity.newValue && <> as <span className="font-medium">{activity.newValue}</span></>}
+          </>
+        );
+
+      case 'customer_flag_removed':
+        return (
+          <>
+            <span className="font-medium">{userName}</span> removed a flag
+            {activity.previousValue && <> (<span className="font-medium">{activity.previousValue}</span>)</>}
           </>
         );
 
