@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import pLimit from 'p-limit';
 import { db } from './db';
-import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from './schema';
+import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations, propertyActivity } from './schema';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
 import { runFocusedEnrichment, cleanupAISummary, EnrichmentStageError } from './ai';
 import { runFocusedEnrichmentV3 } from './ai/pipeline-v3';
@@ -166,7 +166,8 @@ function normalizeName(name: string | null): string | null {
 export async function saveEnrichmentResults(
   propertyKey: string,
   result: FocusedEnrichmentResult,
-  knownPropertyId?: string
+  knownPropertyId?: string,
+  actorContext?: { clerkOrgId: string; userId: string }
 ): Promise<{ propertyId: string; contactIds: string[]; orgIds: string[] }> {
   const [dbProperty] = await db
     .select({
@@ -591,6 +592,26 @@ export async function saveEnrichmentResults(
   const uniqueContactIds = [...new Set(contactIds)];
   const uniqueOrgIds = [...new Set(orgIds)];
   console.log(`[SaveEnrichment] Complete for ${propertyKey}: ${uniqueContactIds.length} contacts (${contactIds.length - uniqueContactIds.length} dupes removed), ${uniqueOrgIds.length} orgs (${orgIds.length - uniqueOrgIds.length} dupes removed)`);
+
+  // Log enrichment activity for team feed
+  if (actorContext) {
+    try {
+      await db.insert(propertyActivity).values({
+        propertyId,
+        clerkOrgId: actorContext.clerkOrgId,
+        userId: actorContext.userId,
+        activityType: 'enriched',
+        newValue: JSON.stringify({
+          contacts: uniqueContactIds.length,
+          organizations: uniqueOrgIds.length,
+        }),
+        metadata: { source: 'enrichment-pipeline' },
+      });
+    } catch (actErr) {
+      console.warn(`[SaveEnrichment] Failed to log activity for ${propertyKey}:`, actErr instanceof Error ? actErr.message : actErr);
+    }
+  }
+
   return { propertyId, contactIds: uniqueContactIds, orgIds: uniqueOrgIds };
 }
 

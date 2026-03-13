@@ -235,11 +235,16 @@ export async function POST(request: NextRequest) {
     };
 
     try {
-      const { orgId: clerkOrgId } = await auth();
+      const { orgId: clerkOrgId, userId } = await auth();
       const enrichmentResult = await runFocusedEnrichment(commercialProperty as any, null, { clerkOrgId: clerkOrgId || undefined });
 
       if (storeResults) {
-        const saved = await saveEnrichmentResults(property.propertyKey, enrichmentResult, propertyId);
+        const saved = await saveEnrichmentResults(
+          property.propertyKey,
+          enrichmentResult,
+          propertyId,
+          clerkOrgId && userId ? { clerkOrgId, userId } : undefined
+        );
         console.log(`[API] Saved enrichment results: ${saved.contactIds.length} contacts, ${saved.orgIds.length} orgs`);
 
         if (saved.contactIds.length > 0 || saved.orgIds.length > 0) {
