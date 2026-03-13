@@ -86,6 +86,20 @@ interface ActionCost {
   category: string;
 }
 
+interface Invoice {
+  id: string;
+  number: string | null;
+  status: string;
+  amountDue: number;
+  amountPaid: number;
+  currency: string;
+  created: string;
+  periodStart: string;
+  periodEnd: string;
+  pdfUrl: string | null;
+  hostedUrl: string | null;
+}
+
 const CANCEL_REASONS = [
   { value: 'too_expensive', label: 'Too expensive' },
   { value: 'missing_features', label: 'Missing features' },
@@ -143,6 +157,16 @@ export default function BillingPage() {
       const json = await res.json();
       return json.data;
     },
+  });
+
+  const { data: invoices } = useQuery<Invoice[]>({
+    queryKey: ['billing-invoices'],
+    queryFn: async () => {
+      const res = await fetch('/api/billing/invoices');
+      const json = await res.json();
+      return json.data;
+    },
+    enabled: isAdmin,
   });
 
   const { data: planData } = useQuery<{ tiers: PlanTier[]; currentTierId: string | null }>({
@@ -293,12 +317,13 @@ export default function BillingPage() {
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
           {isAdmin && <TabsTrigger value="usage">Usage History</TabsTrigger>}
+          {isAdmin && <TabsTrigger value="invoices">Invoices</TabsTrigger>}
           <TabsTrigger value="purchase">Purchase Credits</TabsTrigger>
         </TabsList>
 
         <TabsContent value="overview" className="space-y-4 mt-4">
           {/* Plan card */}
-          <Card>
+          <Card data-tour="billing-plan">
             <CardHeader>
               <div className="flex items-center justify-between">
                 <div>
@@ -346,7 +371,7 @@ export default function BillingPage() {
           </Card>
 
           {/* Balance breakdown */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4" data-tour="billing-balance">
             <Card>
               <CardHeader className="pb-2">
                 <CardDescription>Current Period</CardDescription>
@@ -375,7 +400,7 @@ export default function BillingPage() {
 
           {/* Seat Management */}
           {seatInfo && (
-            <Card>
+            <Card data-tour="billing-seats">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div>
@@ -637,7 +662,7 @@ export default function BillingPage() {
 
           {/* Action costs */}
           {actionCosts && actionCosts.length > 0 && (
-            <Card>
+            <Card data-tour="billing-costs">
               <CardHeader>
                 <CardTitle className="text-base">Credit Costs per Action</CardTitle>
               </CardHeader>
@@ -717,6 +742,70 @@ export default function BillingPage() {
                     </div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
+        {isAdmin && (
+          <TabsContent value="invoices" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Invoice History</CardTitle>
+                <CardDescription>Invoices from your Stripe subscription</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Invoice #</TableHead>
+                      <TableHead>Period</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Amount</TableHead>
+                      <TableHead>PDF</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {invoices?.map((inv) => (
+                      <TableRow key={inv.id}>
+                        <TableCell className="text-xs">
+                          {new Date(inv.created).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell className="text-sm font-mono">{inv.number ?? '-'}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {new Date(inv.periodStart).toLocaleDateString()} – {new Date(inv.periodEnd).toLocaleDateString()}
+                        </TableCell>
+                        <TableCell>
+                          <Badge variant={inv.status === 'paid' ? 'default' : inv.status === 'open' ? 'secondary' : 'destructive'} className="text-xs">
+                            {inv.status}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-right font-medium">
+                          {(inv.amountDue / 100).toLocaleString('en-US', { style: 'currency', currency: inv.currency })}
+                        </TableCell>
+                        <TableCell>
+                          {inv.pdfUrl ? (
+                            <a href={inv.pdfUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm">
+                              Download
+                            </a>
+                          ) : inv.hostedUrl ? (
+                            <a href={inv.hostedUrl} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline text-sm">
+                              View
+                            </a>
+                          ) : '-'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {(!invoices || invoices.length === 0) && (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
+                          No invoices yet
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </CardContent>
             </Card>
           </TabsContent>

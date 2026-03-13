@@ -4,6 +4,7 @@ import { listFilteringTour } from './tours/list-filtering';
 import { pipelineBoardTour } from './tours/pipeline-board';
 import { contactsPageTour } from './tours/contacts-page';
 import { savedListsTour } from './tours/saved-lists';
+import { billingTour } from './tours/billing';
 
 export const ALL_TOURS: TourDefinition[] = [
   mapOverviewTour,
@@ -11,6 +12,7 @@ export const ALL_TOURS: TourDefinition[] = [
   pipelineBoardTour,
   contactsPageTour,
   savedListsTour,
+  billingTour,
 ];
 
 export function getToursForRoute(pathname: string): TourDefinition[] {

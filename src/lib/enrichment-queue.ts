@@ -4,6 +4,9 @@ import { db } from './db';
 import { properties, contacts, organizations, propertyContacts, propertyOrganizations, contactOrganizations } from './schema';
 import { eq, or, and, isNull, inArray } from 'drizzle-orm';
 import { runFocusedEnrichment, cleanupAISummary, EnrichmentStageError } from './ai';
+import { runFocusedEnrichmentV3 } from './ai/pipeline-v3';
+import { getMarketForCounty } from './markets';
+import { scoreEnrichmentResult } from './accuracy/scoring';
 import type { FocusedEnrichmentResult, DiscoveredContact, EnrichmentStageCheckpoint, RelationshipGrounding, GroundingQuality, CitationMetadata } from './ai';
 import { isCircuitBreakerError, rateLimiters } from './rate-limiter';
 import type { CircuitBreakerOpenError } from './rate-limiter';
@@ -146,6 +149,7 @@ async function getPropertyFromPostgres(propertyKey: string): Promise<AggregatedP
     zoningDescription,
     parcelCount: rawParcels.length || 1,
     rawParcelsJson: rawParcels,
+    cadCountyCode: dbProperty.cadCountyCode || null,
   };
 }
 
@@ -1557,8 +1561,34 @@ export async function processPropertyItem(
     if (checkpoint?.lastCompletedStage) {
       console.log(`[EnrichmentQueue] Resuming ${item.propertyKey} from checkpoint (last stage: ${checkpoint.lastCompletedStage}, attempts: ${checkpoint.failureCount || 0})`);
     }
-    const enrichmentResult = await runFocusedEnrichment(dcadProperty as any, checkpoint);
-    
+    // V3 pipeline routing (same pattern as contact/org cascade routing)
+    const propertyRoutingKey = item.propertyId || item.propertyKey;
+    const useV3ForProperty = shouldForceV3Pipeline() || shouldUseV3Pipeline(propertyRoutingKey);
+    let enrichmentResult;
+
+    if (useV3ForProperty) {
+      const market = dbProp.cadCountyCode ? getMarketForCounty(dbProp.cadCountyCode) : null;
+      if (market) {
+        console.log(`[EnrichmentQueue] Using V3 pipeline for ${item.propertyKey} (market: ${market.id})`);
+        const v3Result = await runFocusedEnrichmentV3(dcadProperty as any, market, checkpoint);
+        enrichmentResult = v3Result;
+      } else {
+        console.log(`[EnrichmentQueue] V3 selected but no market for county ${dbProp.cadCountyCode}, falling back to V1 for ${item.propertyKey}`);
+        enrichmentResult = await runFocusedEnrichment(dcadProperty as any, checkpoint);
+      }
+    } else {
+      enrichmentResult = await runFocusedEnrichment(dcadProperty as any, checkpoint);
+    }
+
+    // Accuracy scoring (non-critical)
+    try {
+      const score = scoreEnrichmentResult(enrichmentResult);
+      const b = score.breakdown;
+      console.log(`[AccuracyScore] ${item.propertyKey}: ${score.totalScore}/100 (cls=${b.classification} own=${b.ownership} con=${b.contacts} dom=${b.domains} src=${b.sources})`);
+    } catch (scoreErr) {
+      console.warn(`[AccuracyScore] Failed for ${item.propertyKey}:`, scoreErr instanceof Error ? scoreErr.message : scoreErr);
+    }
+
     const saved = await saveEnrichmentResults(item.propertyKey, enrichmentResult, item.propertyId);
 
     await clearCheckpoint(item.propertyId || item.propertyKey);

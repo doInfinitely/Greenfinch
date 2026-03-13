@@ -152,6 +152,9 @@ export interface AggregatedProperty {
   computedBuildingSqft?: number | null;
   computedBuildingSqftSource?: string | null;
 
+  // CAD county code for market lookup
+  cadCountyCode?: string | null;
+
   // DCAD enriched fields
   dcad?: CommercialProperty;
 }
