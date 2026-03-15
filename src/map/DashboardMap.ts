@@ -57,9 +57,10 @@ export class DashboardMap {
       : [-96.93, 32.97];
     this.currentStyle = SATELLITE_STREETS_STYLE;
 
-    const DFW_BOUNDS: [[number, number], [number, number]] = [
-      [-97.65, 32.40],
-      [-96.20, 33.55],
+    // Texas coverage: DFW + Houston metro areas
+    const TX_BOUNDS: [[number, number], [number, number]] = [
+      [-97.85, 28.90],  // SW: south of Houston, west of DFW
+      [-94.50, 33.55],  // NE: north of DFW, east of Houston
     ];
 
     try {
@@ -69,8 +70,8 @@ export class DashboardMap {
         center: initialCenter,
         zoom: initialZoom,
         attributionControl: false,
-        minZoom: 9,
-        maxBounds: DFW_BOUNDS,
+        minZoom: 8,
+        maxBounds: TX_BOUNDS,
       });
     } catch (error) {
       this.initError = error instanceof Error ? error.message : 'Map initialization failed';

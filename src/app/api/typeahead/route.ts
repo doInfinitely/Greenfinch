@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
                 latitude: lat,
                 longitude: lon,
               },
-              radius: 80000.0,
+              radius: 200000.0,  // 200km to cover metro areas
             },
           },
           includedPrimaryTypes: [
