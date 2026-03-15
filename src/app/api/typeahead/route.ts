@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import pLimit from 'p-limit';
 import { db } from '@/lib/db';
 import { properties } from '@/lib/schema';
 import { sql } from 'drizzle-orm';
@@ -56,26 +55,26 @@ async function resolvePoiToProperty(lat: number, lon: number): Promise<string | 
   }
 }
 
-function mapGoogleTypeToOurType(types: string[]): string {
-  if (types.includes('establishment') || types.includes('point_of_interest')) {
-    return 'poi';
+function mapMapboxType(placeTypes: string[]): string {
+  const type = placeTypes[0];
+  switch (type) {
+    case 'poi':
+    case 'poi.landmark':
+      return 'poi';
+    case 'address':
+      return 'address';
+    case 'neighborhood':
+    case 'locality':
+      return 'neighborhood';
+    case 'place':
+    case 'district':
+    case 'region':
+      return 'place';
+    case 'postcode':
+      return 'postcode';
+    default:
+      return 'poi';
   }
-  if (types.includes('street_address') || types.includes('premise') || types.includes('subpremise')) {
-    return 'address';
-  }
-  if (types.includes('route')) {
-    return 'street';
-  }
-  if (types.includes('locality') || types.includes('administrative_area_level_1')) {
-    return 'place';
-  }
-  if (types.includes('neighborhood') || types.includes('sublocality')) {
-    return 'neighborhood';
-  }
-  if (types.includes('postal_code')) {
-    return 'postcode';
-  }
-  return 'poi';
 }
 
 export async function GET(request: NextRequest) {
@@ -97,9 +96,9 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ suggestions: cached.data });
     }
 
-    const googleApiKey = process.env.GOOGLE_MAPS_API_KEY;
-    if (!googleApiKey) {
-      console.error('GOOGLE_MAPS_API_KEY not configured');
+    const mapboxToken = process.env.MAPBOX_API_KEY;
+    if (!mapboxToken) {
+      console.error('MAPBOX_API_KEY not configured');
       return NextResponse.json(
         { error: 'API configuration error' },
         { status: 500 }
@@ -108,150 +107,77 @@ export async function GET(request: NextRequest) {
 
     const proximity = searchParams.get('proximity') || '-96.93,32.97';
     const proximityParts = proximity.split(',');
-    
+
     if (proximityParts.length !== 2) {
       return NextResponse.json(
         { error: 'Invalid proximity format. Expected "lon,lat"' },
         { status: 400 }
       );
     }
-    
+
     const [lon, lat] = proximityParts.map(Number);
-    
+
     if (isNaN(lon) || isNaN(lat)) {
       return NextResponse.json(
-        { error: 'Invalid proximity coordinates. Both lon and lat must be valid numbers' },
-        { status: 400 }
-      );
-    }
-    
-    if (lon < -180 || lon > 180) {
-      return NextResponse.json(
-        { error: 'Invalid longitude. Must be between -180 and 180' },
-        { status: 400 }
-      );
-    }
-    
-    if (lat < -90 || lat > 90) {
-      return NextResponse.json(
-        { error: 'Invalid latitude. Must be between -90 and 90' },
+        { error: 'Invalid proximity coordinates' },
         { status: 400 }
       );
     }
 
-    const autocompleteResponse = await fetch(
-      'https://places.googleapis.com/v1/places:autocomplete',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': googleApiKey,
-        },
-        body: JSON.stringify({
-          input: sanitizedQuery,
-          locationBias: {
-            circle: {
-              center: {
-                latitude: lat,
-                longitude: lon,
-              },
-              radius: 200000.0,  // 200km to cover metro areas
-            },
-          },
-          includedPrimaryTypes: [
-            'establishment',
-            'geocode',
-          ],
-        }),
-      }
+    const params = new URLSearchParams({
+      access_token: mapboxToken,
+      proximity: `${lon},${lat}`,
+      limit: '8',
+      types: 'poi,address,neighborhood,place,postcode',
+      country: 'US',
+    });
+
+    const response = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(sanitizedQuery)}.json?${params}`
     );
 
-    if (!autocompleteResponse.ok) {
-      const errorText = await autocompleteResponse.text();
-      console.error('Google Places Autocomplete error:', errorText);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Mapbox Geocoding error:', errorText);
       return NextResponse.json(
         { error: 'Failed to fetch suggestions' },
         { status: 500 }
       );
     }
 
-    const autocompleteData = await autocompleteResponse.json();
-    const predictions = autocompleteData.suggestions || [];
+    const data = await response.json();
+    const features = data.features || [];
 
-    let suggestions: TypeaheadSuggestion[] = predictions
-      .slice(0, 8)
-      .map((prediction: any) => {
-        const place = prediction.placePrediction;
-        if (!place) return null;
+    let suggestions: TypeaheadSuggestion[] = features.map((feature: any) => {
+      const [fLon, fLat] = feature.center || [0, 0];
+      const type = mapMapboxType(feature.place_type || []);
 
-        const mainText = place.structuredFormat?.mainText?.text || place.text?.text || '';
-        const secondaryText = place.structuredFormat?.secondaryText?.text || '';
-        const types = place.types || [];
+      // Extract short address context (everything after the main text)
+      const address = feature.place_name?.replace(`${feature.text}, `, '') || '';
 
-        return {
-          id: place.placeId || '',
-          text: mainText,
-          place_name: secondaryText ? `${mainText}, ${secondaryText}` : mainText,
-          address: secondaryText,
-          lat: 0,
-          lon: 0,
-          type: mapGoogleTypeToOurType(types),
-          _placeId: place.placeId,
-        };
-      })
-      .filter(Boolean);
-
-    const limit = pLimit(3);
-    
-    const detailPromises = suggestions.map((suggestion: any) => {
-      return limit(async () => {
-        try {
-          if (suggestion._placeId) {
-            const detailsResponse = await fetch(
-              `https://places.googleapis.com/v1/places/${suggestion._placeId}`,
-              {
-                method: 'GET',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'X-Goog-Api-Key': googleApiKey,
-                  'X-Goog-FieldMask': 'location,formattedAddress,types',
-                },
-              }
-            );
-
-            if (detailsResponse.ok) {
-              const details = await detailsResponse.json();
-              if (details.location) {
-                suggestion.lat = details.location.latitude;
-                suggestion.lon = details.location.longitude;
-              }
-              if (details.formattedAddress) {
-                suggestion.address = details.formattedAddress;
-              }
-              if (details.types) {
-                suggestion.type = mapGoogleTypeToOurType(details.types);
-              }
-            }
-          }
-          
-          if (suggestion.type === 'poi' && suggestion.lat && suggestion.lon) {
-            const propertyKey = await resolvePoiToProperty(suggestion.lat, suggestion.lon);
-            if (propertyKey) {
-              suggestion.propertyKey = propertyKey;
-            }
-          }
-          
-          delete suggestion._placeId;
-          return suggestion;
-        } catch (error) {
-          console.warn('Failed to retrieve place details:', error);
-          delete suggestion._placeId;
-          return suggestion;
-        }
-      });
+      return {
+        id: feature.id || '',
+        text: feature.text || '',
+        place_name: feature.place_name || '',
+        address,
+        lat: fLat,
+        lon: fLon,
+        type,
+      };
     });
 
-    suggestions = await Promise.all(detailPromises);
+    // Resolve POIs to properties in our database
+    const resolvePromises = suggestions.map(async (suggestion) => {
+      if (suggestion.type === 'poi' && suggestion.lat && suggestion.lon) {
+        const propertyKey = await resolvePoiToProperty(suggestion.lat, suggestion.lon);
+        if (propertyKey) {
+          suggestion.propertyKey = propertyKey;
+        }
+      }
+      return suggestion;
+    });
+
+    suggestions = await Promise.all(resolvePromises);
 
     cache.set(cacheKey, {
       data: suggestions,
