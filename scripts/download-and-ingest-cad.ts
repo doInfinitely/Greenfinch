@@ -5,7 +5,8 @@
  * Usage:
  *   npx tsx --env-file=.env.local scripts/download-and-ingest-cad.ts --county DCAD [--zip ZIPCODE] [--limit N] [--skip-download] [--extract-dir /path/to/files]
  *
- * Counties: DCAD (Dallas), TAD (Tarrant), CCAD (Collin), DENT (Denton)
+ * Counties: DCAD (Dallas), TAD (Tarrant), CCAD (Collin), DENT (Denton),
+ *           HCAD (Harris), CHAM (Chambers)
  *
  * For counties with downloadMethod='manual' (TAD, CCAD, DENT), you must
  * download the files yourself and pass --extract-dir to point at them.

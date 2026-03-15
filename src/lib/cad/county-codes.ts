@@ -28,7 +28,30 @@ const DCAD_CODE_MAP: CodeMapping[] = [
   { sptdCode: 'L20', ptadCode: 'L2', include: false },
 ];
 
-// TAD, CCAD, DENT use standard PTAD codes
+// HCAD uses PTAD codes directly (property_use_cd field)
+const HCAD_CODE_MAP: CodeMapping[] = [
+  { sptdCode: 'F1', ptadCode: 'F1', include: true },   // Commercial
+  { sptdCode: 'F2', ptadCode: 'F2', include: true },   // Industrial
+  { sptdCode: 'B1', ptadCode: 'B', include: true },    // Multi-family
+  { sptdCode: 'B4', ptadCode: 'B', include: true },    // Four+ family
+  { sptdCode: 'A1', ptadCode: 'A', include: false },   // Single-family
+  { sptdCode: 'A2', ptadCode: 'A', include: false },   // Mobile homes
+  { sptdCode: 'A3', ptadCode: 'A', include: false },   // Aux buildings
+  { sptdCode: 'A4', ptadCode: 'A', include: false },   // Half duplex
+  { sptdCode: 'B2', ptadCode: 'B', include: false },   // Two-family
+  { sptdCode: 'B3', ptadCode: 'B', include: false },   // Three-family
+  { sptdCode: 'C1', ptadCode: 'C1', include: false },  // Vacant lots (city)
+  { sptdCode: 'C2', ptadCode: 'C2', include: false },  // Vacant commercial
+  { sptdCode: 'C3', ptadCode: 'C3', include: false },  // Vacant lots (rural)
+  { sptdCode: 'D1', ptadCode: 'D1', include: false },
+  { sptdCode: 'D2', ptadCode: 'D2', include: false },
+  { sptdCode: 'E1', ptadCode: 'E1', include: false },  // Farm & ranch
+  { sptdCode: 'L1', ptadCode: 'L1', include: false },
+  { sptdCode: 'L2', ptadCode: 'L2', include: false },
+  { sptdCode: 'X1', ptadCode: 'X', include: false },   // Exempt
+];
+
+// TAD, CCAD, DENT, CHAM use standard PTAD codes
 const PTAD_CODE_MAP: CodeMapping[] = [
   { sptdCode: 'B', ptadCode: 'B', include: true },
   { sptdCode: 'B1', ptadCode: 'B', include: true },   // Some counties use B1
@@ -48,6 +71,8 @@ const CODE_MAPS: Record<CountyCode, CodeMapping[]> = {
   TAD: PTAD_CODE_MAP,
   CCAD: PTAD_CODE_MAP,
   DENT: PTAD_CODE_MAP,
+  HCAD: HCAD_CODE_MAP,
+  CHAM: PTAD_CODE_MAP,
 };
 
 // Included PTAD codes for property filtering
@@ -80,6 +105,8 @@ export function getCountyName(countyCode: CountyCode): string {
     TAD: 'TARRANT',
     CCAD: 'COLLIN',
     DENT: 'DENTON',
+    HCAD: 'HARRIS',
+    CHAM: 'CHAMBERS',
   };
   return names[countyCode];
 }

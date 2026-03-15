@@ -171,7 +171,7 @@ export class DashboardMap {
       this.map.addSource('parcels', {
         type: 'vector',
         tiles: [parcelTileUrl],
-        minzoom: 13,
+        minzoom: 10,
         maxzoom: 16,
       });
     }
@@ -450,9 +450,12 @@ export class DashboardMap {
 
     const props = feature.properties || {};
     const center = e.lngLat;
-    
-    const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
-    
+
+    // Self-hosted PMTiles use county-specific field names; Regrid uses parcelnumb
+    const parcelnumb = props.Acct || props.TAXPIN || props.PROP_ID        // DFW
+      || props.HCAD_NUM || props.prop_id || props.GEOID || props.Parcel_CAM  // Houston
+      || props.parcelnumb || props.parcelnumb_no_formatting || props.apn;     // Regrid
+
     if (this.debugLogging) {
       console.log('[ParcelHover] featureId:', featureId, 'type:', typeof featureId, 'parcelnumb:', parcelnumb, 'indexSize:', this.propertyIndex.size);
     }
@@ -498,8 +501,10 @@ export class DashboardMap {
     } else if (parcelnumb && !isSameParcel && !this.pendingApiCalls.has(parcelnumb)) {
       this.fetchAndShowTooltip(center, parcelnumb, props);
     } else if (!this.pendingApiCalls.has(parcelnumb)) {
-      const regridAddress = props.address || props.siteaddr || props.mail_addres;
-      const regridOwner = props.owner || props.owner1;
+      const regridAddress = props.address || props.siteaddr || props.mail_addres
+        || props.LocAddr || props.situs_addr || props.SITUS;    // CAD tile fields
+      const regridOwner = props.owner || props.owner1
+        || props.CurrOwner || props.owner_name || props.NAME || props.Name;  // CAD tile fields
       if (regridAddress || regridOwner) {
         this.showTooltip(center, {
           commonName: regridOwner || null,
@@ -649,7 +654,8 @@ export class DashboardMap {
     
     const feature = e.features[0];
     const props = feature.properties || {};
-    const parcelnumb = props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
+    const parcelnumb = props.Acct || props.TAXPIN || props.PROP_ID || props.HCAD_NUM
+      || props.parcelnumb || props.parcelnumb_no_formatting || props.apn;
 
     if (this.debugLogging) {
       console.log('[ParcelClick] featureId:', feature.id, 'parcelnumb:', parcelnumb);

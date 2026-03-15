@@ -8,12 +8,16 @@ export { DcadParser } from './parsers/dcad-parser';
 export { TadParser } from './parsers/tad-parser';
 export { CcadParser } from './parsers/ccad-parser';
 export { DentonParser } from './parsers/denton-parser';
+export { HcadParser } from './parsers/hcad-parser';
+export { ChambersParser } from './parsers/chambers-parser';
 
 import type { CountyCode, CadParser } from './types';
 import { DcadParser } from './parsers/dcad-parser';
 import { TadParser } from './parsers/tad-parser';
 import { CcadParser } from './parsers/ccad-parser';
 import { DentonParser } from './parsers/denton-parser';
+import { HcadParser } from './parsers/hcad-parser';
+import { ChambersParser } from './parsers/chambers-parser';
 
 export function createParser(countyCode: CountyCode, extractDir: string, appraisalYear: number = 2025): CadParser {
   switch (countyCode) {
@@ -21,5 +25,8 @@ export function createParser(countyCode: CountyCode, extractDir: string, apprais
     case 'TAD': return new TadParser(extractDir, appraisalYear);
     case 'CCAD': return new CcadParser(extractDir, appraisalYear);
     case 'DENT': return new DentonParser(extractDir, appraisalYear);
+    case 'HCAD': return new HcadParser(extractDir, appraisalYear);
+    case 'CHAM': return new ChambersParser(extractDir, appraisalYear);
+    default: throw new Error(`No parser available for county: ${countyCode}`);
   }
 }

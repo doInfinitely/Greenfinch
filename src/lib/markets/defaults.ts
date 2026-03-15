@@ -19,3 +19,16 @@ registerMarket({
   centerLatLng: [32.7767, -96.7970],
   residentialEnabled: true,
 });
+
+// Houston metro — Harris + Chambers (Phase 1-2)
+registerMarket({
+  id: 'houston-tx',
+  state: 'TX',
+  defaultCity: 'Houston',
+  counties: ['HCAD', 'CHAM'],
+  sosLabel: 'TX Secretary of State',
+  sosSearchUrl: 'https://mycpa.cpa.state.tx.us/coa/',
+  pdlRegion: 'texas',
+  centerLatLng: [29.7604, -95.3698],
+  residentialEnabled: false,
+});

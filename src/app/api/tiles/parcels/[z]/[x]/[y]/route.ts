@@ -16,8 +16,10 @@ function getPMTiles(): PMTiles | null {
     return pmtiles;
   }
 
-  // Fall back to local file
-  const filePath = path.join(process.cwd(), 'public', 'tiles', 'dfw_parcels.pmtiles');
+  // Fall back to local file — try combined file first, then DFW-only
+  const combinedPath = path.join(process.cwd(), 'data', 'gis', 'all_parcels.pmtiles');
+  const legacyPath = path.join(process.cwd(), 'public', 'tiles', 'dfw_parcels.pmtiles');
+  const filePath = fs.existsSync(combinedPath) ? combinedPath : legacyPath;
   if (!fs.existsSync(filePath)) return null;
 
   pmtiles = new PMTiles(new FileSource(filePath));

@@ -1,4 +1,10 @@
-export type CountyCode = 'DCAD' | 'TAD' | 'CCAD' | 'DENT';
+export type CountyCode =
+  | 'DCAD' | 'TAD' | 'CCAD' | 'DENT'        // DFW
+  | 'HCAD' | 'CHAM';                          // Houston (Phase 1-2)
+
+// Placeholder for future Houston counties (Brazoria, Fort Bend, Montgomery, Liberty, Waller, Galveston)
+// Add to CountyCode when parsers + configs are ready:
+// | 'BCAD' | 'FBCAD' | 'MCAD' | 'LCAD' | 'WCAD' | 'GCAD'
 
 export interface CadAccountInfoRow {
   countyCode: CountyCode;
@@ -85,7 +91,7 @@ export interface CountyConfig {
   name: string;
   downloadUrl: string;
   downloadMethod: 'direct' | 'manual';
-  fileFormat: 'csv' | 'pipe-delimited' | 'fixed-width';
+  fileFormat: 'csv' | 'pipe-delimited' | 'fixed-width' | 'tab-delimited';
   files: {
     accountInfo: string;
     appraisalValues: string;
@@ -145,6 +151,32 @@ export const COUNTY_CONFIGS: Record<CountyCode, CountyConfig> = {
       appraisalValues: '*_APPRAISAL_INFO.TXT',
       buildings: ['*_APPRAISAL_IMPROVEMENT_INFO.TXT'],
       land: '*_APPRAISAL_LAND_DETAIL.TXT',
+    },
+  },
+  HCAD: {
+    code: 'HCAD',
+    name: 'Harris County Appraisal District',
+    downloadUrl: 'https://pdata.hcad.org/download/',
+    downloadMethod: 'manual',
+    fileFormat: 'tab-delimited',
+    files: {
+      accountInfo: 'ownership_history.txt',
+      appraisalValues: 'jur_value.txt',
+      buildings: ['building_other.txt'],
+      land: 'land.txt',
+    },
+  },
+  CHAM: {
+    code: 'CHAM',
+    name: 'Chambers County Appraisal District',
+    downloadUrl: 'https://chamberscad.org/',
+    downloadMethod: 'manual',
+    fileFormat: 'csv',
+    files: {
+      accountInfo: '2025-certified-roll.csv',
+      appraisalValues: '2025-certified-roll.csv',
+      buildings: ['2025-certified-roll.csv'],
+      land: '2025-certified-roll.csv',
     },
   },
 };
