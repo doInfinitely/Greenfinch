@@ -45,6 +45,11 @@ export default clerkMiddleware(async (auth, req) => {
 
   const authData = await auth();
 
+  // Redirect signed-in users from the marketing homepage to the dashboard
+  if (req.nextUrl.pathname === '/' && authData.userId) {
+    return NextResponse.redirect(new URL('/pipeline/dashboard', req.url));
+  }
+
   // Admin route protection
   if (isAdminRoute(req) && authData.userId) {
     const isOrgAdmin = authData.orgSlug === INTERNAL_ORG_SLUG && authData.orgRole === 'org:admin';
