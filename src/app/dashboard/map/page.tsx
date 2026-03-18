@@ -130,6 +130,7 @@ export default function MapPage() {
   const prevFiltersRef = useRef<string>('');
   const shouldAutoFitRef = useRef(false);
   const boundsRef = useRef<MapBounds | null>(null);
+  const fetchedBoundsRef = useRef<MapBounds | null>(null);
 
   const hasActiveFilters = useCallback((f: FilterState) => {
     return !!(
@@ -320,14 +321,47 @@ export default function MapPage() {
   const fetchAbortRef = useRef<AbortController | null>(null);
   const fetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Expand bounds by a multiplier (3x = fetch area 3x wider & taller than viewport)
+  const expandBounds = useCallback((b: MapBounds, multiplier: number): MapBounds => {
+    const latSpan = b.north - b.south;
+    const lonSpan = b.east - b.west;
+    const latPad = (latSpan * (multiplier - 1)) / 2;
+    const lonPad = (lonSpan * (multiplier - 1)) / 2;
+    return {
+      north: b.north + latPad,
+      south: b.south - latPad,
+      east: b.east + lonPad,
+      west: b.west - lonPad,
+    };
+  }, []);
+
+  // Check if the viewport is fully within the previously fetched bounds
+  const isViewportInsideFetchedBounds = useCallback((viewport: MapBounds): boolean => {
+    const fb = fetchedBoundsRef.current;
+    if (!fb) return false;
+    return (
+      viewport.north <= fb.north &&
+      viewport.south >= fb.south &&
+      viewport.east <= fb.east &&
+      viewport.west >= fb.west
+    );
+  }, []);
+
   const fetchProperties = useCallback((currentBounds?: MapBounds | null) => {
     // Cancel any in-flight request
     if (fetchAbortRef.current) fetchAbortRef.current.abort();
     const controller = new AbortController();
     fetchAbortRef.current = controller;
 
-    setIsLoading(true);
-    const url = buildGeojsonUrl(filters, currentBounds);
+    // Only show the loading spinner if the viewport has escaped the 3x buffer
+    const escaped = !currentBounds || !isViewportInsideFetchedBounds(currentBounds);
+    if (escaped) setIsLoading(true);
+
+    // Always fetch a 3x-expanded area so the buffer stays ahead of the user
+    const expandedBounds = currentBounds ? expandBounds(currentBounds, 3) : null;
+    fetchedBoundsRef.current = expandedBounds;
+
+    const url = buildGeojsonUrl(filters, expandedBounds);
     fetch(url, { signal: controller.signal })
       .then(r => r.json())
       .then(geoData => {
@@ -360,12 +394,14 @@ export default function MapPage() {
       .catch((err) => {
         if (err.name !== 'AbortError') setIsLoading(false);
       });
-  }, [filters, buildGeojsonUrl, markStep]);
+  }, [filters, buildGeojsonUrl, markStep, expandBounds]);
 
   // Refetch when filters change — uses current viewport bounds
   const filtersChangedRef = useRef(0);
   useEffect(() => {
     filtersChangedRef.current += 1;
+    // Invalidate buffer so the spinner shows for filter changes
+    fetchedBoundsRef.current = null;
     // If we already have bounds, refetch immediately with viewport
     if (boundsRef.current) {
       fetchProperties(boundsRef.current);
